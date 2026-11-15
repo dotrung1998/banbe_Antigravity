@@ -44,10 +44,10 @@ struct ActivityTabsBar: View {
             ActivityMemory.tab = k
         } label: {
             HStack(spacing: 6) {
-                Text(label).font(.system(size: 14, weight: .semibold))
+                Text(label).font(.app(size: 14, weight: .semibold))
                 if count > 0 {
                     Text("\(count)")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.app(size: 10, weight: .bold))
                         .foregroundStyle(BanbeTheme.onAlert)
                         .padding(.horizontal, 5)
                         .frame(minWidth: 18, minHeight: 18)
@@ -79,7 +79,7 @@ struct ActivityChips<K: Hashable>: View {
                     let on = value == item.0
                     Button { value = item.0 } label: {
                         Text(item.1)
-                            .font(.system(size: 13, weight: on ? .semibold : .regular))
+                            .font(.app(size: 13, weight: on ? .semibold : .regular))
                             .padding(.horizontal, 14)
                             .frame(height: 34)
                             .foregroundStyle(on ? app.palette.paper : app.palette.ink2)
@@ -142,7 +142,7 @@ struct ActivityNotificationsList: View {
                         Button(app.T("Đánh dấu đã đọc", "Mark all as read")) {
                             Task { for n in unreadAll { await app.markNotificationRead(n) } }
                         }
-                        .font(.system(size: 13))
+                        .font(.app(size: 13))
                         .foregroundStyle(app.palette.ink)
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("notifications.markAll")
@@ -151,7 +151,7 @@ struct ActivityNotificationsList: View {
                 }
                 if items.isEmpty {
                     Text(app.T("Chưa có thông báo nào.", "Nothing here yet."))
-                        .font(.system(size: 14))
+                        .font(.app(size: 14))
                         .foregroundStyle(app.palette.ink2)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 60)
@@ -198,10 +198,10 @@ private struct ActivityNotificationRow: View {
                             NotificationKindIcon(category: notificationCategory(item.kind))
                             Spacer(minLength: 12)
                             Text(app.trStatus(EventLabels.ago(max(1, Int(Date().timeIntervalSince(item.createdAt) / 3600)))))
-                                .font(.system(size: 11))
+                                .font(.app(size: 11))
                         }
                         Text(item.body)
-                            .font(.system(size: 13))
+                            .font(.app(size: 13))
                             .foregroundStyle(app.palette.ink.opacity(0.75))
                             .lineLimit(1)
                     }
@@ -226,7 +226,7 @@ private struct ActivityNotificationRow: View {
                 }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.app(size: 15, weight: .semibold))
                     .foregroundStyle(app.palette.ink.opacity(0.4))
                     .frame(width: 32, height: 44)
                     .contentShape(Rectangle())
@@ -249,7 +249,7 @@ private struct ActivityNotificationRow: View {
             CatalogPhoto(path: path, height: 40, width: 40, cornerRadius: 20)
         case .teamFallback:
             Circle().fill(app.palette.ink.opacity(0.08)).frame(width: 40, height: 40)
-                .overlay(Image(systemName: "person.2.fill").font(.system(size: 15)).foregroundStyle(app.palette.ink.opacity(0.55)))
+                .overlay(Image(systemName: "person.2.fill").font(.app(size: 15)).foregroundStyle(app.palette.ink.opacity(0.55)))
         case .fallback:
             fallback("🔔")
         }
@@ -257,6 +257,6 @@ private struct ActivityNotificationRow: View {
 
     private func fallback(_ glyph: String) -> some View {
         Circle().fill(app.palette.ink.opacity(0.08)).frame(width: 40, height: 40)
-            .overlay(Text(glyph).font(.system(size: 16)))
+            .overlay(Text(glyph).font(.app(size: 16)))
     }
 }

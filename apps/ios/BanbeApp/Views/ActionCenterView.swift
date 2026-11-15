@@ -18,20 +18,20 @@ struct ActionCenterView: View {
         if !items.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 Text(app.T("Việc cần xử lý", "Things to do"))
-                    .font(.system(size: 11.5, weight: .semibold))
+                    .font(.app(size: 11.5, weight: .semibold))
                     .foregroundStyle(app.palette.ink.opacity(0.7))
                 ForEach(items.prefix(3)) { item in
                     Button(action: item.onTap) {
                         HStack {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(item.label)
-                                    .font(.system(size: 11.5, weight: .semibold))
+                                    .font(.app(size: 11.5, weight: .semibold))
                                     .foregroundStyle(item.severity == .overdue ? BanbeTheme.alert : app.palette.ink)
-                                Text(item.detail).font(.system(size: 12.5)).lineLimit(1).foregroundStyle(app.palette.ink)
+                                Text(item.detail).font(.app(size: 12.5)).lineLimit(1).foregroundStyle(app.palette.ink)
                             }
                             Spacer(minLength: 8)
                             Text(item.ctaLabel + " ›")
-                                .font(.system(size: 11.5, weight: .semibold))
+                                .font(.app(size: 11.5, weight: .semibold))
                                 .foregroundStyle(app.palette.ink.opacity(0.7))
                         }
                         .padding(14)
@@ -44,7 +44,7 @@ struct ActionCenterView: View {
                 if items.count > 3 {
                     Button(action: onSeeAll) {
                         Text(app.T("Xem tất cả", "See all"))
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.app(size: 12, weight: .semibold))
                             .foregroundStyle(app.palette.ink.opacity(0.75))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 4)

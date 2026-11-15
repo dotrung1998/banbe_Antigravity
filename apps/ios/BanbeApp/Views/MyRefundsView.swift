@@ -28,7 +28,7 @@ struct MyRefundsView: View {
 
                 HStack(spacing: 10) {
                     Image(systemName: "checklist")
-                        .font(.system(size: 20, weight: .medium))
+                        .font(.app(size: 20, weight: .medium))
                         .frame(width: 34, height: 34)
                         .background((ROW_ACCENT_COLORS["payments"] ?? .clear).opacity(0.33), in: Circle())
                     Text(app.T("Hoàn tiền", "Refunds"))
@@ -36,11 +36,11 @@ struct MyRefundsView: View {
                 }
                 .padding(.top, 10)
                 Text(app.T("Các khoản hoàn tiền đang cần xử lý của bạn.", "Your refund claims that are still active."))
-                    .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75)).padding(.top, 8)
+                    .font(.app(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75)).padding(.top, 8)
 
                 if app.myRefunds.isEmpty {
                     Text(app.myRefundsLoading ? app.T("Đang tải…", "Loading…") : app.T("Không có khoản hoàn tiền nào đang xử lý.", "No refunds in progress."))
-                        .font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .center)
+                        .font(.app(size: 13)).frame(maxWidth: .infinity, alignment: .center)
                         .padding(20).background(app.palette.field, in: RoundedRectangle(cornerRadius: 14)).padding(.top, 16)
                 } else {
                     VStack(spacing: 0) {
@@ -55,14 +55,14 @@ struct MyRefundsView: View {
                                     HStack {
                                         Text(c.eventName.isEmpty ? app.T("Sự kiện", "Event") : c.eventName).font(BanbeTheme.display(14))
                                         Spacer()
-                                        Text(formatVnd(c.amountVnd)).font(.system(size: 13, weight: .semibold))
+                                        Text(formatVnd(c.amountVnd)).font(.app(size: 13, weight: .semibold))
                                     }
                                     Text(isOverdue(c) ? app.T("Quá hạn hoàn tiền.", "Refund overdue.") : statusLabel(c.status))
-                                        .font(.system(size: 11.5, weight: .semibold))
+                                        .font(.app(size: 11.5, weight: .semibold))
                                         .foregroundStyle(isOverdue(c) ? BanbeTheme.alert : app.palette.ink.opacity(0.7))
                                     Text(c.refundAccountSummary(destinations: app.refundDestinationsLoaded ? app.refundDestinations : nil, T: app.T)
                                          ?? app.T("Chưa chọn tài khoản nhận hoàn tiền", "No refund account chosen yet"))
-                                        .font(.system(size: 11.5))
+                                        .font(.app(size: 11.5))
                                         .foregroundStyle(app.palette.ink.opacity(0.7))
                                         .accessibilityIdentifier("refund.accountSummary")
                                 }

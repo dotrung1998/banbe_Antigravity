@@ -40,7 +40,7 @@ struct OrganizerTeamView: View {
                 if app.organizerTeamLoading {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 80)
                 } else if !app.organizerTeamError.isEmpty {
-                    Text(app.organizerTeamError).font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                    Text(app.organizerTeamError).font(.app(size: 13)).foregroundStyle(app.palette.ink)
                         .frame(maxWidth: .infinity).padding(.top, 60)
                 } else if let team = app.organizerTeam {
                     Text(app.T("Đội ngũ \(team.organizerName ?? "")", "The \(team.organizerName ?? "") Team"))
@@ -48,13 +48,13 @@ struct OrganizerTeamView: View {
 
                     if (team.members ?? []).isEmpty {
                         Text(app.T("Đội ngũ này chưa công khai thành viên nào.", "This Team has no publicly shown members yet."))
-                            .font(.system(size: 13)).foregroundStyle(app.palette.ink.opacity(0.6))
+                            .font(.app(size: 13)).foregroundStyle(app.palette.ink.opacity(0.6))
                             .frame(maxWidth: .infinity).padding(.top, 60)
                     } else {
                         LazyVStack(alignment: .leading, spacing: 22) {
                             ForEach(groups) { group in
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Text(group.role).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
+                                    Text(group.role).font(.app(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
                                     ForEach(group.members) { member in
                                         Button {
                                             app.openPublicProfile(handle: member.handle, back: .organizerTeam)
@@ -85,11 +85,11 @@ struct OrganizerTeamView: View {
             } else {
                 RoundedRectangle(cornerRadius: 16, style: .continuous).fill(app.palette.ink)
                     .frame(width: 56, height: 56)
-                    .overlay(Text(String((member.displayName ?? member.handle).prefix(1)).uppercased()).font(.system(size: 20, weight: .bold)).foregroundStyle(app.palette.paper))
+                    .overlay(Text(String((member.displayName ?? member.handle).prefix(1)).uppercased()).font(.app(size: 20, weight: .bold)).foregroundStyle(app.palette.paper))
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(member.displayName ?? member.handle).font(.system(size: 14, weight: .semibold))
-                Text("@\(member.handle)").font(.system(size: 11.5)).opacity(0.65)
+                Text(member.displayName ?? member.handle).font(.app(size: 14, weight: .semibold))
+                Text("@\(member.handle)").font(.app(size: 11.5)).opacity(0.65)
             }
             Spacer(minLength: 0)
         }

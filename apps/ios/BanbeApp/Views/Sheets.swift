@@ -270,15 +270,15 @@ struct LocationPickerList: View {
         let totalOpen = roots.reduce(0) { $0 + $1.openCount }
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").font(.system(size: 13)).opacity(0.55)
+                Image(systemName: "magnifyingglass").font(.app(size: 13)).opacity(0.55)
                 TextField(app.T("Tìm tỉnh, thành phố, khu vực…", "Search state, city, area…"), text: $query)
-                    .font(.system(size: 14))
+                    .font(.app(size: 14))
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .accessibilityIdentifier("area.search")
                 if !query.isEmpty {
                     Button { query = "" } label: {
-                        Image(systemName: "xmark.circle.fill").font(.system(size: 13)).opacity(0.45)
+                        Image(systemName: "xmark.circle.fill").font(.app(size: 13)).opacity(0.45)
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("area.searchClear")
@@ -303,7 +303,7 @@ struct LocationPickerList: View {
                             }
                         case .empty(_, let depth):
                             Text(app.T("Chưa có sự kiện nào ở đây.", "No events here yet."))
-                                .font(.system(size: 12.5))
+                                .font(.app(size: 12.5))
                                 .opacity(0.6)
                                 .padding(.leading, CGFloat(depth) * 16)
                                 .padding(.vertical, 11)
@@ -311,7 +311,7 @@ struct LocationPickerList: View {
                     }
                     if search != nil && list.isEmpty {
                         Text(app.T("Không tìm thấy khu vực phù hợp.", "No matching location."))
-                            .font(.system(size: 12.5))
+                            .font(.app(size: 12.5))
                             .opacity(0.6)
                             .padding(.vertical, 13)
                     }
@@ -337,7 +337,7 @@ struct LocationPickerList: View {
                 if expanded { app.areaExpanded.remove(n.id) } else { app.areaExpanded.insert(n.id) }
             } label: {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.app(size: 10, weight: .semibold))
                     .rotationEffect(.degrees(expanded ? 90 : 0))
                     .opacity(0.6)
                     .frame(width: 32, height: 44)
@@ -352,14 +352,14 @@ struct LocationPickerList: View {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(LocationHierarchy.label(n, T: app.T))
-                            .font(.system(size: 14.5, weight: containsSelection ? .semibold : .regular))
+                            .font(.app(size: 14.5, weight: containsSelection ? .semibold : .regular))
                         if n.kind == .legacyArea { legacyCaption }
                     }
                     if containsSelection && !selected { Circle().frame(width: 5, height: 5) }
                     Spacer()
-                    Text(countLabel(n.openCount)).font(.system(size: 11))
+                    Text(countLabel(n.openCount)).font(.app(size: 11))
                     Image(systemName: "checkmark")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.app(size: 11, weight: .semibold))
                         .opacity(selected ? 1 : 0)
                         .accessibilityHidden(!selected)
                 }
@@ -379,13 +379,13 @@ struct LocationPickerList: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Color.clear.frame(width: 12, height: 1)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 14.5, weight: selected ? .semibold : .regular))
+                    Text(title).font(.app(size: 14.5, weight: selected ? .semibold : .regular))
                     if legacy { legacyCaption }
                 }
                 Spacer()
-                Text(countLabel(count)).font(.system(size: 11))
+                Text(countLabel(count)).font(.app(size: 11))
                 Image(systemName: "checkmark")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.app(size: 11, weight: .semibold))
                     .opacity(selected ? 1 : 0)
                     .accessibilityHidden(!selected)
             }
@@ -404,7 +404,7 @@ struct LocationPickerList: View {
     /// current official administrative unit.
     private var legacyCaption: some View {
         Text(app.T("Tên khu vực quen gọi", "Familiar area name"))
-            .font(.system(size: 10.5))
+            .font(.app(size: 10.5))
             .opacity(0.55)
     }
 }
@@ -438,12 +438,12 @@ struct LocationPickerSheet: View {
     private var cardBody: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text(app.T("Khu vực", "Location")).font(.system(size: 11.5, weight: .semibold))
+                Text(app.T("Khu vực", "Location")).font(.app(size: 11.5, weight: .semibold))
                 Spacer()
                 if doneMode {
                     Button { Haptics.selection(); isPresented = false } label: {
                         Text(app.T("Xong", "Done"))
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.app(size: 15, weight: .semibold))
                             .padding(.horizontal, 6).frame(minHeight: 44)
                             .contentShape(Rectangle())
                     }
@@ -452,7 +452,7 @@ struct LocationPickerSheet: View {
                 } else {
                     Button { isPresented = false } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.app(size: 13, weight: .medium))
                             .foregroundStyle(app.palette.ink.opacity(0.6))
                             .padding(4)
                     }
@@ -472,7 +472,7 @@ struct LocationPickerSheet: View {
                    : app.T("Dùng vị trí của tôi để xem khoảng cách", "Use my location to show distance")) {
                 if app.located == true { app.denyLocation() } else { app.allowLocation() }
             }
-            .font(.system(size: 13))
+            .font(.app(size: 13))
             .frame(maxWidth: .infinity)
             .padding(8)
             .padding(.top, 8)
@@ -604,13 +604,13 @@ struct NativeLocationPicker: View {
                             else { selectRow(id: n.id, title: LocationHierarchy.label(n, T: app.T), count: n.openCount, depth: depth, legacy: n.kind == .legacyArea) }
                         case .empty(_, let depth):
                             Text(app.T("Chưa có sự kiện nào ở đây.", "No events here yet."))
-                                .font(.subheadline).foregroundStyle(app.palette.ink.opacity(0.55))
+                                .font(.app(.subheadline)).foregroundStyle(app.palette.ink.opacity(0.55))
                                 .padding(.leading, CGFloat(depth) * 18)
                         }
                     }
                     if search != nil && list.isEmpty {
                         Text(app.T("Không tìm thấy khu vực phù hợp.", "No matching location."))
-                            .font(.subheadline).foregroundStyle(app.palette.ink.opacity(0.55))
+                            .font(.app(.subheadline)).foregroundStyle(app.palette.ink.opacity(0.55))
                     }
                 }
                 Section {
@@ -647,8 +647,8 @@ struct NativeLocationPicker: View {
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 1) {
-                        Text(app.T("Khu vực", "Location")).font(.headline)
-                        Text(currentLabel).font(.caption).foregroundStyle(app.palette.ink.opacity(0.6)).lineLimit(1)
+                        Text(app.T("Khu vực", "Location")).font(.app(.headline))
+                        Text(currentLabel).font(.app(.caption)).foregroundStyle(app.palette.ink.opacity(0.6)).lineLimit(1)
                             .accessibilityIdentifier("home.filter.area.current")
                     }
                 }
@@ -695,9 +695,9 @@ struct NativeLocationPicker: View {
                     }
                     if containsSelection && !selected { Circle().fill(app.palette.clay).frame(width: 6, height: 6) }
                     Spacer()
-                    Text(countLabel(n.openCount)).font(.subheadline).foregroundStyle(app.palette.ink.opacity(0.55))
+                    Text(countLabel(n.openCount)).font(.app(.subheadline)).foregroundStyle(app.palette.ink.opacity(0.55))
                     Image(systemName: "checkmark")
-                        .font(.body.weight(.semibold))
+                        .font(.app(.body).weight(.semibold))
                         .foregroundStyle(app.palette.clay)
                         .opacity(selected ? 1 : 0)
                         .accessibilityHidden(!selected)
@@ -717,7 +717,7 @@ struct NativeLocationPicker: View {
                 }
             } label: {
                 Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
+                    .font(.app(.footnote).weight(.semibold))
                     .foregroundStyle(app.palette.ink.opacity(0.35))
                     .rotationEffect(.degrees(expanded ? 90 : 0))
                     .frame(width: 36, height: 36)
@@ -743,9 +743,9 @@ struct NativeLocationPicker: View {
                     if legacy { legacyCaption }
                 }
                 Spacer()
-                Text(countLabel(count)).font(.subheadline).foregroundStyle(app.palette.ink.opacity(0.55))
+                Text(countLabel(count)).font(.app(.subheadline)).foregroundStyle(app.palette.ink.opacity(0.55))
                 Image(systemName: "checkmark")
-                    .font(.body.weight(.semibold))
+                    .font(.app(.body).weight(.semibold))
                     .foregroundStyle(app.palette.clay)
                     .opacity(selected ? 1 : 0)
                     .accessibilityHidden(!selected)
@@ -761,7 +761,7 @@ struct NativeLocationPicker: View {
 
     private var legacyCaption: some View {
         Text(app.T("Tên khu vực quen gọi", "Familiar area name"))
-            .font(.caption).foregroundStyle(app.palette.ink.opacity(0.55))
+            .font(.app(.caption)).foregroundStyle(app.palette.ink.opacity(0.55))
     }
 }
 
@@ -772,18 +772,18 @@ struct LocationSheetView: View {
 
     var body: some View {
         BottomSheet(onDismiss: { app.denyLocation() }) {
-            Text("Vị trí").font(.system(size: 11.5))
+            Text("Vị trí").font(.app(size: 11.5))
             Text("Cho banbe biết bạn đang ở đâu?")
                 .font(BanbeTheme.display(23))
                 .padding(.top, 8)
             Text("Chỉ để hiện khoảng cách tới mỗi sự kiện. Không lưu, không chia sẻ với người tổ chức.")
-                .font(.system(size: 13.5))
+                .font(.app(size: 13.5))
                 .lineSpacing(3)
                 .padding(.top, 12)
             InkButton(title: "Dùng vị trí của tôi") { app.allowLocation() }
                 .padding(.top, 22)
             Button("Để sau") { app.denyLocation() }
-                .font(.system(size: 13.5))
+                .font(.app(size: 13.5))
                 .frame(maxWidth: .infinity)
                 .padding(8)
                 .padding(.top, 10)
@@ -806,23 +806,23 @@ struct ReasonSheetView: View {
             if prompt.kind == .confirmCheckin {
                 BottomSheet(onDismiss: { if !app.reasonPromptBusy { app.closeReasonPrompt() } }) {
                     Text(app.T("Xác nhận điểm danh", "Confirm check-in"))
-                        .font(.system(size: 11.5, weight: .semibold))
+                        .font(.app(size: 11.5, weight: .semibold))
                     Text(prompt.guestName.isEmpty
                          ? app.T("Bạn có chắc muốn xác nhận khách này đã tới?", "Are you sure this guest has arrived?")
                          : app.T("Bạn có chắc muốn xác nhận \(prompt.guestName) đã tới?", "Are you sure \(prompt.guestName) has arrived?"))
-                        .font(.system(size: 13))
+                        .font(.app(size: 13))
                         .lineSpacing(3)
                         .padding(.top, 8)
                     HStack(spacing: 8) {
                         Button(app.T("Xác nhận", "Confirm")) { Task { await app.confirmCheckIn() } }
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.app(size: 13, weight: .semibold))
                             .foregroundStyle(app.palette.paper)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 11)
                             .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                             .buttonStyle(.plain)
                         Button(app.T("Để sau", "Not now")) { app.closeReasonPrompt() }
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.app(size: 13, weight: .semibold))
                             .foregroundStyle(app.palette.ink)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 11)
@@ -841,7 +841,7 @@ struct ReasonSheetView: View {
 
                 BottomSheet(onDismiss: { if !app.reasonPromptBusy { app.closeReasonPrompt() } }) {
                     Text(title)
-                        .font(.system(size: 11.5, weight: .semibold))
+                        .font(.app(size: 11.5, weight: .semibold))
                     if !prompt.guestName.isEmpty {
                         Text(prompt.kind == .undoCheckin
                              ? app.T("Vì sao bạn muốn chuyển \(prompt.guestName) về \"Chưa đến\"?",
@@ -851,7 +851,7 @@ struct ReasonSheetView: View {
                                      "Why reject \(prompt.guestName)'s request?")
                              : app.T("Vì sao bạn muốn huỷ vé của \(prompt.guestName)?",
                                      "Why cancel \(prompt.guestName)'s booking?"))
-                            .font(.system(size: 13))
+                            .font(.app(size: 13))
                             .lineSpacing(3)
                             .padding(.top, 8)
                     }
@@ -860,7 +860,7 @@ struct ReasonSheetView: View {
                                  "The seat is returned to the pool immediately and the guest is notified in the app.")
                          : app.T("Khách sẽ được báo qua email và trong ứng dụng.",
                                  "The guest will be notified by email and in the app."))
-                        .font(.system(size: 12))
+                        .font(.app(size: 12))
                         .foregroundStyle(app.palette.ink.opacity(0.7))
                         .padding(.top, 6)
 
@@ -871,7 +871,7 @@ struct ReasonSheetView: View {
                                 Task { await app.submitReason(app.T(reason.vi, reason.en)) }
                             } label: {
                                 Text(app.T(reason.vi, reason.en))
-                                    .font(.system(size: 14.5))
+                                    .font(.app(size: 14.5))
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.vertical, 8)
                                     .opacity(app.reasonPromptBusy ? 0.5 : 1)
@@ -885,7 +885,7 @@ struct ReasonSheetView: View {
 
                     if !app.reasonPromptError.isEmpty {
                         Text(app.reasonPromptError)
-                            .font(.system(size: 12))
+                            .font(.app(size: 12))
                             .foregroundStyle(BanbeTheme.alert)
                             .padding(.top, 12)
                     }
@@ -893,7 +893,7 @@ struct ReasonSheetView: View {
                     Button(app.reasonPromptBusy ? app.T("Đang xử lý…", "Working…") : app.T("Để sau", "Not now")) {
                         if !app.reasonPromptBusy { app.closeReasonPrompt() }
                     }
-                    .font(.system(size: 13.5))
+                    .font(.app(size: 13.5))
                     .frame(maxWidth: .infinity)
                     .padding(8)
                     .padding(.top, 14)
@@ -940,7 +940,7 @@ struct CardSheet<Content: View>: View {
                     } else {
                         Button(action: onClose) {
                             Image(systemName: "xmark")
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.app(size: 13, weight: .bold))
                                 .foregroundStyle(app.palette.ink)
                                 .frame(width: 30, height: 30)
                                 .background(.ultraThinMaterial, in: Circle())

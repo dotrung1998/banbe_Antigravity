@@ -216,7 +216,7 @@ struct OnboardingTourOverlay: View {
                 Text(app.T("\(stepInChapter)/\(chapterSteps)", "\(stepInChapter) of \(chapterSteps)"))
                     .fixedSize()
             }
-            .font(.system(size: 11, weight: .semibold)).tracking(0.8)
+            .font(.app(size: 11, weight: .semibold)).tracking(0.8)
             .foregroundStyle(app.palette.ink.opacity(0.6))
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("tour.chapter")
@@ -226,7 +226,7 @@ struct OnboardingTourOverlay: View {
                 .accessibilityFocused($titleFocused)
                 .accessibilityIdentifier("tour.title")
             Text(text.body)
-                .font(.system(size: 14)).lineSpacing(2).padding(.top, 6)
+                .font(.app(size: 14)).lineSpacing(2).padding(.top, 6)
                 .foregroundStyle(app.palette.ink.opacity(0.8))
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("tour.body")
@@ -235,7 +235,7 @@ struct OnboardingTourOverlay: View {
                     // Also a real button, so VoiceOver (which can't reach the highlight) can do the step too.
                     Button { app.performTourDoIt() } label: {
                         Label(app.T("\(doIt.vi) để tiếp tục", "\(doIt.en) to continue"), systemImage: "arrow.up.forward")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.app(size: 14, weight: .semibold))
                             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                             .contentShape(Rectangle())
                     }
@@ -243,7 +243,7 @@ struct OnboardingTourOverlay: View {
                 } else {
                     Button { tour.next() } label: {
                         Text(tour.isLastInChapter ? app.T("Xong chương này", "Finish chapter") : app.T("Tiếp", "Next"))
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.app(size: 15, weight: .bold))
                             .foregroundStyle(app.palette.paper)
                             .frame(maxWidth: .infinity, minHeight: 44)
                             .background(app.palette.ink, in: Capsule())
@@ -252,7 +252,7 @@ struct OnboardingTourOverlay: View {
                     .accessibilityIdentifier("tour.next")
                 }
                 Button(app.T("Kết thúc", "End tour")) { app.endOnboardingTour(completed: true) }
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.app(size: 14, weight: .semibold))
                     .foregroundStyle(app.palette.ink.opacity(0.7))
                     .padding(.horizontal, 8).frame(minHeight: 44)
                     .fixedSize()
@@ -343,7 +343,7 @@ struct OnboardingTourOverlay: View {
     private func sheetHeader(eyebrow: String, title: String, id: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(eyebrow.uppercased())
-                .font(.system(size: 11, weight: .semibold)).tracking(1.2)
+                .font(.app(size: 11, weight: .semibold)).tracking(1.2)
                 .foregroundStyle(app.palette.ink.opacity(0.6))
             Text(title)
                 .font(BanbeTheme.display(26))
@@ -375,7 +375,7 @@ struct OnboardingTourOverlay: View {
             }
             Button { app.endOnboardingTour(completed: true) } label: {
                 Text(app.T("Dừng ở đây", "Finish for now"))
-                    .font(.subheadline.weight(.semibold)).opacity(0.75)
+                    .font(.app(.subheadline).weight(.semibold)).opacity(0.75)
                     .frame(maxWidth: .infinity, minHeight: 44)
                     .contentShape(Rectangle())
             }
@@ -396,18 +396,18 @@ struct OnboardingTourOverlay: View {
                     .fill(state == .done ? app.palette.ink : .clear)
                     .overlay(Circle().stroke(state == .current ? app.palette.ink : app.palette.rule, lineWidth: 1.5))
                 if state == .done {
-                    Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(app.palette.paper)
+                    Image(systemName: "checkmark").font(.app(size: 12, weight: .bold)).foregroundStyle(app.palette.paper)
                 } else {
-                    Text("\(i + 1)").font(.system(size: 12, weight: .bold))
+                    Text("\(i + 1)").font(.app(size: 12, weight: .bold))
                 }
             }
             .frame(width: 26, height: 26)
             .accessibilityHidden(true)
             Text(app.T(c.name.vi, c.name.en))
-                .font(.system(size: 15, weight: state == .current ? .semibold : .regular))
+                .font(.app(size: 15, weight: state == .current ? .semibold : .regular))
             Spacer(minLength: 8)
             Text(app.T("\(n) bước", "\(n) \(n == 1 ? "step" : "steps")"))
-                .font(.system(size: 12)).opacity(0.6)
+                .font(.app(size: 12)).opacity(0.6)
         }
         .opacity(state == .later ? 0.6 : 1)
         .padding(.vertical, 12)
@@ -422,7 +422,7 @@ struct OnboardingTourOverlay: View {
                         id: "tour.finish.title")
             Text(app.T("Bạn đã biết cách tìm sự kiện, nơi có lịch và tin nhắn, và chỗ đổi mọi lựa chọn lúc thiết lập. Xem lại bất cứ lúc nào trong Tài khoản › Trợ giúp.",
                        "You've seen how to find an event, where your plans and messages live, and where every choice from setup can be changed. Replay it any time from Account › Help."))
-                .font(.subheadline).lineSpacing(3)
+                .font(.app(.subheadline)).lineSpacing(3)
                 .foregroundStyle(app.palette.ink.opacity(0.8))
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 8).padding(.bottom, 18)

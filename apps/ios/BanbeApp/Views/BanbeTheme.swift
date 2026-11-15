@@ -170,7 +170,7 @@ enum BanbeTheme {
     /// 600 with tight tracking; rounded system is the closest stock match
     /// without shipping the fonts.
     static func display(_ size: CGFloat) -> Font {
-        .system(size: size, weight: .semibold, design: .rounded)
+        .app(size: size, weight: .semibold, design: .rounded)
     }
 
     /// TASK 2 (loading GIF placement pass) — named per-context spacing

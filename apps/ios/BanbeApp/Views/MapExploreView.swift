@@ -511,7 +511,7 @@ struct MapExploreView: View {
             // always present, so it is also what tests read (web `map-result-count`, screen-reader only).
             Text(committedBounds != nil && !(app.mapEventsLoading && app.mapEvents.isEmpty)
                  ? resultCountText(visibleEvents.count) : app.T("Đang tải sự kiện…", "Loading events…"))
-                .font(.system(size: 1)).foregroundStyle(Color.clear)
+                .font(.app(size: 1)).foregroundStyle(Color.clear)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .allowsHitTesting(false)
                 .accessibilityIdentifier("map.resultCount")
@@ -591,7 +591,7 @@ struct MapExploreView: View {
         HStack(spacing: 8) {
             Button(action: tapCompass) {
                 Text("🧭")
-                    .font(.system(size: 18))
+                    .font(.app(size: 18))
                     .frame(width: 44, height: 44)
                     .mapSurface(Circle(), interactive: true)
                     .opacity(compassOpacity)
@@ -606,8 +606,8 @@ struct MapExploreView: View {
                 openList()
             } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: "list.bullet").font(.system(size: 15, weight: .semibold)).accessibilityHidden(true)
-                    Text(app.T("Danh sách", "List") + " · \(n)").font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                    Image(systemName: "list.bullet").font(.app(size: 15, weight: .semibold)).accessibilityHidden(true)
+                    Text(app.T("Danh sách", "List") + " · \(n)").font(.app(size: 14, weight: .semibold)).lineLimit(1)
                 }
                 .padding(.horizontal, 18)
                 .frame(minHeight: MapStack.buttonHeight)
@@ -1201,7 +1201,7 @@ struct MapExploreView: View {
             let bold = windowOn && !dim
             let stack = g.kind == .stack
             Text(stack ? "\(n) ≡" : "\(n)")
-                .font(.system(size: 13, weight: .bold))
+                .font(.app(size: 13, weight: .bold))
                 .padding(.horizontal, stack ? 10 : 6)
                 .frame(minWidth: stack ? 30 : 36, minHeight: stack ? 30 : 36)
                 .foregroundStyle(isSelected || bold ? app.palette.paper : app.palette.ink)
@@ -1263,8 +1263,8 @@ struct MapExploreView: View {
         // Zoomed out: the same ink pills as the neighbourhood bubbles, a little larger so a lone city still reads on a
         // continent-sized map: its name, then the event count in a paper badge.
         HStack(spacing: 8) {
-            Text(app.T(city.short.vi, city.short.en)).font(.system(size: 15, weight: .bold)).lineLimit(1)
-            Text("\(n)").font(.system(size: 13, weight: .bold)).monospacedDigit()
+            Text(app.T(city.short.vi, city.short.en)).font(.app(size: 15, weight: .bold)).lineLimit(1)
+            Text("\(n)").font(.app(size: 13, weight: .bold)).monospacedDigit()
                 .padding(.horizontal, 7).frame(minWidth: 24, minHeight: 24)
                 .background(app.palette.paper, in: Capsule())
                 .foregroundStyle(app.palette.ink)
@@ -1340,11 +1340,11 @@ struct MapExploreView: View {
         ZStack(alignment: .topTrailing) {
             HStack(spacing: 4) {
                 if !catKey.isEmpty {
-                    Image(systemName: CategoryGlyph.symbol(catKey)).font(.system(size: 11, weight: .semibold))
+                    Image(systemName: CategoryGlyph.symbol(catKey)).font(.app(size: 11, weight: .semibold))
                 }
                 Text(label)
             }
-                .font(.system(size: 12.5, weight: .semibold))
+                .font(.app(size: 12.5, weight: .semibold))
                 .lineLimit(1)
                 .padding(.horizontal, 10)
                 .frame(minWidth: 30, minHeight: 30)
@@ -1363,7 +1363,7 @@ struct MapExploreView: View {
         .overlay(alignment: .top) {
             if cameraZoom >= 15 || isSelected {
                 Text(ev.name)
-                    .font(.system(size: 11.5, weight: .bold))
+                    .font(.app(size: 11.5, weight: .bold))
                     .lineLimit(1).truncationMode(.tail)
                     .frame(maxWidth: 130)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1558,10 +1558,10 @@ struct MapExploreView: View {
     private func seatPill(_ ev: MapEventRow, id: String) -> some View {
         if let f = seatFacts(ev) {
             if f.soldOut {
-                Text(app.T("Hết chỗ", "Sold out")).font(.footnote.weight(.semibold)).foregroundStyle(BanbeTheme.alert)
+                Text(app.T("Hết chỗ", "Sold out")).font(.app(.footnote).weight(.semibold)).foregroundStyle(BanbeTheme.alert)
                     .accessibilityIdentifier(id)
             } else if f.almostFull, let left = f.left {
-                Text(app.T("Còn \(left) chỗ", "\(left) left")).font(.footnote.weight(.semibold))
+                Text(app.T("Còn \(left) chỗ", "\(left) left")).font(.app(.footnote).weight(.semibold))
                     .accessibilityIdentifier(id)
             }
         }
@@ -1571,7 +1571,7 @@ struct MapExploreView: View {
     private func chip<Label: View>(active: Bool, muted: Bool = false, id: String, action: @escaping () -> Void, @ViewBuilder label: () -> Label) -> some View {
         Button(action: action) {
             HStack(spacing: 6) { label() }
-                .font(.subheadline.weight(active ? .semibold : .medium))
+                .font(.app(.subheadline).weight(active ? .semibold : .medium))
                 .lineLimit(1)
                 .padding(.horizontal, 12)
                 .frame(minHeight: 36)
@@ -1646,7 +1646,7 @@ struct MapExploreView: View {
                         ForEach(cities) { c in
                             let n = counts[c.id, default: 0]
                             chip(active: false, id: "map.search.city.\(c.id)") { goToCity(c.id) } label: {
-                                Image(systemName: "mappin").font(.caption).accessibilityHidden(true)
+                                Image(systemName: "mappin").font(.app(.caption)).accessibilityHidden(true)
                                 Text(app.T(c.vi, c.en))
                                 if n > 0 { Text("\(n)").monospacedDigit().opacity(0.6) }
                             }
@@ -1668,7 +1668,7 @@ struct MapExploreView: View {
                         chip(active: sheetFilterCount > 0, id: "map.search.allFilters") {
                             searchFieldFocused = false; filterSheetOpen = true
                         } label: {
-                            Image(systemName: "slider.horizontal.3").font(.footnote).accessibilityHidden(true)
+                            Image(systemName: "slider.horizontal.3").font(.app(.footnote)).accessibilityHidden(true)
                             Text(app.T("Tất cả bộ lọc", "All filters"))
                         }
                     }
@@ -1682,7 +1682,7 @@ struct MapExploreView: View {
     }
 
     private func suggestionHeader(_ title: String) -> some View {
-        Text(title).font(.footnote.weight(.semibold)).foregroundStyle(app.palette.ink2)
+        Text(title).font(.app(.footnote).weight(.semibold)).foregroundStyle(app.palette.ink2)
             .accessibilityAddTraits(.isHeader)
     }
 
@@ -1720,7 +1720,7 @@ struct MapExploreView: View {
                     openList()
                 } label: {
                     Text(app.T("Xem \(n) sự kiện", n == 1 ? "Show 1 event" : "Show \(n) events"))
-                        .font(.subheadline.weight(.semibold))
+                        .font(.app(.subheadline).weight(.semibold))
                         .frame(maxWidth: .infinity, minHeight: 48)
                         .background(app.palette.ink, in: Capsule())
                         .foregroundStyle(app.palette.paper)
@@ -1814,7 +1814,7 @@ struct MapExploreView: View {
                 catFilter = active ? "all" : cat.key
             }
         } label: {
-            Image(systemName: CategoryGlyph.symbol(cat.key)).font(.footnote).accessibilityHidden(true)
+            Image(systemName: CategoryGlyph.symbol(cat.key)).font(.app(.footnote)).accessibilityHidden(true)
             Text(app.T(cat.vi, cat.en))
             Text("\(n)").monospacedDigit().opacity(active ? 0.85 : 0.6)
         }
@@ -1825,7 +1825,7 @@ struct MapExploreView: View {
     private func glassChip<Label: View>(active: Bool, muted: Bool = false, id: String, action: @escaping () -> Void, @ViewBuilder label: () -> Label) -> some View {
         Button(action: action) {
             HStack(spacing: 6) { label() }
-                .font(.subheadline.weight(active ? .semibold : .medium))
+                .font(.app(.subheadline).weight(active ? .semibold : .medium))
                 .lineLimit(1)
                 .padding(.horizontal, 12)
                 .frame(minHeight: 36)
@@ -1887,7 +1887,7 @@ struct MapExploreView: View {
                     Haptics.selection()
                     app.mapListLayout = mode
                 } label: {
-                    Image(systemName: icon).font(.system(size: 13, weight: .semibold))
+                    Image(systemName: icon).font(.app(size: 13, weight: .semibold))
                         .frame(width: 36, height: 30)
                         .background(on ? app.palette.paper : Color.clear, in: Capsule())
                         .overlay(Capsule().strokeBorder(app.palette.rule.opacity(on ? 1 : 0), lineWidth: 1))
@@ -1927,14 +1927,14 @@ struct MapExploreView: View {
         let city = MapDiscovery.city(hit.id)
         return Button { goToCity(hit.id) } label: {
             HStack(spacing: 12) {
-                Image(systemName: "mappin.circle.fill").font(.system(size: 22)).foregroundStyle(app.palette.clay)
+                Image(systemName: "mappin.circle.fill").font(.app(size: 22)).foregroundStyle(app.palette.clay)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(city.map { app.T($0.vi, $0.en) } ?? hit.id).font(.body.weight(.semibold)).lineLimit(1)
-                    Text(cityCountText(hit.count)).font(.subheadline).foregroundStyle(app.palette.ink2).lineLimit(1)
+                    Text(city.map { app.T($0.vi, $0.en) } ?? hit.id).font(.app(.body).weight(.semibold)).lineLimit(1)
+                    Text(cityCountText(hit.count)).font(.app(.subheadline)).foregroundStyle(app.palette.ink2).lineLimit(1)
                 }
                 Spacer(minLength: 8)
-                Text(app.T("Đến", "Go")).font(.subheadline.weight(.semibold))
+                Text(app.T("Đến", "Go")).font(.app(.subheadline).weight(.semibold))
                     .padding(.horizontal, 14).frame(minHeight: 36)
                     .background(app.palette.surface2, in: Capsule())
             }
@@ -1958,17 +1958,17 @@ struct MapExploreView: View {
             }
             .map(\.element)
         return VStack(alignment: .leading, spacing: 6) {
-            Text(app.T("Thành phố", "Cities")).font(.system(size: 11.5, weight: .semibold))
+            Text(app.T("Thành phố", "Cities")).font(.app(size: 11.5, weight: .semibold))
             FlowLayout(spacing: 8, lineSpacing: 8) {
                 ForEach(list) { c in
                     let n = counts[c.id, default: 0]
                     Button { goToCity(c.id) } label: {
                         HStack(spacing: 5) {
-                            Image(systemName: "mappin").font(.system(size: 11, weight: .semibold)).accessibilityHidden(true)
+                            Image(systemName: "mappin").font(.app(size: 11, weight: .semibold)).accessibilityHidden(true)
                             Text(app.T(c.vi, c.en)).lineLimit(1)
                             if n > 0 { Text("\(n)").monospacedDigit().opacity(0.6) }
                         }
-                        .font(.subheadline.weight(.medium))
+                        .font(.app(.subheadline).weight(.medium))
                         .padding(.horizontal, 12).frame(minHeight: 36)
                         .background(app.palette.surface2, in: Capsule())
                         .frame(minHeight: 44)
@@ -2015,7 +2015,7 @@ struct MapExploreView: View {
             let cities = searchFieldFocused ? [] : cityMatches
             if !cities.isEmpty {
                 Text(app.T("Thành phố", "Cities"))
-                    .font(.footnote.weight(.semibold)).foregroundStyle(app.palette.ink2)
+                    .font(.app(.footnote).weight(.semibold)).foregroundStyle(app.palette.ink2)
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 0, trailing: 16))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
@@ -2035,7 +2035,7 @@ struct MapExploreView: View {
             if !outside.isEmpty {
                 Text(app.T("\(outside.count) sự kiện ngoài khung giờ",
                            outside.count == 1 ? "1 event outside the window" : "\(outside.count) events outside the window"))
-                    .font(.footnote.weight(.semibold)).foregroundStyle(app.palette.ink2)
+                    .font(.app(.footnote).weight(.semibold)).foregroundStyle(app.palette.ink2)
                     .textCase(.uppercase)
                     .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 4, trailing: 16))
                     .listRowSeparator(.hidden)
@@ -2047,7 +2047,7 @@ struct MapExploreView: View {
 
             if !noLoc.isEmpty {
                 Text(app.T("Chưa có vị trí trên bản đồ (\(noLoc.count))", "No map location yet (\(noLoc.count))"))
-                    .font(.footnote.weight(.semibold)).foregroundStyle(app.palette.ink2)
+                    .font(.app(.footnote).weight(.semibold)).foregroundStyle(app.palette.ink2)
                     .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 0, trailing: 16))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
@@ -2077,7 +2077,7 @@ struct MapExploreView: View {
         VStack(alignment: .leading, spacing: 4) {
             if let city = mapCityName {
                 Label(city.uppercased(), systemImage: "mappin.and.ellipse")
-                    .font(.system(size: 11.5, weight: .bold)).tracking(0.8)
+                    .font(.app(size: 11.5, weight: .bold)).tracking(0.8)
                     .foregroundStyle(app.palette.clay)
                     .padding(.top, 4)
                     .accessibilityLabel(app.T("Đang xem \(city)", "Showing \(city)"))
@@ -2087,7 +2087,7 @@ struct MapExploreView: View {
                 Text(committedBounds != nil && !(app.mapEventsLoading && app.mapEvents.isEmpty)
                      ? (windowOn ? windowCountText(inWindowCount) : resultCountText(visibleEvents.count))
                      : app.T("Đang tải sự kiện…", "Loading events…"))
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.app(size: 17, weight: .semibold))
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityAddTraits(.isHeader)
@@ -2096,24 +2096,24 @@ struct MapExploreView: View {
             }
             if windowOn {
                 Text(MapTimeWindow.windowSummary(timeWin, dayLabel: dayLabel, en: app.isEN))
-                    .font(.footnote).foregroundStyle(app.palette.ink2)
+                    .font(.app(.footnote)).foregroundStyle(app.palette.ink2)
                     .accessibilityIdentifier("map.list.window")
             }
             if app.mapEventsLoading && !app.mapEvents.isEmpty {
-                Text(app.T("Đang cập nhật…", "Updating…")).font(.footnote).foregroundStyle(app.palette.ink2)
+                Text(app.T("Đang cập nhật…", "Updating…")).font(.app(.footnote)).foregroundStyle(app.palette.ink2)
             }
             if outsideCount > 0 && !visibleEvents.isEmpty {
                 Text(app.T("+\(outsideCount) sự kiện khớp nằm ngoài vùng này",
                            "+\(outsideCount) matching event\(outsideCount == 1 ? "" : "s") outside this area"))
-                    .font(.footnote).foregroundStyle(app.palette.ink2)
+                    .font(.app(.footnote)).foregroundStyle(app.palette.ink2)
                     .accessibilityIdentifier("map.outsideCount")
             }
             // A failed refresh keeps the last good results and says so; Retry reloads the whole set.
             if app.mapEventsLoadFailed && !app.mapEvents.isEmpty {
                 HStack(spacing: 6) {
-                    Text(app.T("Chưa cập nhật được.", "Couldn't update.")).font(.footnote).foregroundStyle(app.palette.ink2)
+                    Text(app.T("Chưa cập nhật được.", "Couldn't update.")).font(.app(.footnote)).foregroundStyle(app.palette.ink2)
                     Button { Task { await app.loadMapEvents(bounds: boundedArea) } } label: {
-                        Text(app.T("Thử lại", "Retry")).font(.footnote.weight(.semibold)).underline().frame(minHeight: 32)
+                        Text(app.T("Thử lại", "Retry")).font(.app(.footnote).weight(.semibold)).underline().frame(minHeight: 32)
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("map.refreshRetry")
@@ -2122,15 +2122,15 @@ struct MapExploreView: View {
             if app.mapEvents.count < app.mapEventsTotal {
                 Text(app.T("Đang hiện \(app.mapEvents.count)/\(app.mapEventsTotal) sự kiện · phóng to để xem kỹ hơn",
                            "Showing \(app.mapEvents.count) of \(app.mapEventsTotal) events · zoom in for more"))
-                    .font(.footnote).foregroundStyle(app.palette.ink2)
+                    .font(.app(.footnote)).foregroundStyle(app.palette.ink2)
                     .accessibilityIdentifier("map.incomplete")
             }
             if forYouActive {
                 Button { editPreferences() } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: "slider.horizontal.3").font(.system(size: 12, weight: .semibold))
+                        Image(systemName: "slider.horizontal.3").font(.app(size: 12, weight: .semibold))
                         Text(app.T("Chỉnh sở thích của bạn", "Edit preferences"))
-                            .font(.system(size: 12.5, weight: .semibold)).underline()
+                            .font(.app(size: 12.5, weight: .semibold)).underline()
                     }
                     .frame(minHeight: 36)
                 }
@@ -2208,16 +2208,16 @@ struct MapExploreView: View {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(ev.name).font(BanbeTheme.display(18)).lineLimit(1)
                 Spacer(minLength: 0)
-                priceView(ev, font: .system(size: 15, weight: .bold))
+                priceView(ev, font: .app(size: 15, weight: .bold))
             }
             .padding(.top, 10)
             Text([ev.area, nearDistance(ev)].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
-                .font(.system(size: 12.5)).opacity(0.68).lineLimit(1)
+                .font(.app(size: 12.5)).opacity(0.68).lineLimit(1)
                 .padding(.top, 3)
             HStack(spacing: 6) {
                 if let cat {
-                    Image(systemName: CategoryGlyph.symbol(cat.key)).font(.caption).accessibilityHidden(true)
-                    Text(app.T(cat.vi, cat.en)).font(.system(size: 12.5))
+                    Image(systemName: CategoryGlyph.symbol(cat.key)).font(.app(.caption)).accessibilityHidden(true)
+                    Text(app.T(cat.vi, cat.en)).font(.app(size: 12.5))
                 }
                 Spacer(minLength: 0)
                 seatPill(ev, id: "map.card.seats.\(ev.id)")
@@ -2251,16 +2251,16 @@ struct MapExploreView: View {
                 CatalogPhoto(path: path, height: 56, width: 56, cornerRadius: 12)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(ev.name).font(.body.weight(.semibold)).lineLimit(2)
+                Text(ev.name).font(.app(.body).weight(.semibold)).lineLimit(2)
                 Text(eventWhen(ev))
-                    .font(.subheadline).foregroundStyle(app.palette.ink2).lineLimit(1)
+                    .font(.app(.subheadline)).foregroundStyle(app.palette.ink2).lineLimit(1)
                     .accessibilityIdentifier("\(idPrefix).when.\(ev.id)")
                 Text([ev.area, nearDistance(ev)].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
-                    .font(.subheadline).foregroundStyle(app.palette.ink2).lineLimit(1)
+                    .font(.app(.subheadline)).foregroundStyle(app.palette.ink2).lineLimit(1)
                 // An honest "no map location" state, never a silently-omitted row or an invented pin.
                 if ev.lat == nil || ev.lng == nil {
                     Text(app.T("Chưa có vị trí trên bản đồ", "No map location yet"))
-                        .font(.system(size: 10.5)).opacity(0.55)
+                        .font(.app(size: 10.5)).opacity(0.55)
                         .accessibilityIdentifier("\(idPrefix).noLocation.\(ev.id)")
                 }
             }
@@ -2293,14 +2293,14 @@ struct MapExploreView: View {
             forYouOn.toggle()
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: "star.fill").font(.system(size: 11, weight: .bold))
+                Image(systemName: "star.fill").font(.app(size: 11, weight: .bold))
                     .foregroundStyle(active ? app.palette.paper : gold)
                 Text(app.T("Dành cho bạn", "For You"))
-                    .font(.system(size: 11, weight: active ? .bold : .regular))
+                    .font(.app(size: 11, weight: active ? .bold : .regular))
                     .lineLimit(1)
                 if forYouAlert.hasPending {
                     Text(app.T("Mới", "New"))
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.app(size: 10, weight: .bold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 5).padding(.vertical, 1)
                         .background(Capsule().fill(Color(red: 0.478, green: 0.322, blue: 0)))
@@ -2329,14 +2329,14 @@ struct MapExploreView: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(LinearGradient(colors: [app.palette.ink.opacity(0.10), app.palette.ink.opacity(0.03)],
                                      startPoint: .topLeading, endPoint: .bottomTrailing))
-            Image(systemName: symbol).font(.system(size: 24, weight: .semibold)).symbolRenderingMode(.hierarchical)
+            Image(systemName: symbol).font(.app(size: 24, weight: .semibold)).symbolRenderingMode(.hierarchical)
         }
         .frame(width: 56, height: 56).accessibilityHidden(true)
     }
 
     private func emptyAction(_ title: String, id: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(title).font(.subheadline.weight(.semibold))
+            Text(title).font(.app(.subheadline).weight(.semibold))
                 .padding(.horizontal, 16).frame(minHeight: 44)
                 .background(app.palette.surface2, in: Capsule())
         }
@@ -2352,7 +2352,7 @@ struct MapExploreView: View {
                 if app.mapEventsLoading || app.eventPrefs == nil {
                     ProgressView()
                     Text(app.T("Đang tìm sự kiện hợp với bạn…", "Finding events for you…"))
-                        .font(.system(size: 13)).opacity(0.6)
+                        .font(.app(size: 13)).opacity(0.6)
                         .accessibilityIdentifier("map.foryou.loading")
                 } else {
                     Text(app.mapForYouMatches.isEmpty
@@ -2360,11 +2360,11 @@ struct MapExploreView: View {
                                  "No events match your preferences in this area or map view yet.")
                          : app.T("Các sự kiện hợp với bạn không khớp bộ lọc hiện tại.",
                                  "Your For You matches don't fit the current filters."))
-                        .font(.system(size: 13)).opacity(0.7).multilineTextAlignment(.center)
+                        .font(.app(size: 13)).opacity(0.7).multilineTextAlignment(.center)
                         .accessibilityIdentifier("map.foryou.empty")
                     Button { editPreferences() } label: {
                         Text(app.T("Chỉnh sở thích của bạn", "Edit preferences"))
-                            .font(.system(size: 13, weight: .semibold)).underline()
+                            .font(.app(size: 13, weight: .semibold)).underline()
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("map.foryou.emptyEdit")
@@ -2378,31 +2378,31 @@ struct MapExploreView: View {
             VStack(spacing: 10) {
                 if app.mapEventsLoading && app.mapEvents.isEmpty {
                     ProgressView()
-                    Text(app.T("Đang tải sự kiện…", "Loading events…")).font(.subheadline).foregroundStyle(app.palette.ink2)
+                    Text(app.T("Đang tải sự kiện…", "Loading events…")).font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
                 } else if app.mapEventsLoadFailed && app.mapEvents.isEmpty {
-                    Image(systemName: "wifi.exclamationmark").font(.title3).foregroundStyle(app.palette.ink2)
+                    Image(systemName: "wifi.exclamationmark").font(.app(.title3)).foregroundStyle(app.palette.ink2)
                     Text(app.T("Chưa tải được sự kiện. Kiểm tra kết nối mạng rồi thử lại.",
                                "Couldn't load events. Check your connection and try again."))
-                        .font(.subheadline).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
+                        .font(.app(.subheadline)).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
                     emptyAction(app.T("Thử lại", "Try again"), id: "map.retry") { Task { await app.loadMapEvents(bounds: boundedArea) } }
                 } else if committedBounds != nil && anyInArea && filtersActive {
                     let query = searchQuery.trimmingCharacters(in: .whitespaces)
                     emptyIcon("line.3.horizontal.decrease.circle")
                     Text(app.T("Bộ lọc đang ẩn sự kiện", "Your filters hide the events"))
-                        .font(.system(.headline, design: .rounded)).multilineTextAlignment(.center)
+                        .font(.app(.headline, design: .rounded)).multilineTextAlignment(.center)
                     Text(query.isEmpty
                          ? app.T("Có sự kiện trong vùng này, nhưng không khớp bộ lọc hiện tại.", "There are events in this area, but none match your current filters.")
                          : app.T("Không có sự kiện nào trong vùng này khớp với \"\(query)\".", "No events in this area match \"\(query)\"."))
-                        .font(.subheadline).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
+                        .font(.app(.subheadline)).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
                     InkButton(title: app.T("Xoá bộ lọc", "Clear filters"), font: .subheadline.weight(.semibold)) { clearFilters() }
                         .accessibilityIdentifier("map.clearFilters")
                         .padding(.top, 4)
                 } else if committedBounds != nil {
                     emptyIcon("mappin.slash")
                     Text(app.T("Chưa có sự kiện ở khu vực này", "No events in this area"))
-                        .font(.system(.headline, design: .rounded)).multilineTextAlignment(.center)
+                        .font(.app(.headline, design: .rounded)).multilineTextAlignment(.center)
                     Text(app.T("Kéo bản đồ sang nơi khác hoặc xem các sự kiện gần bạn nhất.", "Move the map, or see the events nearest to you."))
-                        .font(.subheadline).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
+                        .font(.app(.subheadline)).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
                     if !matchingAnywhere.isEmpty {
                         InkButton(title: app.T("Xem sự kiện gần nhất", "Show nearest events"), font: .subheadline.weight(.semibold)) { showNearest() }
                             .accessibilityIdentifier("map.showNearest")

@@ -111,7 +111,7 @@ struct SplashView: View {
                 // Owner, 2026-10-24: a greeting under the motion. Signed in: "Welcome back, <given name>" (the name
                 // fades in once the account has loaded); signed out: a general welcome. Web twin: Splash.jsx.
                 Text(greeting)
-                    .font(.system(.title2, design: .rounded).weight(.semibold))
+                    .font(.app(.title2, design: .rounded).weight(.semibold))
                     .foregroundStyle(app.palette.ink)
                     .multilineTextAlignment(.center)
                     .padding(.top, 18).padding(.horizontal, 32)
@@ -121,7 +121,7 @@ struct SplashView: View {
                     .offset(y: greetingShown || reduceMotion ? 0 : 10)
                     .accessibilityIdentifier("splash.greeting")
                 Text(app.T("bạn mới mỗi tuần", "new friends every week"))
-                    .font(.system(size: 14))
+                    .font(.app(size: 14))
                     .foregroundStyle(app.palette.ink.opacity(0.75))
                     .padding(.top, 8)
             }
@@ -188,7 +188,7 @@ struct LangPickView: View {
                 Text("Chọn ngôn ngữ")
                     .font(BanbeTheme.display(27))
                 Text("Choose your language")
-                    .font(.system(size: 19))
+                    .font(.app(size: 19))
                     .opacity(0.52)
                     .padding(.top, 5)
 
@@ -215,10 +215,10 @@ struct LangPickView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title).font(BanbeTheme.display(19))
-                    Text(subtitle).font(.system(size: 11.5))
+                    Text(subtitle).font(.app(size: 11.5))
                 }
                 Spacer()
-                Text("›").font(.system(size: 15))
+                Text("›").font(.app(size: 15))
             }
             .foregroundStyle(app.palette.ink)
             .padding(18)
@@ -239,13 +239,13 @@ struct ThemePickView: View {
     var body: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
-                Text(app.T("Hiển thị", "Appearance")).font(.system(size: 11.5))
+                Text(app.T("Hiển thị", "Appearance")).font(.app(size: 11.5))
                 Text(app.T("Bạn thích nền sáng hay tối?", "Light or dark?"))
                     .font(BanbeTheme.display(27))
                     .padding(.top, 8)
                 Text(app.T("Bạn có thể đổi lại bất cứ lúc nào trong Tài khoản.",
                            "You can change this anytime in your account."))
-                    .font(.system(size: 13.5))
+                    .font(.app(size: 13.5))
                     .padding(.top, 10)
 
                 VStack(spacing: 10) {
@@ -276,10 +276,10 @@ struct ThemePickView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title).font(BanbeTheme.display(19))
-                    Text(subtitle).font(.system(size: 11.5))
+                    Text(subtitle).font(.app(size: 11.5))
                 }
                 Spacer()
-                Text(active ? "✓" : "›").font(.system(size: 15))
+                Text(active ? "✓" : "›").font(.app(size: 15))
             }
             .foregroundStyle(app.palette.ink)
             .padding(18)
@@ -414,6 +414,12 @@ struct CreateEventView: View {
     // in-progress" to separately exclude before a real upload attempt.
     private var descValid: Bool { !app.createDesc.trimmingCharacters(in: .whitespaces).isEmpty }
     private var dateTimeValid: Bool { app.createEventDate != nil && app.createEventTime != nil }
+    /// Note 82: the start as "HH:mm" on the venue's clock, and whether "when it ends" is answered (an end time that is
+    /// not the start, or open-ended). Required, like the date.
+    private var startHM: String? { app.createEventTime.map { app.createFormatter("HH:mm").string(from: $0) } }
+    private var endValid: Bool {
+        EventEnd.error(mode: EventEnd.Mode(rawValue: app.createEndMode), start: startHM, end: app.createEndTime) == nil
+    }
     private var seatsValid: Bool { Int(app.createSeats) ?? 0 > 0 }
     private var catsValid: Bool { !app.createCats.isEmpty }
     /// Required unless the event type says otherwise (a music night lists its lineup instead).
@@ -428,7 +434,7 @@ struct CreateEventView: View {
     }
     private var photosValid: Bool { galleryItems.count >= minPhotos && galleryItems.count <= maxPhotos }
     private var hasCreateFieldErrors: Bool {
-        !descValid || !dateTimeValid || !seatsValid || !catsValid || !includedValid || !photosValid || typeMissing.values.contains(true)
+        !descValid || !dateTimeValid || !endValid || !seatsValid || !catsValid || !includedValid || !photosValid || typeMissing.values.contains(true)
     }
     private var nameValid: Bool { !app.createName.trimmingCharacters(in: .whitespaces).isEmpty }
     private var canOpenReview: Bool { nameValid && app.createLocConfirmed && !hasCreateFieldErrors }
@@ -616,7 +622,7 @@ struct CreateEventView: View {
             .overlay(alignment: .topLeading) {
                 if attnField == field, let attnHint {
                     Text("👇 " + attnHint)
-                        .font(.system(size: 12.5, weight: .semibold))
+                        .font(.app(size: 12.5, weight: .semibold))
                         .foregroundStyle(app.palette.paper)
                         .padding(.horizontal, 12).padding(.vertical, 7)
                         .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -636,7 +642,7 @@ struct CreateEventView: View {
     /// Every required field still missing, keyed by its CreateFieldGuide id.
     private var missingFields: [String: Bool] {
         ["hostName": app.orgRegName.trimmingCharacters(in: .whitespaces).isEmpty, "name": !nameValid, "description": !descValid,
-         "categories": !catsValid, "included": !includedValid, "location": !app.createLocConfirmed, "date": !dateTimeValid,
+         "categories": !catsValid, "included": !includedValid, "location": !app.createLocConfirmed, "date": !dateTimeValid || !endValid,
          "price": !priceValid, "seats": !seatsValid, "photos": !photosValid].merging(typeMissing) { _, new in new }
     }
     private func missingLabel(_ field: String) -> String {
@@ -705,15 +711,15 @@ struct CreateEventView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 HStack(spacing: 4) {
-                    Text(app.T("Hình ảnh", "Photos")).font(.system(size: 11.5))
+                    Text(app.T("Hình ảnh", "Photos")).font(.app(size: 11.5))
                     if doneMarks.done.contains("photos") {
                         DoneMark(field: "photos", pop: doneMarks.fresh.contains("photos"))
                     } else {
-                        Text("*").font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                        Text("*").font(.app(size: 11.5)).foregroundStyle(BanbeTheme.alert)
                     }
                 }
                 Spacer()
-                Text("\(galleryItems.count)/\(maxPhotos) (\(app.T("tối thiểu \(minPhotos)", "min \(minPhotos)")))").font(.system(size: 10.5))
+                Text("\(galleryItems.count)/\(maxPhotos) (\(app.T("tối thiểu \(minPhotos)", "min \(minPhotos)")))").font(.app(size: 10.5))
             }
             if let photos = recipeCheck("photos") {
                 RecipeInsight(check: photos, line: photos.source == .data
@@ -737,7 +743,7 @@ struct CreateEventView: View {
                         .overlay(alignment: .bottom) {
                             if isCover {
                                 Text(app.T("Ảnh bìa", "Cover"))
-                                    .font(.system(size: 8.5, weight: .bold))
+                                    .font(.app(size: 8.5, weight: .bold))
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 2)
                                     .background(app.palette.ink)
@@ -748,10 +754,10 @@ struct CreateEventView: View {
 
                         VStack(alignment: .leading, spacing: 4) {
                             Text(app.T("Ảnh \(index + 1)", "Photo \(index + 1)"))
-                                .font(.system(size: 11.5)).opacity(0.65)
+                                .font(.app(size: 11.5)).opacity(0.65)
                             Button { coverItemID = item.id } label: {
                                 Text(isCover ? app.T("Đang là ảnh bìa", "Currently the cover") : app.T("Đặt làm ảnh bìa", "Set as cover"))
-                                    .font(.system(size: 11, weight: .semibold))
+                                    .font(.app(size: 11, weight: .semibold))
                                     .padding(.horizontal, 10).padding(.vertical, 4)
                                     .background(isCover ? app.palette.ink : .clear, in: Capsule())
                                     .overlay(Capsule().stroke(isCover ? .clear : app.palette.rule, lineWidth: 1))
@@ -768,7 +774,7 @@ struct CreateEventView: View {
                                 Haptics.selection()
                                 galleryItems.swapAt(index - 1, index)
                             } label: {
-                                Image(systemName: "chevron.up").font(.system(size: 11, weight: .semibold))
+                                Image(systemName: "chevron.up").font(.app(size: 11, weight: .semibold))
                                     .frame(width: 26, height: 26)
                                     .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                                     .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(app.palette.rule))
@@ -782,7 +788,7 @@ struct CreateEventView: View {
                                 Haptics.selection()
                                 galleryItems.swapAt(index, index + 1)
                             } label: {
-                                Image(systemName: "chevron.down").font(.system(size: 11, weight: .semibold))
+                                Image(systemName: "chevron.down").font(.app(size: 11, weight: .semibold))
                                     .frame(width: 26, height: 26)
                                     .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                                     .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(app.palette.rule))
@@ -795,7 +801,7 @@ struct CreateEventView: View {
 
                         Button { removeGalleryItem(item) } label: {
                             Image(systemName: "xmark")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.app(size: 11, weight: .semibold))
                                 .foregroundStyle(BanbeTheme.alert)
                                 .frame(width: 26, height: 26)
                                 .background(BanbeTheme.alert.opacity(0.08), in: Circle())
@@ -812,7 +818,7 @@ struct CreateEventView: View {
                     PhotosPicker(selection: $pickerItems, maxSelectionCount: maxPhotos - galleryItems.count, matching: .images) {
                         HStack(spacing: 8) {
                             Image(systemName: "plus")
-                            Text(addTitle).font(.system(size: 12.5, weight: .semibold))
+                            Text(addTitle).font(.app(size: 12.5, weight: .semibold))
                         }
                         .foregroundStyle(inkColor)
                         .frame(maxWidth: .infinity)
@@ -823,10 +829,10 @@ struct CreateEventView: View {
                 }
             }
             if !photoError.isEmpty {
-                Text(photoError).font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                Text(photoError).font(.app(size: 11.5)).foregroundStyle(BanbeTheme.alert)
             } else if !photosValid && !app.createSent && attemptedReview {
                 Text(app.T("Cần tối thiểu \(minPhotos) và tối đa \(maxPhotos) ảnh khả dụng.", "Minimum \(minPhotos), maximum \(maxPhotos) available photos."))
-                    .font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                    .font(.app(size: 11.5)).foregroundStyle(BanbeTheme.alert)
             }
         }
         .padding(.top, 22)
@@ -866,7 +872,7 @@ struct CreateEventView: View {
                            trailing: app.T("Tuỳ chọn", "Optional"))
             Text(app.T("Hiện ở đầu cuộc trò chuyện khi khách nhấn \"Nhắn cho bạn\". Để trống để dùng lời chào mặc định. Chỉ để hiển thị, không lưu như tin nhắn.",
                         "Shown at the top of the chat when a guest taps \"Message\" you. Leave blank for a default greeting. Display only, not stored as a message."))
-                .font(.system(size: 12.5)).opacity(0.7)
+                .font(.app(size: 12.5)).opacity(0.7)
             greetingField(label: app.T("Tiếng Việt", "Vietnamese"), text: $app.createChatGreeting, id: "create.chatGreeting", focusID: "greeting")
             greetingField(label: app.T("Tiếng Anh", "English"), text: $app.createChatGreetingEn, id: "create.chatGreetingEn", focusID: "greetingEn")
                 .id(CreateFieldGuide.anchor("greetingEn"))
@@ -896,9 +902,9 @@ struct CreateEventView: View {
     private func greetingField(label: String, text: Binding<String>, id: String, focusID: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
-                Text(label).font(.system(size: 13, weight: .medium))
+                Text(label).font(.app(size: 13, weight: .medium))
                 Spacer()
-                Text("\(text.wrappedValue.count)/500").font(.system(size: 11)).monospacedDigit().opacity(0.6)
+                Text("\(text.wrappedValue.count)/500").font(.app(size: 11)).monospacedDigit().opacity(0.6)
                 ExpandFieldButton(fieldName: label, identifier: "create.expand.\(focusID)") { expandedField = ExpandedField(id: focusID) }
                     .padding(.vertical, -12)
             }
@@ -930,7 +936,7 @@ struct CreateEventView: View {
             }
             Text(app.T("Một đoạn giới thiệu dài hơn, hấp dẫn. Tách dòng trống giữa các đoạn. Không phải quảng cáo giả, không phải \"Bao gồm\".",
                         "A longer, attractive write-up. Leave a blank line between paragraphs. Not fabricated marketing copy, not the same as \"Included\"."))
-                .font(.system(size: 12.5)).opacity(0.7)
+                .font(.app(size: 12.5)).opacity(0.7)
             // Note 53: a growing TextField instead of a TextEditor. A TextEditor scrolls inside itself, so the
             // screen's own scroll view (which is what moves things above the keyboard) only ever saw its top
             // edge and left the lines being typed under the keyboard. This one grows with the text (up to 12
@@ -970,7 +976,7 @@ struct CreateEventView: View {
             ForEach(Array(app.createIncludedItems.enumerated()), id: \.offset) { index, item in
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: "checkmark.seal.fill")
-                        .font(.system(size: 18))
+                        .font(.app(size: 18))
                         .padding(.top, 3)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 8) {
@@ -979,7 +985,7 @@ struct CreateEventView: View {
                             text: Binding(get: { item.label }, set: { app.setCreateIncludedItemLabel(index, $0) })
                         )
                         .focused($focusedField, equals: "included.\(index).label")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.app(size: 16, weight: .semibold))
                         .accessibilityIdentifier("create.included.\(index).label")
                         Divider()
                         TextField(
@@ -987,7 +993,7 @@ struct CreateEventView: View {
                             text: Binding(get: { item.detail }, set: { app.setCreateIncludedItemDetail(index, $0) })
                         )
                         .focused($focusedField, equals: "included.\(index).detail")
-                        .font(.system(size: 15))
+                        .font(.app(size: 15))
                         .opacity(0.85)
                         .accessibilityIdentifier("create.included.\(index).detail")
                     }
@@ -995,7 +1001,7 @@ struct CreateEventView: View {
                         app.removeCreateIncludedItem(at: index)
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 20))
+                            .font(.app(size: 20))
                             .foregroundStyle(app.palette.ink.opacity(0.35))
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
@@ -1011,7 +1017,7 @@ struct CreateEventView: View {
             if app.createIncludedItems.count < 3 {
                 Button { app.addCreateIncludedItem() } label: {
                     Label(app.T("Thêm mục", "Add item"), systemImage: "plus.circle.fill")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.app(size: 15, weight: .semibold))
                         .frame(maxWidth: .infinity, minHeight: 52)
                         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .strokeBorder(app.palette.ink.opacity(0.3), style: StrokeStyle(lineWidth: 1.2, dash: [5, 4])))
@@ -1022,7 +1028,7 @@ struct CreateEventView: View {
             }
             if !includedValid && !app.createSent && attemptedReview {
                 Text(app.T("Hãy thêm ít nhất một mục Bao gồm.", "Please add at least one Included item."))
-                    .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
+                    .font(.app(size: 11)).foregroundStyle(BanbeTheme.alert)
             }
         }
         .foregroundStyle(app.palette.ink)
@@ -1038,14 +1044,14 @@ struct CreateEventView: View {
     private func locationConfirmSection() -> some View {
         if app.createAddressSearching {
             Text(app.T("Đang tìm địa chỉ…", "Searching addresses…"))
-                .font(.system(size: 11)).opacity(0.6).foregroundStyle(app.palette.ink)
+                .font(.app(size: 11)).opacity(0.6).foregroundStyle(app.palette.ink)
         }
         if !app.createAddressSearchError.isEmpty {
             HStack(spacing: 8) {
-                Text(app.createAddressSearchError).font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
+                Text(app.createAddressSearchError).font(.app(size: 11)).foregroundStyle(BanbeTheme.alert)
                 Spacer(minLength: 0)
                 Button(app.T("Thử lại", "Retry")) { Task { await app.retryCreateAddressSearch() } }
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.app(size: 11, weight: .semibold))
                     .buttonStyle(.plain)
                     .foregroundStyle(app.palette.ink)
             }
@@ -1058,9 +1064,9 @@ struct CreateEventView: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(suggestion.addressLine + (suggestion.isVenue ? " " + app.T("(địa điểm)", "(venue)") : ""))
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.app(size: 13, weight: .semibold))
                             Text([suggestion.district, suggestion.city, suggestion.postalCode].filter { !$0.isEmpty }.joined(separator: ", "))
-                                .font(.system(size: 11.5)).opacity(0.7)
+                                .font(.app(size: 11.5)).opacity(0.7)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(10)
@@ -1074,18 +1080,18 @@ struct CreateEventView: View {
                 // These suggestions come from MapKit (MKLocalSearch), i.e. Apple Maps data. (Web's list is
                 // OpenStreetMap Nominatim and says so itself.)
                 Text(app.T("Kết quả từ Apple Maps", "Results from Apple Maps"))
-                    .font(.system(size: 9.5)).opacity(0.45)
+                    .font(.app(size: 9.5)).opacity(0.45)
                     .padding(.horizontal, 10).padding(.vertical, 6)
             }
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         if app.createLocConfirmed {
             VStack(alignment: .leading, spacing: 6) {
-                Text("✓ " + app.createLocLabel).font(.system(size: 11.5)).opacity(0.85)
+                Text("✓ " + app.createLocLabel).font(.app(size: 11.5)).opacity(0.85)
                 Text(app.T("Sẽ hiện ghim trên bản đồ tại toạ độ này.", "Will show a map pin at this exact point."))
-                    .font(.system(size: 10.5)).opacity(0.6)
+                    .font(.app(size: 10.5)).opacity(0.6)
                 Button(app.T("Đổi địa chỉ", "Change address")) { app.clearCreateAddressSelection() }
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.app(size: 11, weight: .semibold))
                     .buttonStyle(.plain)
                     .foregroundStyle(app.palette.ink.opacity(0.75))
             }
@@ -1094,7 +1100,7 @@ struct CreateEventView: View {
             .foregroundStyle(app.palette.ink)
         } else {
             Text(app.T("Chọn một địa chỉ gợi ý ở trên (cần thiết để đăng sự kiện).", "Pick a suggested address above (required to publish)."))
-                .font(.system(size: 11)).opacity(0.6).foregroundStyle(app.palette.ink)
+                .font(.app(size: 11)).opacity(0.6).foregroundStyle(app.palette.ink)
         }
     }
 
@@ -1134,16 +1140,16 @@ struct CreateEventView: View {
                 HStack(spacing: 10) {
                     if let date = app.createEventDate, let time = app.createEventTime {
                         Text(friendlyDateLabel(date))
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.app(size: 16, weight: .semibold))
                         Text(timeLabelFormatter.string(from: time))
-                            .font(.system(size: 16))
+                            .font(.app(size: 16))
                             .padding(.horizontal, 10).padding(.vertical, 4)
                             .background(app.palette.ink.opacity(0.07), in: Capsule())
                     } else {
-                        Text(app.T("Chọn ngày & giờ", "Pick date & time")).font(.system(size: 16)).opacity(0.5)
+                        Text(app.T("Chọn ngày & giờ", "Pick date & time")).font(.app(size: 16)).opacity(0.5)
                     }
                     Spacer()
-                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).opacity(0.5)
+                    Image(systemName: "chevron.right").font(.app(size: 13, weight: .semibold)).opacity(0.5)
                 }
                 .foregroundStyle(app.palette.ink)
                 .padding(.horizontal, 16).padding(.vertical, 15)
@@ -1154,8 +1160,9 @@ struct CreateEventView: View {
             .accessibilityIdentifier("create.dateTime")
             if !dateTimeValid && !app.createSent && attemptedReview {
                 Text(app.T("Hãy chọn ngày và giờ diễn ra.", "Please pick a date and time."))
-                    .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
+                    .font(.app(size: 11)).foregroundStyle(BanbeTheme.alert)
             }
+            endRow.padding(.top, 8)
         }
         .sheet(isPresented: $dateTimeSheetOpen) {
             EventDateTimeSheet(date: $app.createEventDate, time: $app.createEventTime,
@@ -1163,6 +1170,55 @@ struct CreateEventView: View {
                                timeZone: app.createEventTimeZone)
                 .environmentObject(app)
         }
+    }
+
+    /// Note 82: when it ends. An end time (after midnight = the next day) or open-ended. Required.
+    private var endRow: some View {
+        let endDate = Binding<Date>(
+            get: { app.createFormatter("HH:mm").date(from: app.createEndTime) ?? app.createFormatter("HH:mm").date(from: "22:00") ?? Date() },
+            set: { app.createEndTime = app.createFormatter("HH:mm").string(from: $0) })
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(app.T("Kết thúc", "Ends")).font(.app(size: 14, weight: .semibold))
+            HStack(spacing: 8) {
+                pickTile(app.T("Có giờ kết thúc", "At a set time"), selected: app.createEndMode == "time", id: "create.endTimeMode") {
+                    app.createEndMode = "time"
+                    if app.createEndTime.isEmpty { app.createEndTime = EventEnd.defaultEnd(startHM ?? "19:00") }
+                }
+                pickTile(app.T("Không giờ kết thúc", "Open-ended"), selected: app.createEndMode == "open", id: "create.endOpen") {
+                    app.createEndMode = "open"
+                }
+            }
+            if app.createEndMode == "time" {
+                HStack(spacing: 10) {
+                    DatePicker(app.T("Giờ kết thúc", "End time"), selection: endDate, displayedComponents: .hourAndMinute)
+                        .labelsHidden()
+                        .environment(\.timeZone, app.createFormatter("HH:mm").timeZone)
+                        .accessibilityIdentifier("create.endTime")
+                    if let start = startHM, !app.createEndTime.isEmpty, app.createEndTime != start,
+                       let m = EventEnd.duration(start, app.createEndTime) {
+                        let len = m % 60 == 0 ? "\(m / 60)h" : String(format: "%dh%02d", m / 60, m % 60)
+                        Text(EventEnd.endsNextDay(start, app.createEndTime) ? app.T("\(len) · hôm sau", "\(len) · next day") : len)
+                            .font(.app(size: 13)).opacity(0.7)
+                            .accessibilityIdentifier("create.endNote")
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            if app.createEndMode == "open" {
+                Text(app.T("Khách thấy \"không giờ kết thúc\" thay vì giờ kết thúc.", "Guests see \"open-ended\" instead of an end time."))
+                    .font(.app(size: 13)).opacity(0.7)
+            }
+            if !endValid && !app.createSent && attemptedReview {
+                Text(app.createEndMode == "time" && !app.createEndTime.isEmpty
+                     ? app.T("Giờ kết thúc phải khác giờ bắt đầu.", "The end time must differ from the start.")
+                     : app.T("Chọn giờ kết thúc hoặc Không giờ kết thúc.", "Pick an end time or Open-ended."))
+                    .font(.app(size: 11)).foregroundStyle(BanbeTheme.alert)
+                    .accessibilityIdentifier("create.endError")
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("create.end")
     }
 
     #if DEBUG
@@ -1433,7 +1489,7 @@ struct CreateEventView: View {
                         Label(app.T("Đã điền từ hồ sơ người tổ chức của bạn. Kiểm tra lại rồi tiếp tục.",
                                     "Filled from your organizer profile. Check it and continue."),
                               systemImage: "checkmark.circle.fill")
-                            .font(.system(size: 12.5)).opacity(0.85)
+                            .font(.app(size: 12.5)).opacity(0.85)
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("create.hostPrefilled")
                     }
@@ -1489,7 +1545,7 @@ struct CreateEventView: View {
                             let active = app.createCats.contains(category.key)
                             Button { app.pickCreateCategory(category.key) } label: {
                                 Label(app.T(category.vi, category.en), systemImage: categoryIcon(category.key))
-                                    .font(.system(size: 15, weight: active ? .semibold : .regular))
+                                    .font(.app(size: 15, weight: active ? .semibold : .regular))
                                     .foregroundStyle(active ? app.palette.paper : app.palette.ink)
                                     .padding(.horizontal, 16).padding(.vertical, 12)
                                     .background(active ? app.palette.ink : app.palette.paper, in: Capsule())
@@ -1500,13 +1556,13 @@ struct CreateEventView: View {
                     }
                     if !catsValid && !app.createSent && attemptedReview {
                         Text(app.T("Hãy chọn ít nhất một danh mục.", "Please pick at least one category."))
-                            .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
+                            .font(.app(size: 11)).foregroundStyle(BanbeTheme.alert)
                     }
                     } }
                     // Note 50: only when the server answered with a real (floored, ≥10) count.
                     if let demand = audienceDemand, let cat = categories.first(where: { $0.key == primaryCat }) {
                         Text(app.T("\(demand)+ người trên banbe thích \(cat.vi).", "\(demand)+ people on banbe are into \(cat.en)."))
-                            .font(.system(size: 12, weight: .semibold)).opacity(0.85)
+                            .font(.app(size: 12, weight: .semibold)).opacity(0.85)
                             .accessibilityIdentifier("create.audienceDemand")
                     }
 
@@ -1528,7 +1584,7 @@ struct CreateEventView: View {
                             "Cách nhau bằng dấu phẩy. Để trống sẽ tự dùng danh mục đã chọn ở trên.",
                             "Comma-separated. Left blank, the category picked above is used instead."
                         ))
-                        .font(.system(size: 11)).opacity(0.75)
+                        .font(.app(size: 11)).opacity(0.75)
                         keywordSuggestions()
                     }
                     .foregroundStyle(app.palette.ink) }
@@ -1538,7 +1594,7 @@ struct CreateEventView: View {
                     guided("included") { includedItemsEditor() }
                     if let typeProfile, !app.createCats.isEmpty, !(typeProfile.wizard?.details ?? []).isEmpty {
                         Text(app.T("Khách hay hỏi những điều này trước khi đặt chỗ.", "Guests often ask about these before booking."))
-                            .font(.footnote).opacity(0.75)
+                            .font(.app(.footnote)).opacity(0.75)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.top, 8)
                         ForEach(typeProfile.wizard?.details ?? [], id: \.self) { id in
@@ -1601,7 +1657,7 @@ struct CreateEventView: View {
                         "Gõ số nhà + tên đường (hoặc tên địa điểm nếu không có số nhà) rồi chọn một gợi ý. Cần thiết để đăng sự kiện.",
                         "Type a house number + street (or a venue name if there is no house number), then pick a suggestion. Required to publish."
                     ))
-                    .font(.system(size: 11)).opacity(0.75).foregroundStyle(app.palette.ink)
+                    .font(.app(size: 11)).opacity(0.75).foregroundStyle(app.palette.ink)
                     locationConfirmSection()
                     guided("date") { dateTimeRow() }
                     timingInsights()
@@ -1615,7 +1671,7 @@ struct CreateEventView: View {
                     if ticketsPart == "price" || ticketsPart == "seats" { ticketsSection(part: ticketsPart) }
                     if ticketsPart == "seats" && !seatsValid && !app.createSent && attemptedReview {
                         Text(app.T("Hãy nhập số chỗ lớn hơn 0.", "Please enter a number of seats greater than 0."))
-                            .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
+                            .font(.app(size: 11)).foregroundStyle(BanbeTheme.alert)
                     }
 
                     // Strict invite-only events (migration 113) — a peer of
@@ -1632,8 +1688,8 @@ struct CreateEventView: View {
                                 let active = app.createVisibility == key
                                 Button { app.createVisibility = key } label: {
                                     VStack(spacing: 6) {
-                                        Image(systemName: key == "public" ? "globe.asia.australia" : "envelope.badge").font(.system(size: 20))
-                                        Text(app.T(vi, en)).font(.system(size: 15, weight: active ? .semibold : .regular))
+                                        Image(systemName: key == "public" ? "globe.asia.australia" : "envelope.badge").font(.app(size: 20))
+                                        Text(app.T(vi, en)).font(.app(size: 15, weight: active ? .semibold : .regular))
                                     }
                                     .frame(maxWidth: .infinity, minHeight: 76)
                                     .background(active ? app.palette.ink : app.palette.paper, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -1647,7 +1703,7 @@ struct CreateEventView: View {
                         Text(app.createVisibility == "invite"
                              ? app.T("Chỉ người được mời mới thấy và đặt được sự kiện này. Bạn vẫn cần được banbe duyệt.", "Only invited people can see or book this event. It still needs banbe approval.")
                              : app.T("Ai cũng có thể tìm thấy và đặt sự kiện này.", "Anyone can discover and book this event."))
-                            .font(.system(size: 11)).opacity(0.6).foregroundStyle(app.palette.ink)
+                            .font(.app(size: 11)).opacity(0.6).foregroundStyle(app.palette.ink)
                     }
                     }
 
@@ -1667,7 +1723,7 @@ struct CreateEventView: View {
     private func draftPill(_ title: String, icon: String, id: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label(title, systemImage: icon)
-                .font(.system(size: 12.5, weight: .semibold))
+                .font(.app(size: 12.5, weight: .semibold))
                 .padding(.horizontal, 12).frame(minHeight: 34)
                 .background(app.palette.field, in: Capsule())
                 .overlay(Capsule().stroke(app.palette.rule))
@@ -1726,7 +1782,7 @@ struct CreateEventView: View {
                 }
 
                 Text(app.T("Dành cho người tổ chức", "For organizers"))
-                    .font(.system(size: 11.5, weight: .semibold))
+                    .font(.app(size: 11.5, weight: .semibold))
                     .padding(.top, 14)
                 Text(app.createEditEventId != nil
                      ? app.T("Chỉnh sửa và gửi lại", "Correct and resubmit")
@@ -1737,7 +1793,7 @@ struct CreateEventView: View {
                    let reason = app.myOrgEventSummaries.first(where: { $0.id == editID })?.rejectionReason,
                    !reason.isEmpty {
                     Text(app.T("Bị từ chối: ", "Rejected: ") + reason)
-                        .font(.system(size: 12))
+                        .font(.app(size: 12))
                         .foregroundStyle(BanbeTheme.alert)
                         .padding(10)
                         .background(BanbeTheme.alert.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -1782,7 +1838,7 @@ struct CreateEventView: View {
                 if !app.createSent {
                     Button { goTo(.tickets) } label: {
                         Label(app.T("Quay lại: Vé", "Back: Tickets"), systemImage: "chevron.left")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.app(size: 14, weight: .semibold))
                             .frame(minHeight: 44)
                     }
                     .buttonStyle(.plain)
@@ -1826,18 +1882,18 @@ struct CreateEventView: View {
 
                 if !app.createError.isEmpty {
                     Text(app.createError)
-                        .font(.system(size: 12))
+                        .font(.app(size: 12))
                         .foregroundStyle(BanbeTheme.alert)
                         .padding(.top, 12)
                 }
                 if !app.createMediaError.isEmpty {
                     Text(app.createMediaError)
-                        .font(.system(size: 12))
+                        .font(.app(size: 12))
                         .foregroundStyle(BanbeTheme.alert)
                         .padding(.top, 12)
                 }
                 Text(app.T("Hoàn toàn miễn phí: không phí đăng, không phí giao dịch, không phí ẩn.", "Completely free: no listing fee, no transaction fee, no hidden fees."))
-                    .font(.system(size: 11)).multilineTextAlignment(.center)
+                    .font(.app(size: 11)).multilineTextAlignment(.center)
                     .frame(maxWidth: 230)
                     .frame(maxWidth: .infinity)
                     .padding(.top, 12)
@@ -1928,7 +1984,7 @@ struct CreateEventView: View {
                 if hasPrevPart {
                     Button { setPart(part - 1, of: currentStep) } label: {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.app(size: 16, weight: .semibold))
                             .frame(width: 54, height: 52)
                             .overlay(RoundedRectangle(cornerRadius: 999).stroke(app.palette.rule, lineWidth: 1))
                             .contentShape(Rectangle())
@@ -1939,7 +1995,7 @@ struct CreateEventView: View {
                 } else if let prev {
                     Button { goTo(prev, part: max(CreateSubSteps.parts(step: prev.rawValue).count - 1, 0)) } label: {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.app(size: 16, weight: .semibold))
                             .frame(width: 54, height: 52)
                             .overlay(RoundedRectangle(cornerRadius: 999).stroke(app.palette.rule, lineWidth: 1))
                             .contentShape(Rectangle())
@@ -1979,12 +2035,12 @@ struct CreateEventView: View {
                               "Time and price are pre-filled from \"\($0)\". Change anything you like.")
                     } ?? app.T("Đã chọn sẵn Thứ Bảy tới lúc 19:00. Đổi bất cứ lúc nào bạn muốn.",
                                "We picked next Saturday at 19:00. Change it any time."))
-                        .font(.system(size: 12))
+                        .font(.app(size: 12))
                         .fixedSize(horizontal: false, vertical: true)
                     Button(app.T("Bắt đầu trống", "Start blank")) {
                         withAnimation { app.clearCreateDefaults() }
                     }
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.app(size: 12, weight: .semibold))
                     .buttonStyle(.plain)
                     .underline()
                     .accessibilityIdentifier("create.startBlank")
@@ -2041,10 +2097,10 @@ struct CreateEventView: View {
         } label: {
             VStack(spacing: 1) {
                 Text(title)
-                    .font(.system(size: 15, weight: selected ? .semibold : .regular))
+                    .font(.app(size: 15, weight: selected ? .semibold : .regular))
                     .lineLimit(1).minimumScaleFactor(0.7)
                 if let sub {
-                    Text(sub).font(.system(size: 10.5, weight: .medium)).opacity(0.7).lineLimit(1).minimumScaleFactor(0.7)
+                    Text(sub).font(.app(size: 10.5, weight: .medium)).opacity(0.7).lineLimit(1).minimumScaleFactor(0.7)
                 }
             }
                 .padding(.horizontal, 4)
@@ -2076,7 +2132,7 @@ struct CreateEventView: View {
                 }
             }
             Text(app.T("Chỉ bạn thấy. Giúp banbe đưa gợi ý phù hợp hơn.", "Only you see this. It tunes the tips below to what you want."))
-                .font(.system(size: 11)).opacity(0.75)
+                .font(.app(size: 11)).opacity(0.75)
         }
         .foregroundStyle(app.palette.ink)
         .padding(.top, 4)
@@ -2098,7 +2154,7 @@ struct CreateEventView: View {
         if !ideas.isEmpty {
             FlowRow(spacing: 6) {
                 Text(app.eventTypesEnabled ? app.T("Gợi ý:", "Ideas:") : app.T("Host khác hay dùng:", "Other hosts use:"))
-                    .font(.system(size: 11)).opacity(0.75)
+                    .font(.app(size: 11)).opacity(0.75)
                     .frame(minHeight: 32)
                 ForEach(ideas, id: \.self) { word in
                     HStack(spacing: 0) {
@@ -2106,7 +2162,7 @@ struct CreateEventView: View {
                             Haptics.selection()
                             app.createKeywords = (draftKeywords + [word]).joined(separator: ", ")
                         } label: {
-                            Text("+ \(word)").font(.system(size: 12.5))
+                            Text("+ \(word)").font(.app(size: 12.5))
                                 .padding(.leading, 10).padding(.trailing, app.eventTypesEnabled ? 4 : 10).frame(minHeight: 36)
                                 .contentShape(Rectangle())
                         }
@@ -2114,7 +2170,7 @@ struct CreateEventView: View {
                         .accessibilityLabel(app.T("Thêm từ khoá \(word)", "Add keyword \(word)"))
                         if app.eventTypesEnabled {
                             Button { app.createKwDismissed.append(word) } label: {
-                                Image(systemName: "xmark").font(.system(size: 10, weight: .semibold)).opacity(0.5)
+                                Image(systemName: "xmark").font(.app(size: 10, weight: .semibold)).opacity(0.5)
                                     .frame(width: 32, height: 36).contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
@@ -2160,7 +2216,7 @@ struct CreateEventView: View {
                 : app.T("nếu bán hết chỗ", "if every seat sells")
             let tail = draftPriceVnd > 0 ? app.T(", trước mọi khoản phí.", ", before any fees.") : "."
             (Text(head).bold() + Text(" " + basis + tail).foregroundColor(app.palette.ink.opacity(0.7)))
-                .font(.system(size: 13.5))
+                .font(.app(size: 13.5))
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -2203,7 +2259,7 @@ struct CreateEventView: View {
                     .accessibilityLabel(app.T("Giá vé", "Price"))
             }
             Text(priceHint)
-                .font(.system(size: 12)).opacity(0.7)
+                .font(.app(size: 12)).opacity(0.7)
                 .accessibilityIdentifier("create.priceHint")
             }
 
@@ -2238,7 +2294,7 @@ struct CreateEventView: View {
 
     private func group<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(title).font(.system(.title3, design: .rounded).weight(.semibold))
+            Text(title).font(.app(.title3, design: .rounded).weight(.semibold))
                 .accessibilityAddTraits(.isHeader)
             content()
         }
@@ -2324,8 +2380,8 @@ private struct CreateEventReviewSheet: View {
     @ViewBuilder
     private func row(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(label).font(.system(size: 10.5)).opacity(0.6)
-            Text(value).font(.system(size: 13.5)).lineLimit(nil)
+            Text(label).font(.app(size: 10.5)).opacity(0.6)
+            Text(value).font(.app(size: 13.5)).lineLimit(nil)
         }
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2336,7 +2392,7 @@ private struct CreateEventReviewSheet: View {
     private var draftEvent: CatalogEvent {
         let catKey = app.createCats.first ?? "supper"
         let name = app.createName.trimmingCharacters(in: .whitespaces)
-        return CatalogEvent.fromDraft(EventDraft(
+        var ev = CatalogEvent.fromDraft(EventDraft(
             name: name.isEmpty ? app.T("(Chưa đặt tên)", "(Untitled)") : name,
             catKey: catKey,
             catLabel: categories.first(where: { $0.key == catKey })?.vi ?? "",
@@ -2358,6 +2414,10 @@ private struct CreateEventReviewSheet: View {
                                             introFont: app.createIntroFont, introColor: app.createIntroColor)
                 : [:]
         ))
+        // Note 82: the end the host chose, so the preview's stub reads "21:00 – 00:00 (next day)".
+        ev.endTime = app.createEndMode == "time" && !app.createEndTime.isEmpty ? String(app.createEndTime.prefix(5)) : nil
+        ev.endOpen = app.createEndMode == "open"
+        return ev
     }
 
     // Event type facts exactly as guests will see them, and the answers kept for another type that will NOT be
@@ -2408,7 +2468,7 @@ private struct CreateEventReviewSheet: View {
             )
 
             if !app.createError.isEmpty {
-                Text(app.createError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert).padding(.top, 12)
+                Text(app.createError).font(.app(size: 12)).foregroundStyle(BanbeTheme.alert).padding(.top, 12)
             }
         }
     }
@@ -2416,7 +2476,7 @@ private struct CreateEventReviewSheet: View {
     /// Small section heading for the Private tab (event name / recipe / details / included / photos).
     private func reviewHeading(_ title: String) -> some View {
         Text(title.uppercased())
-            .font(.system(size: 11.5, weight: .semibold))
+            .font(.app(size: 11.5, weight: .semibold))
             .tracking(0.6)
             .opacity(0.6)
             .accessibilityAddTraits(.isHeader)
@@ -2426,7 +2486,7 @@ private struct CreateEventReviewSheet: View {
     private func tabButton(_ target: Tab, _ label: String) -> some View {
         Button { tab = target } label: {
             Text(label)
-                .font(.system(size: 12.5, weight: .semibold))
+                .font(.app(size: 12.5, weight: .semibold))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
                 .background(tab == target ? app.palette.ink : Color.clear, in: RoundedRectangle(cornerRadius: 999, style: .continuous))
@@ -2453,7 +2513,7 @@ private struct CreateEventReviewSheet: View {
                     .padding(.top, 16)
 
                 Text(app.T("Xem lại trước khi gửi", "Review before submitting"))
-                    .font(.system(size: 11.5, weight: .semibold))
+                    .font(.app(size: 11.5, weight: .semibold))
                     .padding(.top, 14)
 
                 HStack(spacing: 6) {
@@ -2487,7 +2547,7 @@ private struct CreateEventReviewSheet: View {
                             VStack(alignment: .leading, spacing: 0) {
                                 (Text("\(score.good)/\(score.total)").bold()
                                  + Text(" · " + app.T("không bắt buộc để gửi", "never required to submit")).foregroundColor(app.palette.ink.opacity(0.65)))
-                                    .font(.system(size: 12.5))
+                                    .font(.app(size: 12.5))
                                     .padding(.top, 12)
                                 RecipeList(checks: recipe, compact: true, onFix: onFixRecipe)
                             }
@@ -2527,7 +2587,7 @@ private struct CreateEventReviewSheet: View {
                             let names = reviewDroppedTypes.map(typeName).joined(separator: ", ")
                             Text(app.T("Thông tin bạn đã nhập cho \(names) sẽ không được đăng, vì loại chính là \(typeName(reviewPrimaryType)). Chúng vẫn được giữ trong bản nháp nếu bạn đổi lại.",
                                        "What you entered for \(names) won't be published, since the main type is \(typeName(reviewPrimaryType)). It stays in this draft if you switch back."))
-                                .font(.footnote)
+                                .font(.app(.footnote))
                                 .foregroundStyle(app.palette.honey)
                                 .padding(.top, 10).padding(.horizontal, 2)
                                 .accessibilityIdentifier("create.reviewDroppedDetails")
@@ -2538,9 +2598,9 @@ private struct CreateEventReviewSheet: View {
                             VStack(alignment: .leading, spacing: 0) {
                                 ForEach(Array(reviewIncludedItems.enumerated()), id: \.offset) { index, item in
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(item.label).font(.system(size: 13.5, weight: .semibold))
+                                        Text(item.label).font(.app(size: 13.5, weight: .semibold))
                                         if !item.detail.isEmpty {
-                                            Text(item.detail).font(.system(size: 12.5)).opacity(0.8)
+                                            Text(item.detail).font(.app(size: 12.5)).opacity(0.8)
                                         }
                                     }
                                     .padding(.vertical, 10)
@@ -2571,7 +2631,7 @@ private struct CreateEventReviewSheet: View {
                                         .frame(width: 56, height: 56)
                                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                                         Text(item.id == coverItemID ? app.T("Ảnh bìa", "Cover photo") : app.T("Ảnh \(index + 1)", "Photo \(index + 1)"))
-                                            .font(.system(size: 12.5))
+                                            .font(.app(size: 12.5))
                                         Spacer(minLength: 0)
                                     }
                                     .padding(8)
@@ -2646,7 +2706,7 @@ private struct CreateEventReviewSheet: View {
                 footer: AnyView(
                     VStack(spacing: 8) {
                         Text(app.T("Xem trước: khách sẽ thấy đúng trang này", "Preview: this is exactly what guests will see"))
-                            .font(.system(size: 11.5, weight: .semibold)).opacity(0.6)
+                            .font(.app(size: 11.5, weight: .semibold)).opacity(0.6)
                             .accessibilityIdentifier("createEvent.preview.public")
                         confirmBlock
                     }
@@ -2839,7 +2899,7 @@ struct FlowRow: Layout {
 extension View {
     func roundedFormEditor(app: AppState, minHeight: CGFloat, focused: Bool = false, state: FieldState = .normal) -> some View {
         self
-            .font(.system(size: 16))
+            .font(.app(size: 16))
             .scrollContentBackground(.hidden)
             .frame(minHeight: minHeight, alignment: .topLeading)
             .padding(.horizontal, 12).padding(.vertical, 10)
@@ -2850,7 +2910,7 @@ extension View {
     /// Note 53: the large rounded field look (Create event) for a raw TextField — same box as `BanbeField(icon:)`.
     func roundedFormField(app: AppState, focused: Bool, state: FieldState = .normal) -> some View {
         self
-            .font(.system(size: 16))
+            .font(.app(size: 16))
             .padding(.horizontal, 16).padding(.vertical, 15)
             .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .fieldChrome(focused: focused, state: state, cornerRadius: 14)
@@ -2893,7 +2953,7 @@ struct SubmittedChooserCard: View {
     private var card: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text(app.T("🎉 Đã gửi sự kiện!", "🎉 Event submitted!"))
-                .font(.system(.title2, design: .rounded).weight(.bold))
+                .font(.app(.title2, design: .rounded).weight(.bold))
                 .foregroundStyle(app.palette.ink)
                 .accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: 10) {
@@ -2903,12 +2963,12 @@ struct SubmittedChooserCard: View {
                 step("square.and.arrow.up", app.T("Chia sẻ được ngay khi được duyệt", "Sharing opens once it's approved"))
             }
             Text(app.T("Bạn muốn làm gì tiếp theo?", "What would you like to do next?"))
-                .font(.subheadline.weight(.semibold))
+                .font(.app(.subheadline).weight(.semibold))
                 .foregroundStyle(app.palette.ink.opacity(0.75))
             VStack(spacing: 10) {
                 Button(action: onPending) {
                     Label(app.T("Xem sự kiện đang chờ duyệt", "View pending events"), systemImage: "hourglass")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.app(size: 15, weight: .semibold))
                         .frame(maxWidth: .infinity, minHeight: 50)
                         .foregroundStyle(app.palette.paper)
                         .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -2939,13 +2999,13 @@ struct SubmittedChooserCard: View {
     private func step(_ icon: String, _ text: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.app(size: 13, weight: .semibold))
                 .foregroundStyle(app.palette.ink)
                 .frame(width: 28, height: 28)
                 .background(app.palette.field, in: Circle())
                 .accessibilityHidden(true)
             Text(text)
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .foregroundStyle(app.palette.ink)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -2977,15 +3037,15 @@ struct CreateUndoToast: View {
         VStack(spacing: 10) {
             HStack(spacing: 12) {
                 Image(systemName: "doc.badge.ellipsis")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.app(size: 16, weight: .semibold))
                     .accessibilityHidden(true)
                 Text(app.T("Đã đóng bản nháp sự kiện", "Event draft closed"))
-                    .font(.subheadline.weight(.semibold))
+                    .font(.app(.subheadline).weight(.semibold))
                     .lineLimit(2)
                 Spacer(minLength: 8)
                 Button { app.undoLeaveCreate() } label: {
                     Label(app.T("Hoàn tác", "Undo"), systemImage: "arrow.uturn.backward")
-                        .font(.subheadline.weight(.bold))
+                        .font(.app(.subheadline).weight(.bold))
                         .padding(.horizontal, 14).frame(minHeight: 40)
                         .foregroundStyle(app.palette.paper)
                         .background(app.palette.ink, in: Capsule())
@@ -3054,7 +3114,7 @@ struct DraftSavedCard: View {
     private var card: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text(app.T("💾 Đã lưu bản nháp", "💾 Draft saved"))
-                .font(.system(.title2, design: .rounded).weight(.bold))
+                .font(.app(.title2, design: .rounded).weight(.bold))
                 .accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: 10) {
                 step("iphone", app.T("Lưu trên máy này, trong tài khoản của bạn", "Kept on this phone, for your account"))
@@ -3063,12 +3123,12 @@ struct DraftSavedCard: View {
                                         "Up to \(EventDraftStore.maxDrafts) drafts (\(app.eventDrafts.count)/\(EventDraftStore.maxDrafts) used)"))
             }
             Text(app.T("Bạn muốn làm gì tiếp theo?", "What would you like to do next?"))
-                .font(.subheadline.weight(.semibold))
+                .font(.app(.subheadline).weight(.semibold))
                 .foregroundStyle(app.palette.ink.opacity(0.75))
             VStack(spacing: 10) {
                 Button(action: onViewDrafts) {
                     Label(app.T("Xem bản nháp", "View drafts"), systemImage: "tray.full")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.app(size: 15, weight: .semibold))
                         .frame(maxWidth: .infinity, minHeight: 50)
                         .foregroundStyle(app.palette.paper)
                         .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -3096,11 +3156,11 @@ struct DraftSavedCard: View {
     private func step(_ icon: String, _ text: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.app(size: 13, weight: .semibold))
                 .frame(width: 28, height: 28)
                 .background(app.palette.field, in: Circle())
                 .accessibilityHidden(true)
-            Text(text).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+            Text(text).font(.app(.subheadline)).fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -3119,12 +3179,12 @@ struct EventDraftsSheet: View {
             List {
                 Text(app.T("Bản nháp lưu trên máy này, tối đa \(EventDraftStore.maxDrafts). Chạm để tiếp tục, hoặc vuốt trái / chạm ⋯ để sửa hay xoá.",
                            "Drafts are kept on this phone, up to \(EventDraftStore.maxDrafts). Tap one to continue, or swipe left / tap ⋯ to edit or delete."))
-                    .font(.system(size: 11)).opacity(0.65)
+                    .font(.app(size: 11)).opacity(0.65)
                     .listRowBackground(Color.clear).listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 8, trailing: 20))
                 if app.eventDrafts.isEmpty {
                     Text(app.T("Chưa có bản nháp nào.", "No drafts yet."))
-                        .font(.system(size: 13)).opacity(0.7)
+                        .font(.app(size: 13)).opacity(0.7)
                         .listRowBackground(Color.clear).listRowSeparator(.hidden)
                 }
                 ForEach(app.eventDrafts) { d in
@@ -3151,7 +3211,7 @@ struct EventDraftsSheet: View {
                 } else {
                     Button { dismiss() } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.app(size: 13, weight: .bold))
                             .foregroundStyle(app.palette.ink)
                             .frame(width: 30, height: 30)
                             .background(.ultraThinMaterial, in: Circle())
@@ -3188,7 +3248,7 @@ struct EventDraftsSheet: View {
                         if let t = thumbs[d.id] {
                             Image(uiImage: t).resizable().scaledToFill()
                         } else {
-                            Image(systemName: "photo").font(.system(size: 18)).opacity(0.4)
+                            Image(systemName: "photo").font(.app(size: 18)).opacity(0.4)
                         }
                     }
                     .frame(width: 56, height: 56)
@@ -3196,12 +3256,12 @@ struct EventDraftsSheet: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     VStack(alignment: .leading, spacing: 3) {
                         Text(d.displayName.isEmpty ? app.T("Chưa đặt tên", "Untitled event") : d.displayName)
-                            .font(.system(size: 15, weight: .semibold)).lineLimit(1)
+                            .font(.app(size: 15, weight: .semibold)).lineLimit(1)
                         Text(app.T("Lưu \(d.savedAt.formatted(date: .abbreviated, time: .shortened))",
                                    "Saved \(d.savedAt.formatted(date: .abbreviated, time: .shortened))"))
-                            .font(.system(size: 12)).opacity(0.65)
+                            .font(.app(size: 12)).opacity(0.65)
                         Text(app.T("\(d.photoFiles.count) ảnh · bước \(d.step + 1)/5", "\(d.photoFiles.count) photos · step \(d.step + 1)/5"))
-                            .font(.system(size: 12)).opacity(0.65)
+                            .font(.app(size: 12)).opacity(0.65)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -3214,7 +3274,7 @@ struct EventDraftsSheet: View {
                 Button(role: .destructive) { pendingDelete = d } label: { Label(app.T("Xoá", "Delete"), systemImage: "trash") }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.app(size: 15, weight: .semibold))
                     .frame(width: 36, height: 36)
                     .background(app.palette.paper, in: Circle())
                     .overlay(Circle().stroke(app.palette.rule))
@@ -3242,16 +3302,16 @@ private struct MissingChips: View {
         let tint = alertTone ? BanbeTheme.alert : app.palette.ink
         VStack(spacing: 6) {
             Text(lead)
-                .font(.footnote)
+                .font(.app(.footnote))
                 .foregroundStyle(tint.opacity(alertTone ? 1 : 0.7))
             FlowLayout(spacing: 6, lineSpacing: 6) {
                 ForEach(fields, id: \.self) { id in
                     Button { onPick(id) } label: {
                         HStack(spacing: 4) {
                             Text(label(id))
-                            Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).opacity(0.6)
+                            Image(systemName: "chevron.right").font(.app(.caption2).weight(.semibold)).opacity(0.6)
                         }
-                        .font(.footnote.weight(.semibold))
+                        .font(.app(.footnote).weight(.semibold))
                         .foregroundStyle(tint)
                         .padding(.horizontal, 12)
                         .frame(minHeight: 44)
@@ -3286,7 +3346,7 @@ private struct TypeDetailField: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             FormFieldLabel(icon: "sparkles", text: def.label.text(lang), required: required, field: id)
-            if let hint = def.hint { Text(hint.text(lang)).font(.footnote).opacity(0.7) }
+            if let hint = def.hint { Text(hint.text(lang)).font(.app(.footnote)).opacity(0.7) }
             switch def.kind {
             case "text": textField
             case "list": listField
@@ -3294,7 +3354,7 @@ private struct TypeDetailField: View {
             }
             if showError {
                 Text(app.T("Hãy điền \(def.label.vi.lowercased()).", "Please fill in \(def.label.en.lowercased())."))
-                    .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
+                    .font(.app(size: 11)).foregroundStyle(BanbeTheme.alert)
             }
         }
         .foregroundStyle(app.palette.ink)
@@ -3325,7 +3385,7 @@ private struct TypeDetailField: View {
                         .accessibilityIdentifier("create.detail.\(id).\(i)")
                     if items.count > 1 {
                         Button { var a = items; a.remove(at: i); set(.list(a)) } label: {
-                            Image(systemName: "xmark.circle.fill").font(.system(size: 20))
+                            Image(systemName: "xmark.circle.fill").font(.app(size: 20))
                                 .foregroundStyle(app.palette.ink.opacity(0.35))
                                 .frame(width: 44, height: 44).contentShape(Rectangle())
                         }
@@ -3337,7 +3397,7 @@ private struct TypeDetailField: View {
             if items.count < (def.max ?? 6) {
                 Button { set(.list(items + [""])) } label: {
                     Label(app.T("Thêm", "Add"), systemImage: "plus.circle.fill")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.app(.subheadline).weight(.semibold))
                         .frame(maxWidth: .infinity, minHeight: 44)
                         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(app.palette.ink.opacity(0.3), style: StrokeStyle(lineWidth: 1.2, dash: [5])))
                         .contentShape(Rectangle())
@@ -3357,7 +3417,7 @@ private struct TypeDetailField: View {
                     toggle(o.id)
                 } label: {
                     Text(lang == "vi" ? o.vi : o.en)
-                        .font(.subheadline.weight(on ? .semibold : .regular))
+                        .font(.app(.subheadline).weight(on ? .semibold : .regular))
                         .foregroundStyle(on ? app.palette.paper : app.palette.ink)
                         .padding(.horizontal, 14).frame(minHeight: 44)
                         .background(on ? app.palette.ink : Color.clear, in: Capsule())

@@ -86,15 +86,15 @@ struct TicketStubPager: View {
                 .padding(.top, 14)
                 .accessibilityIdentifier("confirmed.stub.name.\(att.seatNo)")
             Text(app.T("Mã vào cửa", "Entry code").uppercased())
-                .font(.caption2.weight(.semibold)).tracking(0.8).foregroundStyle(app.palette.ink3)
+                .font(.app(.caption2).weight(.semibold)).tracking(0.8).foregroundStyle(app.palette.ink3)
                 .padding(.top, 10)
             Text(live ? TicketStatus.formatEntryCode(att.ticketCode) : "••• •••")
-                .font(.system(.title, design: .monospaced).weight(.semibold)).tracking(3)
+                .font(.app(.title, design: .monospaced).weight(.semibold)).tracking(3)
                 .lineLimit(1).minimumScaleFactor(0.6)
                 .opacity(live ? 1 : 0.35)
                 .padding(.top, 4)
             if checked {
-                Text("✓ " + app.T("Đã vào cửa", "Checked in")).font(.footnote.weight(.semibold))
+                Text("✓ " + app.T("Đã vào cửa", "Checked in")).font(.app(.footnote).weight(.semibold))
                     .padding(.top, 8)
                     .accessibilityIdentifier("confirmed.stub.badge.\(att.seatNo)")
             }
@@ -130,7 +130,7 @@ struct TicketStubPager: View {
                 .accessibilityIdentifier("confirmed.stub.dot.\(att.seatNo)")
             }
             Text("\((attendees.firstIndex { $0.id == activeID } ?? 0) + 1)/\(attendees.count)")
-                .font(.footnote).foregroundStyle(app.palette.ink2).padding(.leading, 6)
+                .font(.app(.footnote)).foregroundStyle(app.palette.ink2).padding(.leading, 6)
                 .accessibilityHidden(true)
         }
         .frame(maxWidth: .infinity)

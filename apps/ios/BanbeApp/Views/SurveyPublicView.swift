@@ -11,7 +11,7 @@ private enum SurveyFocusField: Hashable {
 
 private func chip(_ label: String, active: Bool, palette: Palette) -> some View {
     Text(label)
-        .font(.system(size: 13))
+        .font(.app(size: 13))
         .padding(.horizontal, 14).padding(.vertical, 9)
         .background(active ? palette.ink : .clear, in: Capsule())
         .foregroundStyle(active ? palette.paper : palette.ink)
@@ -98,10 +98,10 @@ struct SurveyPublicView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Text(app.surveyPublic?.hostName ?? "").font(.system(size: 12)).opacity(0.6)
+                    Text(app.surveyPublic?.hostName ?? "").font(.app(size: 12)).opacity(0.6)
                     Spacer()
                     Button { requestClose() } label: {
-                        Image(systemName: "xmark").font(.system(size: 16, weight: .semibold))
+                        Image(systemName: "xmark").font(.app(size: 16, weight: .semibold))
                     }
                     .accessibilityIdentifier("survey-close")
                 }
@@ -112,9 +112,9 @@ struct SurveyPublicView: View {
                 } else if !app.surveyPublicError.isEmpty || app.surveyPublic == nil {
                     VStack(spacing: 12) {
                         Text(app.surveyPublicError.isEmpty ? app.T("Không tìm thấy khảo sát này.", "This survey couldn't be found.") : app.surveyPublicError)
-                            .font(.system(size: 14))
+                            .font(.app(size: 14))
                         Button(app.T("Quay lại", "Go back")) { requestClose() }
-                            .font(.system(size: 13)).underline()
+                            .font(.app(size: 13)).underline()
                     }
                     .frame(maxWidth: .infinity).padding(.top, 60)
                 } else {
@@ -219,28 +219,28 @@ struct SurveyPublicView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text(survey.title ?? "").font(BanbeTheme.display(24))
             if let desc = survey.description, !desc.isEmpty {
-                Text(desc).font(.system(size: 14)).lineSpacing(3)
+                Text(desc).font(.app(size: 14)).lineSpacing(3)
             }
             if let closesAt = survey.closesAt {
                 Text("\(app.T("Hạn trả lời", "Deadline")): \(Self.deadlineFormatter.string(from: closesAt)) (\(survey.timezone ?? "Asia/Ho_Chi_Minh"))")
-                    .font(.system(size: 12)).opacity(0.7)
+                    .font(.app(size: 12)).opacity(0.7)
             }
             Text(app.T("Đây không phải là giữ chỗ.", "This does not reserve a place."))
-                .font(.system(size: 12, weight: .semibold))
+                .font(.app(size: 12, weight: .semibold))
 
             if survey.status == "draft" {
                 Text(app.T("Đây là bản xem trước. Khảo sát chưa được xuất bản.", "This is a preview. The survey hasn't been published yet."))
-                    .font(.system(size: 13.5)).padding(14)
+                    .font(.app(size: 13.5)).padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.black.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
             } else if survey.status == "closed" {
                 Text(app.T("Khảo sát này đã đóng. Cảm ơn bạn đã quan tâm.", "This survey is closed. Thanks for your interest."))
-                    .font(.system(size: 13.5)).padding(14)
+                    .font(.app(size: 13.5)).padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.black.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
             } else if survey.status == "not_open_yet" {
                 Text(app.T("Khảo sát này chưa mở.", "This survey hasn't opened yet."))
-                    .font(.system(size: 13.5)).padding(14)
+                    .font(.app(size: 13.5)).padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.black.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
             } else if app.surveyResponseSuccess {
@@ -250,9 +250,9 @@ struct SurveyPublicView: View {
                     Text(app.T("Đã Gửi Câu Trả Lời. Cảm Ơn Bạn!", "Response Submitted. Thank You!"))
                         .font(BanbeTheme.display(20))
                     Text(app.T("Bạn có thể quay lại chỉnh sửa trước khi khảo sát đóng.", "You can come back and edit it before the survey closes."))
-                        .font(.system(size: 13)).opacity(0.75).multilineTextAlignment(.center)
+                        .font(.app(size: 13)).opacity(0.75).multilineTextAlignment(.center)
                     Button(app.T("Đóng", "Close")) { requestClose() }
-                        .font(.system(size: 13.5, weight: .semibold))
+                        .font(.app(size: 13.5, weight: .semibold))
                         .padding(.horizontal, 28).padding(.vertical, 12)
                         .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 10))
                         .foregroundStyle(app.palette.paper)
@@ -277,34 +277,34 @@ struct SurveyPublicView: View {
         let r = app.mySurveyResponse!
         VStack(alignment: .leading, spacing: 14) {
             Text(app.T("Bạn Đã Trả Lời Khảo Sát Này", "You Have Already Responded"))
-                .font(.system(size: 13.5, weight: .semibold)).padding(14)
+                .font(.app(size: 13.5, weight: .semibold)).padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.black.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
                 .accessibilityIdentifier("survey-already-responded")
             VStack(alignment: .leading, spacing: 6) {
                 if let level = r.interestLevel {
-                    Text("\(app.T("Mức độ quan tâm", "Interest level")): \(level)").font(.system(size: 12.5))
+                    Text("\(app.T("Mức độ quan tâm", "Interest level")): \(level)").font(.app(size: 12.5))
                 }
                 if !r.dateOptions.isEmpty {
-                    Text("\(app.T("Ngày/giờ", "Date/time")): \(r.dateOptions.compactMap { id in config.dateOptions.first { $0.id == id }?.label ?? id }.joined(separator: ", "))").font(.system(size: 12.5))
+                    Text("\(app.T("Ngày/giờ", "Date/time")): \(r.dateOptions.compactMap { id in config.dateOptions.first { $0.id == id }?.label ?? id }.joined(separator: ", "))").font(.app(size: 12.5))
                 }
                 if !r.locationOptions.isEmpty {
-                    Text("\(app.T("Địa điểm", "Location")): \(r.locationOptions.compactMap { id in config.locationOptions.first { $0.id == id }?.label ?? id }.joined(separator: ", "))").font(.system(size: 12.5))
+                    Text("\(app.T("Địa điểm", "Location")): \(r.locationOptions.compactMap { id in config.locationOptions.first { $0.id == id }?.label ?? id }.joined(separator: ", "))").font(.app(size: 12.5))
                 }
                 if let size = r.groupSize {
-                    Text("\(app.T("Số người", "Group size")): \(size)").font(.system(size: 12.5))
+                    Text("\(app.T("Số người", "Group size")): \(size)").font(.app(size: 12.5))
                 }
                 if let budget = r.budgetOption {
-                    Text("\(app.T("Ngân sách", "Budget")): \(config.budgetOptions.first { $0.id == budget }?.label ?? budget)").font(.system(size: 12.5))
+                    Text("\(app.T("Ngân sách", "Budget")): \(config.budgetOptions.first { $0.id == budget }?.label ?? budget)").font(.app(size: 12.5))
                 }
                 if !r.freeText.isEmpty {
-                    Text("\(app.T("Góp ý", "Notes")): \(r.freeText)").font(.system(size: 12.5))
+                    Text("\(app.T("Góp ý", "Notes")): \(r.freeText)").font(.app(size: 12.5))
                 }
             }
             .opacity(0.85)
             if app.surveyPublic?.status == "active" {
                 Button(app.T("Chỉnh sửa câu trả lời", "Edit Response")) { app.toggleSurveyEditMode(true) }
-                    .font(.system(size: 12.5)).underline()
+                    .font(.app(size: 12.5)).underline()
                     .accessibilityIdentifier("survey-edit-response")
             }
         }
@@ -314,7 +314,7 @@ struct SurveyPublicView: View {
     private func form(config: SurveyConfig) -> some View {
         VStack(alignment: .leading, spacing: 20) {
             VStack(alignment: .leading, spacing: 8) {
-                Text(app.T("Mức độ quan tâm", "Interest level")).font(.system(size: 12)).opacity(0.7)
+                Text(app.T("Mức độ quan tâm", "Interest level")).font(.app(size: 12)).opacity(0.7)
                 HStack(spacing: 8) {
                     ForEach(1...5, id: \.self) { n in
                         Button { app.surveyDraft.interestLevel = n } label: {
@@ -332,7 +332,7 @@ struct SurveyPublicView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text(app.T("Số người (tính cả bạn)", "Group size (including you)")).font(.system(size: 12)).opacity(0.7)
+                Text(app.T("Số người (tính cả bạn)", "Group size (including you)")).font(.app(size: 12)).opacity(0.7)
                 // Note 48: a stepper instead of typing; 0 = not answered.
                 CountStepper(value: app.surveyDraft.groupSize ?? 0,
                              range: 0...(config.groupSizeMax ?? 50),
@@ -344,7 +344,7 @@ struct SurveyPublicView: View {
 
             if !config.budgetOptions.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(app.T("Ngân sách", "Budget")).font(.system(size: 12)).opacity(0.7)
+                    Text(app.T("Ngân sách", "Budget")).font(.app(size: 12)).opacity(0.7)
                     FlowRow(spacing: 8) {
                         ForEach(config.budgetOptions) { opt in
                             Button { app.surveyDraft.budgetOption = opt.id } label: {
@@ -359,7 +359,7 @@ struct SurveyPublicView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text(app.T("Góp ý thêm (không bắt buộc)", "Additional suggestions (optional)")).font(.system(size: 12)).opacity(0.7)
+                Text(app.T("Góp ý thêm (không bắt buộc)", "Additional suggestions (optional)")).font(.app(size: 12)).opacity(0.7)
                 TextEditor(text: $app.surveyDraft.freeText)
                     .focused($focusedField, equals: .freeText)
                     .frame(height: 80)
@@ -375,13 +375,13 @@ struct SurveyPublicView: View {
                     Text(app.T(
                         "Đồng ý để người tổ chức liên hệ về sự kiện này (không phải quảng cáo).",
                         "OK for the host to contact me about this specific event (not marketing)."
-                    )).font(.system(size: 12))
+                    )).font(.app(size: 12))
                 }
             }
             .buttonStyle(.plain)
 
             if !app.surveyResponseError.isEmpty {
-                Text(app.surveyResponseError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                Text(app.surveyResponseError).font(.app(size: 12)).foregroundStyle(BanbeTheme.alert)
             }
 
             // Section 3 — "offer existing sign-in OR email-code
@@ -396,7 +396,7 @@ struct SurveyPublicView: View {
                         Button(app.T("Hoặc đăng nhập bằng tài khoản banbe có sẵn", "Or sign in with an existing banbe account")) {
                             app.requireAuth(returnTo: .surveyPublic, backTo: .surveyPublic)
                         }
-                        .font(.system(size: 12.5)).underline().opacity(0.75)
+                        .font(.app(size: 12.5)).underline().opacity(0.75)
                         .frame(maxWidth: .infinity, alignment: .center)
                     }
                 }
@@ -411,7 +411,7 @@ struct SurveyPublicView: View {
                     Task { await app.submitSurveyResponse() }
                 } label: {
                     Text(app.mySurveyResponse != nil ? app.T("Cập nhật câu trả lời", "Update response") : app.T("Gửi câu trả lời", "Submit response"))
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.app(size: 14, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
                         .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 10))
@@ -427,7 +427,7 @@ struct SurveyPublicView: View {
 
     private func optionSection(title: String, options: [SurveyOption], selection: Binding<[String]>) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.system(size: 12)).opacity(0.7)
+            Text(title).font(.app(size: 12)).opacity(0.7)
             FlowRow(spacing: 8) {
                 ForEach(options) { opt in
                     Button {
@@ -464,21 +464,21 @@ private struct RespondVerifyInlineView: View {
                 Text(app.surveyRespondIsNewAccount
                      ? app.T("Email này chưa có tài khoản banbe. Chúng tôi sẽ tạo một tài khoản tối giản gắn với email này để lưu câu trả lời của bạn.", "This email doesn't have a banbe account yet. We'll create a minimal one tied to this email so your response can be saved.")
                      : app.T("Email này đã có tài khoản banbe. Nhập mã để xác nhận đó là bạn.", "This email already has a banbe account. Enter the code to confirm it's you."))
-                    .font(.system(size: 12.5))
+                    .font(.app(size: 12.5))
                 TextField(app.T("Mã 8 chữ số", "8-digit code"), text: $app.surveyRespondCode)
                     .keyboardType(.numberPad)
                     .focused(focusedField, equals: .respondCode)
                     .padding(10)
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(app.palette.rule))
                 if !app.surveyRespondError.isEmpty {
-                    Text(app.surveyRespondError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                    Text(app.surveyRespondError).font(.app(size: 12)).foregroundStyle(BanbeTheme.alert)
                 }
                 Button(app.surveyRespondSending ? app.T("Đang xác nhận…", "Verifying…") : app.T("Xác nhận mã", "Confirm code")) {
                     focusedField.wrappedValue = nil
                     Task { await app.verifySurveyRespondCode() }
                 }
                 .disabled(app.surveyRespondSending)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.app(size: 13, weight: .semibold))
                 .frame(maxWidth: .infinity).padding(.vertical, 11)
                 .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 9))
                 .foregroundStyle(app.palette.paper)
@@ -489,7 +489,7 @@ private struct RespondVerifyInlineView: View {
             .id(SurveyFocusField.respondCode)
         } else {
             VStack(alignment: .leading, spacing: 10) {
-                Text(app.T("Xác nhận email để gửi câu trả lời", "Verify your email to submit")).font(.system(size: 12.5, weight: .semibold))
+                Text(app.T("Xác nhận email để gửi câu trả lời", "Verify your email to submit")).font(.app(size: 12.5, weight: .semibold))
                 TextField(app.T("Email của bạn", "Your email"), text: $email)
                     .keyboardType(.emailAddress).autocapitalization(.none)
                     .focused(focusedField, equals: .respondEmail)
@@ -505,18 +505,18 @@ private struct RespondVerifyInlineView: View {
                         Text(app.T(
                             "Tôi đồng ý xác nhận email này để gửi câu trả lời. Nếu email chưa có tài khoản banbe, một tài khoản tối giản sẽ được tạo, theo Chính sách quyền riêng tư của banbe.",
                             "I agree to verify this email to submit my response. If it doesn't have a banbe account, a minimal one will be created, under banbe's Privacy Policy."
-                        )).font(.system(size: 11.5))
+                        )).font(.app(size: 11.5))
                     }
                 }.buttonStyle(.plain)
                 if !app.surveyRespondError.isEmpty {
-                    Text(app.surveyRespondError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                    Text(app.surveyRespondError).font(.app(size: 12)).foregroundStyle(BanbeTheme.alert)
                 }
                 Button(app.surveyRespondSending ? app.T("Đang gửi…", "Sending…") : app.T("Gửi mã xác nhận", "Send verification code")) {
                     focusedField.wrappedValue = nil
                     Task { await app.sendSurveyRespondCode(email: email) }
                 }
                 .disabled(app.surveyRespondSending)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.app(size: 13, weight: .semibold))
                 .frame(maxWidth: .infinity).padding(.vertical, 11)
                 .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 9))
                 .foregroundStyle(app.palette.paper)

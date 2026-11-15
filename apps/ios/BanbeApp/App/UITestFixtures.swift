@@ -48,6 +48,11 @@ enum UITestFixture {
     static let simpleShell = UserDefaults.standard.bool(forKey: "uiFixtureSimpleShell")
     /// Note 71: `-uiFixturePolaroid YES` is an admin having turned on `polaroid_cards` (Calm Pass event cards).
     static let polaroid = UserDefaults.standard.bool(forKey: "uiFixturePolaroid")
+    /// Note 81: `-uiFixtureV23 YES` is an admin having turned on `home_v23` (with `simple_shell`); `-uiFixtureHeld 2`
+    /// (with `shell.event`) gives the viewer a 2-seat hold on the open event, `-uiFixtureHeldConfirmed YES` a ticket.
+    static let v23 = UserDefaults.standard.bool(forKey: "uiFixtureV23")
+    static let held = UserDefaults.standard.integer(forKey: "uiFixtureHeld")
+    static let heldConfirmed = UserDefaults.standard.bool(forKey: "uiFixtureHeldConfirmed")
     static let hostMode = UserDefaults.standard.bool(forKey: "uiFixtureHostMode")
     /// Simple Shell follow-up: `-uiFixtureGuest YES` (with a `shell.*` fixture) is a signed-out guest browsing.
     static let guest = UserDefaults.standard.bool(forKey: "uiFixtureGuest")
@@ -212,7 +217,7 @@ struct UITestFixtureRoot: View {
                                     Text("\(UITestFixture.homeMounts)").accessibilityIdentifier("fixture.homeMounts")
                                     Text("\(UITestFixture.homeBodies)").accessibilityIdentifier("fixture.homeBodies")
                                 }
-                                .font(.system(size: 1)).opacity(0.01)
+                                .font(.app(size: 1)).opacity(0.01)
                             }
                             .allowsHitTesting(false)
                         }
@@ -239,6 +244,7 @@ struct UITestFixtureRoot: View {
         if UITestFixture.tourV3 { app.featureFlags["onboarding_v3"] = true }
         if UITestFixture.simpleShell { app.featureFlags["simple_shell"] = true }
         if UITestFixture.polaroid { app.featureFlags["polaroid_cards"] = true }
+        if UITestFixture.v23 { app.featureFlags["simple_shell"] = true; app.featureFlags["home_v23"] = true }
         if UITestFixture.projectHub { app.featureFlags["event_project_hub"] = true; app.myProjectsLoaded = true }
         if UITestFixture.projectDemo { app.featureFlags[ProjectDemo.flag] = true }
         if UITestFixture.eventTypes {
@@ -420,6 +426,21 @@ struct UITestFixtureRoot: View {
             // reaches the collapsing nav bar (note 52).
             app.screen = .home
             app.goEvent(UITestFixture.eventKey)
+            // Note 81 phase e: a synthetic hold (or ticket) on the open event, after the page's own load, so the stamp
+            // slams in like a hold made from here.
+            if UITestFixture.held > 0 {
+                let key = UITestFixture.eventKey
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    let now = Date()
+                    let ok = UITestFixture.heldConfirmed
+                    let b = Booking(id: UUID(), eventId: key, userId: nil, qty: UITestFixture.held, totalVnd: 0, code: "1B159C",
+                                    status: ok ? "confirmed" : "pending", expiresAt: nil, paidMarkedAt: ok ? now : nil,
+                                    cancelledAt: nil, cancelReason: nil, createdAt: now, paymentState: ok ? .confirmed : .holding,
+                                    holdExpiresAt: ok ? nil : now.addingTimeInterval(25 * 60), verifyDueAt: nil, admissionToken: UUID())
+                    app.booking = b
+                    app.eventBookings = [b]
+                }
+            }
         case "publicProfile":
             // Note 68: the signed-in account's own identity card (synthetic data). Interests repeat "Admin" on purpose:
             // the real banbetestadmin row does, and it used to show two identical chips.
@@ -435,6 +456,20 @@ struct UITestFixtureRoot: View {
             }
             app.publicProfileLoading = false
             app.screen = .publicProfile
+        case "hostProfile":
+            // Note 81: a host's page (synthetic data) for the v2.3 look; with `-uiFixtureV23 YES`.
+            let json: [String: Any] = ["success": true, "id": "fx-org", "name": "Bếp Nhỏ", "about": "Long tables, slow dinners, new friends.",
+                                       "verified": false, "hosting_since_year": 2025, "event_count": 3, "follower_count": 12, "following": false]
+            if let data = try? JSONSerialization.data(withJSONObject: json) {
+                app.organizerProfile = try? JSONDecoder().decode(OrganizerProfile.self, from: data)
+            }
+            app.organizerProfileID = "fx-org"
+            app.organizerProfileLoading = false
+            app.organizerProfileBackScreen = .home
+            var up = OrganizerUpcomingEvent(id: "bepnho", name: "Bếp Nhỏ №12")
+            up.startsAt = Date().addingTimeInterval(7 * 86_400)
+            app.organizerProfileUpcoming = [up]
+            app.screen = .organizerProfile
         default: app.screen = .home
         }
     }

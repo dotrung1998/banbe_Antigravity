@@ -20,7 +20,7 @@ struct RecipeMeter: View {
         Button(action: onOpen) {
             HStack(spacing: 10) {
                 Text(app.T("Công thức", "Recipe") + " \(score.good)/\(score.total)")
-                    .font(.system(size: 12.5, weight: .bold)).lineLimit(1).fixedSize()
+                    .font(.app(size: 12.5, weight: .bold)).lineLimit(1).fixedSize()
                 HStack(spacing: 3) {
                     ForEach(checks) { c in
                         Capsule()
@@ -31,7 +31,7 @@ struct RecipeMeter: View {
                 }
                 .accessibilityHidden(true)
                 Text(app.T("Xem gợi ý", "See tips") + " ›")
-                    .font(.system(size: 12, weight: .semibold)).opacity(0.7).lineLimit(1).fixedSize()
+                    .font(.app(size: 12, weight: .semibold)).opacity(0.7).lineLimit(1).fixedSize()
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 12)
@@ -68,7 +68,7 @@ struct RecipeList: View {
                 let copy = EventRecipe.copy(c, app.T, currency: app.createCurrency)
                 HStack(alignment: .top, spacing: 12) {
                     Text(recipeMark(c.status))
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.app(size: 12, weight: .bold))
                         .foregroundStyle(c.status == .good ? app.palette.paper : c.status == .improve ? app.palette.honey : app.palette.ink)
                         .frame(width: 22, height: 22)
                         .background(Circle().fill(c.status == .good ? app.palette.ink.opacity(0.85) : .clear))
@@ -76,16 +76,16 @@ struct RecipeList: View {
                         .accessibilityLabel(c.status == .good ? app.T("Đã ổn", "Done")
                                             : c.status == .improve ? app.T("Nên cải thiện", "Could improve") : app.T("Còn thiếu", "Missing"))
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(copy.title).font(.system(size: 14, weight: .semibold))
+                        Text(copy.title).font(.app(size: 14, weight: .semibold))
                         if !compact || c.status != .good {
-                            Text(copy.detail).font(.system(size: 12.5)).opacity(0.72).fixedSize(horizontal: false, vertical: true)
+                            Text(copy.detail).font(.app(size: 12.5)).opacity(0.72).fixedSize(horizontal: false, vertical: true)
                         }
                     }
                     Spacer(minLength: 0)
                     if c.status != .good, let onFix {
                         Button { onFix(c) } label: {
                             Text(app.T("Sửa", "Fix"))
-                                .font(.system(size: 12.5, weight: .semibold))
+                                .font(.app(size: 12.5, weight: .semibold))
                                 .padding(.horizontal, 12).frame(minHeight: 32)
                                 .overlay(Capsule().strokeBorder(app.palette.rule, lineWidth: 1))
                                 .frame(minHeight: 44)
@@ -123,7 +123,7 @@ struct RecipeSheet: View {
                         .accessibilityAddTraits(.isHeader)
                     Spacer()
                     Button(action: onClose) {
-                        Image(systemName: "xmark").font(.system(size: 13, weight: .bold))
+                        Image(systemName: "xmark").font(.app(size: 13, weight: .bold))
                             .frame(width: 34, height: 34)
                             .background(app.palette.ink.opacity(0.07), in: Circle())
                             .frame(width: 44, height: 44)
@@ -138,7 +138,7 @@ struct RecipeSheet: View {
                               ? app.T("Số liệu từ \(n ?? 0) sự kiện tương tự trên banbe.", "Numbers come from \(n ?? 0) similar events on banbe.")
                               : app.T("Chưa đủ sự kiện tương tự để so sánh. Đây là mẹo chung.", "Not enough similar events to compare yet. These are general tips."))
                      + " " + app.T("Không bắt buộc để gửi.", "Never required to submit."))
-                    .font(.system(size: 12.5)).opacity(0.7)
+                    .font(.app(size: 12.5)).opacity(0.7)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 22).padding(.top, 18).padding(.bottom, 10)
@@ -179,7 +179,7 @@ struct RecipeInsight: View {
                             .accessibilityHidden(true)
                         Text(text).opacity(0.85).fixedSize(horizontal: false, vertical: true)
                         Button(app.T("Vì sao?", "Why?")) { withAnimation(.easeOut(duration: 0.15)) { open.toggle() } }
-                            .font(.system(size: 12.5, weight: .semibold))
+                            .font(.app(size: 12.5, weight: .semibold))
                             .underline()
                             .opacity(0.75)
                             .buttonStyle(.plain)
@@ -189,7 +189,7 @@ struct RecipeInsight: View {
                         Text(copy.detail).opacity(0.7).fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                .font(.system(size: 12.5))
+                .font(.app(size: 12.5))
                 .foregroundStyle(app.palette.ink)
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier(identifier)
@@ -244,7 +244,7 @@ struct PriceMarketView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(app.T("\(catLabel) · trung vị \(money(price.median)) · \(price.n ?? 0) sự kiện",
                        "\(catLabel) · median \(money(price.median)) · \(price.n ?? 0) events"))
-                .font(.system(size: 12)).opacity(0.8)
+                .font(.app(size: 12)).opacity(0.8)
             GeometryReader { geo in
                 let track = max(geo.size.width - k, 1)
                 let x = k / 2 + track * fraction
@@ -277,7 +277,7 @@ struct PriceMarketView: View {
                             Image(systemName: "chevron.left")
                             Image(systemName: "chevron.right")
                         }
-                        .font(.system(size: 8, weight: .heavy))
+                        .font(.app(size: 8, weight: .heavy))
                         .foregroundStyle(.white)
                     }
                     .frame(width: k, height: k)
@@ -293,7 +293,7 @@ struct PriceMarketView: View {
                 .overlay(alignment: .topLeading) {
                     if dragging {
                         Text(money(value))
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.app(size: 12, weight: .bold))
                             .foregroundStyle(app.palette.paper)
                             .padding(.horizontal, 9).padding(.vertical, 3)
                             .background(app.palette.ink, in: Capsule())
@@ -343,7 +343,7 @@ struct PriceMarketView: View {
                 Spacer()
                 Text(money(price.max))
             }
-            .font(.system(size: 11)).opacity(0.6)
+            .font(.app(size: 11)).opacity(0.6)
             .accessibilityHidden(true)
         }
         .foregroundStyle(app.palette.ink)

@@ -224,11 +224,11 @@ struct ConfirmedView: View {
                         app.screen = app.confirmedBack
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: "chevron.left").font(.system(size: 14, weight: .semibold))
+                            Image(systemName: "chevron.left").font(.app(size: 14, weight: .semibold))
                             Text(app.confirmedBack == .notifications ? app.T("Thông báo", "Notifications")
                                  : app.confirmedBack == .accountGroup ? app.T("Tài khoản", "Account")
                                  : app.T("Quay lại", "Back"))
-                                .font(.system(size: 14))
+                                .font(.app(size: 14))
                         }
                         .foregroundStyle(app.palette.ink)
                         .padding(.vertical, 8).padding(.trailing, 12)
@@ -244,10 +244,10 @@ struct ConfirmedView: View {
                 if demo {
                     HStack {
                         Text(demoNotice ?? app.T("Demo · dữ liệu mẫu · không lưu gì", "Demo · sample data · nothing is saved"))
-                            .font(.footnote)
+                            .font(.app(.footnote))
                         Spacer(minLength: 8)
                         Button(app.T("Thoát demo", "Exit demo")) { app.endTicketDemo(goBack: true) }
-                            .font(.footnote.weight(.bold)).frame(minHeight: 44)
+                            .font(.app(.footnote).weight(.bold)).frame(minHeight: 44)
                             .accessibilityIdentifier("confirmed.demo.exit")
                     }
                     .foregroundStyle(app.palette.ink)
@@ -448,8 +448,8 @@ struct ConfirmedView: View {
                     }
                 } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: "ellipsis").font(.system(size: 15, weight: .bold))
-                        Text(app.T("Thêm tuỳ chọn", "More options")).font(.system(size: 14.5, weight: .semibold))
+                        Image(systemName: "ellipsis").font(.app(size: 15, weight: .bold))
+                        Text(app.T("Thêm tuỳ chọn", "More options")).font(.app(size: 14.5, weight: .semibold))
                     }
                     .foregroundStyle(app.palette.ink)
                     .frame(maxWidth: .infinity, minHeight: 44)
@@ -461,7 +461,7 @@ struct ConfirmedView: View {
             }
             ForEach([app.calendarError, app.receiptRequestError].filter { !$0.isEmpty }, id: \.self) { err in
                 Text(err)
-                    .font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                    .font(.app(size: 11.5)).foregroundStyle(BanbeTheme.alert)
                     .multilineTextAlignment(.center)
             }
             // Note 78: the policy paragraph is unchanged and only collapsed. Hidden for an expired hold, as
@@ -479,7 +479,7 @@ struct ConfirmedView: View {
             Spacer()
             HStack(spacing: 6) {
                 Circle().fill(toneColor(tone)).frame(width: 7, height: 7).accessibilityHidden(true)
-                Text(label).font(.caption.weight(.semibold)).dynamicTypeSize(...DynamicTypeSize.accessibility1)
+                Text(label).font(.app(.caption).weight(.semibold)).dynamicTypeSize(...DynamicTypeSize.accessibility1)
             }
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("confirmed.status")
@@ -506,8 +506,8 @@ struct ConfirmedView: View {
         } else if isPaid, booking.isGifted {
             // No QR: this seat belongs to the recipient now, and the purchaser already downloaded their copy of the PDF.
             VStack(spacing: 3) {
-                Text(app.T("Đã tặng", "Gifted")).font(.caption.weight(.semibold)).foregroundStyle(app.palette.ink2)
-                Text(booking.recipientName ?? "").font(.title3.weight(.semibold))
+                Text(app.T("Đã tặng", "Gifted")).font(.app(.caption).weight(.semibold)).foregroundStyle(app.palette.ink2)
+                Text(booking.recipientName ?? "").font(.app(.title3).weight(.semibold))
             }
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("confirmed.gifted")
@@ -518,11 +518,11 @@ struct ConfirmedView: View {
                 TicketQrView(mode: qrMode, value: booking.admissionQRCodeValue, size: 220, padding: 10, label: qrLabel)
                 if let code = booking.code, !code.isEmpty {
                     Text(app.T("Mã vào cửa", "Entry code").uppercased())
-                        .font(.caption2.weight(.semibold)).tracking(0.8).foregroundStyle(app.palette.ink3)
+                        .font(.app(.caption2).weight(.semibold)).tracking(0.8).foregroundStyle(app.palette.ink3)
                         .padding(.top, 16)
                     // A locked / void / ended ticket shows a mask, never the real code.
                     Text(qrShows ? TicketStatus.formatEntryCode(code) : "••• •••")
-                        .font(.system(.title, design: .monospaced).weight(.semibold)).tracking(3)
+                        .font(.app(.title, design: .monospaced).weight(.semibold)).tracking(3)
                         .lineLimit(1).minimumScaleFactor(0.6)
                         .opacity(qrShows ? 1 : 0.35)
                         .padding(.top, 4)
@@ -530,7 +530,7 @@ struct ConfirmedView: View {
                 }
                 if qrShows {
                     Text(app.T("Đưa mã này ở cửa", "Show this code at the door"))
-                        .font(.footnote).foregroundStyle(app.palette.ink2).padding(.top, 8)
+                        .font(.app(.footnote)).foregroundStyle(app.palette.ink2).padding(.top, 8)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -544,12 +544,12 @@ struct ConfirmedView: View {
         } label: {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(app.T("Xem thông tin chuyển khoản", "See payment details")).font(.body.weight(.semibold))
+                    Text(app.T("Xem thông tin chuyển khoản", "See payment details")).font(.app(.body).weight(.semibold))
                     Text(app.T("Số tài khoản, số tiền và nội dung cần ghi.", "Account number, amount and the reference to use."))
-                        .font(.caption).multilineTextAlignment(.leading)
+                        .font(.app(.caption)).multilineTextAlignment(.leading)
                 }
                 Spacer(minLength: 0)
-                Image(systemName: "chevron.right").font(.system(size: 14, weight: .semibold))
+                Image(systemName: "chevron.right").font(.app(size: 14, weight: .semibold))
             }
             .foregroundStyle(app.palette.paper)
             .padding(.horizontal, 18).padding(.vertical, 10)
@@ -567,8 +567,8 @@ struct ConfirmedView: View {
                 if reduceMotion { policyOpen.toggle() } else { withAnimation(.easeOut(duration: 0.2)) { policyOpen.toggle() } }
             } label: {
                 HStack(spacing: 6) {
-                    Text(app.T("Về tiền và hoàn tiền", "About money and refunds")).font(.footnote.weight(.semibold))
-                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).rotationEffect(.degrees(policyOpen ? 90 : 0))
+                    Text(app.T("Về tiền và hoàn tiền", "About money and refunds")).font(.app(.footnote).weight(.semibold))
+                    Image(systemName: "chevron.right").font(.app(size: 10, weight: .bold)).rotationEffect(.degrees(policyOpen ? 90 : 0))
                 }
                 .foregroundStyle(app.palette.ink2)
                 .frame(minHeight: 44).padding(.horizontal, 8)
@@ -578,7 +578,7 @@ struct ConfirmedView: View {
             .accessibilityValue(policyOpen ? app.T("Đang mở", "Expanded") : app.T("Đang thu gọn", "Collapsed"))
             .accessibilityIdentifier("confirmed.policyToggle")
             if policyOpen {
-                Text(policyNote).font(.system(size: 13.5)).lineSpacing(3)
+                Text(policyNote).font(.app(size: 13.5)).lineSpacing(3)
                     .foregroundStyle(app.palette.ink).fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("confirmed.policyText")
             }
@@ -811,7 +811,7 @@ struct ConfirmedView: View {
             Group {
                 if let icon {
                     Image(systemName: icon)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.app(size: 16, weight: .semibold))
                         .foregroundStyle(app.palette.clay)
                         .frame(width: 36, height: 36)
                         .background(app.palette.clayBg, in: Circle())
@@ -820,7 +820,7 @@ struct ConfirmedView: View {
                         .overlay(alignment: .bottomTrailing) {
                             if done {
                                 Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 14, weight: .bold))
+                                    .font(.app(size: 14, weight: .bold))
                                     .foregroundStyle(.white, Color(red: 0.2, green: 0.62, blue: 0.36))
                                     .offset(x: 5, y: 5)
                             }
@@ -828,7 +828,7 @@ struct ConfirmedView: View {
                 }
             }
             Text(title)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.app(size: 14, weight: .semibold))
                 .multilineTextAlignment(.leading)
                 .lineLimit(2).minimumScaleFactor(0.85)
                 .fixedSize(horizontal: false, vertical: true)

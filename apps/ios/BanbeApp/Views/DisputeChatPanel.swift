@@ -192,7 +192,7 @@ struct DisputeChatPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             header
             Text(temporaryChatNotice)
-                .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
+                .font(.app(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
             statusBlock
             if let refundClaimID { PreviousDisputeRounds(claimID: refundClaimID) }
             messageList
@@ -200,7 +200,7 @@ struct DisputeChatPanel: View {
             actions
             if !app.disputeChatError.isEmpty && !(messages.isEmpty && isActiveChat && app.disputeChatInitialLoadDone) {
                 Text(app.disputeChatError)
-                    .font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                    .font(.app(size: 11.5)).foregroundStyle(BanbeTheme.alert)
                     .accessibilityIdentifier("disputeChat.error")
             }
         }
@@ -250,17 +250,17 @@ struct DisputeChatPanel: View {
     private var header: some View {
         HStack(alignment: .center, spacing: 8) {
             Text(app.T("Trao đổi trực tiếp về tranh chấp này", "Direct chat about this dispute"))
-                .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                .font(.app(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
             Spacer(minLength: 0)
             if !completed {
                 Text(app.T("Tranh chấp đang diễn ra", "Dispute in progress"))
-                    .font(.system(size: 10.5, weight: .bold))
+                    .font(.app(size: 10.5, weight: .bold))
                     .foregroundStyle(BanbeTheme.alert)
                     .accessibilityIdentifier("disputeChat.inProgress")
             }
             if !messages.isEmpty {
                 Text(app.T("\(messages.count) tin nhắn", "\(messages.count) messages"))
-                    .font(.system(size: 10))
+                    .font(.app(size: 10))
                     .foregroundStyle(app.palette.ink.opacity(0.5))
                     .accessibilityIdentifier("disputeChat.count")
             }
@@ -285,12 +285,12 @@ struct DisputeChatPanel: View {
         if completed {
             VStack(alignment: .leading, spacing: 3) {
                 Text(app.T("Tranh chấp đã hoàn tất", "Dispute completed"))
-                    .font(.system(size: 11.5, weight: .semibold))
+                    .font(.app(size: 11.5, weight: .semibold))
                     .foregroundStyle(app.palette.ink.opacity(0.7))
                     .accessibilityIdentifier("disputeChat.completed")
                 if let deletionDeadlineLabel {
                     Text(deletionDeadlineLabel)
-                        .font(.system(size: 10.5))
+                        .font(.app(size: 10.5))
                         .foregroundStyle(app.palette.ink.opacity(0.55))
                         .accessibilityIdentifier("disputeChat.deletionDeadline")
                 }
@@ -300,13 +300,13 @@ struct DisputeChatPanel: View {
                          : closedBy == "guest"
                          ? app.T("Đã đóng bởi khách.", "Closed by the guest.")
                          : app.T("Đã đóng bởi người tổ chức.", "Closed by the organizer."))
-                        .font(.system(size: 10.5))
+                        .font(.app(size: 10.5))
                         .foregroundStyle(app.palette.ink.opacity(0.55))
                 }
             }
         } else if let resolutionNote = app.disputeChatThread?.resolutionNote, !resolutionNote.isEmpty {
             Text(resolutionNote)
-                .font(.system(size: 10.5))
+                .font(.app(size: 10.5))
                 .foregroundStyle(app.palette.ink.opacity(0.55))
         }
     }
@@ -327,18 +327,18 @@ struct DisputeChatPanel: View {
                 // A failed first fetch is not "no messages".
                 VStack(alignment: .leading, spacing: 6) {
                     Text(app.disputeChatError)
-                        .font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                        .font(.app(size: 11.5)).foregroundStyle(BanbeTheme.alert)
                     Button(app.T("Thử lại", "Retry")) { Task { await reload() } }
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.app(size: 12, weight: .semibold))
                         .accessibilityIdentifier("disputeChat.retry")
                 }
             } else if !loaded {
                 Text(app.T("Đang tải…", "Loading…"))
-                    .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                    .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
                     .accessibilityIdentifier("disputeChat.loading")
             } else if messages.isEmpty {
                 Text(app.T("Chưa có tin nhắn nào.", "No messages yet."))
-                    .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                    .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
                     .accessibilityIdentifier("disputeChat.empty")
             } else {
                 ForEach(messages) { m in
@@ -364,7 +364,7 @@ struct DisputeChatPanel: View {
         let isLast = m.id == messages.last?.id
         return VStack(alignment: mine ? .trailing : .leading, spacing: 2) {
             Text(senderLabel(m) + " ▪︎ " + m.createdAt.formatted())
-                .font(.system(size: 10)).foregroundStyle(app.palette.ink.opacity(0.55))
+                .font(.app(size: 10)).foregroundStyle(app.palette.ink.opacity(0.55))
             if let path = m.attachmentPath, !path.isEmpty {
                 // Same two shapes the ordinary chat draws, from the same
                 // shared geometry (AttachmentBubble.boxSize), so a photo looks
@@ -379,7 +379,7 @@ struct DisputeChatPanel: View {
                 // single line's height inside this fixed-width column — the other
                 // half of the "messages are cut off" bug.
                 Text(m.body)
-                    .font(.system(size: 13))
+                    .font(.app(size: 13))
                     .foregroundStyle(app.palette.ink)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(8)
@@ -435,7 +435,7 @@ struct DisputeChatPanel: View {
                     Text(m.body)
                         .lineLimit(2)
                 }
-                .font(.system(size: 12.5))
+                .font(.app(size: 12.5))
                 .foregroundStyle(app.palette.ink)
                 .padding(.horizontal, 14).padding(.vertical, 10)
                 .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -447,7 +447,7 @@ struct DisputeChatPanel: View {
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
                 Text(app.T("Đang tải tệp…", "Loading attachment…"))
-                    .font(.system(size: 12))
+                    .font(.app(size: 12))
             }
             .foregroundStyle(app.palette.ink.opacity(0.6))
             .padding(8)
@@ -521,7 +521,7 @@ struct DisputeChatPanel: View {
                 )
             }
             TextField(app.T("Nhắn gì đó…", "Say something…"), text: $app.disputeChatDraft, axis: .vertical)
-                .font(.system(size: 13)).padding(10)
+                .font(.app(size: 13)).padding(10)
                 .lineLimit(1...4)
                 .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .accessibilityIdentifier("disputeChat.input")
@@ -530,7 +530,7 @@ struct DisputeChatPanel: View {
                 Task { await send() }
             } label: {
                 Text(app.T("Gửi", "Send"))
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.app(size: 13, weight: .semibold))
                     .padding(.horizontal, 16).padding(.vertical, 10)
                     .background(app.disputeChatDraft.trimmingCharacters(in: .whitespaces).isEmpty
                                 ? app.palette.ink.opacity(0.35) : app.palette.ink,
@@ -563,7 +563,7 @@ struct DisputeChatPanel: View {
                     Text(exportRunning
                          ? app.T("Đang chuẩn bị…", "Preparing…")
                          : app.T("Tải bản ghi", "Download transcript"))
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.app(size: 12, weight: .semibold))
                         .foregroundStyle(app.palette.ink.opacity(0.8))
                         .underline()
                 }
@@ -580,7 +580,7 @@ struct DisputeChatPanel: View {
                         flowRequest = .close
                     } label: {
                         Text(app.T("Đóng tranh chấp", "Close dispute"))
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.app(size: 12, weight: .semibold))
                             .foregroundStyle(claim.refundSettled ? BanbeTheme.alert : app.palette.ink.opacity(0.35))
                             .underline()
                     }
@@ -592,7 +592,7 @@ struct DisputeChatPanel: View {
                         flowRequest = .deleteCopy
                     } label: {
                         Text(app.T("Xoá bản của tôi", "Delete my copy"))
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.app(size: 12, weight: .semibold))
                             .foregroundStyle(BanbeTheme.alert)
                             .underline()
                     }
@@ -604,7 +604,7 @@ struct DisputeChatPanel: View {
             }
             if !app.disputeCloseError.isEmpty {
                 Text(app.disputeCloseError)
-                    .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
+                    .font(.app(size: 11)).foregroundStyle(BanbeTheme.alert)
                     .padding(.top, 2)
                     .accessibilityIdentifier("disputeChat.closeError")
             }
@@ -698,7 +698,7 @@ private struct DisputeAttachmentViewerView: View {
             stage
             if let actionMessage {
                 Text(actionMessage)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.app(size: 12, weight: .semibold))
                     .foregroundStyle(app.palette.ink)
                     .padding(.horizontal, 14).padding(.vertical, 8)
                     .background(Color.white.opacity(0.92), in: Capsule())
@@ -765,24 +765,24 @@ private struct DisputeAttachmentViewerView: View {
     private var topBar: some View {
         HStack {
             Button { closeTapped() } label: {
-                Image(systemName: "xmark").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
+                Image(systemName: "xmark").font(.app(size: 18, weight: .semibold)).foregroundStyle(.white)
                     .frame(width: 44, height: 44).contentShape(Rectangle())
             }
             .accessibilityIdentifier("disputeChat.photoViewer.close")
             .padding(.leading, -10)
             Spacer()
             Button { Task { await saveTapped() } } label: {
-                Image(systemName: "arrow.down.circle").font(.system(size: 18)).foregroundStyle(.white)
+                Image(systemName: "arrow.down.circle").font(.app(size: 18)).foregroundStyle(.white)
                     .frame(width: 44, height: 44).contentShape(Rectangle())
             }
             .accessibilityIdentifier("disputeChat.photoViewer.save")
             Button { shareTapped() } label: {
-                Image(systemName: "square.and.arrow.up").font(.system(size: 18)).foregroundStyle(.white)
+                Image(systemName: "square.and.arrow.up").font(.app(size: 18)).foregroundStyle(.white)
                     .frame(width: 44, height: 44).contentShape(Rectangle())
             }
             .accessibilityIdentifier("disputeChat.photoViewer.share")
             Button { copyTapped() } label: {
-                Image(systemName: "doc.on.doc").font(.system(size: 18)).foregroundStyle(.white)
+                Image(systemName: "doc.on.doc").font(.app(size: 18)).foregroundStyle(.white)
                     .frame(width: 44, height: 44).contentShape(Rectangle())
             }
             .accessibilityIdentifier("disputeChat.photoViewer.copy")
@@ -799,12 +799,12 @@ private struct DisputeAttachmentViewerView: View {
     private var bottomBar: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(app.T("Gửi bởi \(item.senderLabel)", "Sent by \(item.senderLabel)"))
-                .font(.system(size: 13, weight: .semibold))
+                .font(.app(size: 13, weight: .semibold))
             Text(app.T(
                 "Tệp đính kèm của tranh chấp tạm thời: tự xoá cùng bản ghi khi tranh chấp kết thúc. Hãy lưu ảnh nếu bạn cần giữ lại.",
                 "Temporary dispute attachment: it is deleted with this transcript when the dispute ends. Save the photo now if you need to keep it."
             ))
-            .font(.system(size: 12))
+            .font(.app(size: 12))
             .opacity(0.85)
         }
         .foregroundStyle(.white)

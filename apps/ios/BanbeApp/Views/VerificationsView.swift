@@ -51,7 +51,7 @@ struct VerificationsView: View {
 
                 HStack(spacing: 10) {
                     Image(systemName: "checklist")
-                        .font(.system(size: 20, weight: .medium))
+                        .font(.app(size: 20, weight: .medium))
                         .frame(width: 34, height: 34)
                         .background((ROW_ACCENT_COLORS["hostOps"] ?? .clear).opacity(0.33), in: Circle())
                     Text(app.verificationsFocusBookingID != nil ? app.T("Chi tiết thanh toán", "Payment Detail") : app.T("Chờ xác nhận", "Awaiting Verification"))
@@ -61,13 +61,13 @@ struct VerificationsView: View {
                     .accessibilityIdentifier("verifications.title")
                 Text(app.T("Khách đã báo chuyển khoản. Đối chiếu với sao kê rồi xác nhận: chỗ của họ đang được giữ và đồng hồ đã dừng.",
                            "These guests reported a transfer. Check your statement, then confirm: their seat is held and their clock has stopped."))
-                    .font(.system(size: 12.5))
+                    .font(.app(size: 12.5))
                     .foregroundStyle(app.palette.ink.opacity(0.75))
                     .padding(.top, 8)
 
                 if app.verificationsFocusBookingID == nil, overdueCount > 0 {
                     Text("\(overdueCount) " + app.T("khoản đã quá hạn xác nhận.", "past the response window."))
-                        .font(.system(size: 12.5, weight: .semibold))
+                        .font(.app(size: 12.5, weight: .semibold))
                         .foregroundStyle(BanbeTheme.alert)
                         .padding(.top, 10)
                 }
@@ -75,7 +75,7 @@ struct VerificationsView: View {
                 if app.verificationsFocusBookingID != nil {
                     Button { app.verificationsFocusBookingID = nil } label: {
                         Text(app.T("‹ Xem tất cả", "‹ View all"))
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.app(size: 12, weight: .semibold))
                             .foregroundStyle(app.palette.ink.opacity(0.7))
                     }
                     .buttonStyle(.plain)
@@ -93,7 +93,7 @@ struct VerificationsView: View {
                              ? app.T("Khoản thanh toán này không còn trong danh sách chờ nữa.", "This payment is no longer in the pending queue.")
                              : app.T("Không có khoản nào đang chờ. Thanh toán khớp nội dung chuyển khoản sẽ được xác nhận tự động.",
                                      "Nothing waiting. Payments that match their reference are confirmed automatically."))
-                            .font(.system(size: 12.5))
+                            .font(.app(size: 12.5))
                             .foregroundStyle(app.palette.ink.opacity(0.75))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .accessibilityIdentifier("verifications.empty")
@@ -116,14 +116,14 @@ struct VerificationsView: View {
                 // the permanent ones.
                 if app.verificationsFocusBookingID == nil, !app.openDisputes.isEmpty {
                     Text(app.T("Đang chờ banbe quyết định", "Awaiting banbe's decision"))
-                        .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
+                        .font(.app(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
                         .padding(.top, 24)
                     VStack(spacing: 12) {
                         ForEach(app.openDisputes) { d in
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
                                     Text("\(d.guestName ?? app.T("Khách", "Guest")) ▪︎ \(d.eventName ?? "")")
-                                        .font(.system(size: 14)).foregroundStyle(app.palette.ink)
+                                        .font(.app(size: 14)).foregroundStyle(app.palette.ink)
                                     Spacer(minLength: 8)
                                     Text(formatVnd(d.totalVnd)).font(BanbeTheme.display(16))
                                 }
@@ -132,7 +132,7 @@ struct VerificationsView: View {
                                 } label: {
                                     HStack(spacing: 4) {
                                         Text(app.T("Mở chat với khách ›", "Open chat with the goer ›"))
-                                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink)
+                                            .font(.app(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink)
                                         Spacer(minLength: 0)
                                     }
                                     .contentShape(Rectangle())
@@ -172,7 +172,7 @@ struct VerificationsView: View {
                     let showEmpty = !hasRows && !showLoading && !showError
                     VStack(alignment: .leading, spacing: 12) {
                         Text(app.T("Hoàn tiền", "Refunds"))
-                            .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
+                            .font(.app(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
                             .accessibilityIdentifier("refundQueue.title")
                             .onTapGesture { diagTapCount += 1; if diagTapCount >= 5 { diagTapCount = 0; diagOpen.toggle() } }
                         // Point 1's own explicit requirement — the host does
@@ -185,21 +185,21 @@ struct VerificationsView: View {
                                 "Khách đã chọn tài khoản nhận hoàn tiền của họ. Bạn chuyển khoản trực tiếp cho khách rồi đánh dấu đã hoàn tiền. Không cần tạo phương thức nhận tiền riêng.",
                                 "The guest has already chosen their own refund destination. You transfer to them directly, then mark it sent. No receiving payment method of your own is needed here."
                             ))
-                            .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.6))
+                            .font(.app(size: 11)).foregroundStyle(app.palette.ink.opacity(0.6))
                         }
                         if showLoading {
-                            Text(app.T("Đang tải…", "Loading…")).font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                            Text(app.T("Đang tải…", "Loading…")).font(.app(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.6))
                         }
                         if showError {
                             VStack(alignment: .leading, spacing: 8) {
-                                Text(app.refundQueueError).font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert)
+                                Text(app.refundQueueError).font(.app(size: 12.5)).foregroundStyle(BanbeTheme.alert)
                                 Button(app.T("Thử lại", "Retry")) { Task { await app.loadRefundQueue() } }
-                                    .font(.system(size: 12.5, weight: .semibold)).underline()
+                                    .font(.app(size: 12.5, weight: .semibold)).underline()
                             }
                         }
                         if showEmpty {
                             Text(app.T("Không có khoản hoàn tiền nào cần xử lý.", "No refunds need action right now."))
-                                .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                                .font(.app(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.6))
                         }
                         if diagOpen { RefundDiagnosticsPanel() }
                         VStack(spacing: 12) {
@@ -271,7 +271,7 @@ struct VerificationsView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(claim.guestName.isEmpty ? app.T("Khách", "Guest") : claim.guestName)
                         .font(BanbeTheme.display(16))
-                    Text(claim.eventName).font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    Text(claim.eventName).font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
                 }
                 Spacer(minLength: 8)
                 Text(formatVnd(claim.amountVnd)).font(BanbeTheme.display(19))
@@ -289,7 +289,7 @@ struct VerificationsView: View {
                 // share (migration 129).
                 VStack(alignment: .leading, spacing: 6) {
                     Text(app.T("Khách báo chưa nhận được tiền", "Guest reports not receiving this refund"))
-                        .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
+                        .font(.app(size: 12.5, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
                         .accessibilityIdentifier("refundQueue.disputed")
                     RefundDisputeEntry(
                         refundClaimId: claim.id,
@@ -305,12 +305,12 @@ struct VerificationsView: View {
                 // actionable here, exactly like AttendanceView's own Refund
                 // Center — never a "Mark refund sent" CTA for it.
                 Text(app.T("Khách chưa chọn tài khoản nhận hoàn tiền.", "The guest hasn't chosen a refund destination yet."))
-                    .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
+                    .font(.app(size: 11)).foregroundStyle(BanbeTheme.alert)
                     .accessibilityIdentifier("refundQueue.needsDestination")
             } else if refundNoteFor == claim.id {
                 VStack(alignment: .leading, spacing: 8) {
                     TextField(app.T("Ghi chú/mã tham chiếu (không bắt buộc)", "Note/reference (optional)"), text: $refundNoteText)
-                        .font(.system(size: 13))
+                        .font(.app(size: 13))
                         .padding(11)
                         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
                         .accessibilityIdentifier("refundQueue.note")
@@ -332,10 +332,10 @@ struct VerificationsView: View {
                     PhotosPicker(selection: $refundProofItem, matching: .images) {
                         HStack {
                             Text(proofTitle)
-                                .font(.system(size: 13)).foregroundStyle(inkColor)
+                                .font(.app(size: 13)).foregroundStyle(inkColor)
                             Spacer()
                             Text(proofAction)
-                                .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(inkColor.opacity(0.75))
+                                .font(.app(size: 11.5, weight: .semibold)).foregroundStyle(inkColor.opacity(0.75))
                         }
                         .padding(11)
                         .background(fieldColor, in: RoundedRectangle(cornerRadius: 10))
@@ -386,13 +386,13 @@ struct VerificationsView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(claim.guestName.isEmpty ? app.T("Khách", "Guest") : claim.guestName)
                         .font(BanbeTheme.display(16))
-                    Text(claim.eventName).font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    Text(claim.eventName).font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
                 }
                 Spacer(minLength: 8)
                 Text(formatVnd(claim.amountVnd)).font(BanbeTheme.display(19))
             }
             Text(app.T("Đang chờ khách xác nhận đã nhận tiền.", "Awaiting guest confirmation."))
-                .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
+                .font(.app(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
         }
         .padding(14)
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -429,7 +429,7 @@ struct VerificationsView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(row.guestName ?? app.T("Khách", "Guest")).font(BanbeTheme.display(16))
                     Text("\(row.eventName ?? "") ▪︎ \(row.qty) " + app.T("vé", "tix"))
-                        .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                        .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
                 }
                 Spacer(minLength: 0)
                 Text(formatVnd(row.totalVnd)).font(BanbeTheme.display(19))
@@ -471,7 +471,7 @@ struct VerificationsView: View {
                     .accessibilityIdentifier("verification.proofImage")
                 } else {
                     Text(app.T("Đang tải ảnh biên lai…", "Loading receipt image…"))
-                        .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                        .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
                         .frame(maxWidth: .infinity, minHeight: 60)
                         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .accessibilityIdentifier("verification.proofLoading")
@@ -490,7 +490,7 @@ struct VerificationsView: View {
                 } label: {
                     HStack(spacing: 4) {
                         Text(app.T("Mở chat với khách ›", "Open chat with the goer ›"))
-                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink)
+                            .font(.app(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink)
                         Spacer(minLength: 0)
                     }
                     .contentShape(Rectangle())
@@ -502,14 +502,14 @@ struct VerificationsView: View {
                 TextField(current.kind == .escalate
                           ? app.T("Mô tả ngắn gọn vướng mắc cho banbe", "Briefly describe the issue for banbe")
                           : app.T("Vì sao chưa xác nhận được?", "Why can't you confirm it?"), text: $reason)
-                    .font(.system(size: 13)).padding(11)
+                    .font(.app(size: 13)).padding(11)
                     .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 Text(current.kind == .escalate
                      ? app.T("banbe sẽ xem xét và đưa ra quyết định. Chỗ của khách vẫn được giữ trong lúc chờ.",
                              "banbe will review and decide. The guest's seat stays held while you wait.")
                      : app.T("Lý do này được gửi thẳng cho khách qua tin nhắn để họ bổ sung, chỗ vẫn được giữ, banbe không tham gia ở bước này.",
                              "This reason goes straight to the guest by chat so they can follow up. The seat stays held, and banbe is not involved at this step."))
-                    .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    .font(.app(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
                 HStack(spacing: 8) {
                     action(app.T("Gửi", "Submit"), id: "verification.rejectConfirm") {
                         let kind = current.kind
@@ -548,10 +548,10 @@ struct VerificationsView: View {
 
     private func line(_ label: String, _ value: String, urgent: Bool = false) -> some View {
         HStack {
-            Text(label).font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.65))
+            Text(label).font(.app(size: 11)).foregroundStyle(app.palette.ink.opacity(0.65))
             Spacer(minLength: 8)
             Text(value)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.app(size: 12, weight: .semibold))
                 .foregroundStyle(urgent ? BanbeTheme.alert : app.palette.ink)
                 .monospacedDigit()
                 .multilineTextAlignment(.trailing)
@@ -562,7 +562,7 @@ struct VerificationsView: View {
                         perform: @escaping () -> Void) -> some View {
         Button(action: perform) {
             Text(title)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.app(size: 13, weight: .semibold))
                 .frame(maxWidth: .infinity).padding(.vertical, 11)
                 .background(ghost ? Color.clear : app.palette.ink,
                             in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -589,9 +589,9 @@ private struct RefundDiagnosticsPanel: View {
 
     private func row(_ label: String, _ value: String) -> some View {
         HStack {
-            Text(label).font(.system(size: 10, design: .monospaced)).opacity(0.6)
+            Text(label).font(.app(size: 10, design: .monospaced)).opacity(0.6)
             Spacer(minLength: 8)
-            Text(value).font(.system(size: 10, design: .monospaced)).multilineTextAlignment(.trailing)
+            Text(value).font(.app(size: 10, design: .monospaced)).multilineTextAlignment(.trailing)
         }
     }
 
@@ -599,7 +599,7 @@ private struct RefundDiagnosticsPanel: View {
         let activeCount = app.refundQueue.filter(\.isActiveRefundStatus).count
         let pendingCount = app.refundQueue.filter { $0.status == "host_marked_sent" }.count
         VStack(alignment: .leading, spacing: 4) {
-            Text("DIAGNOSTICS (refund queue)").font(.system(size: 9.5, weight: .bold)).foregroundStyle(BanbeTheme.alert)
+            Text("DIAGNOSTICS (refund queue)").font(.app(size: 9.5, weight: .bold)).foregroundStyle(BanbeTheme.alert)
             // auth.user() re-verifies against the server (not just the
             // locally cached session) — the one value a raw SQL Editor
             // auth.uid() can never actually confirm, since that only

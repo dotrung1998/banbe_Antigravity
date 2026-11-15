@@ -173,13 +173,13 @@ struct AdminFeaturesView: View {
                 }
             } label: {
                 HStack(spacing: 10) {
-                    Text(app.T(cat.vi, cat.en)).font(.system(size: 15.5, weight: .bold))
+                    Text(app.T(cat.vi, cat.en)).font(.app(size: 15.5, weight: .bold))
                     Spacer(minLength: 0)
                     if !switches.isEmpty {
                         Text(app.T("\(onCount)/\(switches.count) bật", "\(onCount)/\(switches.count) on"))
-                            .font(.system(size: 12.5)).monospacedDigit().opacity(0.65)
+                            .font(.app(size: 12.5)).monospacedDigit().opacity(0.65)
                     }
-                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).opacity(0.6)
+                    Image(systemName: "chevron.right").font(.app(size: 13, weight: .semibold)).opacity(0.6)
                         .rotationEffect(.degrees(isOpen ? 90 : 0))
                 }
                 .foregroundStyle(app.palette.ink)
@@ -217,16 +217,16 @@ struct AdminFeaturesView: View {
         let blockedBy = f.requires.flatMap { FeatureFlags.isOn(app.featureFlags, $0) ? nil : $0 }
         return HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(app.T(f.vi, f.en)).font(.system(size: 15.5, weight: .semibold))
-                Text(app.T(f.hintVi, f.hintEn)).font(.system(size: 12.5)).opacity(0.7)
+                Text(app.T(f.vi, f.en)).font(.app(size: 15.5, weight: .semibold))
+                Text(app.T(f.hintVi, f.hintEn)).font(.app(size: 12.5)).opacity(0.7)
                 if on, let parent = blockedBy {
                     Text(app.T("Chưa có tác dụng: hãy bật \"\(flagTitle(parent))\" trước", "No effect yet: turn on \"\(flagTitle(parent))\" first"))
-                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.honey).padding(.top, 3)
+                        .font(.app(size: 12, weight: .semibold)).foregroundStyle(app.palette.honey).padding(.top, 3)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("adminFeatures.\(f.key).state")
                     Button { Task { await flip(parent, to: true) } } label: {
                         Text(app.T("Bật \"\(flagTitle(parent))\"", "Turn on \"\(flagTitle(parent))\""))
-                            .font(.system(size: 13, weight: .semibold)).underline()
+                            .font(.app(size: 13, weight: .semibold)).underline()
                             .frame(minHeight: 44).contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -234,7 +234,7 @@ struct AdminFeaturesView: View {
                     .accessibilityIdentifier("adminFeatures.\(f.key).enableRequired")
                 } else {
                     Text(on ? app.T(f.onVi, f.onEn) : app.T(f.offVi, f.offEn))
-                        .font(.system(size: 12, weight: .semibold)).opacity(on ? 1 : 0.7).padding(.top, 3)
+                        .font(.app(size: 12, weight: .semibold)).opacity(on ? 1 : 0.7).padding(.top, 3)
                         .accessibilityIdentifier("adminFeatures.\(f.key).state")
                 }
             }
@@ -252,10 +252,10 @@ struct AdminFeaturesView: View {
         let v = app.onboardingVersion
         let busy = app.featureFlagBusy == FeatureFlagCategories.onboardingControl
         return VStack(alignment: .leading, spacing: 3) {
-            Text(app.T("Bản giới thiệu", "Onboarding version")).font(.system(size: 15.5, weight: .semibold))
+            Text(app.T("Bản giới thiệu", "Onboarding version")).font(.app(size: 15.5, weight: .semibold))
             Text(app.T("Phiên bản 1: màn Chào mừng tĩnh và 4 trang chữ \"banbe hoạt động thế nào\". Phiên bản 2: màn Chào mừng có chuyển động và các màn demo vuốt qua lại. Phiên bản 3: như Phiên bản 2, cộng thêm hướng dẫn trên giao diện thật ngay sau khi đăng nhập lần đầu.",
                        "Version 1: still Welcome screen and the 4 text pages of \"How banbe works\". Version 2: animated Welcome and swipeable demo screens. Version 3: Version 2 plus a guided tour over the real app right after the first sign-in."))
-                .font(.system(size: 12.5)).opacity(0.7)
+                .font(.app(size: 12.5)).opacity(0.7)
             HStack(spacing: 4) {
                 ForEach(1...3, id: \.self) { n in
                     Button {
@@ -263,7 +263,7 @@ struct AdminFeaturesView: View {
                         Task { await pickVersion(n) }
                     } label: {
                         Text(app.T("Phiên bản \(n)", "Version \(n)"))
-                            .font(.system(size: 13.5, weight: v == n ? .bold : .medium))
+                            .font(.app(size: 13.5, weight: v == n ? .bold : .medium))
                             .frame(maxWidth: .infinity, minHeight: 40)
                             .background(v == n ? app.palette.paper : .clear, in: Capsule())
                             .shadow(color: .black.opacity(v == n ? 0.15 : 0), radius: 2, y: 1)
@@ -306,14 +306,14 @@ struct AdminFeaturesView: View {
                     .accessibilityIdentifier("adminFeatures.title")
                 Text(app.T("Bật hoặc tắt một tính năng cho mọi người dùng, không cần phát hành bản mới. Mọi thay đổi đều được ghi lại.",
                            "Turn a feature on or off for every user without a release. Every change is logged."))
-                    .font(.system(size: 13.5)).foregroundStyle(app.palette.ink.opacity(0.75)).padding(.top, 8)
+                    .font(.app(size: 13.5)).foregroundStyle(app.palette.ink.opacity(0.75)).padding(.top, 8)
 
                 ForEach(FeatureFlagCategories.all) { cat in
                     categorySection(cat).padding(.top, 14)
                 }
 
                 if !error.isEmpty {
-                    Text(error).font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert).padding(.top, 12)
+                    Text(error).font(.app(size: 12.5)).foregroundStyle(BanbeTheme.alert).padding(.top, 12)
                         .accessibilityIdentifier("adminFeatures.error")
                 }
             }

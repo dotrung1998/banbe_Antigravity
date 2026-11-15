@@ -67,7 +67,7 @@ private struct ScheduleScreen: View {
                     VStack(alignment: .leading, spacing: 14) {
                         if largeText { headerBlock.padding(.top, 16) }
                         Text(SchedulePresentation.dayTitle(selected, calendar: calendar, vi: vi))
-                            .font(.system(.headline, design: .rounded))
+                            .font(.app(.headline, design: .rounded))
                             .accessibilityAddTraits(.isHeader)
                             .accessibilityIdentifier("schedule.dayTitle")
                         // One composited block: without it the fade applies to every leaf separately,
@@ -80,7 +80,7 @@ private struct ScheduleScreen: View {
                                         : .asymmetric(insertion: .move(edge: forward ? .trailing : .leading).combined(with: .opacity),
                                                       removal: .move(edge: forward ? .leading : .trailing).combined(with: .opacity)))
                         if let exportMessage {
-                            Text(exportMessage).font(.footnote).foregroundStyle(app.palette.ink.opacity(0.75))
+                            Text(exportMessage).font(.app(.footnote)).foregroundStyle(app.palette.ink.opacity(0.75))
                                 .accessibilityIdentifier("schedule.exportMessage")
                         }
                     }
@@ -176,12 +176,12 @@ private struct ScheduleScreen: View {
     private var monthButton: some View {
         Button { monthPickerOpen = true } label: {
             HStack(spacing: 5) {
-                Image(systemName: "calendar").font(.footnote.weight(.semibold)).accessibilityHidden(true)
+                Image(systemName: "calendar").font(.app(.footnote).weight(.semibold)).accessibilityHidden(true)
                 Text(SchedulePresentation.monthTitle(selected, calendar: calendar, vi: vi))
                     .fixedSize(horizontal: false, vertical: true)
-                Image(systemName: "chevron.down").font(.caption.weight(.semibold)).accessibilityHidden(true)
+                Image(systemName: "chevron.down").font(.app(.caption).weight(.semibold)).accessibilityHidden(true)
             }
-            .font(.subheadline.weight(.semibold))
+            .font(.app(.subheadline).weight(.semibold))
             .foregroundStyle(app.palette.ink.opacity(0.8))
             .frame(minHeight: 44)
             .contentShape(Rectangle())
@@ -196,7 +196,7 @@ private struct ScheduleScreen: View {
             select(Date())
         } label: {
             Text(app.T("Hôm nay", "Today"))
-                .font(.footnote.weight(.semibold))
+                .font(.app(.footnote).weight(.semibold))
                 .foregroundStyle(app.palette.ink)
                 .padding(.horizontal, 14).padding(.vertical, 12)
                 .frame(minHeight: 44)
@@ -235,7 +235,7 @@ private struct ScheduleScreen: View {
                 HStack(spacing: 0) {
                     Color.clear.frame(width: 44, height: 1)
                     ForEach(grid.first ?? [], id: \.date) { d in
-                        Text(weekdayLetter(d.date)).font(.caption.weight(.bold))
+                        Text(weekdayLetter(d.date)).font(.app(.caption).weight(.bold))
                             .frame(maxWidth: .infinity)
                     }
                     Color.clear.frame(width: 44, height: 1)
@@ -298,7 +298,7 @@ private struct ScheduleScreen: View {
         Button {
             shift(by: amount, component: months ? .month : .day)
         } label: {
-            Image(systemName: symbol).font(.footnote.weight(.semibold))
+            Image(systemName: symbol).font(.app(.footnote).weight(.semibold))
                 .frame(width: 44, height: months ? 44 : 56).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -322,8 +322,8 @@ private struct ScheduleScreen: View {
             select(day)
         } label: {
             VStack(spacing: 4) {
-                if !compact { Text(weekdayLetter(day)).font(.caption.weight(.bold)) }
-                Text("\(number)").font(.system(.callout, design: .rounded).weight(isSelected || isToday ? .bold : .regular))
+                if !compact { Text(weekdayLetter(day)).font(.app(.caption).weight(.bold)) }
+                Text("\(number)").font(.app(.callout, design: .rounded).weight(isSelected || isToday ? .bold : .regular))
                 Circle().fill(busy ? (isSelected ? app.palette.paper : app.palette.ink) : .clear)
                     .frame(width: 5, height: 5)
             }
@@ -428,7 +428,7 @@ private struct ScheduleScreen: View {
             Label(app.T("\(mine.undatedCount) kế hoạch chưa có ngày giờ nên chưa hiện trên lịch.",
                         "\(mine.undatedCount) plan\(mine.undatedCount == 1 ? " has" : "s have") no date yet, so not shown on the calendar."),
                   systemImage: "calendar.badge.exclamationmark")
-                .font(.footnote).foregroundStyle(app.palette.ink.opacity(0.7))
+                .font(.app(.footnote)).foregroundStyle(app.palette.ink.opacity(0.7))
         }
     }
 
@@ -481,10 +481,10 @@ private struct ScheduleScreen: View {
 
     private func errorCard(_ text: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label(text, systemImage: "wifi.exclamationmark").font(.subheadline)
+            Label(text, systemImage: "wifi.exclamationmark").font(.app(.subheadline))
                 .accessibilityIdentifier("schedule.error")
             Button(app.T("Thử lại", "Try again")) { Task { await reload(force: true) } }
-                .font(.subheadline.weight(.semibold)).frame(minHeight: 44)
+                .font(.app(.subheadline).weight(.semibold)).frame(minHeight: 44)
                 .accessibilityIdentifier("schedule.retry")
         }
     }
@@ -493,7 +493,7 @@ private struct ScheduleScreen: View {
 
     private func timeColumn(_ e: ScheduleEventInfo) -> some View {
         Text(e.start.map { SchedulePresentation.time($0, timeZone: agendaZone, vi: vi) } ?? "—")
-            .font(.system(.subheadline, design: .rounded).weight(.semibold))
+            .font(.app(.subheadline, design: .rounded).weight(.semibold))
             .monospacedDigit()
     }
 
@@ -514,17 +514,17 @@ private struct ScheduleScreen: View {
             VStack(alignment: .leading, spacing: 6) {
                 SwipeSafeButton { app.goEvent(e.key) } label: {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(e.title).font(.subheadline.weight(.semibold)).multilineTextAlignment(.leading)
+                        Text(e.title).font(.app(.subheadline).weight(.semibold)).multilineTextAlignment(.leading)
                         Label(item.source.label(app.T), systemImage: item.source.symbol)
-                            .font(.caption.weight(.semibold))
+                            .font(.app(.caption).weight(.semibold))
                             .fixedSize(horizontal: false, vertical: true)
-                        if e.ended { Text(app.T("Đã kết thúc", "Ended")).font(.caption).opacity(0.7) }
-                        if !e.location.isEmpty { Text(e.location).font(.caption).opacity(0.7).lineLimit(2) }
+                        if e.ended { Text(app.T("Đã kết thúc", "Ended")).font(.app(.caption)).opacity(0.7) }
+                        if !e.location.isEmpty { Text(e.location).font(.app(.caption)).opacity(0.7).lineLimit(2) }
                         if let note = SchedulePresentation.venueTimeNote(e, agendaZone: agendaZone, vi: vi) {
-                            Text(note).font(.caption).opacity(0.7)
+                            Text(note).font(.app(.caption)).opacity(0.7)
                         }
                         if e.end == nil, !e.ended {
-                            Text(app.T("Chưa có giờ kết thúc", "No end time listed")).font(.caption).opacity(0.75)
+                            Text(app.T("Chưa có giờ kết thúc", "No end time listed")).font(.app(.caption)).opacity(0.75)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
@@ -554,15 +554,15 @@ private struct ScheduleScreen: View {
                 SwipeSafeButton { app.goEvent(e.key) } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         Label(app.T("Gợi ý khám phá", "Discover"), systemImage: "sparkles")
-                            .font(.caption.weight(.semibold)).opacity(0.75)
-                        Text(e.title).font(.subheadline.weight(.semibold)).multilineTextAlignment(.leading)
-                        if !e.location.isEmpty { Text(e.location).font(.caption).opacity(0.7).lineLimit(2) }
+                            .font(.app(.caption).weight(.semibold)).opacity(0.75)
+                        Text(e.title).font(.app(.subheadline).weight(.semibold)).multilineTextAlignment(.leading)
+                        if !e.location.isEmpty { Text(e.location).font(.app(.caption)).opacity(0.7).lineLimit(2) }
                         if let note = SchedulePresentation.venueTimeNote(e, agendaZone: agendaZone, vi: vi) {
-                            Text(note).font(.caption).opacity(0.7)
+                            Text(note).font(.app(.caption)).opacity(0.7)
                         }
                         if let text = SchedulePresentation.proximityText(proximity, T: app.T) {
                             Label(text, systemImage: "exclamationmark.circle")
-                                .font(.caption.weight(.semibold))
+                                .font(.app(.caption).weight(.semibold))
                                 .accessibilityIdentifier("schedule.conflict.\(e.key)")
                                 .onAppear { trackConflict(e.key, proximity) }
                         }
@@ -593,7 +593,7 @@ private struct ScheduleScreen: View {
                         if let event = app.resolvedEvent(for: e.key) { app.addToBanbeSchedule(event) }
                     } label: {
                         Label(app.T("Thêm vào lịch banbe", "Add to banbe Schedule"), systemImage: "plus")
-                            .font(.footnote.weight(.semibold))
+                            .font(.app(.footnote).weight(.semibold))
                             .lineLimit(oneLine ? 1 : nil)
                             .padding(.horizontal, 12).frame(minHeight: 44)
                             .foregroundStyle(app.palette.paper)
@@ -617,7 +617,7 @@ private struct ScheduleScreen: View {
                     app.removeFromBanbeSchedule(e.key)
                 } label: {
                     Label(app.T("Bỏ khỏi lịch", "Remove"), systemImage: "minus.circle")
-                        .font(.footnote.weight(.semibold))
+                        .font(.app(.footnote).weight(.semibold))
                         .padding(.horizontal, 10).padding(.vertical, 12)
                         .frame(minWidth: 44, minHeight: 44)
                         .contentShape(Rectangle())
@@ -633,7 +633,7 @@ private struct ScheduleScreen: View {
             openAppleCalendar(e)
         } label: {
             Label(app.T("Thêm vào Lịch Apple", "Add to Apple Calendar"), systemImage: "calendar.badge.plus")
-                .font(.footnote.weight(.semibold))
+                .font(.app(.footnote).weight(.semibold))
                 .lineLimit(oneLine ? 1 : nil)
                 .padding(.horizontal, 12).frame(minHeight: 44)
                 .overlay(Capsule().stroke(app.palette.rule))

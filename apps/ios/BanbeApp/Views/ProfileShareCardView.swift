@@ -132,11 +132,11 @@ struct ProfileShareCard: View {
                     if let mark = UIImage(named: "banbe-wordmark") {
                         Image(uiImage: mark).renderingMode(.template).resizable().scaledToFit().frame(height: 24)
                     } else {
-                        Text("banbe").font(.system(size: 16, weight: .bold))
+                        Text("banbe").font(.app(size: 16, weight: .bold))
                     }
                     Spacer()
                     Text(kindLabel.uppercased())
-                        .font(.system(size: 10, weight: .semibold)).tracking(1.2)
+                        .font(.app(size: 10, weight: .semibold)).tracking(1.2)
                         .padding(.horizontal, 10).padding(.vertical, 5)
                         .overlay(Capsule().stroke(fg.opacity(0.55)))
                 }
@@ -150,7 +150,7 @@ struct ProfileShareCard: View {
                     } else {
                         ZStack {
                             fg.opacity(0.18)
-                            Text(String(name.prefix(1)).uppercased()).font(.system(size: 38, weight: .semibold))
+                            Text(String(name.prefix(1)).uppercased()).font(.app(size: 38, weight: .semibold))
                         }
                     }
                 }
@@ -159,12 +159,12 @@ struct ProfileShareCard: View {
                 .overlay(RoundedRectangle(cornerRadius: roundAvatar ? 46 : 24, style: .continuous).stroke(fg.opacity(0.8), lineWidth: 3))
                 .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
 
-                Text(name).font(.system(size: 26, weight: .bold)).lineLimit(2).multilineTextAlignment(.center).padding(.top, 14)
+                Text(name).font(.app(size: 26, weight: .bold)).lineLimit(2).multilineTextAlignment(.center).padding(.top, 14)
                 if !subtitle.isEmpty {
-                    Text(subtitle).font(.system(size: 14, weight: .medium)).opacity(0.85).lineLimit(1).padding(.top, 2)
+                    Text(subtitle).font(.app(size: 14, weight: .medium)).opacity(0.85).lineLimit(1).padding(.top, 2)
                 }
                 if !detail.isEmpty {
-                    Text(detail).font(.system(size: 12.5)).opacity(0.8).lineLimit(2).multilineTextAlignment(.center).padding(.top, 6)
+                    Text(detail).font(.app(size: 12.5)).opacity(0.8).lineLimit(2).multilineTextAlignment(.center).padding(.top, 6)
                 }
 
                 Spacer(minLength: 14)
@@ -172,7 +172,7 @@ struct ProfileShareCard: View {
                 QRCodeImage(value: link.absoluteString, size: 132)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
-                Text(footnote).font(.system(size: 11, weight: .medium)).opacity(0.85)
+                Text(footnote).font(.app(size: 11, weight: .medium)).opacity(0.85)
                     .multilineTextAlignment(.center).padding(.top, 10).padding(.bottom, 22)
             }
             .padding(.horizontal, 24)
@@ -246,10 +246,10 @@ struct ProfileShareSheet: View {
                         Spacer() }
                     Text(app.T("Nhấn giữ thẻ để mở ngay trong ứng dụng. Người nhận quét mã QR bằng camera điện thoại để mở trong ứng dụng banbe (cần cài sẵn ứng dụng).",
                                "Press and hold the card to open it in the app. Recipients scan the QR with their phone camera to open it in the banbe app (the app must be installed)."))
-                        .font(.system(size: 11)).opacity(0.65)
+                        .font(.app(size: 11)).opacity(0.65)
 
                     if isOwner { Group {
-                        Text(app.T("Phong cách", "Style")).font(.system(size: 11.5, weight: .semibold))
+                        Text(app.T("Phong cách", "Style")).font(.app(size: 11.5, weight: .semibold))
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 12) {
                                 ForEach(ShareCardStyle.presets, id: \.nameEN) { p in
@@ -264,7 +264,7 @@ struct ProfileShareSheet: View {
                                                 .overlay(Circle().stroke(app.palette.rule))
                                                 .overlay(Circle().stroke(app.palette.ink, lineWidth: 2.5).padding(-3)
                                                     .opacity(style.photoJPEG == nil && style.topHex == p.style.topHex && style.bottomHex == p.style.bottomHex ? 1 : 0))
-                                            Text(app.T(p.name, p.nameEN)).font(.system(size: 10.5))
+                                            Text(app.T(p.name, p.nameEN)).font(.app(size: 10.5))
                                         }
                                     }
                                     .buttonStyle(.plain)
@@ -276,26 +276,26 @@ struct ProfileShareSheet: View {
 
                         ColorPicker(app.T("Màu nền phía trên", "Background top"),
                                     selection: Binding(get: { Color(hex: style.topHex) }, set: { style.topHex = $0.hexString }),
-                                    supportsOpacity: false).font(.system(size: 13))
+                                    supportsOpacity: false).font(.app(size: 13))
                         ColorPicker(app.T("Màu nền phía dưới", "Background bottom"),
                                     selection: Binding(get: { Color(hex: style.bottomHex) }, set: { style.bottomHex = $0.hexString }),
-                                    supportsOpacity: false).font(.system(size: 13))
+                                    supportsOpacity: false).font(.app(size: 13))
                         ColorPicker(app.T("Màu chữ", "Text colour"),
                                     selection: Binding(get: { Color(hex: style.textHex) }, set: { style.textHex = $0.hexString }),
-                                    supportsOpacity: false).font(.system(size: 13))
+                                    supportsOpacity: false).font(.app(size: 13))
 
                         HStack(spacing: 10) {
                             let bgTitle = style.photoJPEG == nil ? app.T("Ảnh nền", "Background photo") : app.T("Đổi ảnh nền", "Change photo")
                             let ruleColor = app.palette.rule
                             PhotosPicker(selection: $photoItem, matching: .images) {
                                 Label(bgTitle, systemImage: "photo")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.app(size: 13, weight: .semibold))
                                     .padding(.horizontal, 14).padding(.vertical, 10)
                                     .overlay(Capsule().stroke(ruleColor))
                             }
                             .accessibilityIdentifier("\(idPrefix).pickPhoto")
                             if style.photoJPEG != nil {
-                                Button(app.T("Bỏ ảnh", "Remove")) { style.photoJPEG = nil; photoItem = nil }.font(.system(size: 13))
+                                Button(app.T("Bỏ ảnh", "Remove")) { style.photoJPEG = nil; photoItem = nil }.font(.app(size: 13))
                             }
                         }
 
@@ -304,7 +304,7 @@ struct ProfileShareSheet: View {
                     if isOwner && loaded && style != published {
                         Button { Task { await saveCard() } } label: {
                             Text(saving ? app.T("Đang lưu…", "Saving…") : app.T("Lưu thẻ", "Save Card"))
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.app(size: 15, weight: .semibold))
                                 .frame(maxWidth: .infinity).padding(.vertical, 15)
                                 .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(app.palette.ink, lineWidth: 1.5))
                                 .foregroundStyle(app.palette.ink)
@@ -313,12 +313,12 @@ struct ProfileShareSheet: View {
                         .accessibilityIdentifier("\(idPrefix).saveCard")
                     }
                     if let saveError {
-                        Text(saveError).font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                        Text(saveError).font(.app(size: 11.5)).foregroundStyle(BanbeTheme.alert)
                     }
 
                     Button { shareImage() } label: {
                         Text(app.T("Chia sẻ thẻ", "Share card"))
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.app(size: 15, weight: .semibold))
                             .frame(maxWidth: .infinity).padding(.vertical, 15)
                             .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                             .foregroundStyle(app.palette.paper)
@@ -337,7 +337,7 @@ struct ProfileShareSheet: View {
                 } else {
                     Button { dismiss() } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.app(size: 13, weight: .bold))
                             .foregroundStyle(app.palette.ink)
                             .frame(width: 30, height: 30)
                             .background(.ultraThinMaterial, in: Circle())

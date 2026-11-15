@@ -24,6 +24,8 @@ struct HostEventDraft: Codable, Identifiable, Equatable {
     /// them still decode.
     var details: [String: EventDetailsPayload]?
     var kwDismissed: [String]?
+    /// Note 82: when it ends ("time" + "HH:mm", or "open"). Optional so older drafts still decode.
+    var endMode: String?, endTime: String?
 
     var displayName: String { name.trimmingCharacters(in: .whitespaces) }
 }

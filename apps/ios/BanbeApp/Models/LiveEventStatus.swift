@@ -14,6 +14,9 @@ struct LiveEventStatus: Codable, Hashable {
     /// shows the facts its real row carries. nil when not selected or not on the server.
     var details: EventDetailsPayload?
     var capacity: Int?
+    /// Migration 220 (note 82): when the event ends on the venue's clock, or open-ended.
+    var endTime: String? = nil
+    var endOpen: Bool? = nil
 
     enum CodingKeys: String, CodingKey {
         case status
@@ -21,5 +24,7 @@ struct LiveEventStatus: Codable, Hashable {
         case cancelledAt = "cancelled_at"
         case cancelReason = "cancel_reason"
         case details, capacity
+        case endTime = "end_time"
+        case endOpen = "end_open"
     }
 }

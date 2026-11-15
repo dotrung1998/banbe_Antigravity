@@ -39,7 +39,7 @@ struct ProjectTasksTab: View {
                 Color.clear.preference(key: ProjectLaneTopKey.self, value: [ProjectLaneNav.endKey: g.frame(in: .named(ProjectLaneNav.space)).minY])
             })
             if (snap.lanes ?? []).isEmpty {
-                Text(app.T("Chưa có hạng mục nào.", "No lanes yet.")).font(.subheadline).foregroundStyle(app.palette.ink2)
+                Text(app.T("Chưa có hạng mục nào.", "No lanes yet.")).font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
                     .projectCard().padding(.top, 14)
             }
         }
@@ -76,18 +76,18 @@ struct ProjectTasksTab: View {
                 Spacer(minLength: 8)
                 tag(app.T("Chờ duyệt", "Pending"), fg: app.palette.honey, bg: app.palette.honeyBg)
             }
-            Text(r.why).font(.subheadline).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
+            Text(r.why).font(.app(.subheadline)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
             Text(app.T("Đề xuất bởi \(app.projectPersonName(r.proposedBy))", "Proposed by \(app.projectPersonName(r.proposedBy))"))
-                .font(.footnote).foregroundStyle(app.palette.ink3)
+                .font(.app(.footnote)).foregroundStyle(app.palette.ink3)
             AnyLayout(dynamicTypeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 10)) : AnyLayout(HStackLayout(spacing: 10))) {
                 Button { openSheet(.declineChange(r.id)) } label: {
-                    Label(app.T("Từ chối", "Decline"), systemImage: "xmark").font(.body.weight(.semibold))
+                    Label(app.T("Từ chối", "Decline"), systemImage: "xmark").font(.app(.body).weight(.semibold))
                         .frame(maxWidth: .infinity, minHeight: 44).background(app.palette.blockInset, in: Capsule())
                 }
                 .buttonStyle(PressableButtonStyle())
                 .accessibilityIdentifier("project.proposal.decline.\(r.id)")
                 Button { Task { await app.reviewProjectChange(r.id, approve: true, reason: nil) } } label: {
-                    Label(app.T("Duyệt", "Approve"), systemImage: "checkmark").font(.body.weight(.bold))
+                    Label(app.T("Duyệt", "Approve"), systemImage: "checkmark").font(.app(.body).weight(.bold))
                         .frame(maxWidth: .infinity, minHeight: 44)
                         .foregroundStyle(app.palette.paper).background(app.palette.ink, in: Capsule())
                 }
@@ -114,14 +114,14 @@ struct ProjectTasksTab: View {
         }()
         return VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(app.projectChangeTitle(r)).font(.body.weight(.semibold))
+                Text(app.projectChangeTitle(r)).font(.app(.body).weight(.semibold))
                 Spacer()
                 tag(label, fg: fg, bg: bg)
             }
             if let reason = r.decisionReason, !reason.isEmpty {
-                Text("“\(reason)”").font(.subheadline).foregroundStyle(app.palette.ink2)
+                Text("“\(reason)”").font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
             } else if r.status == "pending" {
-                Text(app.T("Chủ sự kiện sẽ trả lời kèm lý do.", "The Host will reply with a reason.")).font(.footnote).foregroundStyle(app.palette.ink3)
+                Text(app.T("Chủ sự kiện sẽ trả lời kèm lý do.", "The Host will reply with a reason.")).font(.app(.footnote)).foregroundStyle(app.palette.ink3)
             }
         }
         .projectCard(padding: 14)
@@ -133,25 +133,25 @@ struct ProjectTasksTab: View {
     private func laneSection(_ lane: ProjectLane, _ tasks: [ProjectTask]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                Image(systemName: ProjectLanePresets.icon(for: lane.name)).font(.system(size: 13, weight: .semibold))
+                Image(systemName: ProjectLanePresets.icon(for: lane.name)).font(.app(size: 13, weight: .semibold))
                     .foregroundStyle(app.palette.clay).accessibilityHidden(true)
-                Text(lane.name.uppercased()).font(.caption.weight(.bold)).tracking(0.8).foregroundStyle(app.palette.ink3)
+                Text(lane.name.uppercased()).font(.app(.caption).weight(.bold)).tracking(0.8).foregroundStyle(app.palette.ink3)
                     .accessibilityAddTraits(.isHeader)
                 if app.projectCan("lane.manage") {
                     Button { openSheet(.manageLane(lane.id)) } label: {
-                        Image(systemName: "pencil").font(.system(size: 14, weight: .semibold)).foregroundStyle(app.palette.ink2)
+                        Image(systemName: "pencil").font(.app(size: 14, weight: .semibold)).foregroundStyle(app.palette.ink2)
                             .frame(width: 44, height: 44)
                     }
                     .accessibilityLabel(app.T("Sửa hạng mục \(lane.name)", "Edit lane \(lane.name)"))
                     .accessibilityIdentifier("project.lane.edit.\(lane.id)")
                 }
                 Spacer()
-                Text("\(tasks.filter { $0.status == "done" }.count)/\(tasks.count)").font(.caption.weight(.bold).monospacedDigit())
+                Text("\(tasks.filter { $0.status == "done" }.count)/\(tasks.count)").font(.app(.caption).weight(.bold).monospacedDigit())
                     .foregroundStyle(app.palette.ink3)
             }
             .frame(minHeight: 44)
             if tasks.isEmpty {
-                Text(app.T("Chưa có việc trong hạng mục này.", "No tasks in this lane yet.")).font(.subheadline).foregroundStyle(app.palette.ink2)
+                Text(app.T("Chưa có việc trong hạng mục này.", "No tasks in this lane yet.")).font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
                     .frame(maxWidth: .infinity).projectCard()
             } else {
                 ProjectRowsCard(items: tasks) { t in ProjectTaskRow(task: t, showLane: false) { openSheet(.task(t.id)) } }
@@ -171,16 +171,16 @@ struct ProjectTasksTab: View {
 
     private func laneLabel(_ title: String, count: String) -> some View {
         HStack {
-            Text(title.uppercased()).font(.caption.weight(.bold)).tracking(0.8)
+            Text(title.uppercased()).font(.app(.caption).weight(.bold)).tracking(0.8)
             Spacer()
-            Text(count).font(.caption.weight(.bold).monospacedDigit())
+            Text(count).font(.app(.caption).weight(.bold).monospacedDigit())
         }
         .foregroundStyle(app.palette.ink3)
         .padding(.bottom, 6)
     }
 
     private func tag(_ text: String, fg: Color, bg: Color) -> some View {
-        Text(text).font(.caption.weight(.bold)).padding(.horizontal, 9).padding(.vertical, 4)
+        Text(text).font(.app(.caption).weight(.bold)).padding(.horizontal, 9).padding(.vertical, 4)
             .foregroundStyle(fg).background(bg, in: Capsule())
     }
 }
@@ -267,10 +267,10 @@ struct ProjectLaneNav: View {
             jump(lane.id)
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: ProjectLanePresets.icon(for: lane.name)).font(.system(size: 13, weight: .semibold))
+                Image(systemName: ProjectLanePresets.icon(for: lane.name)).font(.app(size: 13, weight: .semibold))
                     .foregroundStyle(on ? app.palette.paper : app.palette.clay)
-                Text(lane.name).font(.subheadline.weight(.semibold)).lineLimit(1)
-                Text("\(done)/\(mine.count)").font(.caption.weight(.bold).monospacedDigit())
+                Text(lane.name).font(.app(.subheadline).weight(.semibold)).lineLimit(1)
+                Text("\(done)/\(mine.count)").font(.app(.caption).weight(.bold).monospacedDigit())
                     .foregroundStyle(on ? app.palette.paper.opacity(0.7) : app.palette.ink3)
             }
             .padding(.horizontal, 12).frame(minHeight: 38)

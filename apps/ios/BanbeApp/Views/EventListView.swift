@@ -34,7 +34,7 @@ struct EventListView: View {
                 BackLink(label: app.backLabel(for: app.eventListBack)) { app.backFromEventList() }
                 HStack(spacing: 10) {
                     Image(systemName: titleIcon)
-                        .font(.system(size: 22, weight: .medium))
+                        .font(.app(size: 22, weight: .medium))
                     Text(app.eventListTitle)
                         .font(BanbeTheme.display(24))
                 }
@@ -43,7 +43,7 @@ struct EventListView: View {
                 let events = app.eventListEvents
                 if events.isEmpty {
                     Text(emptyMessage)
-                        .font(.system(size: 13))
+                        .font(.app(size: 13))
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity)
                         .padding(.top, 40)
@@ -56,10 +56,10 @@ struct EventListView: View {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(event.name).font(BanbeTheme.display(15)).lineLimit(1)
                                         Text(app.trStatus(app.stripKm(event.meta, event: event)))
-                                            .font(.system(size: 11.5)).lineLimit(1)
+                                            .font(.app(size: 11.5)).lineLimit(1)
                                     }
                                     Spacer(minLength: 0)
-                                    Text("›").font(.system(size: 15))
+                                    Text("›").font(.app(size: 15))
                                 }
                                 .foregroundStyle(app.palette.ink)
                                 .padding(.vertical, 13).padding(.horizontal, 16)

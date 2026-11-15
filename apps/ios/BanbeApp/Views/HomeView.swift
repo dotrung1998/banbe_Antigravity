@@ -37,6 +37,9 @@ struct HomeView: View {
     @State private var areaSearchOpen = false
     /// Note 80: the photo hero's tab (Going out, Simple Shell). Hosting is the other Home view, not a value here.
     @State private var heroTab: HomeHeroTab = .foryou
+    /// v2.3 (note 81): the live line's shown update (Reduced form) and the Live now sheet.
+    @State private var liveIndex = 0
+    @State private var liveNowOpen = false
     @StateObject private var forYouAlert = ForYouAlertModel()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -551,8 +554,8 @@ struct HomeView: View {
                 app.openRewards(from: .home)
             } label: {
                 HStack(spacing: 4) {
-                    Text("🔥").font(.system(size: compact ? 14 : 16)).opacity(streak.value > 0 ? 1 : 0.45).accessibilityHidden(true)
-                    Text("\(streak.value)").font(.system(size: compact ? 12 : 13, weight: .semibold)).monospacedDigit()
+                    Text("🔥").font(.app(size: compact ? 14 : 16)).opacity(streak.value > 0 ? 1 : 0.45).accessibilityHidden(true)
+                    Text("\(streak.value)").font(.app(size: compact ? 12 : 13, weight: .semibold)).monospacedDigit()
                 }
                 .padding(.horizontal, compact ? 5 : 8).frame(minWidth: compact ? 36 : 44, minHeight: compact ? max(height, 34) : 44).contentShape(Rectangle())
             }
@@ -567,8 +570,8 @@ struct HomeView: View {
                 app.openRewards(from: .home)
             } label: {
                 HStack(spacing: 4) {
-                    Image(systemName: "circle.hexagongrid.circle").font(.system(size: compact ? 13 : 15, weight: .medium)).accessibilityHidden(true)
-                    Text(RewardsLogic.compactCoins(sum.balance)).font(.system(size: compact ? 12 : 13, weight: .semibold)).monospacedDigit()
+                    Image(systemName: "circle.hexagongrid.circle").font(.app(size: compact ? 13 : 15, weight: .medium)).accessibilityHidden(true)
+                    Text(RewardsLogic.compactCoins(sum.balance)).font(.app(size: compact ? 12 : 13, weight: .semibold)).monospacedDigit()
                 }
                 .padding(.horizontal, compact ? 5 : 8).frame(minWidth: compact ? 36 : 44, minHeight: compact ? max(height, 34) : 44).contentShape(Rectangle())
             }
@@ -596,13 +599,13 @@ struct HomeView: View {
                     AreaMenuOptions { areaSearchOpen = true }
                 } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: "mappin").font(.system(size: 13, weight: .semibold))
+                        Image(systemName: "mappin").font(.app(size: 13, weight: .semibold))
                         Text(app.T("Gần", "Near")).fontWeight(.medium).opacity(0.6).fixedSize()
                         Text(app.area == LocationHierarchy.allID ? app.T("Mọi nơi", "Everywhere") : app.currentAreaLabel)
                             .lineLimit(1)
-                        Text("▾").font(.system(size: 9))
+                        Text("▾").font(.app(size: 9))
                     }
-                    .font(.system(size: 13.5, weight: .semibold))
+                    .font(.app(size: 13.5, weight: .semibold))
                     .foregroundStyle(app.palette.ink)
                     .frame(minHeight: 32)
                     .contentShape(Rectangle())
@@ -613,10 +616,10 @@ struct HomeView: View {
                     app.toggleLang()
                 } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: "globe").font(.system(size: 13, weight: .semibold))
+                        Image(systemName: "globe").font(.app(size: 13, weight: .semibold))
                         Text(app.T("EN", "VN"))
                     }
-                    .font(.system(size: 13.5, weight: .semibold))
+                    .font(.app(size: 13.5, weight: .semibold))
                     .foregroundStyle(app.palette.ink)
                     .frame(minHeight: 32)
                     .contentShape(Rectangle())
@@ -629,10 +632,10 @@ struct HomeView: View {
                     app.pickTheme(app.isDark ? "light" : "dark")
                 } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: app.isDark ? "sun.max" : "moon").font(.system(size: 13, weight: .semibold))
+                        Image(systemName: app.isDark ? "sun.max" : "moon").font(.app(size: 13, weight: .semibold))
                         Text(app.isDark ? app.T("Sáng", "Light") : app.T("Tối", "Dark"))
                     }
-                    .font(.system(size: 13.5, weight: .semibold))
+                    .font(.app(size: 13.5, weight: .semibold))
                     .foregroundStyle(app.palette.ink)
                     .frame(minHeight: 32)
                     .contentShape(Rectangle())
@@ -723,7 +726,7 @@ struct HomeView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Rectangle().fill(app.palette.divider).frame(width: 1, height: 22)
-                        Image(systemName: "mappin.and.ellipse").font(.system(size: 15, weight: .semibold))
+                        Image(systemName: "mappin.and.ellipse").font(.app(size: 15, weight: .semibold))
                     }
                     .foregroundStyle(app.palette.ink)
                     .frame(width: 52, height: 46)
@@ -763,6 +766,67 @@ struct HomeView: View {
     /// row after the 3rd card and the Pulse ticker after the 6th → the rest of today's feed footer.
     @ViewBuilder
     private func simpleGoerFeed(_ snap: Snapshot) -> some View {
+        if app.homeV23Enabled { v23GoerFeed(snap) } else { classicGoerFeed(snap) }
+    }
+
+    /// v2.3 (note 81): hero (rail of 4 + See all fan card) → Next up tickets (else the one hero block) → live line +
+    /// Shortlist → Browse by type (closes Home).
+    @ViewBuilder
+    private func v23GoerFeed(_ snap: Snapshot) -> some View {
+        let items = app.isSignedIn ? sortActionCenterItems(goerActionItems) : []
+        HomeHeroSection(tab: $heroTab, lists: snap.heroLists, onSeeAll: { heroSeeAll($0) },
+                        onSearchLocations: { areaSearchOpen = true },
+                        onAvatar: { quickSheetOpen = true },
+                        headerHeight: pinnedHeaderHeight,
+                        v23Counts: snap.tabCounts)
+            .id(false)
+            .id("home.tour.hero")
+            .revealRegion(0)
+        let tickets = app.nextUpItems()
+        if !tickets.isEmpty {
+            NextUpV23View(items: tickets).revealRegion(1)
+        } else {
+            let kind = HomeHero.goer(signedIn: app.isSignedIn, hasNextUp: nextUp != nil, actionCount: items.count,
+                                     checklistVisible: app.isSignedIn && checklistVisible)
+            goerHero(kind, items: items).revealRegion(1)
+            if kind == .none, !savedUpcoming.isEmpty { savedUpcomingSection.revealRegion(1) }
+        }
+        VStack(spacing: 0) {
+            LiveLineView(updates: snap.live, index: $liveIndex, onOpen: { liveNowOpen = true })
+            ShortlistV23View(tab: heroTab, rows: snap.shortRows, total: snap.shortTotal, filterBadge: snap.filterBadge,
+                             onFilters: { app.homeFilterSheetOpen = true }, onAction: { shortlistAction($0) })
+        }
+        .id("home.tour.filters")
+        .revealRegion(2)
+        .sheet(isPresented: $liveNowOpen) {
+            LiveNowSheet(updates: snap.live, shownIndex: reduceMotionOn ? liveIndex : nil,
+                         onOpen: { id, i in liveNowOpen = false; liveIndex = i; app.goEvent(id) },
+                         onClose: { liveNowOpen = false })
+                .environmentObject(app)
+        }
+        HomeBrowseSection(counts: snap.categoryCounts, onPick: { app.openBrowse(type: $0, scope: "all") },
+                          onFind: { app.openBrowse(type: "all", scope: "all") }, seeAllTotal: snap.browseTotal)
+            .id("home.tour.browse")
+            .revealRegion(2)
+        if !app.homeStories.isEmpty { storyRow.padding(.top, 20) }
+        if app.isSignedIn { surveyDiscoveryRow }
+        tagline
+        hostLink
+    }
+
+    private var reduceMotionOn: Bool { UIAccessibility.isReduceMotionEnabled }
+
+    /// End-card and empty-state actions of the Shortlist (web twin: `onShortlistAction`).
+    private func shortlistAction(_ act: String) {
+        switch act {
+        case "clear-filters": app.clearFilters(); app.homeSort = "soonest"
+        case "map": app.goMapExploreFromHome()
+        default: app.openBrowse(type: "all", scope: "all")
+        }
+    }
+
+    @ViewBuilder
+    private func classicGoerFeed(_ snap: Snapshot) -> some View {
         let items = app.isSignedIn ? sortActionCenterItems(goerActionItems) : []
         // Note 80: the full-bleed photo hero (header, search, tabs, card rail), then the same one-hero block as before.
         HomeHeroSection(tab: $heroTab, lists: snap.heroLists, onSeeAll: { heroSeeAll($0) },
@@ -817,6 +881,8 @@ struct HomeView: View {
 
     /// "See all" on a hero rail: For You turns the For You filter on, Tonight / Weekend set the date, then the feed shows.
     private func heroSeeAll(_ tab: HomeHeroTab) {
+        // v2.3: See all opens Browse for THAT tab.
+        if app.homeV23Enabled { app.openBrowse(type: "all", scope: tab.rawValue); return }
         switch tab {
         case .foryou:
             if !app.filterForYou && app.hasForYouMatches { app.filterForYou = true }
@@ -864,13 +930,13 @@ struct HomeView: View {
                                     )
                                     .frame(width: 52, height: 52)
                                 Text(String(group.orgName.prefix(1)).uppercased())
-                                    .font(.system(size: 15, weight: .bold))
+                                    .font(.app(size: 15, weight: .bold))
                                     .foregroundStyle(app.palette.ink)
                                     .frame(width: 44, height: 44)
                                     .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                             }
                             Text(group.orgName)
-                                .font(.system(size: 9.5))
+                                .font(.app(size: 9.5))
                                 .foregroundStyle(app.palette.ink)
                                 .lineLimit(1)
                                 .frame(width: 56)
@@ -937,20 +1003,20 @@ struct HomeView: View {
             } label: {
                 HStack(spacing: 8) {
                     Text(app.T("Góp ý cho sự kiện sắp tới", "Help Shape Upcoming Events"))
-                        .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
+                        .font(.app(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
                     if !app.homeSurveyDiscoveryLoading && app.homeSurveyDiscoveryError.isEmpty && !app.homeSurveyDiscovery.isEmpty {
                         // Honest LOADED count, never a fabricated total —
                         // "+" only when the server told us more exist
                         // (`hasMore`), never guessed from a page-size cap.
                         Text(app.homeSurveyDiscoveryHasMore ? "\(app.homeSurveyDiscovery.count)+" : "\(app.homeSurveyDiscovery.count)")
-                            .font(.system(size: 10.5, weight: .semibold))
+                            .font(.app(size: 10.5, weight: .semibold))
                             .padding(.horizontal, 7).padding(.vertical, 2)
                             .background(app.palette.ink.opacity(0.1), in: Capsule())
                             .foregroundStyle(app.palette.ink.opacity(0.7))
                     }
                     Spacer()
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.app(size: 11, weight: .semibold))
                         .foregroundStyle(app.palette.ink.opacity(0.5))
                         .rotationEffect(.degrees(app.homeSurveyDiscoveryExpanded ? 180 : 0))
                 }
@@ -963,17 +1029,17 @@ struct HomeView: View {
 
             if app.homeSurveyDiscoveryExpanded {
                 if app.homeSurveyDiscoveryLoading && app.homeSurveyDiscovery.isEmpty {
-                    Text(app.T("Đang tải…", "Loading…")).font(.system(size: 12)).opacity(0.6).padding(.horizontal, 20)
+                    Text(app.T("Đang tải…", "Loading…")).font(.app(size: 12)).opacity(0.6).padding(.horizontal, 20)
                 } else if !app.homeSurveyDiscoveryError.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(app.homeSurveyDiscoveryError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                        Text(app.homeSurveyDiscoveryError).font(.app(size: 12)).foregroundStyle(BanbeTheme.alert)
                         Button(app.T("Thử lại", "Retry")) { Task { await app.loadHomeSurveyDiscovery() } }
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.app(size: 12, weight: .semibold))
                     }
                     .padding(.horizontal, 20)
                 } else if app.homeSurveyDiscovery.isEmpty {
                     Text(app.T("Chưa có khảo sát công khai nào.", "No public surveys right now."))
-                        .font(.system(size: 12)).opacity(0.6).padding(.horizontal, 20)
+                        .font(.app(size: 12)).opacity(0.6).padding(.horizontal, 20)
                 } else {
                 LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach(app.homeSurveyDiscovery.prefix(visibleSurveyDiscoveryCount)) { card in
@@ -986,7 +1052,7 @@ struct HomeView: View {
                             HStack(spacing: 6) {
                                 if app.homeSurveyDiscoveryLoadingMore { ProgressView().controlSize(.small) }
                                 Text(app.T("Xem thêm", "Show More"))
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.app(size: 12, weight: .semibold))
                             }
                             .frame(maxWidth: .infinity, minHeight: 32)
                         }
@@ -1055,7 +1121,7 @@ struct HomeView: View {
                 surveyDiscoveryAvatar(card)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(card.title)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.app(size: 13, weight: .semibold))
                         .lineLimit(1)
                         .truncationMode(.tail)
                     HStack(spacing: 5) {
@@ -1071,7 +1137,7 @@ struct HomeView: View {
                             Text("\(app.T("Hạn", "Deadline")): \(closesAt.formatted(date: .abbreviated, time: .omitted))")
                         }
                     }
-                    .font(.system(size: 11))
+                    .font(.app(size: 11))
                     .foregroundStyle(app.palette.ink.opacity(0.65))
                     // No `.lineLimit` here — lets this line wrap onto a
                     // second line at larger Dynamic Type sizes instead of
@@ -1079,7 +1145,7 @@ struct HomeView: View {
                 }
                 Spacer(minLength: 8)
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.app(size: 10, weight: .semibold))
                     .foregroundStyle(app.palette.ink.opacity(0.35))
                     .padding(.top, 2)
             }
@@ -1107,7 +1173,7 @@ struct HomeView: View {
         ZStack {
             Circle().fill(app.palette.ink.opacity(0.1))
             Text(String((card.hostName.isEmpty ? "?" : card.hostName).prefix(1)).uppercased())
-                .font(.system(size: 12, weight: .bold))
+                .font(.app(size: 12, weight: .bold))
                 .foregroundStyle(app.palette.ink)
             if let url = card.hostAvatarURL {
                 RemoteImage(path: url.absoluteString, maxPixel: 56)
@@ -1140,11 +1206,11 @@ struct HomeView: View {
                 Button { app.goEvent(e.key) } label: {
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(e.name).font(.system(size: 14.5, weight: .semibold)).lineLimit(1)
-                            Text(savedRowDetail(e)).font(.system(size: 12.5)).opacity(0.65)
+                            Text(e.name).font(.app(size: 14.5, weight: .semibold)).lineLimit(1)
+                            Text(savedRowDetail(e)).font(.app(size: 12.5)).opacity(0.65)
                         }
                         Spacer(minLength: 0)
-                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).opacity(0.4)
+                        Image(systemName: "chevron.right").font(.app(size: 12, weight: .semibold)).opacity(0.4)
                             .accessibilityHidden(true)
                     }
                     .padding(.vertical, 10)
@@ -1201,6 +1267,13 @@ struct HomeView: View {
         var categoryRow: [String] = ["all"]
         /// Note 80: the hero's rails (max 5 each), same filters as the feed except the date. Empty unless Simple Shell.
         var heroLists: [HomeHeroTab: [DiscoveryCardModel]] = [:]
+        /// v2.3 (note 81): the Shortlist rows (the open tab narrowed by Home's filters), the tab's size before the
+        /// filters, every tab's size (See all card), the live line, and the whole catalogue's size (Browse "See all").
+        var shortRows: [V23Row] = []
+        var shortTotal = 0
+        var tabCounts: [HomeHeroTab: Int] = [:]
+        var live: [LiveLine.Update] = []
+        var browseTotal = 0
     }
 
     private static let quickChips: [(key: String, vi: String, en: String)] = [
@@ -1271,6 +1344,7 @@ struct HomeView: View {
                             typeChips: typeChips, typeCounts: typeCounts, categoryCounts: catCounts, categoryRow: catRow)
         if app.simpleShellEnabled && app.effectiveHomeView != .host {
             snap.heroLists = makeHeroLists(items: items, byKey: byKey, forYou: forYou, filters: f, now: now)
+            if app.homeV23Enabled { fillV23(&snap, items: items, byKey: byKey, forYou: forYou, filters: f, now: now) }
         }
         return snap
     }
@@ -1285,7 +1359,7 @@ struct HomeView: View {
             return start >= now.addingTimeInterval(-3600)
         }
         func shape(_ its: [HomeDiscovery.Item]) -> [DiscoveryCardModel] {
-            its.prefix(5).compactMap { it in byKey[it.key].map { app.discoveryCardModel($0, item: it, now: now) } }
+            its.prefix(app.homeV23Enabled ? 4 : 5).compactMap { it in byKey[it.key].map { app.discoveryCardModel($0, item: it, now: now) } }
         }
         var base = filters
         base.date = "any"
@@ -1298,6 +1372,31 @@ struct HomeView: View {
         let ranked = forYou.compactMap { byItemKey[$0.key] }.filter(open)
         let soonest = HomeDiscovery.apply(items, base, now: now).filter(open)
         return [.foryou: shape(ranked.isEmpty ? soonest : ranked), .tonight: byDate("today"), .weekend: byDate("weekend")]
+    }
+
+    private func fillV23(_ snap: inout Snapshot, items: [HomeDiscovery.Item], byKey: [String: CatalogEvent], forYou: [ForYouMatch],
+                         filters f: HomeDiscovery.Filters, now: Date) {
+        var counts: [HomeHeroTab: Int] = [:]
+        var lists: [HomeHeroTab: [HomeDiscovery.Item]] = [:]
+        for t in HomeHeroTab.allCases {
+            let l = app.v23TabItems(t, items: items, byKey: byKey, forYou: forYou, now: now)
+            lists[t] = l
+            counts[t] = l.count
+        }
+        snap.tabCounts = counts
+        let tabAll = lists[heroTab] ?? []
+        snap.shortTotal = tabAll.count
+        snap.shortRows = HomeDiscovery.apply(tabAll, f, now: now).compactMap { it in byKey[it.key].map { app.v23Row($0, item: it, now: now) } }
+        snap.browseTotal = HomeDiscovery.apply(items, .default, now: now).filter { byKey[$0.key]?.cancelled == false }.count
+        let byItem = Dictionary(items.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
+        snap.live = LiveLine.updates(
+            pulse: app.pulseDaily.map { LiveLine.PulseItem(eventId: $0.eventId, eventName: $0.eventName, organizerName: $0.organizerName, bookingCount: $0.bookingCount) },
+            lookup: { id in
+                guard let it = byItem[id], let e = byKey[id], !e.cancelled else { return nil }
+                return LiveLine.Facts(seatsLeft: HomeDiscovery.fillBadge(booked: it.booked, capacity: it.capacity).left,
+                                      when: app.discoveryDateBadge(it.startsAt, now: now, timeZone: e.eventTimeZone))
+            },
+            tonight: counts[.tonight] ?? 0, weekend: counts[.weekend] ?? 0)
     }
 
     /// Event type profiles (switch event_type_profiles): the selected category's own chips (a supper club:
@@ -1317,9 +1416,9 @@ struct HomeView: View {
                         } label: {
                             HStack(spacing: 6) {
                                 Text(app.T(chip.vi, chip.en))
-                                if !active { Text("\(n)").font(.system(size: 12)).monospacedDigit().opacity(0.6) }
+                                if !active { Text("\(n)").font(.app(size: 12)).monospacedDigit().opacity(0.6) }
                             }
-                            .font(.system(size: chipFont, weight: active ? .semibold : .regular))
+                            .font(.app(size: chipFont, weight: active ? .semibold : .regular))
                             .lineLimit(1)
                             .padding(.horizontal, 14).frame(minHeight: 36)
                             .foregroundStyle(active ? app.palette.paper : app.palette.ink)
@@ -1367,7 +1466,7 @@ struct HomeView: View {
                     .accessibilityIdentifier("home.sort.\(mode)")
                 }
             } label: {
-                Image(systemName: "arrow.up.arrow.down").font(.system(size: 14, weight: .semibold))
+                Image(systemName: "arrow.up.arrow.down").font(.app(size: 14, weight: .semibold))
                     .padding(.horizontal, 12).frame(minWidth: 44, minHeight: 36)
                     .foregroundStyle(sortActive ? app.palette.paper : app.palette.ink)
                     .background { homeGlassCapsule(active: sortActive) }
@@ -1404,9 +1503,9 @@ struct HomeView: View {
             app.homeFilterSheetOpen = true
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: "slider.horizontal.3").font(.system(size: 14, weight: .semibold))
+                Image(systemName: "slider.horizontal.3").font(.app(size: 14, weight: .semibold))
                 if snap.filterBadge > 0 {
-                    Text("\(snap.filterBadge)").font(.system(size: 12, weight: .bold)).monospacedDigit()
+                    Text("\(snap.filterBadge)").font(.app(size: 12, weight: .bold)).monospacedDigit()
                 }
             }
             .padding(.horizontal, 12).frame(minWidth: 44, minHeight: 36)
@@ -1431,9 +1530,9 @@ struct HomeView: View {
             } label: {
                 HStack(spacing: 6) {
                     Text(app.T(chip.vi, chip.en))
-                    if !active { Text("\(n)").font(.system(size: 12)).monospacedDigit().opacity(0.6) }
+                    if !active { Text("\(n)").font(.app(size: 12)).monospacedDigit().opacity(0.6) }
                 }
-                .font(.system(size: chipFont, weight: active ? .semibold : .regular))
+                .font(.app(size: chipFont, weight: active ? .semibold : .regular))
                 .lineLimit(1)
                 .padding(.horizontal, 14).frame(minHeight: 36)
                 .foregroundStyle(active ? app.palette.paper : app.palette.ink)
@@ -1462,7 +1561,7 @@ struct HomeView: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(title).font(BanbeTheme.display(20)).lineLimit(1).accessibilityAddTraits(.isHeader)
                 Text(app.T("\(n) sự kiện", "\(n) event\(n == 1 ? "" : "s")"))
-                    .font(.system(size: 13)).opacity(0.6).lineLimit(1)
+                    .font(.app(size: 13)).opacity(0.6).lineLimit(1)
                     .accessibilityIdentifier("home.resultCount")
             }
             Spacer(minLength: 8)
@@ -1473,7 +1572,7 @@ struct HomeView: View {
                         Haptics.selection()
                         layoutMode = mode
                     } label: {
-                        Image(systemName: icon).font(.system(size: 13, weight: .semibold))
+                        Image(systemName: icon).font(.app(size: 13, weight: .semibold))
                             .frame(width: 36, height: 30)
                             .background(on ? app.palette.paper : Color.clear, in: Capsule())
                             .overlay(Capsule().strokeBorder(app.palette.rule.opacity(on ? 1 : 0), lineWidth: 1))
@@ -1491,7 +1590,7 @@ struct HomeView: View {
                         Haptics.selection()
                         app.goMapExploreFromHome()
                     } label: {
-                        Image(systemName: "map").font(.system(size: 13, weight: .semibold))
+                        Image(systemName: "map").font(.app(size: 13, weight: .semibold))
                             .frame(width: 36, height: 30)
                             .frame(minHeight: 44)
                             .contentShape(Rectangle())
@@ -1519,7 +1618,7 @@ struct HomeView: View {
                     app.setHomeFilters(h.filters)
                 } label: {
                     Text(app.T("+\(h.gain) sự kiện nếu \(l.vi)", "+\(h.gain) event\(h.gain == 1 ? "" : "s") with \(l.en)"))
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.app(size: 13, weight: .semibold))
                         .padding(.horizontal, 14).frame(minHeight: 36)
                         .background { homeGlassCapsule() }
                 }
@@ -1554,7 +1653,7 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 0) {
             if let t = forYouIntent, let whyVi = t.whyVi, let whyEn = t.whyEn {
                 Text(app.T(whyVi, whyEn))
-                    .font(.system(size: 13))
+                    .font(.app(size: 13))
                     .foregroundStyle(app.palette.ink.opacity(0.75))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 20)
@@ -1566,9 +1665,9 @@ struct HomeView: View {
                 app.openEventPreferences(returnTo: .home)
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "slider.horizontal.3").font(.system(size: 12, weight: .semibold))
+                    Image(systemName: "slider.horizontal.3").font(.app(size: 12, weight: .semibold))
                     Text(app.T("Chỉnh câu trả lời của bạn", "Edit my answers"))
-                        .font(.system(size: 12.5, weight: .semibold)).underline()
+                        .font(.app(size: 12.5, weight: .semibold)).underline()
                 }
                 .foregroundStyle(app.palette.ink)
                 .padding(.horizontal, 20)
@@ -1592,15 +1691,15 @@ struct HomeView: View {
             app.toggleHomeFilter("forYou")
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: "star.fill").font(.system(size: 11, weight: .bold))
+                Image(systemName: "star.fill").font(.app(size: 11, weight: .bold))
                     .foregroundStyle(active ? app.palette.paper : gold)
                 Text(chipTitle)
-                    .font(.system(size: chipFont, weight: active ? .bold : .regular))
+                    .font(.app(size: chipFont, weight: active ? .bold : .regular))
                     .lineLimit(1)
                 if forYouAlert.hasPending {
                     // White on #7A5200 = ~6.9:1 (AA); static, retained until acknowledged.
                     Text(app.T("Mới", "New"))
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.app(size: 10, weight: .bold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 5).padding(.vertical, 1)
                         .background(Capsule().fill(Color(red: 0.478, green: 0.322, blue: 0)))
@@ -1695,7 +1794,7 @@ struct HomeView: View {
             "Vài buổi vui dành cho riêng bạn tuần này. Không xếp hạng, không quảng cáo, không lướt vô tận.",
             "A few fun gatherings made just for you this week. No ratings, no ads, no endless scrolling."
         ))
-        .font(.system(size: 11))
+        .font(.app(size: 11))
         .foregroundStyle(app.palette.ink)
         .padding(.horizontal, 20)
         .padding(.top, 6)
@@ -1724,7 +1823,7 @@ struct HomeView: View {
                     .padding(.horizontal, 20)
                 if list.isEmpty {
                     Text(app.T("Chưa có sự kiện phù hợp cuối tuần này.", "No matching events this weekend yet."))
-                        .font(.system(size: 12.5)).opacity(0.7)
+                        .font(.app(size: 12.5)).opacity(0.7)
                         .padding(.horizontal, 20).padding(.bottom, 12)
                         .accessibilityIdentifier("weekend.empty")
                 } else {
@@ -1751,7 +1850,7 @@ struct HomeView: View {
             Text((app.hasHosted
                   ? app.T("Trang tổ chức của bạn", "Your host page")
                   : app.T("Dành cho người tổ chức ▪︎ hoàn toàn miễn phí", "For organizers ▪︎ completely free")) + " ›")
-                .font(.system(size: 14.5, weight: .semibold))
+                .font(.app(size: 14.5, weight: .semibold))
                 .foregroundStyle(app.palette.ink)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
@@ -1804,7 +1903,7 @@ struct HomeNotificationsButton: View {
                 .overlay(alignment: .topTrailing) {
                     if app.unreadNotifications > 0 {
                         Text(app.unreadNotifications > 99 ? "99+" : "\(app.unreadNotifications)")
-                            .font(.system(size: 11, weight: .bold)).monospacedDigit()
+                            .font(.app(size: 11, weight: .bold)).monospacedDigit()
                             .foregroundStyle(BanbeTheme.onAlert)
                             .padding(.horizontal, 5).frame(minWidth: 18, minHeight: 18)
                             .background(BanbeTheme.alert, in: Capsule())

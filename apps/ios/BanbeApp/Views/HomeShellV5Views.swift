@@ -93,7 +93,7 @@ struct HomeHeroPinnedHeader: View {
             VStack(alignment: .leading, spacing: 4) {
                 wordmark
                 Text(dateLabel)
-                    .font(.system(size: 14))
+                    .font(.app(size: 14))
                     .foregroundStyle(.white.opacity(0.8))
                     .lineLimit(1)
                     .accessibilityIdentifier("home.date")
@@ -129,7 +129,7 @@ struct HomeHeroPinnedHeader: View {
     private func glassCircleButton(system: String, label: String, id: String, action: @escaping () -> Void) -> some View {
         SwipeSafeButton(action: action) {
             Image(systemName: system)
-                .font(.system(size: 18, weight: .regular))
+                .font(.app(size: 18, weight: .regular))
                 .foregroundStyle(.white)
                 .frame(width: 42, height: 42)
                 .background(Color.white.opacity(0.14), in: Circle())
@@ -151,9 +151,9 @@ struct HomeHeroPinnedHeader: View {
             ZStack(alignment: .bottomTrailing) {
                 Group {
                     if app.isSignedIn {
-                        Text(BottomTabBar.initials(app.displayName)).font(.system(size: 14, weight: .bold))
+                        Text(BottomTabBar.initials(app.displayName)).font(.app(size: 14, weight: .bold))
                     } else {
-                        Image(systemName: "person").font(.system(size: 16, weight: .regular))
+                        Image(systemName: "person").font(.app(size: 16, weight: .regular))
                     }
                 }
                 .foregroundStyle(.white)
@@ -161,7 +161,7 @@ struct HomeHeroPinnedHeader: View {
                 .background(app.palette.clay, in: Circle())
                 .overlay(Circle().strokeBorder(Color.white.opacity(0.9), lineWidth: 1.5))
                 Image(systemName: "gearshape.fill")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.app(size: 9, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 18, height: 18)
                     .background(HeroColor.night, in: Circle())
@@ -186,9 +186,9 @@ struct HomeHeroPinnedHeader: View {
                 app.openSearch(from: app.homeSearchBarFrame)
             } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass").font(.system(size: 16, weight: .semibold))
+                    Image(systemName: "magnifyingglass").font(.app(size: 16, weight: .semibold))
                     // Same placeholder, size and weight as the main search bar (HomeSearchBar).
-                    Text(app.T("Tìm sự kiện, host, khu vực, vibe…", "Search events, hosts, areas, vibes…")).font(.system(size: 14.5)).lineLimit(1)
+                    Text(app.T("Tìm sự kiện, host, khu vực, vibe…", "Search events, hosts, areas, vibes…")).font(.app(size: 14.5)).lineLimit(1)
                     Spacer(minLength: 0)
                 }
                 .foregroundStyle(.white.opacity(0.75))
@@ -206,14 +206,14 @@ struct HomeHeroPinnedHeader: View {
                 AreaMenuOptions { onSearchLocations() }
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "mappin").font(.system(size: 15, weight: .medium))
+                    Image(systemName: "mappin").font(.app(size: 15, weight: .medium))
                     // The chosen area next to the pin (same short label as the Map and the filter summary).
                     if let place {
-                        Text(place).font(.system(size: 14, weight: .medium)).lineLimit(1).truncationMode(.tail)
+                        Text(place).font(.app(size: 14, weight: .medium)).lineLimit(1).truncationMode(.tail)
                             .frame(maxWidth: 110, alignment: .leading)
                             .accessibilityIdentifier("header.area.label")
                     }
-                    Text("▾").font(.system(size: 10))
+                    Text("▾").font(.app(size: 10))
                 }
                 .foregroundStyle(.white)
                 .padding(.leading, 12).padding(.trailing, 14)
@@ -251,6 +251,8 @@ struct HomeHeroSection: View {
     let onAvatar: () -> Void
     /// Height of the pinned header above (measured by HomeView), left empty at the top of the hero.
     var headerHeight: CGFloat = HomeHeroPinnedHeader.fallbackHeight
+    /// v2.3 (note 81): every tab's size; non-nil turns the rail's last card into the See all fan card.
+    var v23Counts: [HomeHeroTab: Int]? = nil
     /// True while Home shows the Hosting view (organizer mode on + `app.homeView == .host`): the same hero without the card rail.
     /// Derived from app state here (never passed in), so the hero tab and the content below can never disagree.
     private var hosting: Bool { app.simpleShellEnabled && app.effectiveHomeView == .host }
@@ -357,7 +359,7 @@ struct HomeHeroSection: View {
     private func tabButton(title: String, selected: Bool, id: String, action: @escaping () -> Void) -> some View {
         SwipeSafeButton(action: action) {
             Text(title)
-                .font(.system(size: 17, weight: selected ? .medium : .light))
+                .font(.app(size: 17, weight: selected ? .medium : .light))
                 .foregroundStyle(selected ? Color.white : HeroColor.onDark)
                 .lineLimit(1).fixedSize()
                 .padding(.vertical, 6)
@@ -430,22 +432,24 @@ struct HomeHeroSection: View {
                 VStack(alignment: .leading, spacing: 6) {
                     if !m.metaLine.isEmpty {
                         Text(m.metaLine.uppercased())
-                            .font(.system(size: 11)).tracking(1.3).opacity(0.85).lineLimit(1)
+                            .font(.app(size: 11)).tracking(1.3).opacity(0.85).lineLimit(1)
                     }
                     Text(m.name)
-                        .font(.system(size: 26, weight: .light)).lineLimit(3).minimumScaleFactor(0.8)
+                        .font(.app(size: 26, weight: .light)).lineLimit(3).minimumScaleFactor(0.8)
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 8) {
                         Text(m.priceLabel)
                         Spacer(minLength: 0)
                         if let left = m.fill.left { Text(app.T("Còn \(left) chỗ", "\(left) left")) }
                     }
-                    .font(.system(size: 13)).opacity(0.9).lineLimit(1)
+                    .font(.app(size: 13)).opacity(0.9).lineLimit(1)
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(width: Self.cardWidth, height: Self.cardHeight)
+            // The cover grows out of (and shrinks back into) this card, not the screen's centre.
+            .zoomSource(m.key)
             .overlay(alignment: .top) {
                 HStack {
                     if !m.dateBadge.isEmpty { badge(m.dateBadge.uppercased()) }
@@ -465,17 +469,25 @@ struct HomeHeroSection: View {
 
     private func badge(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 11.5, weight: .bold)).tracking(0.2)
+            .font(.app(size: 11.5, weight: .bold)).tracking(0.2)
             .foregroundStyle(HeroColor.badgeInk)
             .padding(.horizontal, 10).frame(height: 28)
             .background(HeroColor.badgeFill, in: Capsule())
     }
 
-    private var seeAllCard: some View {
+    @ViewBuilder private var seeAllCard: some View {
+        if let counts = v23Counts {
+            SeeAllFanCard(photos: list.map(\.img), label: ViEn(tab.vi, tab.en), count: counts[tab] ?? list.count) { onSeeAll(tab) }
+        } else {
+            classicSeeAllCard
+        }
+    }
+
+    private var classicSeeAllCard: some View {
         SwipeSafeButton { onSeeAll(tab) } label: {
             VStack(spacing: 10) {
-                Text("→").font(.system(size: 26))
-                Text(app.T("Xem tất cả", "See all")).font(.system(size: 15))
+                Text("→").font(.app(size: 26))
+                Text(app.T("Xem tất cả", "See all")).font(.app(size: 15))
             }
             .foregroundStyle(.white)
             .frame(width: Self.cardWidth, height: Self.cardHeight)
@@ -553,7 +565,7 @@ struct HomeHeroSection: View {
         func pill(_ title: String, id: String, primary: Bool, run: @escaping () -> Void) -> some View {
             SwipeSafeButton(action: run) {
                 Text(title)
-                    .font(.system(size: 15, weight: .semibold)).multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.85)
+                    .font(.app(size: 15, weight: .semibold)).multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.85)
                     .foregroundStyle(primary ? HeroColor.badgeInk : .white)
                     .padding(.horizontal, 18).frame(maxWidth: .infinity, minHeight: 44)
                     .background(primary ? HeroColor.badgeFill : Color.white.opacity(0.14), in: Capsule())
@@ -564,9 +576,9 @@ struct HomeHeroSection: View {
             .accessibilityIdentifier(id)
         }
         return VStack(spacing: 12) {
-            Image(systemName: icon).font(.system(size: 28, weight: .light))
+            Image(systemName: icon).font(.app(size: 28, weight: .light))
             Text(text)
-                .font(.system(size: 15)).multilineTextAlignment(.center).lineSpacing(3)
+                .font(.app(size: 15)).multilineTextAlignment(.center).lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
             if changeArea {
                 pill(app.T("Đổi khu vực", "Change area"), id: "home.hero.empty.area", primary: true) {
@@ -577,14 +589,14 @@ struct HomeHeroSection: View {
                 if tab == .foryou {
                     if showPrefsLink {
                         SwipeSafeButton(action: action) {
-                            Text(cta).font(.system(size: 14)).underline().frame(minHeight: 36).contentShape(Rectangle())
+                            Text(cta).font(.app(size: 14)).underline().frame(minHeight: 36).contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("home.hero.empty.cta")
                     }
                 } else {
                     SwipeSafeButton(action: action) {
-                        Text(cta).font(.system(size: 14)).underline().frame(minHeight: 36).contentShape(Rectangle())
+                        Text(cta).font(.app(size: 14)).underline().frame(minHeight: 36).contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("home.hero.empty.cta")
@@ -626,6 +638,8 @@ struct HomeBrowseSection: View {
     let counts: [String: Int]
     let onPick: (String) -> Void
     let onFind: () -> Void
+    /// v2.3 (note 81): "Browse by type" with "See all N" (every live event); the tiles open the Browse screen.
+    var seeAllTotal: Int? = nil
 
     private static let maxTiles = 5
 
@@ -641,9 +655,20 @@ struct HomeBrowseSection: View {
     var body: some View {
         if !top.isEmpty {
             VStack(alignment: .leading, spacing: 14) {
-                Text(app.T("Khám phá", "Browse"))
-                    .font(BanbeTheme.display(19))
-                    .accessibilityAddTraits(.isHeader)
+                HStack {
+                    Text(seeAllTotal != nil ? app.T("Duyệt theo loại", "Browse by type") : app.T("Khám phá", "Browse"))
+                        .font(BanbeTheme.display(19))
+                        .accessibilityAddTraits(.isHeader)
+                    Spacer()
+                    if let total = seeAllTotal {
+                        Button(action: onFind) {
+                            (Text(app.T("Xem tất cả ", "See all ")) + Text("\(total)").bold())
+                                .font(.app(size: 14, weight: .semibold)).frame(minHeight: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("home.browse.all")
+                    }
+                }
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4, alignment: .top), count: 3), spacing: 4) {
                     ForEach(top, id: \.key) { t in
                         tile(symbol: CategoryGlyph.symbol(t.key), title: typeName(t.key), sub: events(t.n), id: "home.browse.\(t.key)") { onPick(t.key) }
@@ -668,10 +693,10 @@ struct HomeBrowseSection: View {
         SwipeSafeButton(action: action) {
             VStack(spacing: 4) {
                 Image(systemName: symbol)
-                    .font(.system(size: 24, weight: .light))
+                    .font(.app(size: 24, weight: .light))
                     .frame(width: 52, height: 52)
-                Text(title).font(.system(size: 13)).lineLimit(1).minimumScaleFactor(0.8)
-                Text(sub).font(.system(size: 11.5)).opacity(0.64).lineLimit(1).minimumScaleFactor(0.8)
+                Text(title).font(.app(size: 13)).lineLimit(1).minimumScaleFactor(0.8)
+                Text(sub).font(.app(size: 11.5)).opacity(0.64).lineLimit(1).minimumScaleFactor(0.8)
             }
             .frame(maxWidth: .infinity)
             .padding(.top, 14).padding(.bottom, 12)
@@ -723,7 +748,7 @@ struct HomeByTypeSections: View {
                     Spacer(minLength: 0)
                     SwipeSafeButton(action: onFilters) {
                         Image(systemName: "slider.horizontal.3")
-                            .font(.system(size: 16, weight: .regular))
+                            .font(.app(size: 16, weight: .regular))
                             .frame(width: 38, height: 38)
                             .background(app.palette.block, in: Circle())
                             .frame(width: 44, height: 44)
@@ -735,7 +760,7 @@ struct HomeByTypeSections: View {
                 }
                 SwipeSafeButton(action: onFilters) {
                     Text(summary)
-                        .font(.system(size: 13)).opacity(0.72).lineLimit(1)
+                        .font(.app(size: 13)).opacity(0.72).lineLimit(1)
                         .padding(.bottom, 3)
                         .overlay(alignment: .bottom) { Rectangle().fill(app.palette.divider).frame(height: 1) }
                 }
@@ -746,9 +771,9 @@ struct HomeByTypeSections: View {
             .padding(.horizontal, 20).padding(.top, 28)
             if sections.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(app.T("Chưa có gì khớp", "Nothing matches yet")).font(.system(size: 17))
+                    Text(app.T("Chưa có gì khớp", "Nothing matches yet")).font(.app(size: 17))
                     Text(app.T("Bộ lọc đang ẩn mọi sự kiện. Nới rộng để xem thêm.", "Your filters hide every event. Widen them to see more."))
-                        .font(.system(size: 14)).opacity(0.7)
+                        .font(.app(size: 14)).opacity(0.7)
                 }
                 .padding(.horizontal, 20).padding(.top, 24)
                 .accessibilityIdentifier("home.byType.empty")
@@ -764,11 +789,11 @@ struct HomeByTypeSections: View {
         VStack(alignment: .leading, spacing: 12) {
             SwipeSafeButton { onPick(s.key) } label: {
                 HStack(spacing: 12) {
-                    Image(systemName: CategoryGlyph.symbol(s.key)).font(.system(size: 17, weight: .regular)).frame(width: 22)
-                    Text(typeName(s.key)).font(.system(size: 17, weight: .semibold))
-                    Text("\(s.cards.count)").font(.system(size: 14)).opacity(0.64)
+                    Image(systemName: CategoryGlyph.symbol(s.key)).font(.app(size: 17, weight: .regular)).frame(width: 22)
+                    Text(typeName(s.key)).font(.app(size: 17, weight: .semibold))
+                    Text("\(s.cards.count)").font(.app(size: 14)).opacity(0.64)
                     Spacer(minLength: 0)
-                    Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).opacity(0.5)
+                    Image(systemName: "chevron.right").font(.app(size: 12, weight: .semibold)).opacity(0.5)
                 }
                 .padding(.horizontal, 20)
                 .frame(minHeight: 44)
@@ -798,7 +823,7 @@ struct HomeByTypeSections: View {
                 .overlay(alignment: .topLeading) {
                     if !m.dateBadge.isEmpty {
                         Text(m.dateBadge.uppercased())
-                            .font(.system(size: 11.5, weight: .bold))
+                            .font(.app(size: 11.5, weight: .bold))
                             .foregroundStyle(HeroColor.badgeInk)
                             .padding(.horizontal, 10).frame(height: 26)
                             .background(Color(hex: 0xF7F4EC).opacity(0.9), in: Capsule())
@@ -808,7 +833,7 @@ struct HomeByTypeSections: View {
                 .overlay(alignment: .bottomLeading) {
                     if m.fill.soldOut {
                         Text(app.T("HẾT CHỖ", "SOLD OUT"))
-                            .font(.system(size: 11.5, weight: .bold))
+                            .font(.app(size: 11.5, weight: .bold))
                             .foregroundStyle(BanbeTheme.onAlert)
                             .padding(.horizontal, 12).frame(height: 26)
                             .background(BanbeTheme.alert, in: Capsule())
@@ -817,10 +842,10 @@ struct HomeByTypeSections: View {
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 Text(m.name)
-                    .font(.system(size: 15)).lineLimit(2).multilineTextAlignment(.leading)
+                    .font(.app(size: 15)).lineLimit(2).multilineTextAlignment(.leading)
                     .padding(.top, 10)
                 Text([m.metaLine, m.priceLabel].filter { !$0.isEmpty }.joined(separator: " · "))
-                    .font(.system(size: 12)).opacity(0.64).lineLimit(1)
+                    .font(.app(size: 12)).opacity(0.64).lineLimit(1)
                     .padding(.top, 3)
             }
             .frame(width: 168, alignment: .leading)

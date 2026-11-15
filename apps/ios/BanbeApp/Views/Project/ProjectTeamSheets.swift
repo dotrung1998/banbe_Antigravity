@@ -54,8 +54,8 @@ struct ProjectMemberSheet: View {
         HStack(spacing: 14) {
             ProjectAvatar(name: app.projectPersonName(m.userId), size: 52)
             VStack(alignment: .leading, spacing: 3) {
-                Text(app.projectRoleName(role)).font(.body.weight(.bold))
-                Text(app.projectRoleNote(role)).font(.subheadline).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
+                Text(app.projectRoleName(role)).font(.app(.body).weight(.bold))
+                Text(app.projectRoleNote(role)).font(.app(.subheadline)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
             }
         }
         .accessibilityElement(children: .combine)
@@ -92,7 +92,7 @@ struct ProjectMemberSheet: View {
                          : host ? app.T("Chỉ có hiệu lực khi banbe bật quyền tiền và check-in cho đội.",
                                         "Takes effect once banbe turns on team money and check-in.")
                                 : app.T("Chỉ Chủ sự kiện đổi được quyền.", "Only the Host can change access."))
-                .font(.footnote).foregroundStyle(app.palette.ink3)
+                .font(.app(.footnote)).foregroundStyle(app.palette.ink3)
         }
         if host {
             InkButton(title: app.T("Lưu thay đổi", "Save changes"),
@@ -105,7 +105,7 @@ struct ProjectMemberSheet: View {
             }
             .accessibilityIdentifier("project.member.save")
             Button(role: .destructive) { removing = true } label: {
-                Label(app.T("Xoá khỏi dự án", "Remove from project"), systemImage: "person.badge.minus").font(.body.weight(.semibold))
+                Label(app.T("Xoá khỏi dự án", "Remove from project"), systemImage: "person.badge.minus").font(.app(.body).weight(.semibold))
                     .frame(maxWidth: .infinity, minHeight: 50)
                     .foregroundStyle(BanbeTheme.alert).background(BanbeTheme.alert.opacity(0.12), in: Capsule())
             }
@@ -116,11 +116,11 @@ struct ProjectMemberSheet: View {
 
     private func capRow(icon: String, title: String, note: String, isOn: Binding<Bool>, id: String) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: icon).font(.system(size: 20)).foregroundStyle(app.palette.clay).frame(width: 28).accessibilityHidden(true)
+            Image(systemName: icon).font(.app(size: 20)).foregroundStyle(app.palette.clay).frame(width: 28).accessibilityHidden(true)
             Toggle(isOn: isOn) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.body.weight(.semibold))
-                    Text(note).font(.footnote).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
+                    Text(title).font(.app(.body).weight(.semibold))
+                    Text(note).font(.app(.footnote)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
                 }
             }
             .disabled(!host || finance)
@@ -134,11 +134,11 @@ struct ProjectMemberSheet: View {
             .font(BanbeTheme.display(18))
         Text(app.T("Việc đang giao cho họ thành chưa giao. Họ cần lời mời mới để vào lại.",
                    "Their open tasks become unassigned. They'd need a new invite to come back."))
-            .font(.subheadline).foregroundStyle(app.palette.ink2)
+            .font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
         if app.projectSnapshot?.project?.channels.isEmpty == false {
             Label(app.T("Ai có liên kết kênh của đội vẫn vào được kênh đó. Hãy cân nhắc đổi liên kết.",
                         "Anyone with a team channel link can still join it. Consider making new links."), systemImage: "link")
-                .font(.subheadline).padding(14)
+                .font(.app(.subheadline)).padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(app.palette.honeyBg, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .accessibilityIdentifier("project.member.channelNudge")
@@ -147,7 +147,7 @@ struct ProjectMemberSheet: View {
         Button(role: .destructive) {
             Task { if await app.removeProjectMember(memberID, reason: reason.trimmingCharacters(in: .whitespacesAndNewlines)) { close() } }
         } label: {
-            Text(app.T("Xoá khỏi dự án", "Remove from project")).font(.body.weight(.bold))
+            Text(app.T("Xoá khỏi dự án", "Remove from project")).font(.app(.body).weight(.bold))
                 .frame(maxWidth: .infinity, minHeight: 50)
                 .foregroundStyle(BanbeTheme.alert).background(BanbeTheme.alert.opacity(0.12), in: Capsule())
         }
@@ -190,7 +190,7 @@ struct ProjectInviteSheet: View {
                 VStack(alignment: .leading, spacing: 18) {
                     Text(app.T("Người được mời nhận vai bạn đặt sẵn. Họ chỉ thấy dự án này, không thấy các sự kiện khác của bạn.",
                                "Invitees get the role you preset. They see this project only, not your other events."))
-                        .font(.subheadline).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
+                        .font(.app(.subheadline)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
                     VStack(alignment: .leading, spacing: 8) {
                         ProjectFieldLabel(text: app.T("Vai trò", "Role"))
                         FlowLayout(spacing: 8, lineSpacing: 8) {
@@ -202,7 +202,7 @@ struct ProjectInviteSheet: View {
                                 }
                             }
                         }
-                        Text(app.projectRoleNote(role)).font(.footnote).foregroundStyle(app.palette.ink2)
+                        Text(app.projectRoleNote(role)).font(.app(.footnote)).foregroundStyle(app.palette.ink2)
                     }
                     if role == "lane_lead" {
                         VStack(alignment: .leading, spacing: 8) {
@@ -220,7 +220,7 @@ struct ProjectInviteSheet: View {
                     if !host {
                         Text(app.T("Quản lý chỉ mời được Trưởng hạng mục và Hỗ trợ. Quản lý và Tài chính & cổng do Chủ sự kiện mời.",
                                    "Managers can invite Lane leads and Helpers only. Manager and Finance & door invites come from the Host."))
-                            .font(.footnote).foregroundStyle(app.palette.ink3)
+                            .font(.app(.footnote)).foregroundStyle(app.palette.ink3)
                             .accessibilityIdentifier("project.invite.managerNote")
                     }
                     if qr {
@@ -291,14 +291,14 @@ struct ProjectInviteSheet: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             if let inv = invite {
-                Text(inv.shortCode).font(.system(size: 22, weight: .heavy, design: .monospaced)).tracking(2)
+                Text(inv.shortCode).font(.app(size: 22, weight: .heavy, design: .monospaced)).tracking(2)
                     .foregroundStyle(.black)
                     .accessibilityLabel(inv.shortCode.map { String($0) }.joined(separator: " "))
                     .accessibilityIdentifier("project.invite.code")
             }
             Text(app.T("Hết hạn sau \(ProjectLimits.shared.inviteHours) giờ · ", "Expires in \(ProjectLimits.shared.inviteHours) hours · ")
                  + (singleUse ? app.T("dùng một lần", "single use") : app.T("tối đa \(max) người", "up to \(max) people")))
-                .font(.footnote).foregroundStyle(Color.black.opacity(0.65))
+                .font(.app(.footnote)).foregroundStyle(Color.black.opacity(0.65))
                 .accessibilityIdentifier("project.invite.uses")
         }
         .padding(18)
@@ -306,17 +306,17 @@ struct ProjectInviteSheet: View {
         .background(Color.white, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         Toggle(isOn: $singleUse) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(app.T("Chỉ dùng một lần", "Single use only")).font(.body.weight(.semibold))
+                Text(app.T("Chỉ dùng một lần", "Single use only")).font(.app(.body).weight(.semibold))
                 Text(app.T("Tắt để tối đa \(max) người quét cùng một mã, ví dụ khi dán ở buổi họp đội.",
                            "Turn off to let up to \(max) people scan the same code, for example at a team meeting."))
-                    .font(.footnote).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
+                    .font(.app(.footnote)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
             }
         }
         .accessibilityIdentifier("project.invite.singleUse")
         if let inv = invite { shareButtons(inv) }
         Text(app.T("Mã QR chỉ chứa mã mời. Vai trò do banbe giữ, nên sửa liên kết không đổi được vai trò. Đổi lựa chọn sẽ tạo mã mới và huỷ mã cũ.",
                    "The QR holds only the invite code. banbe keeps the role, so editing the link can't change it. Changing a choice makes a new code and cancels the old one."))
-            .font(.footnote).foregroundStyle(app.palette.ink3)
+            .font(.app(.footnote)).foregroundStyle(app.palette.ink3)
     }
 
     private func codeCard(_ inv: ProjectInvite) -> some View {
@@ -324,8 +324,8 @@ struct ProjectInviteSheet: View {
             VStack(spacing: 6) {
                 Text(app.T("Mã mời (hết hạn sau \(ProjectLimits.shared.inviteHours) giờ, dùng một lần)",
                            "Invite code (expires in \(ProjectLimits.shared.inviteHours) hours, single use)"))
-                    .font(.footnote).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
-                Text(inv.shortCode).font(.system(size: 30, weight: .heavy, design: .monospaced)).tracking(3)
+                    .font(.app(.footnote)).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
+                Text(inv.shortCode).font(.app(size: 30, weight: .heavy, design: .monospaced)).tracking(3)
                     .textSelection(.enabled)
                     .accessibilityLabel(inv.shortCode.map { String($0) }.joined(separator: " "))
                     .accessibilityIdentifier("project.invite.code")
@@ -336,7 +336,7 @@ struct ProjectInviteSheet: View {
             shareButtons(inv)
             Text(app.T("Đổi vai trò sẽ tạo mã mới. Mã cũ vẫn dùng được cho tới khi hết hạn hoặc bạn huỷ ở thẻ Đội.",
                        "Changing the role makes a new code. The old one still works until it expires or you cancel it on the Team tab."))
-                .font(.footnote).foregroundStyle(app.palette.ink3)
+                .font(.app(.footnote)).foregroundStyle(app.palette.ink3)
         }
     }
 
@@ -349,14 +349,14 @@ struct ProjectInviteSheet: View {
                 copied = true
             } label: {
                 Label(copied ? app.T("Đã sao chép", "Copied") : app.T("Sao chép liên kết", "Copy link"), systemImage: copied ? "checkmark" : "link")
-                    .font(.body.weight(.bold))
+                    .font(.app(.body).weight(.bold))
                     .frame(maxWidth: .infinity, minHeight: 50)
                     .foregroundStyle(app.palette.paper).background(app.palette.ink, in: Capsule())
             }
             .buttonStyle(PressableButtonStyle())
             .accessibilityIdentifier("project.invite.copy")
             ShareLink(item: app.projectInviteShareText(inv)) {
-                Label(app.T("Chia sẻ", "Share"), systemImage: "square.and.arrow.up").font(.body.weight(.semibold))
+                Label(app.T("Chia sẻ", "Share"), systemImage: "square.and.arrow.up").font(.app(.body).weight(.semibold))
                     .frame(maxWidth: .infinity, minHeight: 50).background(app.palette.blockInset, in: Capsule())
             }
             .accessibilityIdentifier("project.invite.share")

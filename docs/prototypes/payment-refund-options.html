@@ -1,0 +1,719 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>banbe Payment and Refund Options</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Prototype only. Nothing here touches the app. Tokens copied from src/index.css (--bb-*). */
+:root {
+  --bg:#F7F4EC; --fg:#1B1916; --fg2:rgba(27,25,22,.74); --fg3:rgba(27,25,22,.62);
+  --rule:rgba(27,25,22,.16); --block:#EEE8DA; --field:#E6DFCE; --inset:#FBF8F1;
+  --clay:#9C5B3B; --clayBg:#EFE0D2; --moss:#4E6A30; --mossBg:#E3EAD6; --honey:#7A5410; --honeyBg:#F3E7C8;
+  --alert:#9A3E2D; --alertBg:#F3DDD6; --plum:#6B4E7C;
+  --page:#E4DED0; --panel:#FBF9F4; --scrim:rgba(12,11,9,.5);
+  --display:'Jost','Be Vietnam Pro',system-ui,sans-serif; --text:'Be Vietnam Pro',system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#0F0E0B; --fg:#F2EDE1; --fg2:rgba(242,237,225,.76); --fg3:rgba(242,237,225,.6);
+  --rule:rgba(242,237,225,.18); --block:#1A1815; --field:#24211C; --inset:#24211C;
+  --clay:#D8926C; --clayBg:#3B2A20; --moss:#A9C487; --mossBg:#26301A; --honey:#F2C46D; --honeyBg:#3A2E12;
+  --alert:#E8715B; --alertBg:#3D1F18; --plum:#BBA2D0;
+  --page:#070605; --panel:#141210; --scrim:rgba(0,0,0,.62);
+}}
+:root[data-theme="dark"] {
+  --bg:#0F0E0B; --fg:#F2EDE1; --fg2:rgba(242,237,225,.76); --fg3:rgba(242,237,225,.6);
+  --rule:rgba(242,237,225,.18); --block:#1A1815; --field:#24211C; --inset:#24211C;
+  --clay:#D8926C; --clayBg:#3B2A20; --moss:#A9C487; --mossBg:#26301A; --honey:#F2C46D; --honeyBg:#3A2E12;
+  --alert:#E8715B; --alertBg:#3D1F18; --plum:#BBA2D0;
+  --page:#070605; --panel:#141210; --scrim:rgba(0,0,0,.62);
+}
+* { box-sizing:border-box; }
+html,body { margin:0; }
+body { background:var(--page); color:var(--fg); font-family:var(--text); -webkit-font-smoothing:antialiased; font-size:15px; line-height:1.45; }
+button { font-family:inherit; cursor:pointer; color:inherit; }
+h1,h2,h3,h4,p { margin:0; }
+.disp { font-family:var(--display); font-weight:600; letter-spacing:-.02em; }
+.wrap { max-width:1320px; margin:0 auto; padding:20px 16px 56px; }
+
+/* reviewer toolbar */
+.bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px; }
+.bar h1 { font-family:var(--display); font-weight:600; font-size:22px; letter-spacing:-.02em; margin-right:auto; }
+.bar h1 small { font-family:var(--text); font-size:12px; font-weight:500; color:var(--fg3); margin-left:8px; letter-spacing:0; }
+.chipbtn { border:1px solid var(--rule); background:var(--panel); border-radius:999px; padding:8px 14px; font-size:13px; font-weight:600; min-height:36px; white-space:nowrap; }
+.chipbtn:hover { border-color:var(--fg3); }
+.chipbtn[aria-pressed="true"] { background:var(--fg); color:var(--bg); border-color:var(--fg); }
+.flows { display:flex; gap:8px; overflow-x:auto; padding:4px 0 14px; scrollbar-width:none; }
+.flows::-webkit-scrollbar { display:none; }
+.flows .chipbtn { padding:10px 16px; font-size:14px; }
+.flows .chipbtn b { font-family:var(--display); margin-right:6px; opacity:.6; }
+.roletabs { display:none; gap:8px; margin-bottom:12px; }
+
+.stage { display:grid; grid-template-columns:auto auto minmax(300px,1fr); gap:28px; align-items:start; }
+@media (max-width:1240px){ .stage { grid-template-columns:auto auto; justify-content:center; } .side { grid-column:1/-1; } }
+@media (max-width:860px){
+  .stage { grid-template-columns:1fr; justify-items:center; }
+  .roletabs { display:flex; justify-content:center; }
+  body[data-role="g"] #ph { display:none; } body[data-role="h"] #pg { display:none; }
+}
+
+/* phone */
+.phonecol { display:grid; gap:10px; justify-items:center; }
+.who { font-size:12px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--fg3); }
+.who b { color:var(--fg); }
+.phone { width:min(376px, calc(100vw - 32px)); height:790px; border-radius:48px; background:#000; padding:10px; box-shadow:0 30px 60px rgba(0,0,0,.25); position:relative; flex:none; }
+.screen { position:relative; width:100%; height:100%; border-radius:39px; overflow:hidden; background:var(--bg); }
+.status { position:absolute; top:0; left:0; right:0; height:48px; display:flex; justify-content:space-between; align-items:center; padding:6px 28px 0; font-size:15px; font-weight:600; z-index:60; pointer-events:none; }
+.island { position:absolute; top:10px; left:50%; transform:translateX(-50%); width:112px; height:32px; border-radius:20px; background:#000; z-index:61; }
+.mount { position:absolute; inset:0; }
+.view { position:absolute; inset:0; padding-top:50px; display:flex; flex-direction:column; animation:rise .3s ease both; }
+@keyframes rise { from { opacity:0; transform:translateY(8px);} to { opacity:1; transform:none; } }
+@media (prefers-reduced-motion: reduce){ .view,.sheet,.push,.pulse,.spin { animation:none !important; } }
+.nav { display:flex; align-items:center; gap:10px; padding:6px 16px 8px; min-height:48px; flex:none; }
+.nav h3 { font-family:var(--display); font-weight:600; font-size:19px; letter-spacing:-.01em; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.back { width:38px; height:38px; border-radius:19px; border:1px solid var(--rule); background:var(--block); display:grid; place-items:center; flex:none; padding:0; }
+.body { flex:1; overflow-y:auto; padding:4px 18px 18px; display:flex; flex-direction:column; gap:12px; scrollbar-width:none; }
+.body::-webkit-scrollbar { display:none; }
+.foot { flex:none; padding:10px 18px 28px; display:grid; gap:8px; border-top:1px solid var(--rule); background:var(--bg); }
+.h2 { font-family:var(--display); font-weight:600; font-size:26px; line-height:1.12; letter-spacing:-.02em; }
+.lead { color:var(--fg2); font-size:15px; }
+.fine { font-size:12.5px; color:var(--fg3); }
+.center { text-align:center; align-items:center; }
+.eyebrow { font-size:11.5px; letter-spacing:.11em; text-transform:uppercase; color:var(--fg3); font-weight:700; }
+
+.btn { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; min-height:52px; border-radius:16px; border:none; background:var(--fg); color:var(--bg); font-size:16px; font-weight:600; padding:0 14px; text-align:center; }
+.btn.sec { background:var(--block); color:var(--fg); border:1px solid var(--rule); }
+.btn.clay { background:var(--clay); color:var(--bg); }
+.btn.danger { background:transparent; color:var(--alert); border:1px solid var(--alert); }
+.btn.sm { min-height:44px; font-size:14.5px; border-radius:13px; }
+.btn:disabled { opacity:.4; cursor:default; }
+.link { background:none; border:none; font-size:14.5px; font-weight:600; color:var(--fg2); min-height:44px; padding:0 10px; text-decoration:underline; text-underline-offset:3px; }
+.two { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+
+.card { background:var(--block); border:1px solid var(--rule); border-radius:18px; padding:14px; display:grid; gap:10px; }
+.card.inset { background:var(--inset); }
+.card.moss { background:var(--mossBg); border-color:transparent; }
+.card.honey { background:var(--honeyBg); border-color:transparent; }
+.card.alert { background:var(--alertBg); border-color:transparent; }
+.card.clay { background:var(--clayBg); border-color:transparent; }
+.pill { display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:700; padding:4px 10px; border-radius:999px; white-space:nowrap; line-height:1.3; border:1px solid var(--rule); color:var(--fg2); }
+.pill.moss { background:var(--mossBg); color:var(--moss); border-color:transparent; }
+.pill.honey { background:var(--honeyBg); color:var(--honey); border-color:transparent; }
+.pill.alert { background:var(--alertBg); color:var(--alert); border-color:transparent; }
+.pill.clay { background:var(--clayBg); color:var(--clay); border-color:transparent; }
+.ev { display:flex; gap:12px; align-items:center; }
+.thumb { width:58px; height:58px; border-radius:14px; background:linear-gradient(135deg,#C98A5B,#6E3B22); flex:none; }
+.ev b { font-family:var(--display); font-size:17px; display:block; line-height:1.2; }
+.ev span { font-size:13px; color:var(--fg2); }
+.line { display:flex; gap:10px; align-items:flex-start; font-size:14px; }
+.line svg { flex:none; margin-top:2px; }
+.line.moss svg { color:var(--moss); } .line.alert svg { color:var(--alert); } .line.clay svg { color:var(--clay); } .line.honey svg { color:var(--honey); }
+.kv { display:grid; }
+.kv div { display:flex; justify-content:space-between; gap:12px; padding:9px 0; font-size:14px; align-items:center; }
+.kv div + div { border-top:1px solid var(--rule); }
+.kv span { color:var(--fg2); }
+.kv b { font-weight:600; text-align:right; display:inline-flex; align-items:center; gap:6px; }
+.kv b svg { color:var(--fg3); }
+.choice { text-align:left; border:1.5px solid var(--rule); background:var(--block); border-radius:18px; padding:14px; display:grid; gap:6px; width:100%; font-size:14px; }
+.choice b { font-family:var(--display); font-size:19px; display:flex; align-items:center; gap:8px; }
+.choice span { color:var(--fg2); }
+.choice[aria-pressed="true"] { border-color:var(--clay); background:var(--clayBg); box-shadow:inset 0 0 0 1px var(--clay); }
+.tog { display:flex; gap:12px; align-items:center; padding:12px 0; width:100%; background:none; border:none; text-align:left; font-size:14.5px; }
+.tog + .tog { border-top:1px solid var(--rule); }
+.tog div { flex:1; } .tog small { display:block; color:var(--fg2); font-size:12.5px; }
+.sw { width:46px; height:28px; border-radius:14px; background:var(--rule); position:relative; flex:none; transition:background .2s; }
+.sw::after { content:''; position:absolute; top:3px; left:3px; width:22px; height:22px; border-radius:11px; background:#fff; transition:transform .2s; box-shadow:0 1px 3px rgba(0,0,0,.3); }
+.tog[aria-pressed="true"] .sw { background:var(--moss); } .tog[aria-pressed="true"] .sw::after { transform:translateX(18px); }
+.av { width:36px; height:36px; border-radius:18px; flex:none; display:grid; place-items:center; font-weight:700; font-size:13px; color:#fff; background:linear-gradient(135deg,#8E6C8A,#3B2638); }
+.av.b { background:linear-gradient(135deg,#7E8F5A,#2F3E1E); } .av.c { background:linear-gradient(135deg,#5E7F8C,#20323A); } .av.d { background:linear-gradient(135deg,#C98A5B,#6E3B22); }
+.av.lg { width:64px; height:64px; border-radius:32px; font-size:22px; }
+.prow { display:flex; gap:10px; align-items:center; padding:10px 0; font-size:14.5px; }
+.prow + .prow { border-top:1px solid var(--rule); }
+.prow > div:not(.av) { flex:1; min-width:0; } .prow small { display:block; color:var(--fg2); font-size:12.5px; }
+.ladder { display:grid; gap:0; }
+.ladder div { display:flex; justify-content:space-between; gap:10px; font-size:13.5px; padding:8px 10px; border-radius:10px; }
+.ladder div.here { background:var(--mossBg); color:var(--moss); font-weight:700; }
+.tl { display:grid; gap:0; }
+.tl div { display:grid; grid-template-columns:24px 1fr; gap:10px; padding-bottom:16px; position:relative; font-size:14px; }
+.tl div::before { content:''; position:absolute; left:11px; top:22px; bottom:0; width:2px; background:var(--rule); }
+.tl div:last-child { padding-bottom:0; } .tl div:last-child::before { display:none; }
+.tl i { width:24px; height:24px; border-radius:12px; border:2px solid var(--rule); display:grid; place-items:center; background:var(--bg); z-index:1; color:var(--bg); }
+.tl .ok i { background:var(--moss); border-color:var(--moss); }
+.tl .now i { border-color:var(--clay); box-shadow:0 0 0 4px var(--clayBg); }
+.tl small { display:block; color:var(--fg2); font-size:12.5px; }
+.tl .todo { color:var(--fg3); }
+.qr { background:#fff; color:#111; border-radius:14px; padding:10px; display:grid; place-items:center; margin:0 auto; line-height:0; }
+.ticket { background:var(--inset); border:1px solid var(--rule); border-radius:22px; padding:18px 16px; display:grid; gap:12px; justify-items:center; text-align:center; position:relative; }
+.code { font-family:var(--display); font-weight:700; font-size:26px; letter-spacing:.14em; }
+.bigcheck { width:84px; height:84px; border-radius:42px; background:var(--moss); color:var(--bg); display:grid; place-items:center; margin:6px auto 0; }
+.spin { width:44px; height:44px; border-radius:22px; border:4px solid var(--rule); border-top-color:var(--clay); animation:spin 1s linear infinite; margin:10px auto; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.pulse { animation:pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity:.45; } }
+.push { position:absolute; top:50px; left:10px; right:10px; z-index:70; background:var(--inset); border:1px solid var(--rule); border-radius:18px; padding:10px 12px; font-size:13px; display:flex; gap:10px; align-items:center; box-shadow:0 10px 24px rgba(0,0,0,.2); animation:drop .4s ease both; }
+@keyframes drop { from { transform:translateY(-30px); opacity:0; } }
+.push i { width:30px; height:30px; border-radius:9px; background:var(--fg); color:var(--bg); display:grid; place-items:center; flex:none; font-style:normal; font-family:var(--display); font-weight:700; }
+.push + .nav { margin-top:56px; }
+.scrim { position:absolute; inset:0; background:var(--scrim); z-index:80; }
+.sheet { position:absolute; left:0; right:0; bottom:0; z-index:81; background:var(--bg); border-radius:26px 26px 0 0; padding:10px 18px 28px; display:grid; gap:12px; animation:up .28s ease both; max-height:86%; overflow-y:auto; }
+.sheet::before { content:''; width:38px; height:5px; border-radius:3px; background:var(--rule); margin:0 auto 4px; }
+@keyframes up { from { transform:translateY(40px); opacity:0; } }
+.banks { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.banks button { border:1px solid var(--rule); background:var(--block); border-radius:14px; min-height:52px; font-weight:600; font-size:14px; display:flex; align-items:center; gap:10px; padding:0 12px; }
+.banks i { width:26px; height:26px; border-radius:8px; flex:none; }
+/* mock surfaces that are not banbe */
+.chat { background:#E9EEF5; color:#0B1F3A; }
+.chat .nav h3 { font-family:system-ui; font-size:16px; }
+.bub { background:#fff; border-radius:16px 16px 16px 4px; padding:10px 12px; font-size:14.5px; max-width:86%; box-shadow:0 1px 2px rgba(0,0,0,.08); }
+.bub.me { background:#CFE4FF; align-self:flex-end; border-radius:16px 16px 4px 16px; }
+.prev { border:none; padding:0; background:#fff; border-radius:16px; overflow:hidden; max-width:86%; text-align:left; box-shadow:0 1px 2px rgba(0,0,0,.1); color:#0B1F3A; }
+.prev i { display:block; height:110px; background:linear-gradient(135deg,#C98A5B,#6E3B22); }
+.prev div { padding:10px 12px; font-size:13px; } .prev b { display:block; font-size:15px; }
+.bankapp { background:#F4F7FB; color:#0B2545; font-family:system-ui,sans-serif; }
+.bankapp .nav { background:#0B4EA2; color:#fff; padding-top:10px; padding-bottom:12px; }
+.bankapp .nav h3 { font-family:system-ui; font-size:17px; }
+.bankapp .card { background:#fff; border-color:#DCE4EF; color:#0B2545; }
+.bankapp .kv span { color:#5A6B82; } .bankapp .kv div + div { border-color:#E6ECF4; }
+.bankapp .btn { background:#0B4EA2; color:#fff; } .bankapp .foot { background:#F4F7FB; border-color:#DCE4EF; }
+.url { display:flex; align-items:center; gap:6px; background:var(--field); border-radius:12px; padding:8px 12px; font-size:13px; color:var(--fg2); margin:0 18px 6px; }
+.url b { color:var(--fg); font-weight:600; }
+.hero { height:150px; border-radius:20px; background:linear-gradient(135deg,#C98A5B,#6E3B22); display:flex; align-items:flex-end; padding:14px; color:#fff; }
+.hero b { font-family:var(--display); font-size:24px; line-height:1.1; }
+.cam { background:#0B0A08; color:#fff; }
+.cam .nav .back { background:rgba(255,255,255,.14); border-color:transparent; color:#fff; }
+.finder { margin:30px auto 0; width:230px; height:230px; border-radius:26px; border:3px solid #fff; display:grid; place-items:center; background:rgba(255,255,255,.06); padding:0; position:relative; }
+.finder::after { content:''; position:absolute; left:14px; right:14px; height:2px; background:#E8715B; top:50%; animation:sweep 1.8s ease-in-out infinite; }
+@keyframes sweep { 0%,100% { transform:translateY(-80px);} 50% { transform:translateY(80px);} }
+.stat { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.stat div { background:var(--block); border:1px solid var(--rule); border-radius:14px; padding:10px; font-size:12px; color:var(--fg2); }
+.stat b { display:block; font-family:var(--display); font-size:19px; color:var(--fg); }
+.split { display:flex; border-radius:12px; overflow:hidden; height:38px; font-size:12.5px; font-weight:700; }
+.split span { display:grid; place-items:center; }
+.split span:first-child { background:var(--clay); color:var(--bg); } .split span:last-child { background:var(--field); flex:1; }
+.bar2 { height:8px; border-radius:4px; background:var(--rule); overflow:hidden; } .bar2 i { display:block; height:100%; background:var(--moss); transition:width .3s; }
+
+/* side panel + docs */
+.side { background:var(--panel); border:1px solid var(--rule); border-radius:22px; padding:20px; display:grid; gap:16px; }
+.side h2 { font-family:var(--display); font-size:24px; letter-spacing:-.02em; line-height:1.15; }
+.side h4 { font-size:11.5px; letter-spacing:.11em; text-transform:uppercase; color:var(--fg3); margin-bottom:6px; }
+.side ul { margin:0; padding-left:18px; display:grid; gap:5px; font-size:14px; }
+.side code, .doc code { font-size:12.5px; background:var(--block); padding:1px 5px; border-radius:5px; }
+.sims { display:flex; flex-wrap:wrap; gap:6px; }
+.doc { margin-top:36px; display:grid; grid-template-columns:minmax(0,1fr); gap:28px; }
+.doc h2 { font-family:var(--display); font-size:26px; letter-spacing:-.02em; margin-bottom:10px; }
+.doc p, .doc li { font-size:14.5px; max-width:74ch; }
+.doc ul { margin:0; padding-left:18px; display:grid; gap:6px; }
+.tblwrap { overflow-x:auto; border:1px solid var(--rule); border-radius:16px; background:var(--panel); }
+table { border-collapse:collapse; width:100%; min-width:760px; font-size:13.5px; }
+th,td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--rule); vertical-align:top; }
+th { font-size:11.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--fg3); }
+tr:last-child td { border-bottom:none; }
+.grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; }
+.fact { background:var(--panel); border:1px solid var(--rule); border-radius:16px; padding:14px; font-size:14px; display:grid; gap:6px; }
+.fact b { font-family:var(--display); font-size:17px; }
+.fact a, .doc a { color:var(--clay); }
+</style>
+</head>
+<body data-role="g">
+<div class="wrap">
+  <div class="bar">
+    <h1>Payment and refund options <small>interactive prototype · Vietnam · not wired to the app</small></h1>
+    <button class="chipbtn" id="reset">Restart this flow</button>
+    <button class="chipbtn" id="theme">Light / Dark</button>
+  </div>
+  <div class="flows" id="flows"></div>
+  <div class="roletabs">
+    <button class="chipbtn" data-role="g" aria-pressed="true">Guest phone</button>
+    <button class="chipbtn" data-role="h" aria-pressed="false">Host phone</button>
+  </div>
+  <div class="stage">
+    <div class="phonecol" id="pg"><div class="who">Guest · <b>Minh Anh</b></div>
+      <div class="phone"><div class="screen"><div class="status"><span>9:41</span><span>5G ▮▮▮</span></div><div class="island"></div><div class="mount" id="mg"></div></div></div></div>
+    <div class="phonecol" id="ph"><div class="who">Host · <b>Linh Trần</b></div>
+      <div class="phone"><div class="screen"><div class="status"><span>9:41</span><span>5G ▮▮▮</span></div><div class="island"></div><div class="mount" id="mh"></div></div></div></div>
+    <aside class="side" id="side"></aside>
+  </div>
+
+  <section class="doc">
+    <div>
+      <h2>How the options compare</h2>
+      <div class="tblwrap"><table>
+        <tr><th>Option</th><th>Guest effort</th><th>Guest scam risk</th><th>Host scam risk</th><th>Build effort</th><th>Best for</th></tr>
+        <tr><td><b>1. Private or Public first</b><br>link + Going / Thinking about it</td><td>Very low, no app needed to answer</td><td>Low: link always shows banbe.app and a verified host</td><td>Low</td><td>Medium: RSVP state next to bookings, web invite page</td><td>Friends, supper clubs, birthdays</td></tr>
+        <tr><td><b>2. Pay now by transfer</b><br>bank hand-off, feed confirms</td><td>Low: one tap opens the bank app with everything filled</td><td>Low: name match + locked amount and memo</td><td>Very low: no screenshots accepted at all</td><td>Low: mostly UI over the existing bank feed</td><td>Public events, limited seats</td></tr>
+        <tr><td><b>3. Pay at the door</b><br>scan, then transfer or cash</td><td>Lowest before the event</td><td>Lowest: nothing paid before meeting the host</td><td>Medium: no-shows. Low for fraud: cash needs host confirm</td><td>Medium: new scan-to-pay prompt, cash ledger</td><td>Private events, first-time hosts</td></tr>
+        <tr><td><b>4. Deposit to hold</b></td><td>Low</td><td>Low: only the deposit is exposed</td><td>Low: no-shows cost the guest the deposit</td><td>Medium: two-part booking state</td><td>Dinners with real food cost</td></tr>
+        <tr><td><b>5. Refund to source</b><br>+ give to a friend</td><td>Very low: no account typing</td><td>Low: refund only goes where the money came from</td><td>Low: feed proves the refund was sent</td><td>Medium: outgoing feed match, ticket transfer</td><td>All paid events</td></tr>
+        <tr><td><b>6. Safety layer</b></td><td>None</td><td colspan="2">Cuts the common Vietnamese patterns: fake bill, lookalike link, off-app transfer, one QR sold twice, swapped bank account</td><td>Medium, can ship piece by piece</td><td>Everything above</td></tr>
+      </table></div>
+    </div>
+    <div>
+      <h2>Suggested order</h2>
+      <ul>
+        <li><b>First:</b> option 2 polish and option 5 refund-to-source. Both sit on the bank feed you already have (<code>record_bank_transaction</code>, <code>refund_claims</code>) and remove the two places people type or upload things by hand.</li>
+        <li><b>Second:</b> option 1 with option 3. Private events with pay at the door are the lowest-risk way for a new host to start, and they are what the Partiful-style link is for.</li>
+        <li><b>Third:</b> option 4 for hosts who get no-shows, then the rest of option 6.</li>
+        <li><b>One rule stays in every option:</b> money goes guest to host directly and banbe never holds it. Holding funds would make banbe a payment intermediary, which needs a State Bank licence. A lawyer should confirm before anything that looks like escrow.</li>
+      </ul>
+    </div>
+    <div>
+      <h2>What the research said</h2>
+      <div class="grid2">
+        <div class="fact"><b>A transfer screenshot proves nothing</b>Apps now produce a fake "transfer successful" bill for any bank in one tap, and banks cannot help afterwards because nothing in the picture is real. So no option here accepts a screenshot. Only the bank feed or the host's own bank app counts. <a href="https://e.vnexpress.net/news/business/companies/fake-bank-payment-screenshot-scam-now-at-the-touch-of-a-button-4595349.html">VnExpress</a></div>
+        <div class="fact"><b>Banks now warn before a transfer</b>The State Bank's SIMO system shares about 592,000 suspected accounts, and bank apps show a warning when the receiver is on the list. One bank reported 95,500 customers cancelling after a warning. A host account that triggers this should be paused on banbe too. <a href="https://tuoitre.vn/2-4-trieu-luot-khach-hang-nhan-canh-bao-nghi-ngo-giao-dich-gian-lan-gia-mao-20251230105711354.htm">Tuổi Trẻ</a> · <a href="https://vneconomy.vn/canh-bao-gian-lan-thoi-gian-thuc-chan-hon-11-trieu-giao-dich-nghi-lua-dao.htm">VnEconomy</a></div>
+        <div class="fact"><b>Face scan from 10 million ₫</b>Transfers of 10 million ₫ or more, or over 20 million ₫ a day, need biometric confirmation in the bank app. Normal tickets stay far below, large group orders may not, so the pay screen should say so. <a href="https://vietnamnews.vn/economy/1656202/transfers-of-over-vnd10-million-will-require-biometric-authentication-starting-july-1st.html">Việt Nam News</a></div>
+        <div class="fact"><b>One QR sold to several people</b>The usual ticket scam is a resale in a Facebook group where the same QR goes to many buyers, or a fake "organizer" email. A QR that changes every 30 seconds and an in-app hand-over to a named friend close this. <a href="https://vietnamnet.vn/en/fans-scammed-as-black-market-concert-ticket-fraud-spikes-in-vietnam-2407245.html">VietNamNet</a> · <a href="https://e.vnexpress.net/news/arts/fans-scammed-trying-to-obtain-blackpink-hanoi-concert-tickets-4627538.html">VnExpress</a></div>
+        <div class="fact"><b>Partiful: private by default</b>"Who can find this event?" starts as Private and public is a choice. Its older "Chip In" links out to payment apps and cannot verify anyone paid, which is why it added real ticketing in June 2026 with payout after the event. <a href="https://help.partiful.com/hc/en-us/articles/36268907474715">Partiful help</a> · <a href="https://help.partiful.com/hc/en-us/articles/49438896414619-How-is-selling-tickets-different-from-Chip-In">Chip In vs tickets</a></div>
+        <div class="fact"><b>Door sales in the same list</b>Check-in guides agree on two things: walk-up payments must land in the same live count as online tickets, and every code must reject a second scan. Option 3 does both. <a href="https://www.tickpick.com/blog/organizer/event-check-in-best-practices">TickPick</a> · <a href="https://www.eventbrite.com/blog/onsite-operations-tools-eventbrite/">Eventbrite</a></div>
+        <div class="fact"><b>Refund back to the paying account</b>VietQR's own refund service works on the original transaction: check it, then refund it. The same idea is used here without banbe moving money: the host pays a pre-filled code addressed to the account the money came from. <a href="https://api.vietqr.vn/en/v1/vietqr-refund-apis">VietQR refund API</a></div>
+        <div class="fact"><b>Fake QR codes over Zalo</b>Banks warn about QR codes and links sent through Zalo, Facebook and Viber. So the invite link must be visibly banbe.app, and banbe should warn when a chat message asks to pay somewhere else. <a href="https://bizhub.vietnamnews.vn/warning-of-fake-bank-tricks-to-scan-qr-codes-post345538.html">Việt Nam News</a></div>
+      </div>
+    </div>
+    <p class="fine">Screens use sample data. Refund percentages, the 24 hour account cool-down, deposit sizes and the new-host limit are proposals to react to, not decisions. English only in this draft.</p>
+  </section>
+</div>
+
+<script>
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const vnd = n => n.toLocaleString('vi-VN') + ' ₫';
+const P = 350000;
+const I = {
+  check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>', shield:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
+  lock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/>',
+  qr:'<rect x="4" y="4" width="6" height="6"/><rect x="14" y="4" width="6" height="6"/><rect x="4" y="14" width="6" height="6"/><path d="M14 14h2v2h-2zM18 18h2v2h-2zM18 14h2M14 18v2"/>',
+  scan:'<path d="M4 8V5a1 1 0 011-1h3M16 4h3a1 1 0 011 1v3M20 16v3a1 1 0 01-1 1h-3M8 20H5a1 1 0 01-1-1v-3M4 12h16"/>',
+  cash:'<rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="3"/>',
+  bank:'<path d="M3 10l9-6 9 6M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18"/>',
+  link:'<path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/>',
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', alert:'<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17v.5"/>',
+  user:'<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/>', back:'<path d="M15 5l-7 7 7 7"/>', chev:'<path d="M9 5l7 7-7 7"/>',
+  copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 012-2h9"/>', swap:'<path d="M7 7h12l-3-3M17 17H5l3 3"/>',
+  x:'<path d="M6 6l12 12M18 6L6 18"/>', globe:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>',
+  gift:'<rect x="4" y="9" width="16" height="11" rx="1"/><path d="M4 13h16M12 9v11M12 9c-4 0-5-5-2-5 2 0 2 3 2 5zM12 9c4 0 5-5 2-5-2 0-2 3-2 5z"/>',
+  chat:'<path d="M4 5h16v11H9l-5 4z"/>'
+};
+const ic = (n, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n]}</svg>`;
+function qrSvg(seed, size = 170) {
+  const n = 25, c = size / n; let s = seed * 9301 + 49297, r = '';
+  const rnd = () => (s = (s * 9301 + 49297) % 233280) / 233280;
+  const inF = (x, y) => (x < 8 && y < 8) || (x > n - 9 && y < 8) || (x < 8 && y > n - 9);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (!inF(x, y) && rnd() > .52) r += `<rect x="${x * c}" y="${y * c}" width="${c}" height="${c}"/>`;
+  const f = (x, y) => `<rect x="${x * c}" y="${y * c}" width="${7 * c}" height="${7 * c}"/><rect x="${(x + 1) * c}" y="${(y + 1) * c}" width="${5 * c}" height="${5 * c}" fill="#fff"/><rect x="${(x + 2) * c}" y="${(y + 2) * c}" width="${3 * c}" height="${3 * c}"/>`;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" fill="#111" role="img" aria-label="QR code">${r}${f(0, 0)}${f(n - 7, 0)}${f(0, n - 7)}</svg>`;
+}
+const qr = (size = 170, rot = false, seed = 7) => `<div class="qr" data-qr="${size}" ${rot ? 'data-rot' : ''} data-seed="${seed}"></div>`;
+/* set: data-s="pay.g=2;sh.g="   hook: data-f="lookPay" */
+const b = (label, s, cls = '', f = '') => `<button class="btn ${cls}" data-s="${s}" ${f ? `data-f="${f}"` : ''}>${label}</button>`;
+const lk = (label, s, f = '') => `<button class="link" data-s="${s}" ${f ? `data-f="${f}"` : ''}>${label}</button>`;
+const line = (icn, txt, tone = 'moss') => `<div class="line ${tone}">${ic(icn)}<span>${txt}</span></div>`;
+const pill = (txt, tone = '') => `<span class="pill ${tone}">${txt}</span>`;
+const evCard = (extra = '') => `<div class="ev"><div class="thumb"></div><div><b>Bếp Nhỏ supper club</b><span>Sat 21 Nov · 19:00 · District 3${extra}</span></div></div>`;
+const hostRow = () => `<div class="prow"><div class="av d">LT</div><div>Linh Trần ${pill(ic('shield', 12) + 'Verified host', 'moss')}<small>ID checked · bank name matches · 3 events, 0 disputes</small></div></div>`;
+function view({ nav, body, foot, sheet, push, cls = '', pre = '' }) {
+  return `<div class="view ${cls}">${push ? `<div class="push"><i>b</i><span>${push}</span></div>` : ''}${nav ? `<div class="nav">${nav.back ? `<button class="back" aria-label="Back" data-s="${nav.back}">${ic('back')}</button>` : ''}<h3>${nav.title}</h3>${nav.right || ''}</div>` : ''}${pre}<div class="body">${body}</div>${foot ? `<div class="foot">${foot}</div>` : ''}${sheet ? `<div class="scrim" data-s="${sheet.who}"></div><div class="sheet">${sheet.html}</div>` : ''}</div>`;
+}
+const ladder = here => `<div class="ladder">
+  <div class="${here === 0 ? 'here' : ''}"><span>More than 48 h before</span><span>100% back</span></div>
+  <div class="${here === 1 ? 'here' : ''}"><span>48 h to 24 h before</span><span>50% back</span></div>
+  <div class="${here === 2 ? 'here' : ''}"><span>Less than 24 h</span><span>Give to a friend</span></div>
+  <div><span>Host cancels, any time</span><span>100% back</span></div></div>`;
+const ticket = (o = {}) => `<div class="ticket">${evCard()}${qr(170, true)}<div class="fine" data-rotlabel>Code refreshes every 30 s. A screenshot will not get in.</div><div class="two" style="width:100%">${pill(o.left || '2 tickets', 'moss')}${pill(o.right || 'Paid · 700.000 ₫', 'moss')}</div></div>`;
+const looking = (title, steps, at) => `<div class="spin"></div><div class="h2 center" style="text-align:center">${title}</div><div class="card"><div class="tl">${steps.map((t, i) => `<div class="${i < at ? 'ok' : i === at ? 'now pulse' : 'todo'}"><i>${i < at ? ic('check', 14) : ''}</i><span>${t}</span></div>`).join('')}</div></div>`;
+const checkedIn = (how) => `<div class="bigcheck">${ic('check', 46)}</div><div class="h2" style="text-align:center">Checked in</div><p class="lead" style="text-align:center">19:04 · Bếp Nhỏ supper club</p>
+  <div class="ticket"><div class="eyebrow">Entry code</div><div class="code">BN·7K2·941</div><div class="fine">Unique to you. Show it if the host asks.</div></div>
+  <div class="card"><div class="kv"><div><span>Paid</span><b>${vnd(P)}</b></div><div><span>How</span><b>${how}</b></div><div><span>Receipt</span><b>Saved in Activity</b></div></div></div>`;
+
+/* ---------- state ---------- */
+const INIT = {
+  invite: { h: 0, vis: '', t: true, d: true, dep: false, g: 0, rsvp: '', pc: '' },
+  pay: { g: 0, sim: 'ok', asked: false, nf: false, via: '' },
+  door: { g: 0, h: 0, paid: '' },
+  dep: { g: 0, paid: '' },
+  ref: { scn: 'guest', g: 0, h: 0, sent: false, hc: 0, n: 0, f: 0 },
+  safe: { k: 'host' }
+};
+const S = { flow: 'invite', sh: { g: '', h: '' }, ...JSON.parse(JSON.stringify(INIT)) };
+let timers = [];
+const later = (ms, fn) => timers.push(setTimeout(() => { fn(); render(); }, ms));
+const HOOKS = {
+  lookPay() { later(2600, () => { if (S.pay.g === 3) S.pay.g = S.pay.sim === 'ok' ? 4 : S.pay.sim === 'short' ? 5 : 6; }); },
+  lookDoor() { later(2400, () => { if (S.door.g === 4) { S.door.g = 6; S.door.paid = 'transfer'; } }); },
+  lookDep() { later(2200, () => { if (S.dep.g === 1) S.dep.g = 2; }); },
+  lookDep2() { later(2000, () => { if (S.dep.g === 4) { S.dep.g = 5; } }); },
+  lookRef() { later(2400, () => { if (S.ref.h === 2) { S.ref.h = 3; S.ref.sent = true; } }); },
+  resetRef() { const scn = S.ref.scn; S.ref = { ...INIT.ref, scn }; S.sh = { g: '', h: '' }; }
+};
+
+/* ---------- flow 1: private / public + RSVP ---------- */
+const F = {};
+F.invite = {
+  n: '1', name: 'Private or Public first',
+  panel: {
+    title: 'Choose Private or Public before anything else',
+    lead: 'Like Partiful. A private event is only a link. Guests answer Going or Thinking about it, then pick how to pay. Try it: the host creates on the right, the guest opens the link on the left.',
+    changes: ['First create step is one question: who is this for?', 'Private: not on Home, Map or Search. The link opens in a browser, no app needed to answer.', '"Thinking about it" holds no seat and gets one reminder 48 h before.', 'Host picks the allowed ways to pay once, guests choose from those.'],
+    scams: ['The invite page always shows banbe.app and the host\'s verified name, so a copied look-alike page is easier to spot.', 'Private events never reach strangers, so a fake public listing cannot collect transfers.', 'No money is asked for on the RSVP itself.'],
+    builds: ['<code>event_invites</code> + <code>has_event_invite_access</code> (note 21) already gate invite-only events.', 'Going with pay-now still enters through <code>hold_seats</code>.', 'New: an RSVP record (going / thinking / no) beside bookings.'],
+    trade: ['Thinking about it can inflate the list. Show it apart from Going, as here.', 'Private to Public later needs the normal banbe review.']
+  },
+  host(s) {
+    const i = s.invite;
+    if (i.h === 0) return view({ nav: { title: 'New event' }, body: `<div class="eyebrow">Step 1 of 5</div><div class="h2">Who is this for?</div>
+      <button class="choice" aria-pressed="${i.vis === 'private'}" data-s="invite.vis=private"><b>${ic('lock')} Private</b><span>Only people with your link can see it. Not on Home, Map or Search. Guests answer Going or Thinking about it.</span></button>
+      <button class="choice" aria-pressed="${i.vis === 'public'}" data-s="invite.vis=public"><b>${ic('globe')} Public</b><span>Listed on banbe after a quick review. Anyone can find it and reserve.</span></button>
+      <p class="fine">You choose once. Going from Private to Public later needs a banbe review.</p>`,
+      foot: `<button class="btn" ${i.vis ? '' : 'disabled'} data-s="invite.h=1">${i.vis ? 'Continue' : 'Pick one to continue'}</button>` });
+    if (i.h === 1) return view({ nav: { title: 'New event', back: 'invite.h=0' }, body: `<div class="eyebrow">Step 4 of 5</div><div class="h2">How can guests pay?</div>
+      <div class="card"><div class="kv"><div><span>Price per ticket</span><b>${vnd(P)}</b></div></div></div>
+      <div class="card" style="gap:0">
+        <button class="tog" aria-pressed="${i.t}" data-s="invite.t=${!i.t}"><div><b>Bank transfer now</b><small>Confirmed automatically by your bank feed</small></div><i class="sw"></i></button>
+        <button class="tog" aria-pressed="${i.d}" data-s="invite.d=${!i.d}"><div><b>Pay at the door</b><small>Transfer or cash, confirmed with a scan</small></div><i class="sw"></i></button>
+        <button class="tog" aria-pressed="${i.dep}" data-s="invite.dep=${!i.dep}"><div><b>Deposit to hold a seat</b><small>100.000 ₫ now, the rest at the door</small></div><i class="sw"></i></button>
+      </div>
+      ${i.vis === 'public' ? `<div class="card honey">${line('shield', 'This is your first public event, so guests pay at the door or by deposit. Full payment in advance opens after it goes well.', 'honey')}</div>` : ''}`,
+      foot: `<button class="btn" ${i.t || i.d || i.dep ? '' : 'disabled'} data-s="invite.h=2">Create event</button>` });
+    if (i.h === 2) return view({ nav: { title: 'Ready to share', back: 'invite.h=1' }, body: `<div class="card">${evCard()}<div>${pill(i.vis === 'public' ? ic('globe', 12) + 'Public · in review' : ic('lock', 12) + 'Private · link only', 'clay')}</div></div>
+      <div class="card inset"><div class="eyebrow">Your link</div><div class="kv"><div><b>banbe.app/e/bepnho-x7k2</b><b>${ic('copy')}</b></div></div>
+      <div class="two"><button class="btn sec sm">Zalo</button><button class="btn sec sm">Messenger</button></div><div class="two"><button class="btn sec sm">Copy link</button><button class="btn sec sm">Show QR</button></div></div>
+      ${line('shield', 'Guests always see banbe.app and your verified name on the page. Tell them to trust nothing else.')}`,
+      foot: b('See who answered', 'invite.h=3') });
+    const me = i.rsvp;
+    const row = (cls, ini, name, sub) => `<div class="prow"><div class="av ${cls}">${ini}</div><div>${name}<small>${sub}</small></div></div>`;
+    const mine = sub => row('', 'MA', 'Minh Anh', sub);
+    return view({ nav: { title: 'Guest list', back: 'invite.h=2' }, push: me ? `Minh Anh answered: <b>${me === 'going' ? 'Going' : me === 'thinking' ? 'Thinking about it' : "Can't go"}</b>` : '',
+      body: `<div class="stat"><div><b>${7 + (me === 'going' ? 1 : 0)}</b>Going</div><div><b>${3 + (me === 'thinking' ? 1 : 0)}</b>Thinking</div><div><b>${me === 'no' ? 1 : 0}</b>Can't go</div></div>
+      <div class="card" style="gap:0"><div class="eyebrow">Going</div>${me === 'going' ? mine(i.pc === 'now' ? 'Paying now by transfer' : 'Pays at the door · ' + vnd(P)) : ''}${row('b', 'K', 'Khoa', 'Paid · matched by bank')}${row('c', 'T', 'Thảo +1', 'Pays at the door · 700.000 ₫')}</div>
+      <div class="card" style="gap:0"><div class="eyebrow">Thinking about it</div>${me === 'thinking' ? mine('No seat held · reminder 48 h before') : ''}${row('d', 'H', 'Huy', 'Reminder goes out Thu 19 Nov')}</div>
+      ${me ? '' : '<p class="fine">Answer on the guest phone to see this list update.</p>'}` });
+  },
+  guest(s) {
+    const i = s.invite;
+    if (i.g === 0) return view({ cls: 'chat', nav: { title: 'Linh Trần' }, body: `<div class="bub">Tối thứ 7 qua nhà mình ăn nhé! Mình nấu 6 món 🍲</div>
+      <button class="prev" data-s="invite.g=1"><i></i><div>banbe.app<b>Bếp Nhỏ supper club</b>Sat 21 Nov · 19:00 · Hosted by Linh Trần ✓</div></button>
+      <div class="bub me">Ooh, để mình xem!</div><p class="fine" style="text-align:center;color:#5A6B82">Tap the link preview. This is Zalo, not banbe.</p>` });
+    const page = view({ pre: `<div class="url">${ic('lock', 14)}<b>banbe.app</b>/e/bepnho-x7k2</div>`,
+      body: `<div class="hero"><b>Bếp Nhỏ supper club</b></div><div>${pill(ic('lock', 12) + 'Private · you were invited', 'clay')}</div>
+      <div class="card" style="gap:0">${hostRow()}</div>
+      <div class="card"><div class="kv"><div><span>When</span><b>Sat 21 Nov · 19:00</b></div><div><span>Where</span><b>District 3 · exact address after Going</b></div><div><span>Price</span><b>${vnd(P)} · 4 seats left</b></div></div></div>
+      <div class="prow"><div class="av b">K</div><div class="av c" style="margin-left:-18px">T</div><div>Khoa and 6 others are going<small>3 are thinking about it</small></div></div>`,
+      foot: `${b('Going', 'sh.g=payhow')}<div class="two">${b('Thinking about it', 'invite.rsvp=thinking;invite.g=3', 'sec sm')}${b("Can't go", 'invite.rsvp=no;invite.g=4', 'sec sm')}</div>`,
+      sheet: s.sh.g === 'payhow' ? { who: 'sh.g=', html: `<div class="h2">How do you want to pay?</div><p class="lead">Linh allows these. Either way you pay Linh directly.</p>
+        ${i.t ? `<button class="choice" data-s="invite.rsvp=going;invite.pc=now;invite.g=2;sh.g="><b>${ic('bank')} Pay now by transfer</b><span>Seat confirmed in about a minute. Refund rules shown before you pay.</span></button>` : ''}
+        ${i.d || !i.t ? `<button class="choice" data-s="invite.rsvp=going;invite.pc=door;invite.g=2;sh.g="><b>${ic('scan')} Pay at the door</b><span>Scan when you arrive, then transfer or cash. Seat held until 19:30 on the day.</span></button>` : ''}
+        ${i.dep ? `<button class="choice" data-s="invite.rsvp=going;invite.pc=door;invite.g=2;sh.g="><b>${ic('lock')} Deposit 100.000 ₫</b><span>Locks your seat. The other 250.000 ₫ at the door.</span></button>` : ''}` } : null });
+    if (i.g === 1) return page;
+    if (i.g === 2) return view({ nav: { title: 'Bếp Nhỏ supper club', back: 'invite.g=1' }, body: `<div class="bigcheck">${ic('check', 46)}</div><div class="h2" style="text-align:center">You're going</div>
+      <div class="card">${evCard()}<div>${pill(i.pc === 'now' ? 'Going · payment next' : 'Going · pay at the door', i.pc === 'now' ? 'honey' : 'moss')}</div></div>
+      ${i.pc === 'now' ? line('clock', 'Your seat is held for 30 minutes while you pay.', 'honey') : line('scan', 'On the night, scan the code at the door or show yours. You can also pay early from this ticket.')}
+      ${line('shield', 'Only pay inside banbe. Linh will never ask you to transfer to another number.')}`,
+      foot: `${i.pc === 'now' ? b('Continue to payment', 'flow=pay;pay.g=1') : b('See the door flow', 'flow=door')}${lk('Change my answer', 'invite.g=1')}` });
+    if (i.g === 3) return view({ nav: { title: 'Bếp Nhỏ supper club', back: 'invite.g=1' }, body: `<div class="h2">Thinking about it</div><p class="lead">Linh can see you are interested. No seat is held for you yet.</p>
+      <div class="card">${line('clock', 'We will remind you once, on Thu 19 Nov.', 'clay')}${line('alert', '4 seats left. We will tell you if it drops to 1.', 'honey')}</div>`,
+      foot: `${b("I'm going", 'invite.g=1;sh.g=payhow')}${lk("Can't go after all", 'invite.rsvp=no;invite.g=4')}` });
+    return view({ nav: { title: 'Bếp Nhỏ supper club', back: 'invite.g=1' }, body: `<div class="h2">Maybe next time</div><p class="lead">We told Linh you can't make it. You can change your answer while seats last.</p>`, foot: b('Change my answer', 'invite.g=1', 'sec') });
+  }
+};
+
+/* ---------- flow 2: pay now ---------- */
+const payTo = (amt, memo) => `<div class="card"><div class="line moss">${ic('shield')}<span><b>Account name matches Linh's verified ID</b><br><span class="fine">You pay Linh directly. banbe never holds your money.</span></span></div>
+  <div class="kv"><div><span>Bank</span><b>Vietcombank</b></div><div><span>Account</span><b>0071 000 4821 ${ic('copy', 15)}</b></div><div><span>Name</span><b>TRAN THI LINH</b></div><div><span>Amount</span><b>${vnd(amt)} ${ic('lock', 15)}</b></div><div><span>Message</span><b>${memo} ${ic('lock', 15)}</b></div></div></div>`;
+F.pay = {
+  n: '2', name: 'Pay now by transfer',
+  panel: {
+    title: 'Bank transfer that confirms itself',
+    lead: 'One tap opens the guest\'s own bank app with account, amount and message already filled. The bank feed confirms. Nobody uploads or checks a screenshot.',
+    changes: ['"Open my bank app" first, QR second (QR is awkward when you pay on the same phone).', 'The amount and message are locked, so the feed can match without a human.', 'Clear answers for the two real failures: wrong amount, and transfer not seen yet.', 'The host has nothing to do when the feed matches.'],
+    scams: ['Fake transfer bill: there is no place to send one. Only the feed or the host\'s own bank app counts.', 'Wrong receiver: the screen shows the account name and that it matches the host\'s ID before paying.', 'Guest is told plainly that banbe does not hold money, so "banbe support" asking for a transfer is a scam.'],
+    builds: ['<code>hold_seats</code> (30 min), <code>record_bank_transaction</code> + <code>api/payment-webhook.js</code> (Casso/PayOS feed, service role only).', 'Fallback is today\'s <code>submit_payment_proof</code> then <code>verify_payment</code> by the host within 1 h, then the not-found branch and dispute chat.', 'New: bank deep links (VietQR app links), under-payment handling.'],
+    trade: ['Needs the host\'s bank connected to the feed. Without it the flow falls back to the host check.', 'Deep links differ per bank. Keep the QR and copy fields as a fallback.']
+  },
+  sims: [['pay.sim=ok', 'Transfer arrives', s => s.pay.sim === 'ok'], ['pay.sim=short', 'Guest sends too little', s => s.pay.sim === 'short'], ['pay.sim=missing', 'Feed does not see it', s => s.pay.sim === 'missing']],
+  guest(s) {
+    const p = s.pay, short = p.sim === 'short';
+    if (p.g === 0) return view({ nav: { title: 'Reserve' }, body: `<div class="card">${evCard()}</div><div class="card" style="gap:0">${hostRow()}</div>
+      <div class="card"><div class="kv"><div><span>Tickets</span><b>2 × ${vnd(P)}</b></div><div><span>Total</span><b>${vnd(2 * P)}</b></div></div></div>
+      <div class="card inset"><div class="eyebrow">If plans change</div>${ladder(0)}</div>`,
+      foot: `${b('Hold 2 seats · ' + vnd(2 * P), 'pay.g=1')}<p class="fine" style="text-align:center">Seats are held for 30 minutes while you pay.</p>` });
+    if (p.g === 1) return view({ nav: { title: 'Pay Linh', back: 'pay.g=0', right: pill(ic('clock', 12) + '<span data-cd></span>', 'honey') }, body: `${payTo(2 * P, 'BB7K2Q')}
+      <div class="card moss">${line('check', '<b>No screenshot needed.</b> banbe reads the bank feed and issues your ticket by itself.')}</div>
+      <p class="fine">10 million ₫ or more in one transfer needs a face scan in your bank app. This one does not.</p>`,
+      foot: `${b(ic('bank') + 'Open my bank app', 'sh.g=banks')}${b(ic('qr') + 'Show QR instead', 'sh.g=qr', 'sec sm')}`,
+      sheet: s.sh.g === 'banks' ? { who: 'sh.g=', html: `<div class="h2">Choose your bank</div><p class="lead">It opens with everything filled in. You only confirm.</p><div class="banks">${[['Vietcombank', '#0B7A3E'], ['MB Bank', '#1B3FA0'], ['Techcombank', '#D8232A'], ['TPBank', '#6B2C91'], ['VPBank', '#0B8F4D'], ['ACB', '#1D4FA5'], ['BIDV', '#0E6E6E'], ['MoMo', '#A50064']].map(([n, c]) => `<button data-s="pay.g=2;sh.g="><i style="background:${c}"></i>${n}</button>`).join('')}</div><p class="fine">We remember your bank for next time.</p>` }
+        : s.sh.g === 'qr' ? { who: 'sh.g=', html: `<div class="h2">Scan with any bank app</div>${qr(190, false, 3)}<p class="lead" style="text-align:center">Amount and message are inside the code.</p>${b('Save to Photos', 'sh.g=qr', 'sec sm')}${b("I've paid", 'pay.g=3;sh.g=', '', 'lookPay')}` } : null });
+    if (p.g === 2) return view({ cls: 'bankapp', nav: { title: 'Chuyển tiền nhanh 247', back: 'pay.g=1' }, body: `<div class="card"><div class="kv"><div><span>Người nhận</span><b>TRAN THI LINH</b></div><div><span>Ngân hàng</span><b>Vietcombank</b></div><div><span>Số tài khoản</span><b>0071 000 4821</b></div><div><span>Số tiền</span><b>${vnd(short ? 600000 : 2 * P)}</b></div><div><span>Nội dung</span><b>BB7K2Q</b></div></div></div>
+      <p style="font-size:12.5px;color:#5A6B82">Mock of the guest's own bank app. Filled in by the banbe link${short ? '. In this simulation the guest edits the amount to 600.000 ₫.' : '.'}</p>`,
+      foot: b('Xác nhận', 'pay.g=3', '', 'lookPay') });
+    if (p.g === 3) return view({ nav: { title: 'Payment' }, body: looking('Looking for your transfer', ['You confirmed in your bank app', 'Linh\'s bank reports the money', 'Amount and message match'], 1) + `<p class="fine" style="text-align:center">Usually under a minute. You can close the app, we will notify you.</p>` });
+    if (p.g === 4) return view({ nav: { title: 'Your ticket' }, push: p.via === 'host' ? 'Linh confirmed your payment' : '<b>Paid.</b> 700.000 ₫ matched by the bank feed', body: `${ticket()}${line('check', p.via === 'host' ? 'Confirmed by Linh from her bank app.' : 'Confirmed automatically at 9:42. Linh did not have to do anything.')}`,
+      foot: b("Can't make it? See refunds", 'flow=ref', 'sec') });
+    if (p.g === 5) return view({ nav: { title: 'Payment' }, body: `<div class="h2">We received 600.000 ₫</div><p class="lead">That is 100.000 ₫ short of 700.000 ₫. Your seats are still held for <b data-cd></b>.</p>
+      <button class="choice" data-s="pay.sim=ok;pay.g=3" data-f="lookPay"><b>Send the missing ${vnd(100000)}</b><span>Same account, same message. We add it to what arrived.</span></button>
+      <button class="choice" data-s="flow=ref"><b>Keep 1 ticket</b><span>Linh sends back 250.000 ₫ to the account you paid from.</span></button>
+      <button class="choice" data-s="flow=ref"><b>Cancel everything</b><span>Linh sends back 600.000 ₫. Seats are released.</span></button>` });
+    return view({ nav: { title: 'Payment' }, body: p.nf ? `<div class="h2">Linh could not find it</div><p class="lead">Your seats stay held while you two sort it out.</p><div class="card">${line('chat', 'A chat with Linh is open. Share your bank\'s reference number there.', 'clay')}${line('shield', 'If it is not solved in 2 days, banbe steps in and decides from both banks\' records.', 'moss')}</div>`
+      : p.asked ? `<div class="h2">Asked Linh to check</div><p class="lead">Linh has 1 hour to look in her bank app. Your seats stay held.</p><div class="card"><div class="kv"><div><span>Bank reference (optional)</span><b>FT26315…</b></div></div><p class="fine">A reference number helps. A screenshot does not, so we do not ask for one.</p></div><p class="fine pulse" style="text-align:center">Waiting for Linh. Use the host phone.</p>`
+        : `<div class="h2">We have not seen it yet</div><p class="lead">Transfers between banks can take a few minutes. Nothing is lost and your seats are held.</p>
+      <div class="card">${line('clock', 'We keep checking for the next 30 minutes.', 'clay')}${line('alert', 'Check the message was BB7K2Q. A different message cannot be matched automatically.', 'honey')}</div>`,
+      foot: p.asked ? (p.nf ? b('Open chat with Linh', 'pay.nf=true', 'sec') : '') : `${b('Check again', 'pay.sim=ok;pay.g=3', '', 'lookPay')}${b('Ask Linh to check', 'pay.asked=true', 'sec sm')}` });
+  },
+  host(s) {
+    const p = s.pay; let st, push = '', act = '';
+    if (p.g === 0) st = '';
+    else if (p.g < 4) st = ['Holding 2 seats', 'honey', 'Paying now · hold ends in <span data-cd></span>'];
+    else if (p.g === 4) { st = ['Paid', 'moss', p.via === 'host' ? 'Confirmed by you' : 'Matched by bank feed · BB7K2Q']; if (p.via !== 'host') push = '<b>+700.000 ₫</b> NGUYEN MINH ANH · BB7K2Q · matched'; }
+    else if (p.g === 5) st = ['Short 100.000 ₫', 'honey', 'Received 600.000 of 700.000 ₫ · guest is choosing'];
+    else st = p.nf ? ['Not found', 'alert', 'Chat open with Minh Anh'] : ['Paying', 'honey', p.asked ? 'Says they paid · needs your check' : 'Transfer not seen yet'];
+    if (p.g === 6 && p.asked && !p.nf) act = `<div class="card clay"><b>Minh Anh says they paid ${vnd(2 * P)}</b><span class="lead">Message BB7K2Q. Look in your Vietcombank app, not at any photo. 58 minutes left.</span><div class="two">${b('Money received', 'pay.g=4;pay.via=host', 'sm')}${b('Not found', 'pay.nf=true', 'sec sm')}</div></div>`;
+    return view({ nav: { title: 'Bookings' }, push, body: `<div class="stat"><div><b>${p.g === 4 ? 10 : 9}</b>Paid</div><div><b>${vnd(P * (p.g === 4 ? 12 : 10)).replace(' ₫', '')}</b>₫ in</div><div><b>${act ? 1 : 0}</b>To check</div></div>${act}
+      <div class="card" style="gap:0">${st ? `<div class="prow"><div class="av">MA</div><div>Minh Anh · 2 tickets<small>${st[2]}</small></div>${pill(st[0], st[1])}</div>` : ''}
+      <div class="prow"><div class="av b">K</div><div>Khoa · 1 ticket<small>Matched by bank feed</small></div>${pill('Paid', 'moss')}</div>
+      <div class="prow"><div class="av c">T</div><div>Thảo · 2 tickets<small>Matched by bank feed</small></div>${pill('Paid', 'moss')}</div></div>
+      <p class="fine">Payments confirm themselves from your bank feed. You only step in when one cannot be matched.</p>` });
+  }
+};
+
+/* ---------- flow 3: pay at the door ---------- */
+const prompt = (to, amt, a, c, x) => `<div class="eyebrow">Payment request</div><div class="h2">Pay ${vnd(amt)} for Bếp Nhỏ supper club?</div><div class="card" style="gap:0">${hostRow()}</div>
+  <div class="card"><div class="kv"><div><span>${to}</span><b>${vnd(amt)}</b></div></div></div>
+  ${b(ic('bank') + 'Pay by transfer', a[0], '', a[1])}${b(ic('cash') + "I'm paying cash", c, 'sec')}${lk('Cancel', x)}`;
+F.door = {
+  n: '3', name: 'Pay at the door',
+  panel: {
+    title: 'Scan at the door, pay, checked in',
+    lead: 'For guests who are Going but have not paid. Either side can scan. A payment prompt appears on the guest phone with Confirm or Cancel. Paying turns the ticket into Checked in with its own code. Try both: "Scan the event QR" on the guest phone, or "Scan a guest" on the host phone.',
+    changes: ['Guest scans the event QR, or the host scans the guest\'s personal QR from Account.', 'The prompt names the event, the verified host and the amount before anything moves.', 'Transfer: bank feed confirms. Cash: the host confirms receipt and the guest gets a receipt at once.', 'Payment and check-in are one step, so the door list and the money list always agree.'],
+    scams: ['Guest pays nothing until they are standing in front of the host.', 'Personal QR changes every 30 s and only opens a prompt. It cannot pay on its own.', 'Cash is only real when the host confirms, and the guest sees it. Both sides have the same record, so "I already paid cash" has an answer.', 'A second scan of the same guest shows "already checked in".'],
+    builds: ['<code>check_in_guest</code> + <code>event_money_audit</code> (migration 212) for the door, delegated to helpers through the Project Hub.', 'Transfer leg reuses the bank feed. Cash is a new <code>verified_via = \'cash\'</code> on <code>verify_payment</code>.', 'New: personal QR in Account, event door QR, payment-request record.'],
+    trade: ['No-shows cost the host a seat. Seats release at a set time (19:30 here), or use the deposit option.', 'Cash totals rely on the host\'s honesty with their own team. The ledger makes it visible per helper.']
+  },
+  guest(s) {
+    const d = s.door;
+    const base = `<div class="card">${evCard()}<div>${pill('Going · not paid yet', 'honey')}</div><div class="kv"><div><span>Due at the door</span><b>${vnd(P)}</b></div><div><span>Seat held until</span><b>19:30 tonight</b></div></div></div>
+      <p class="lead">When you arrive, do one of these. You will see the amount and confirm before paying.</p>`;
+    const foot = `${b(ic('scan') + 'Scan the event QR', 'door.g=1')}${b(ic('qr') + 'Show my QR', 'door.g=2', 'sec')}${lk('Pay now instead', 'flow=pay')}`;
+    if (d.g === 0) return view({ nav: { title: 'Your ticket' }, body: base, foot });
+    if (d.g === 1) return view({ cls: 'cam', nav: { title: 'Scan event QR', back: 'door.g=0' }, body: `<button class="finder" data-s="door.g=3" aria-label="Scan the code">${qrSvg(11, 150).replace('fill="#111"', 'fill="#fff"')}</button><p style="text-align:center;margin-top:18px">Point at the code on the door sign.<br><span style="opacity:.7;font-size:13px">Tap the code to simulate the scan.</span></p>` });
+    if (d.g === 2) return view({ nav: { title: 'My QR', back: 'door.g=0' }, body: `<div class="ticket"><div class="av lg">MA</div><b class="disp" style="font-size:20px">Minh Anh</b>${qr(170, true, 5)}<div class="fine">Changes every 30 s. It only lets a host find you. It can never pay by itself.</div></div>
+      <p class="fine pulse" style="text-align:center">Waiting for the host to scan. Use "Scan a guest" on the host phone.</p>` });
+    if (d.g === 3) return view({ nav: { title: 'Your ticket' }, body: base, sheet: { who: 'door.g=0', html: prompt('1 ticket', P, ['door.g=4', 'lookDoor'], 'door.g=5', 'door.g=0') } });
+    if (d.g === 4) return view({ nav: { title: 'Payment' }, body: looking('Paying Linh by transfer', ['Bank app opened, amount and message filled', 'Linh\'s bank reports the money', 'Checking you in'], 1) });
+    if (d.g === 5) return view({ nav: { title: 'Paying cash', back: 'door.g=3' }, body: `<div class="bigcheck" style="background:var(--honeyBg);color:var(--honey)">${ic('cash', 42)}</div><div class="h2" style="text-align:center">Hand ${vnd(P)} to Linh</div><p class="lead" style="text-align:center">You are checked in the moment Linh confirms she has it.</p>
+      <p class="fine pulse" style="text-align:center">Waiting for Linh to confirm. Use the host phone.</p>`, foot: b('Pay by transfer instead', 'door.g=4', 'sec', 'lookDoor') });
+    return view({ nav: { title: 'Your ticket' }, push: d.paid === 'cash' ? 'Linh confirmed <b>350.000 ₫ cash</b>' : '<b>Paid.</b> 350.000 ₫ matched by the bank feed', body: checkedIn(d.paid === 'cash' ? 'Cash · confirmed by Linh' : 'Transfer · matched by bank') + `<p class="fine" style="text-align:center">Not what you paid? Report it within 24 hours from this receipt.</p>` });
+  },
+  host(s) {
+    const d = s.door, done = d.g === 6;
+    const cashSheet = s.sh.h === 'cash' ? { who: 'sh.h=', html: `<div class="h2">You received ${vnd(P)} in cash from Minh Anh?</div><p class="lead">This checks them in, sends them a receipt and adds it to your cash total. To undo it you would need to refund.</p>${b('Yes, cash received', 'door.g=6;door.paid=cash;door.h=0;sh.h=')}${b('Not yet', 'sh.h=', 'sec sm')}` } : null;
+    if (d.h === 1) return view({ cls: 'cam', nav: { title: 'Scan a guest', back: 'door.h=0' }, body: `<button class="finder" data-s="door.h=2" aria-label="Scan the guest code">${qrSvg(5, 150).replace('fill="#111"', 'fill="#fff"')}</button><p style="text-align:center;margin-top:18px">Scan the QR from the guest's Account.<br><span style="opacity:.7;font-size:13px">Tap the code to simulate the scan.</span></p>` });
+    if (d.h === 2) return view({ nav: { title: 'Guest found', back: 'door.h=0' }, body: `<div class="ticket"><div class="av lg">MA</div><b class="disp" style="font-size:22px">Minh Anh</b>${done ? pill('Already checked in · 19:04', 'moss') : pill('Going · not paid · ' + vnd(P), 'honey')}</div>
+      ${done ? line('check', 'Nothing to collect. This guest is already in.') : line('shield', 'Ask them to pay on their phone, or take cash and confirm it here.', 'clay')}`,
+      foot: done ? b('Back to the door', 'door.h=0', 'sec') : `${b('Send payment request to their phone', 'door.g=3;door.h=0')}${b(ic('cash') + 'Cash received', 'sh.h=cash', 'sec')}`, sheet: cashSheet });
+    if (d.h === 3) return view({ nav: { title: 'Door sign', back: 'door.h=0' }, body: `<div class="ticket"><div class="eyebrow">Scan to pay and check in</div><b class="disp" style="font-size:22px">Bếp Nhỏ supper club</b>${qr(200, false, 11)}<div class="fine">Hosted by Linh Trần ✓ · banbe.app</div></div><p class="fine" style="text-align:center">Print it or leave this screen open at the door. It only works for people on your guest list.</p>` });
+    return view({ nav: { title: 'Door · tonight' }, push: done && d.paid === 'transfer' ? '<b>+350.000 ₫</b> Minh Anh · transfer matched · checked in' : '',
+      body: `<div class="stat"><div><b>${done ? 13 : 12}/20</b>Checked in</div><div><b>${vnd(1050000 + (d.paid === 'cash' ? P : 0)).replace(' ₫', '')}</b>₫ cash</div><div><b>${vnd(2100000 + (d.paid === 'transfer' ? P : 0)).replace(' ₫', '')}</b>₫ transfer</div></div>
+      <div class="two">${b(ic('scan') + 'Scan a guest', 'door.h=1', 'sm')}${b(ic('qr') + 'Door sign', 'door.h=3', 'sec sm')}</div>
+      ${d.g === 5 ? `<div class="card clay"><b>Minh Anh is paying ${vnd(P)} in cash</b><span class="lead">Confirm only when the cash is in your hand.</span><div class="two">${b('Cash received', 'sh.h=cash', 'sm')}${b('Not received', 'door.g=3', 'sec sm')}</div></div>` : ''}
+      ${d.g === 3 ? `<div class="card">${line('clock', 'Payment request is on Minh Anh\'s phone. Waiting for them to choose.', 'clay')}</div>` : ''}
+      <div class="card" style="gap:0"><div class="prow"><div class="av">MA</div><div>Minh Anh<small>${done ? 'In at 19:04 · ' + (d.paid === 'cash' ? 'cash, confirmed by you' : 'transfer, matched by bank') + ' · BN·7K2·941' : 'Going · pays at the door'}</small></div>${done ? pill('Checked in', 'moss') : pill(vnd(P) + ' due', 'honey')}</div>
+      <div class="prow"><div class="av b">K</div><div>Khoa<small>In at 18:52 · paid in advance</small></div>${pill('Checked in', 'moss')}</div>
+      <div class="prow"><div class="av c">T</div><div>Thảo +1<small>Going · pays at the door</small></div>${pill('700.000 ₫ due', 'honey')}</div></div>`, sheet: cashSheet });
+  }
+};
+
+/* ---------- flow 4: deposit ---------- */
+F.dep = {
+  n: '4', name: 'Deposit to hold',
+  panel: {
+    title: 'A small deposit now, the rest at the door',
+    lead: 'The familiar "đặt cọc". The guest risks a small amount with a host they may not know. The host is covered if the guest does not show up.',
+    changes: ['Host sets the deposit: 50.000 ₫, 100.000 ₫ or 30%.', 'Deposit uses the same self-confirming transfer as option 2.', 'The rest is collected with the door prompt from option 3.', 'The rule for who keeps the deposit is shown before paying, in one table.'],
+    scams: ['Caps what a guest can lose to a fake or flaky host to the deposit.', 'Removes the fake "I will pay when I arrive" booking that blocks seats.', 'Good default for a host\'s first public event, instead of full payment in advance.'],
+    builds: ['Same <code>hold_seats</code> and bank feed. New: a booking that is confirmed with a balance due.', 'Refund of a deposit goes through the existing <code>refund_claims</code> chain.'],
+    trade: ['Two payments mean two things to explain. Keep the split bar visible everywhere.', 'Hosts may want to keep deposits on their own cancellations. The rule here says never.']
+  },
+  guest(s) {
+    const d = s.dep;
+    const split = `<div class="split"><span style="width:30%">Now 100k</span><span>At the door 250k</span></div>`;
+    if (d.g === 0) return view({ nav: { title: 'Reserve' }, body: `<div class="card">${evCard()}</div><div class="card"><div class="eyebrow">How you pay</div>${split}<div class="kv"><div><span>Deposit today</span><b>${vnd(100000)}</b></div><div><span>At the door</span><b>${vnd(250000)}</b></div></div></div>
+      <div class="card inset"><div class="eyebrow">Your deposit</div><div class="ladder"><div class="here"><span>Cancel more than 48 h before</span><span>Back in full</span></div><div><span>Cancel later, or no-show</span><span>Linh keeps it</span></div><div><span>Linh cancels</span><span>Back in full</span></div></div></div>`,
+      foot: b('Pay ' + vnd(100000) + ' deposit', 'dep.g=1', '', 'lookDep') });
+    if (d.g === 1) return view({ nav: { title: 'Payment' }, body: looking('Looking for your deposit', ['You confirmed in your bank app', 'Linh\'s bank reports the money', 'Amount and message match'], 1) });
+    const sec = `<div class="card">${evCard()}<div>${pill('Seat secured', 'moss')} ${pill('250.000 ₫ due at the door', 'honey')}</div>${split}</div>`;
+    if (d.g === 2) return view({ nav: { title: 'Your ticket' }, push: '<b>Deposit paid.</b> 100.000 ₫ matched by the bank feed', body: sec + line('check', 'Your seat no longer expires. Bring 250.000 ₫ or pay it by transfer when you arrive.') , foot: b("I've arrived (simulate)", 'dep.g=3') });
+    if (d.g === 3) return view({ nav: { title: 'Your ticket' }, body: sec, sheet: { who: 'dep.g=2', html: prompt('Rest of 1 ticket (deposit 100.000 ₫ already paid)', 250000, ['dep.g=4;dep.paid=transfer', 'lookDep2'], 'dep.g=5;dep.paid=cash', 'dep.g=2') } });
+    if (d.g === 4) return view({ nav: { title: 'Payment' }, body: looking('Paying the rest', ['Bank app opened, 250.000 ₫ filled', 'Linh\'s bank reports the money', 'Checking you in'], 1) });
+    return view({ nav: { title: 'Your ticket' }, body: checkedIn(d.paid === 'cash' ? '100k transfer + 250k cash' : 'Two transfers · matched') });
+  },
+  host(s) {
+    const d = s.dep;
+    const st = d.g < 2 ? ['No deposit yet', '', 'Seat not held'] : d.g < 5 ? ['Deposit paid', 'moss', '100.000 ₫ matched · 250.000 ₫ due at the door'] : ['Checked in', 'moss', 'Paid in full · ' + (d.paid === 'cash' ? 'rest in cash' : 'rest by transfer')];
+    return view({ nav: { title: 'Bếp Nhỏ · deposits' }, body: `<div class="card"><div class="eyebrow">Deposit per ticket</div><div class="sims"><span class="pill">50.000 ₫</span><span class="pill clay">100.000 ₫</span><span class="pill">30%</span></div>
+      ${line('shield', 'A no-show or a late cancel leaves you the deposit. If you cancel, every deposit goes back.', 'clay')}</div>
+      <div class="stat"><div><b>${d.g >= 2 ? 8 : 7}</b>Deposits</div><div><b>${d.g >= 2 ? 800 : 700}k</b>₫ held by you</div><div><b>${d.g >= 5 ? '1.750' : '2.000'}k</b>₫ due at door</div></div>
+      <div class="card" style="gap:0"><div class="prow"><div class="av">MA</div><div>Minh Anh<small>${st[2]}</small></div>${pill(st[0], st[1])}</div>
+      <div class="prow"><div class="av b">K</div><div>Khoa<small>100.000 ₫ matched · 250.000 ₫ due</small></div>${pill('Deposit paid', 'moss')}</div></div>
+      ${d.g === 5 && d.paid === 'cash' ? '<p class="fine">In the real flow you would confirm the 250.000 ₫ cash, exactly as in option 3.</p>' : ''}` });
+  }
+};
+
+/* ---------- flow 5: refunds ---------- */
+const refQR = () => `<div class="card"><div class="line moss">${ic('shield')}<span><b>Goes back to the account that paid you</b><br><span class="fine">Taken from your bank feed. Nobody typed it, so nobody could change it.</span></span></div>${qr(150, false, 9)}
+  <div class="kv"><div><span>To</span><b>NGUYEN MINH ANH</b></div><div><span>Account</span><b>MB Bank ··· 9917</b></div><div><span>Amount</span><b>${vnd(2 * P)} ${ic('lock', 15)}</b></div><div><span>Message</span><b>RF-BB7K2Q ${ic('lock', 15)}</b></div></div></div>`;
+F.ref = {
+  n: '5', name: 'Refunds',
+  panel: {
+    title: 'Refund to where the money came from',
+    lead: 'Three situations: the guest cancels, the host cancels the event, or the guest hands the ticket to a friend instead of asking for money back. Pick one below.',
+    changes: ['The guest sees the exact amount and the rule that produced it before confirming.', 'Default destination is the account that paid, read from the bank feed. No typing.', 'Host pays a pre-filled code. The outgoing transfer is matched by the feed, so "mark as sent" and proof photos go away.', 'One tracker both sides can read, with a date.', '"Give to a friend" is offered first when a refund is no longer possible.'],
+    scams: ['Refund phishing ("send your OTP to receive your refund"): the screen says banbe never asks for OTP or card, and there is nothing to fill in.', 'Host claims "I sent it": only the bank feed moves the status to Sent.', 'Guest claims "never arrived": the match shows amount, account and time. Disputes start with facts.', 'Resale scam: a hand-over kills the old QR and issues a new one to a named person. banbe never lists tickets for resale.'],
+    builds: ['<code>refund_claims</code>, <code>refund_destinations</code>, <code>select_refund_destination</code>, <code>mark_refund_sent</code>, 7-day auto-confirm, <code>dispute_refund</code> (note 16).', 'Host cancel uses <code>cancel_event</code> + <code>create_and_confirm_refund_batch</code>.', 'Ticket hand-over can reuse <code>claim_ticket</code> codes (migration 152).', 'New: reading the payer account from the feed, matching outgoing transfers.'],
+    trade: ['Some banks hide the payer account number in the feed. Fall back to the saved refund account.', 'Bank apps pay one transfer at a time, so a cancelled event is a list to work through, not one button.', 'The refund percentages are a proposal. Today hosts and banbe policy decide.']
+  },
+  sims: [['ref.scn=guest', 'Guest cancels', s => s.ref.scn === 'guest', 'resetRef'], ['ref.scn=host', 'Host cancels the event', s => s.ref.scn === 'host', 'resetRef'], ['ref.scn=friend', 'Give to a friend', s => s.ref.scn === 'friend', 'resetRef']],
+  guest(s) {
+    const r = s.ref;
+    const tracker = (sent, closed) => `<div class="card"><div class="tl">
+      <div class="ok"><i>${ic('check', 14)}</i><span>${r.scn === 'host' ? 'Event cancelled by Linh' : 'Refund requested'}<small>Wed 11 Nov · ${vnd(2 * P)} to MB Bank ··· 9917</small></span></div>
+      <div class="${sent ? 'ok' : 'now'}"><i>${sent ? ic('check', 14) : ''}</i><span>Linh sends the money<small>${sent ? 'Sent today 14:32' : 'Due by Mon 16 Nov (3 working days)'}</small></span></div>
+      <div class="${sent ? 'ok' : 'todo'}"><i>${sent ? ic('check', 14) : ''}</i><span>Bank confirms it left Linh's account<small>${sent ? 'Matched: amount, account and message' : 'Automatic. No photo from anyone.'}</small></span></div>
+      <div class="${closed ? 'ok' : sent ? 'now' : 'todo'}"><i>${closed ? ic('check', 14) : ''}</i><span>You confirm it arrived<small>${closed ? 'Closed' : 'Or it closes by itself after 7 days'}</small></span></div></div></div>`;
+    if (r.scn === 'friend') {
+      if (r.f === 0) return view({ nav: { title: 'Give to a friend' }, body: `<div class="h2">Can't go? Hand over your tickets</div><p class="lead">It is 20 hours before the event, so a refund is no longer possible. A friend can take your place for free.</p>
+        <div class="card">${evCard()}<div class="kv"><div><span>Tickets to give</span><b>2 of 2</b></div></div></div>
+        ${line('swap', 'Your QR stops working the moment your friend accepts. They get a new one in their name.', 'clay')}${line('shield', 'banbe never lists tickets for resale. Only hand over to someone you know.', 'moss')}`,
+        foot: b('Send a claim link', 'ref.f=1') });
+      if (r.f === 1) return view({ nav: { title: 'Give to a friend', back: 'ref.f=0' }, body: `<div class="h2">Waiting for Thảo</div><p class="lead">The link works once and expires in 24 hours. Until then the tickets are still yours.</p>
+        <div class="card inset"><div class="kv"><div><b>banbe.app/claim/9QF2-KM7X</b><b>${ic('copy')}</b></div></div></div>`,
+        foot: `${b('Thảo accepts (simulate)', 'ref.f=2')}${lk('Take the tickets back', 'ref.f=0')}` });
+      return view({ nav: { title: 'Give to a friend' }, body: `<div class="bigcheck">${ic('swap', 42)}</div><div class="h2" style="text-align:center">Handed to Thảo</div><p class="lead" style="text-align:center">Your old QR is dead. Thảo has 2 new tickets and Linh's list is updated.</p>
+        <div class="card">${line('check', 'If Thảo pays you back, that is between friends. banbe moved no money.')}</div>` });
+    }
+    if (r.scn === 'host') {
+      if (r.hc < 2) return view({ nav: { title: 'Your ticket' }, body: ticket() + '<p class="fine" style="text-align:center">Cancel the event on the host phone to see what the guest gets.</p>' });
+      const sent = r.n >= 1;
+      return view({ nav: { title: 'Bếp Nhỏ supper club' }, push: sent ? '<b>Refund sent.</b> 700.000 ₫ to MB Bank ··· 9917' : 'Linh cancelled Bếp Nhỏ supper club', body: `<div class="card alert">${line('alert', '<b>Linh cancelled this event.</b> "The kitchen flooded. I am so sorry, I will host again in December."', 'alert')}</div>
+        <div class="h2">You get ${vnd(2 * P)} back</div><p class="lead">In full, to the account you paid from. You do not need to do anything.</p>${tracker(sent, false)}`,
+        foot: sent ? `<div class="two">${b('Got it', 'ref.hc=3', 'sm')}${b('Not received', 'ref.hc=3', 'sec sm')}</div>` : lk('Use a different account', 'ref.hc=2') });
+    }
+    if (r.g === 0) return view({ nav: { title: 'Your ticket' }, body: ticket(), foot: b("Can't make it?", 'ref.g=1', 'sec') });
+    if (r.g === 1) return view({ nav: { title: "Can't make it?", back: 'ref.g=0' }, body: `<div class="card inset"><div class="eyebrow">Today is 10 days before the event</div>${ladder(0)}</div>
+      <button class="choice" data-s="ref.g=2"><b>Cancel and get ${vnd(2 * P)} back</b><span>100%. Linh has 3 working days to send it.</span></button>
+      <button class="choice" data-s="ref.scn=friend" data-f="resetRef"><b>${ic('gift')} Give the tickets to a friend</b><span>Free and instant. No refund needed.</span></button>` });
+    if (r.g === 2) return view({ nav: { title: 'Where should it go?', back: 'ref.g=1' }, body: `<button class="choice" aria-pressed="true"><b>${ic('bank')} MB Bank ··· 9917</b><span>NGUYEN MINH ANH · the account you paid from on 11 Nov. Nothing to type.</span></button>
+      <button class="choice"><b>Another account</b><span>Must be in your own name.</span></button>
+      <div class="card moss">${line('shield', '<b>banbe never asks for an OTP, a card number or a fee to give a refund.</b> If someone does, it is a scam. Report it.')}</div>`,
+      foot: b('Cancel booking and request ' + vnd(2 * P), 'ref.g=3') });
+    if (r.g === 3) return view({ nav: { title: 'Refund' }, push: r.sent ? '<b>Refund sent.</b> 700.000 ₫ to MB Bank ··· 9917' : '', body: `<div class="h2">${r.sent ? 'Linh sent your refund' : 'Refund on its way'}</div><p class="lead">${r.sent ? 'Check your MB Bank app. Interbank transfers land in a few minutes.' : 'Linh has been told. You can follow it here.'}</p>${tracker(r.sent, false)}${r.sent ? '' : '<p class="fine pulse" style="text-align:center">Waiting for Linh. Use the host phone.</p>'}`,
+      foot: r.sent ? `<div class="two">${b('Got it', 'ref.g=4', 'sm')}${b('Not received', 'ref.g=5', 'sec sm')}</div>` : '' });
+    if (r.g === 4) return view({ nav: { title: 'Refund' }, body: `<div class="bigcheck">${ic('check', 46)}</div><div class="h2" style="text-align:center">Refund complete</div>${tracker(true, true)}` });
+    return view({ nav: { title: 'Refund', back: 'ref.g=3' }, body: `<div class="h2">Let's check with both banks</div><p class="lead">Linh's bank shows 700.000 ₫ left at 14:32 for MB Bank ··· 9917.</p>
+      <div class="card">${line('clock', 'Give it 30 minutes. Interbank delays are common.', 'clay')}${line('chat', 'Still missing? A chat with Linh opens with this record attached.', 'clay')}${line('shield', 'Not solved in 5 days: banbe reviews and decides.', 'moss')}</div>`, foot: b('Open the chat', 'ref.g=5', 'sec') });
+  },
+  host(s) {
+    const r = s.ref;
+    if (r.scn === 'friend') return view({ nav: { title: 'Guest list' }, push: r.f === 2 ? 'Minh Anh handed 2 tickets to <b>Thảo</b>' : '', body: `<div class="card" style="gap:0"><div class="prow"><div class="av ${r.f === 2 ? 'c' : ''}">${r.f === 2 ? 'T' : 'MA'}</div><div>${r.f === 2 ? 'Thảo' : 'Minh Anh'} · 2 tickets<small>${r.f === 2 ? 'From Minh Anh · new QR issued · paid' : r.f === 1 ? 'Hand-over pending' : 'Paid · matched by bank'}</small></div>${pill('Paid', 'moss')}</div>
+      <div class="prow"><div class="av b">K</div><div>Khoa · 1 ticket<small>Paid · matched by bank</small></div>${pill('Paid', 'moss')}</div></div>
+      <p class="fine">A hand-over changes the name on your list. No money moves and you have nothing to do.</p>` });
+    if (r.scn === 'host') {
+      const names = ['Minh Anh · 700.000 ₫', 'Khoa · 350.000 ₫', 'Thảo · 700.000 ₫', 'Huy · 350.000 ₫', 'Vy · 350.000 ₫', 'Nam · 700.000 ₫'];
+      if (r.hc < 2) return view({ nav: { title: 'Bếp Nhỏ supper club' }, body: `<div class="card">${evCard()}</div><div class="stat"><div><b>9</b>Tickets paid</div><div><b>3.150k</b>₫ received</div><div><b>10 d</b>To go</div></div>`,
+        foot: b('Cancel event', 'ref.hc=1', 'danger'),
+        sheet: r.hc === 1 ? { who: 'ref.hc=0', html: `<div class="h2">Cancel for everyone?</div><div class="card alert">${line('alert', '<b>6 guests get 100% back: 3.150.000 ₫.</b> You send each refund from your bank app. We pre-fill every one.', 'alert')}</div>
+          <div class="card"><div class="eyebrow">Message to guests</div><span>"The kitchen flooded. I am so sorry, I will host again in December."</span></div>
+          ${line('lock', 'You cannot publish new events until these refunds are sent.', 'honey')}${b('Cancel event and start refunds', 'ref.hc=2', 'danger')}${b('Keep the event', 'ref.hc=0', 'sec sm')}` } : null });
+      const n = Math.min(r.n, 6);
+      return view({ nav: { title: 'Refund run' }, body: `<div class="h2">${n === 6 ? 'All refunds sent' : `${n} of 6 sent`}</div><div class="bar2"><i style="width:${n / 6 * 100}%"></i></div>
+        <p class="lead">${n === 6 ? 'Every guest has been paid back and told. You can publish events again.' : 'Each one opens your bank app, already filled in. The bank feed ticks it off.'}</p>
+        <div class="card" style="gap:0">${names.map((t, i) => `<div class="prow"><div style="flex:1">${t}<small>${i < n ? 'Sent · matched by bank' : 'To the account they paid from'}</small></div>${i < n ? pill('Sent', 'moss') : i === n ? `<button class="btn sm" style="width:auto;padding:0 16px" data-s="ref.n=${n + 1}">Pay</button>` : pill('Next')}</div>`).join('')}</div>` });
+    }
+    if (r.h === 0) return view({ nav: { title: 'Money' }, push: r.g >= 3 && !r.sent ? 'Minh Anh cancelled. <b>Refund owed: 700.000 ₫</b>' : '', body: r.g >= 3 && !r.sent ? `<div class="card clay"><b class="disp" style="font-size:19px">Refund owed · ${vnd(2 * P)}</b><span class="lead">Minh Anh cancelled 10 days before. Due by Mon 16 Nov.</span>${b('Send refund', 'ref.h=1', 'sm')}</div><p class="fine">2 seats are back on sale.</p>`
+      : `<div class="card">${line('check', r.sent ? 'No refunds owed. Last one matched today 14:32.' : 'No refunds owed.')}</div><p class="fine">${r.sent ? '' : 'Cancel on the guest phone to create one.'}</p>` });
+    if (r.h === 1) return view({ nav: { title: 'Send refund', back: 'ref.h=0' }, body: refQR(), foot: `${b(ic('bank') + 'Open my bank app', 'ref.h=2', '', 'lookRef')}${lk('My bank is not connected', 'ref.h=1')}` });
+    if (r.h === 2) return view({ nav: { title: 'Send refund' }, body: looking('Watching for your transfer', ['You confirmed in your bank app', 'Your bank reports 700.000 ₫ out', 'Matched to Minh Anh\'s refund'], 1) });
+    return view({ nav: { title: 'Send refund' }, body: `<div class="bigcheck">${ic('check', 46)}</div><div class="h2" style="text-align:center">Sent and matched</div><p class="lead" style="text-align:center">Minh Anh has been told. You did not need to mark anything or attach proof.</p>`, foot: b('Done', 'ref.h=0', 'sec') });
+  }
+};
+
+/* ---------- flow 6: safety layer ---------- */
+const GUARDS = {
+  host: ['Verified host', s => view({ nav: { title: 'About the host' }, body: `<div class="ticket"><div class="av d lg">LT</div><b class="disp" style="font-size:22px">Linh Trần</b>${pill(ic('shield', 12) + 'Verified host', 'moss')}</div>
+    <div class="card">${line('check', '<b>ID checked.</b> Name on the national ID matches the bank account that receives your money.')}${line('check', '<b>3 events hosted,</b> 41 guests checked in, 0 disputes.')}${line('check', 'Bank account unchanged for 5 months.')}</div>
+    <p class="fine">Shown on every pay screen and invite page. Hosts without the badge can only take payment at the door.</p>` })],
+  link: ['Look-alike link', s => view({ pre: `<div class="url" style="color:var(--alert)">${ic('alert', 14)}<b style="color:var(--alert)">banbe-ticket.vip</b>/e/bepnho</div>`, body: `<div class="bigcheck" style="background:var(--alertBg);color:var(--alert)">${ic('alert', 44)}</div><div class="h2" style="text-align:center">This link is not banbe</div><p class="lead" style="text-align:center">Real invites start with <b>banbe.app</b>. This page copies our look to collect transfers.</p>
+    <div class="card alert">${line('alert', 'Do not pay, do not enter an OTP, do not scan a QR from it.', 'alert')}</div><p class="fine">Shown by the app when a pasted or scanned link imitates banbe.</p>`, foot: `${b('Report this link', '', '')}${b('Open the real event in banbe', '', 'sec sm')}` })],
+  chat: ['Off-app payment in chat', s => view({ nav: { title: 'Chat · "Linh (host)"' }, body: `<div class="card" style="align-self:flex-start;max-width:86%">Hết chỗ rồi nhưng mình còn 2 vé, ck qua số 0903 xxx 118 nha, 300k thôi</div>
+    <div class="card alert">${line('alert', '<b>This message asks you to pay outside banbe.</b> If you do, there is no ticket, and nobody can help you get the money back.', 'alert')}<div class="two">${b('Report', '', 'sm')}${b('Ignore', '', 'sec sm')}</div></div>
+    <p class="fine">Triggered by a phone or account number plus "ck / chuyển khoản / transfer" in a message. This account is also not the verified host.</p>` })],
+  qr: ['Changing ticket QR', s => view({ nav: { title: 'Your ticket' }, body: ticket() + line('shield', 'Each code is valid for 30 seconds and only once, so a photo of your ticket sold in a Facebook group lets nobody in.') })],
+  flag: ['Bank account changed', s => view({ nav: { title: 'Pay Linh' }, body: `<div class="card honey">${line('lock', '<b>Advance payment is paused for this event.</b> The host changed their bank account 2 hours ago.', 'honey')}</div>
+    <p class="lead">New accounts wait 24 hours and the name is checked again. It protects you if a host account was taken over.</p>
+    <div class="card">${line('scan', 'You can still say Going and pay at the door.', 'clay')}${line('clock', 'Or come back after Thu 12 Nov, 07:40.', 'clay')}</div>`, foot: b('Going · pay at the door', '', '') })],
+  cap: ['New-host limit', s => view({ nav: { title: 'Reserve' }, body: `<div class="card">${evCard()}</div><div class="card" style="gap:0"><div class="prow"><div class="av b">QN</div><div>Quang Nguyễn ${pill('New host', 'honey')}<small>ID checked · first event on banbe</small></div></div></div>
+    <div class="card honey">${line('shield', 'This is Quang\'s first event, so you pay only a deposit now or everything at the door. Full payment in advance opens after one event with no disputes.', 'honey')}</div>`, foot: `${b('Deposit 100.000 ₫', '', '')}${b('Pay at the door', '', 'sec')}` })]
+};
+F.safe = {
+  n: '6', name: 'Safety layer',
+  panel: {
+    title: 'Guards that sit under every option',
+    lead: 'Six small pieces aimed at the scams that are common in Vietnam. Each can ship alone. Pick one to see it on the guest phone. The host phone shows what a host does to earn the badge.',
+    changes: ['Verified host: ID name must equal the receiving bank account name.', 'Look-alike link and off-app payment warnings.', 'Ticket QR that changes every 30 s and works once.', '24 h cool-down after a host changes bank account.', 'New hosts: door or deposit only until one clean event.'],
+    scams: ['Fake organizer and cloned event pages.', '"Transfer to this other number" in chat or Zalo.', 'One ticket QR sold to several buyers.', 'Stolen host account redirected to a mule account.', 'Collect in advance, then disappear.'],
+    builds: ['Bank columns on <code>organizers</code> (anon read was closed in migration 185).', 'Ticket QR today is the booking id (note 78): the changing code is new, verified by <code>check_in_guest</code>.', 'Chat warning can run on the client first.'],
+    trade: ['ID checks add friction for hosts. Keep private, pay-at-the-door events open without it.', 'The changing QR needs a network or a short offline grace at the door.']
+  },
+  sims: Object.entries(GUARDS).map(([k, v]) => ['safe.k=' + k, v[0], s => s.safe.k === k]),
+  guest: s => GUARDS[s.safe.k][1](s),
+  host: s => view({ nav: { title: 'Become a verified host' }, body: `<div class="card"><div class="tl">
+      <div class="ok"><i>${ic('check', 14)}</i><span>Phone number confirmed</span></div>
+      <div class="ok"><i>${ic('check', 14)}</i><span>National ID checked<small>TRAN THI LINH</small></span></div>
+      <div class="ok"><i>${ic('check', 14)}</i><span>Bank account name matches<small>Vietcombank ··· 4821 · TRAN THI LINH</small></span></div>
+      <div class="now"><i></i><span>First event with no disputes<small>Unlocks full payment in advance</small></span></div></div></div>
+    <div class="card"><div class="eyebrow">What you can do now</div>${line('check', 'Private events, any size')}${line('check', 'Pay at the door and deposits')}${line('lock', 'Full advance payment: after your first event', 'honey')}</div>
+    <div class="card inset">${line('lock', 'Changing your bank account pauses advance payments for 24 hours while the name is checked again.', 'clay')}</div>` })
+};
+
+/* ---------- render + events ---------- */
+const last = { g: '', h: '' };
+function put(id, key, html) { if (last[key] !== html) { $(id).innerHTML = html; last[key] = html; } }
+function render() {
+  const f = F[S.flow];
+  put('#mg', 'g', f.guest(S)); put('#mh', 'h', f.host(S));
+  $('#flows').innerHTML = Object.entries(F).map(([k, v]) => `<button class="chipbtn" aria-pressed="${k === S.flow}" data-s="flow=${k}"><b>${v.n}</b>${v.name}</button>`).join('');
+  const p = f.panel, ul = a => `<ul>${a.map(x => `<li>${x}</li>`).join('')}</ul>`;
+  $('#side').innerHTML = `<div><div class="eyebrow">Option ${f.n}</div><h2>${p.title}</h2></div><p>${p.lead}</p>
+    ${f.sims ? `<div><h4>${S.flow === 'pay' ? 'Simulate what the bank does' : S.flow === 'ref' ? 'Situation' : 'Show guard'}</h4><div class="sims">${f.sims.map(([s, l, on, fn]) => `<button class="chipbtn" aria-pressed="${on(S)}" data-s="${s}" ${fn ? `data-f="${fn}"` : ''}>${l}</button>`).join('')}</div></div>` : ''}
+    <div><h4>What changes</h4>${ul(p.changes)}</div><div><h4>Scams it closes</h4>${ul(p.scams)}</div><div><h4>Builds on what exists</h4>${ul(p.builds)}</div><div><h4>Trade-offs</h4>${ul(p.trade)}</div>`;
+  fill();
+}
+let rot = 0; const t0 = Date.now();
+function fill() {
+  document.querySelectorAll('[data-qr]').forEach(el => { const k = el.dataset.seed * 100 + (el.hasAttribute('data-rot') ? rot : 0); if (el.dataset.k != k) { el.innerHTML = qrSvg(k, +el.dataset.qr); el.dataset.k = k; } });
+  const left = Math.max(0, 1781 - Math.floor((Date.now() - t0) / 1000)), txt = String(Math.floor(left / 60)).padStart(2, '0') + ':' + String(left % 60).padStart(2, '0');
+  document.querySelectorAll('[data-cd]').forEach(el => el.textContent = txt);
+}
+setInterval(fill, 1000); setInterval(() => { rot++; fill(); }, 5000);
+function assign(str) {
+  str.split(';').filter(Boolean).forEach(a => {
+    const [path, raw = ''] = a.split('='), keys = path.split('.'); let o = S;
+    while (keys.length > 1) o = o[keys.shift()];
+    o[keys[0]] = raw === 'true' ? true : raw === 'false' ? false : raw !== '' && !isNaN(raw) ? +raw : raw;
+  });
+}
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-s],[data-f]'); if (!el || el.disabled) return;
+  const before = S.flow;
+  if (el.dataset.s) assign(el.dataset.s);
+  if (el.dataset.f) HOOKS[el.dataset.f]();
+  if (S.flow !== before) S.sh = { g: '', h: '' };
+  render();
+});
+$('#reset').onclick = () => { timers.forEach(clearTimeout); timers = []; S[S.flow] = JSON.parse(JSON.stringify(INIT[S.flow])); S.sh = { g: '', h: '' }; render(); };
+$('#theme').onclick = () => { const r = document.documentElement, dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; r.dataset.theme = dark ? 'light' : 'dark'; };
+document.querySelectorAll('[data-role]').forEach(bt => bt.tagName === 'BUTTON' && (bt.onclick = () => { document.body.dataset.role = bt.dataset.role; document.querySelectorAll('button[data-role]').forEach(x => x.setAttribute('aria-pressed', x === bt)); }));
+render();
+</script>
+</body>
+</html>

@@ -42,6 +42,8 @@ enum Screen: String {
     case eventProject, myProjects
     // Note 76 phase 4: "Join a team" from an invite link or a typed code.
     case projectJoin
+    // Note 81 (switch home_v23): Browse by type / See all.
+    case browse
 }
 
 /// Which set of events EventListView shows — ports the same split used by
@@ -422,10 +424,10 @@ final class AppState: ObservableObject {
     // `applySession(nil)` clears every per-account list they could show.
     // `.projectJoin` (note 76): signed out it only shows the typed code and "Log in to join"; peeking needs an account.
     static let guestAllowedScreens: Set<Screen> = [.splash, .langPick, .themePick, .welcome, .login, .policy, .organizerProfile, .organizerTeam, .publicProfile, .surveyPublic,
-                                                   .home, .mapExplore, .event, .search, .projectJoin]
+                                                   .home, .mapExplore, .event, .search, .projectJoin, .browse]
     /// Guest-browsable screens a Login "Back" can return to (note 48).
     // `.search` (note 50) only reads the same public events Home/Map do.
-    static let guestBrowseScreens: Set<Screen> = [.home, .mapExplore, .event, .search, .organizerProfile, .organizerTeam, .publicProfile]
+    static let guestBrowseScreens: Set<Screen> = [.home, .mapExplore, .event, .search, .browse, .organizerProfile, .organizerTeam, .publicProfile]
 
     // MARK: - Screenshot Catalog (docs/demo-screenshots)
     // Test-only launch flags for `scripts/capture_ios_catalog.sh` /
@@ -571,6 +573,12 @@ final class AppState: ObservableObject {
     /// The Search screen's query, kept while it's open.
     @Published var searchQuery = ""
     @Published var searchBackScreen: Screen = .home
+    /// Note 81 (switch home_v23): the Browse screen's type ("all" or a type key), scope ("all" | foryou | tonight |
+    /// weekend), its search and its own filters (When, Price, Seats). Opening it fresh clears search and filters.
+    @Published var browseType = "all"
+    @Published var browseScope = "all"
+    @Published var browseQuery = ""
+    @Published var browseFilters = HomeDiscovery.Filters.default
     /// Search opened from Home is an OVERLAY on top of Home (RootView), not a screen switch: Home stays mounted, so
     /// opening never flashes a blank page and closing never rebuilds Home (no reload stutter).
     @Published var searchOverlayOpen = false
@@ -870,6 +878,12 @@ final class AppState: ObservableObject {
     @Published var reserveNameSaving = false
     @Published var reserveNameError = ""
     @Published var booking: Booking?
+    /// Note 81 phase e: every booking of the viewer on the open event (newest first; `booking` is the newest). The v2.3
+    /// Event Detail sums the seats they hold across them for the Held/Confirmed stamp and the held bar.
+    @Published var eventBookings: [Booking] = []
+    /// Note 81 phase e: Reserve is adding tickets after a hold (a second booking). The seats already held; nil = a
+    /// normal first booking. 6 per person counts both (migration 219).
+    @Published var reserveAddingAlready: Int?
     @Published var holdDeadline: Date?
     // The real `events` row's own status for whichever event is currently
     // open — see `applyingLiveStatus`/`loadLiveEventStatus`. Unlike
@@ -955,7 +969,8 @@ final class AppState: ObservableObject {
     /// Event Detail was opened over Home or Map: that screen stays mounted (and keeps its scroll/camera) underneath
     /// instead of being rebuilt on the way back, so closing the event can never make it jump.
     var eventHasLiveUnderlay: Bool {
-        screen == .event && !eventBackIsStory && eventBackScreen == .home
+        // Note 81: Browse too, so closing an event flies the cover back into its row on the same page.
+        screen == .event && !eventBackIsStory && (eventBackScreen == .home || eventBackScreen == .browse)
     }
     /// True while Event Detail is zooming open out of the card that was tapped: RootView keeps the previous
     /// screen drawn underneath for that moment instead of removing it.
@@ -1631,6 +1646,9 @@ final class AppState: ObservableObject {
     @Published var organizerProfilePast: [OrganizerUpcomingEvent] = []
     /// Event the organizer profile was opened from (back restores it).
     @Published var organizerProfileEventKey = ""
+    /// Note 81 (home_v23): event → host profile → another event. The FIRST event's own back target, restored when the
+    /// profile's Back returns to that event; nil when the profile was not opened from an event since.
+    var profileEventReturnBack: Screen?
     /// Live "track record" per organizer id (events published + year of the
     /// first), from get_organizer_profile — see loadOrganizerStats. Replaces the
     /// catalogue's baked-in orgSince/orgCount. eventOrganizerID maps an event
@@ -2164,6 +2182,10 @@ final class AppState: ObservableObject {
     // in the US, migration 195), matching what the RPC itself does server-side.
     @Published var createEventDate: Date?
     @Published var createEventTime: Date?
+    /// Note 82 (migration 220): when the event ends: "time" (`createEndTime`, "HH:mm" on the venue's clock; past
+    /// midnight = the next day) | "open" (open-ended) | "" (not chosen yet; required to submit).
+    @Published var createEndMode = ""
+    @Published var createEndTime = ""
     @Published var createPrice = ""
     @Published var createSeats = ""
     /// Smart defaults (note 48): the event the new draft's time/price/seats
@@ -3305,7 +3327,11 @@ final class AppState: ObservableObject {
         // its own back already returns to the event, so overwriting
         // eventBackScreen with .chat made event <-> chat ping-pong forever.
         let fromEventChat = screen == .chat && AppState.resolveChatBackTarget(chatBack) == .event
-        if screen != .event && !fromEventOrganizer && !fromEventChat { eventBackScreen = screen }
+        if fromEventOrganizer && homeV23Enabled {
+            // Note 81: Back from this event returns to the PROFILE; the profile's Back then returns to the first event.
+            if profileEventReturnBack == nil { profileEventReturnBack = eventBackScreen }
+            eventBackScreen = .organizerProfile
+        } else if screen != .event && !fromEventOrganizer && !fromEventChat { eventBackScreen = screen }
         // A different event starts from 1 seat again (Event Detail's seat presets would otherwise carry over).
         if eventKey != key { qty = 1 }
         eventKey = key
@@ -3719,10 +3745,24 @@ final class AppState: ObservableObject {
         }
         formName = user?.displayName ?? ""
         reserveNameError = ""
+        reserveAddingAlready = nil
         // A fresh party for each purchase; ticket 1 is usually the buyer.
         qty = max(1, min(6, qty))
         attendeeDrafts = (0..<qty).map { _ in AttendeeDraft() }
         attendeeDrafts[0].name = user?.displayName ?? ""
+        screen = .reserve
+    }
+
+    /// Note 81 phase e (web `goReserveAdd`): add `extra` tickets after holding `already` seats. A new booking with its
+    /// own hold and host confirmation; none of its tickets is the buyer's, so no name or profile birthday is filled in.
+    func goReserveAdd(already: Int, extra: Int) {
+        guard isSignedIn else { return goReserve() }
+        formName = user?.displayName ?? ""
+        reserveNameError = ""
+        reserveError = ""
+        reserveAddingAlready = max(0, already)
+        qty = max(1, min(max(1, 6 - already), extra))
+        attendeeDrafts = (0..<qty).map { _ in AttendeeDraft() }
         screen = .reserve
     }
 
@@ -3764,6 +3804,8 @@ final class AppState: ObservableObject {
         createDesc = ""
         createEventDate = nil
         createEventTime = nil
+        createEndMode = ""
+        createEndTime = ""
         createPrice = ""
         createSeats = ""
         createVisibility = "public"
@@ -3839,6 +3881,8 @@ final class AppState: ObservableObject {
         Analytics.track(.createEventStartedBlank)
         createEventDate = nil
         createEventTime = nil
+        createEndMode = ""
+        createEndTime = ""
         createPrice = ""
         createSeats = ""
         createCats = []
@@ -4069,6 +4113,7 @@ final class AppState: ObservableObject {
         case .disputes, .adminEvents, .adminTestAccounts, .adminDobCorrections, .adminFeatures, .adminManageEvents, .adminRetention, .notifPrefs: screen = accountSubBack
         case .mapExplore: goHome()
         case .search: screen = searchBackScreen
+        case .browse: backFromBrowse()
         // TASK A fix — these two cases were simply missing, so the shared
         // edge-swipe gesture's goBack() fell to `default: break` and did
         // nothing at all for RefundAccountsView/MyRefundsView (the reported
@@ -4216,6 +4261,7 @@ final class AppState: ObservableObject {
         case .disputes, .adminEvents, .adminTestAccounts, .adminDobCorrections, .adminFeatures, .adminManageEvents, .adminRetention, .notifPrefs: return accountSubBack
         case .mapExplore: return .home
         case .search: return searchBackScreen
+        case .browse: return .home
         // TASK A fix — same missing-case bug as goBack() above: without
         // these, an in-progress edge swipe from RefundAccounts/MyRefunds
         // peeked Home behind the dragged screen instead of Account, which

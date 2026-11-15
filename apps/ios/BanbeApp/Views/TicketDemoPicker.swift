@@ -23,7 +23,7 @@ struct TicketDemoPicker: View {
                 if i > 0 { Rectangle().fill(app.palette.divider).frame(height: 1) }
                 Button { pick(item.0) } label: {
                     HStack {
-                        Text(item.1).font(.body)
+                        Text(item.1).font(.app(.body))
                         Spacer()
                         Image(systemName: selected == item.0 ? "checkmark.circle.fill" : "circle")
                             .foregroundStyle(selected == item.0 ? app.palette.ink : app.palette.ink3).accessibilityHidden(true)
@@ -41,14 +41,14 @@ struct TicketDemoPicker: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text(app.T("Bản demo vé", "Ticket demo")).font(.title3.weight(.bold)).accessibilityAddTraits(.isHeader)
+                Text(app.T("Bản demo vé", "Ticket demo")).font(.app(.title3).weight(.bold)).accessibilityAddTraits(.isHeader)
                 Text(app.T("Dữ liệu mẫu trên máy này. Các nút ghi dữ liệu hoặc rời màn hình hiện \"Không có trong bản demo\".",
                            "Sample data on this device. Buttons that write data or leave the screen say \"Not available in the demo\"."))
-                    .font(.subheadline).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
-                Text(app.T("Trạng thái vé", "Ticket status")).font(.footnote.weight(.semibold)).foregroundStyle(app.palette.ink2)
+                    .font(.app(.subheadline)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
+                Text(app.T("Trạng thái vé", "Ticket status")).font(.app(.footnote).weight(.semibold)).foregroundStyle(app.palette.ink2)
                 group(TicketDemo.specs.map { ($0.key, app.T($0.vi, $0.en)) }, selected: key, id: "ticketDemo.case") { key = $0 }
                 if TicketDemo.hasVariants(key) {
-                    Text(app.T("Loại vé", "Ticket type")).font(.footnote.weight(.semibold)).foregroundStyle(app.palette.ink2)
+                    Text(app.T("Loại vé", "Ticket type")).font(.app(.footnote).weight(.semibold)).foregroundStyle(app.palette.ink2)
                     group(TicketDemo.Variant.allCases.map { ($0, variantTitle($0)) }, selected: variant, id: "ticketDemo.variant") { variant = $0 }
                 }
                 InkButton(title: app.T("Mở bản demo", "Open demo"), font: .body.weight(.bold)) { open(key, variant) }

@@ -16,7 +16,7 @@ struct MyProjectsView: View {
                 } else if app.myProjects.isEmpty {
                     Text(app.T("Bạn chưa ở trong dự án nào. Khi được mời, dự án sẽ hiện ở đây.",
                                "You're not in any project yet. When someone invites you, it shows up here."))
-                        .font(.subheadline).foregroundStyle(app.palette.ink2)
+                        .font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
                         .padding(.top, 24)
                 } else {
                     VStack(spacing: 10) {
@@ -26,7 +26,7 @@ struct MyProjectsView: View {
                 }
                 Button { app.openProjectJoinEntry(back: .myProjects) } label: {
                     Label(app.T("Có mã mời? Vào đội", "Have an invite code? Join a team"), systemImage: "person.badge.plus")
-                        .font(.body.weight(.semibold))
+                        .font(.app(.body).weight(.semibold))
                         .frame(maxWidth: .infinity, minHeight: 50)
                         .background(app.palette.blockInset, in: Capsule())
                 }
@@ -47,18 +47,18 @@ struct MyProjectsView: View {
         Button { Task { await app.openProject(eventID: p.eventId, back: .myProjects) } } label: {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(p.name).font(.body.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+                    Text(p.name).font(.app(.body).weight(.semibold)).fixedSize(horizontal: false, vertical: true)
                     Text([app.projectRoleName(p.role), dateText(p), p.readOnly ? app.T("Chỉ xem", "Read only") : nil]
                             .compactMap { $0 }.joined(separator: " · "))
-                        .font(.footnote).foregroundStyle(app.palette.ink2)
+                        .font(.app(.footnote)).foregroundStyle(app.palette.ink2)
                 }
                 Spacer(minLength: 8)
                 if p.myOpenTasks > 0 {
                     Text(app.T("\(p.myOpenTasks) việc", p.myOpenTasks == 1 ? "1 task" : "\(p.myOpenTasks) tasks"))
-                        .font(.caption.weight(.bold)).padding(.horizontal, 9).padding(.vertical, 4)
+                        .font(.app(.caption).weight(.bold)).padding(.horizontal, 9).padding(.vertical, 4)
                         .foregroundStyle(app.palette.clay).background(app.palette.clayBg, in: Capsule())
                 }
-                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(app.palette.ink3)
+                Image(systemName: "chevron.right").font(.app(.footnote).weight(.semibold)).foregroundStyle(app.palette.ink3)
             }
             .padding(16)
             .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)

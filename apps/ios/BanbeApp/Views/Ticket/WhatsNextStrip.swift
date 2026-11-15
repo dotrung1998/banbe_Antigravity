@@ -52,7 +52,7 @@ struct WhatsNextStrip: View {
             if expandable, open {
                 VStack(alignment: .leading, spacing: 8) {
                     if let detail {
-                        Text(detail).font(.footnote).foregroundStyle(fg2)
+                        Text(detail).font(.app(.footnote)).foregroundStyle(fg2)
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("confirmed.strip.detail")
                     }
@@ -84,7 +84,7 @@ struct WhatsNextStrip: View {
 
     private func linkText(_ label: String) -> some View {
         Text(label + " ›")
-            .font(.footnote.weight(.semibold)).foregroundStyle(fg)
+            .font(.app(.footnote).weight(.semibold)).foregroundStyle(fg)
             .underline()
             .frame(minHeight: 44, alignment: .leading)
             .contentShape(Rectangle())
@@ -93,27 +93,27 @@ struct WhatsNextStrip: View {
     private var row: some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 13, weight: .bold))
+                .font(.app(size: 13, weight: .bold))
                 .foregroundStyle(solid ? tone : app.palette.paper)
                 .frame(width: 26, height: 26)
                 .background(solid ? app.palette.paper : tone, in: Circle())
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
-                Text(heading).font(.footnote.weight(.semibold)).foregroundStyle(fg)
+                Text(heading).font(.app(.footnote).weight(.semibold)).foregroundStyle(fg)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("confirmed.strip.heading")
                 if let sub {
-                    Text(sub).font(.caption).foregroundStyle(fg2).fixedSize(horizontal: false, vertical: true)
+                    Text(sub).font(.app(.caption)).foregroundStyle(fg2).fixedSize(horizontal: false, vertical: true)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if let tail {
-                Text(tail).font(.footnote.weight(.semibold)).monospacedDigit().foregroundStyle(fg)
+                Text(tail).font(.app(.footnote).weight(.semibold)).monospacedDigit().foregroundStyle(fg)
                     .accessibilityIdentifier(tailID ?? "confirmed.strip.tail")
             }
             if expandable {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .bold)).foregroundStyle(fg)
+                    .font(.app(size: 11, weight: .bold)).foregroundStyle(fg)
                     .rotationEffect(.degrees(open ? 90 : 0))
                     .accessibilityHidden(true)
             }

@@ -120,7 +120,7 @@ struct RangeSlider: View {
                     let v = k == .low ? low : high
                     let w: CGFloat = 52
                     Text(label(v))
-                        .font(.system(size: 12, weight: .bold)).monospacedDigit()
+                        .font(.app(size: 12, weight: .bold)).monospacedDigit()
                         .foregroundStyle(app.palette.paper)
                         .frame(width: w, height: 24)
                         .background(app.palette.ink, in: Capsule())

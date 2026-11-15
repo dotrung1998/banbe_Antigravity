@@ -33,7 +33,7 @@ struct AdminDashboardView: View {
 
                 HStack(spacing: 10) {
                     Image(systemName: "exclamationmark.bubble")
-                        .font(.system(size: 20, weight: .medium))
+                        .font(.app(size: 20, weight: .medium))
                         .frame(width: 34, height: 34)
                         .background((ROW_ACCENT_COLORS["adminReview"] ?? .clear).opacity(0.33), in: Circle())
                     Text(app.T("Tranh chấp thanh toán", "Payment Disputes"))
@@ -43,7 +43,7 @@ struct AdminDashboardView: View {
                 .padding(.top, 14)
                 Text(app.T("Khách khẳng định đã chuyển, người tổ chức không tìm thấy. Chỗ vẫn đang bị khoá cho tới khi có quyết định.",
                            "The guest says they paid. The organizer can't find it. The seat stays locked until this is decided."))
-                    .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                    .font(.app(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
                     .padding(.top, 8)
 
                 VStack(spacing: 12) {
@@ -53,23 +53,23 @@ struct AdminDashboardView: View {
                         Text(app.adminDisputesLoading
                              ? app.T("Đang tải…", "Loading…")
                              : app.T("Không có tranh chấp nào đang mở.", "No open disputes."))
-                            .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                            .font(.app(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .accessibilityIdentifier("admin.empty")
                     }
 
                     if !closed.isEmpty {
                         Text(app.T("Đã xử lý", "Resolved"))
-                            .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                            .font(.app(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
                             .padding(.top, 8)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         ForEach(closed) { row in
                             HStack {
                                 Text("\(row.paymentRef ?? "") ▪︎ \(row.guestName ?? "")")
-                                    .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                                    .font(.app(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
                                 Spacer(minLength: 8)
                                 Text(row.disputeResolution?.isEmpty == false ? row.disputeResolution! : app.T("đã xử lý", "resolved"))
-                                    .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
+                                    .font(.app(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
                             }
                             .padding(12)
                             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -92,7 +92,7 @@ struct AdminDashboardView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(row.guestName ?? app.T("Khách", "Guest")).font(BanbeTheme.display(16))
                     Text("\(row.eventName ?? "") ▪︎ \(row.organizerName ?? "")")
-                        .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                        .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
                 }
                 Spacer(minLength: 0)
                 Text(formatVnd(row.totalVnd)).font(BanbeTheme.display(19))
@@ -119,7 +119,7 @@ struct AdminDashboardView: View {
                     .accessibilityIdentifier("admin.proofImage")
                 } else {
                     Text(app.T("Đang tải ảnh biên lai…", "Loading receipt image…"))
-                        .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                        .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
                         .frame(maxWidth: .infinity, minHeight: 60)
                         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
@@ -130,7 +130,7 @@ struct AdminDashboardView: View {
                 else { Task { await app.loadAuditTrail(row.bookingId) } }
             } label: {
                 Text(app.T("Xem nhật ký T1/T2/T3 ›", "View T1/T2/T3 trail ›"))
-                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink)
+                    .font(.app(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink)
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("admin.auditOpen")
@@ -139,9 +139,9 @@ struct AdminDashboardView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(app.auditTrail) { a in
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(a.action).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                            Text(a.action).font(.app(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
                             Text(a.at.formatted() + (a.actorKind.map { " ▪︎ \($0)" } ?? ""))
-                                .font(.system(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.65))
+                                .font(.app(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.65))
                         }
                     }
                 }
@@ -155,7 +155,7 @@ struct AdminDashboardView: View {
             } else {
                 Button { openChatBookingID = row.bookingId } label: {
                     Text(app.T("Xem đoạn chat giữa khách và người tổ chức ›", "View the guest/organizer chat ›"))
-                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink)
+                        .font(.app(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink)
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("admin.openChat")
@@ -172,7 +172,7 @@ struct AdminDashboardView: View {
             .accessibilityIdentifier("admin.reasonCategory")
 
             TextField(app.T("Ghi chú quyết định", "Resolution note"), text: $note)
-                .font(.system(size: 13)).padding(11)
+                .font(.app(size: 13)).padding(11)
                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .accessibilityIdentifier("admin.note")
 
@@ -190,7 +190,7 @@ struct AdminDashboardView: View {
 
             if !app.disputeEmailError.isEmpty {
                 Text(app.T("Email xác nhận chưa gửi được: ", "Confirmation email didn't send: ") + app.disputeEmailError)
-                    .font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                    .font(.app(size: 11.5)).foregroundStyle(BanbeTheme.alert)
                     .accessibilityIdentifier("admin.emailError")
             }
         }
@@ -201,9 +201,9 @@ struct AdminDashboardView: View {
 
     private func line(_ label: String, _ value: String) -> some View {
         HStack {
-            Text(label).font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.65))
+            Text(label).font(.app(size: 11)).foregroundStyle(app.palette.ink.opacity(0.65))
             Spacer(minLength: 8)
-            Text(value).font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink)
+            Text(value).font(.app(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink)
                 .multilineTextAlignment(.trailing)
         }
     }
@@ -211,7 +211,7 @@ struct AdminDashboardView: View {
     private func actionButton(_ title: String, ghost: Bool = false, id: String, perform: @escaping () -> Void) -> some View {
         Button(action: perform) {
             Text(title)
-                .font(.system(size: 12.5, weight: .semibold))
+                .font(.app(size: 12.5, weight: .semibold))
                 .frame(maxWidth: .infinity).padding(.vertical, 11)
                 .background(ghost ? Color.clear : app.palette.ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .foregroundStyle(ghost ? app.palette.ink : app.palette.paper)

@@ -60,7 +60,7 @@ struct PersistentSearchBar: View {
         HStack(spacing: atHome ? 0 : 8) {
             Button(action: h.back) {
                 Image(systemName: "arrow.left")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.app(size: 15, weight: .semibold))
                     .frame(width: 44, height: 44)
                     .contentShape(Circle())
                     .mapSurface(Circle(), interactive: true)
@@ -77,7 +77,7 @@ struct PersistentSearchBar: View {
             if isMap {
                 if app.searchBarFocused {
                     Button(app.T("Huỷ", "Cancel"), action: h.cancel)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.app(.subheadline).weight(.semibold))
                         .foregroundStyle(app.palette.clay)
                         .frame(minHeight: 44)
                         .buttonStyle(.plain)
@@ -86,14 +86,14 @@ struct PersistentSearchBar: View {
                 } else if let filters = h.filters {
                     Button(action: filters) {
                         Image(systemName: "slider.horizontal.3")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.app(size: 16, weight: .semibold))
                             .frame(width: 44, height: 44)
                             .contentShape(Circle())
                             .mapSurface(Circle(), interactive: true)
                             .overlay(alignment: .topTrailing) {
                                 if h.badge > 0 {
                                     Text("\(h.badge)")
-                                        .font(.system(size: 11, weight: .bold)).monospacedDigit()
+                                        .font(.app(size: 11, weight: .bold)).monospacedDigit()
                                         .foregroundStyle(.white)
                                         .padding(.horizontal, 5).frame(minWidth: 18, minHeight: 18)
                                         .background(app.palette.clay, in: Capsule())
@@ -117,7 +117,7 @@ struct PersistentSearchBar: View {
     private func field(_ h: SearchBarHandlers) -> some View {
         let text = isMap ? $app.mapSearchText : $app.searchQuery
         return HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass").font(.system(size: 15, weight: .semibold)).opacity(0.6).accessibilityHidden(true)
+            Image(systemName: "magnifyingglass").font(.app(size: 15, weight: .semibold)).opacity(0.6).accessibilityHidden(true)
             FocusableTextField(text: text, isFirstResponder: $app.searchBarFocused, placeholder: h.placeholder,
                                font: .preferredFont(forTextStyle: .body), onSubmit: h.submit)
                 .frame(height: 24)
@@ -125,7 +125,7 @@ struct PersistentSearchBar: View {
                 .accessibilityIdentifier(isMap ? "map.searchInput" : "search.input")
             if !text.wrappedValue.isEmpty {
                 Button { text.wrappedValue = "" } label: {
-                    Image(systemName: "xmark.circle.fill").font(.system(size: 16)).opacity(0.5)
+                    Image(systemName: "xmark.circle.fill").font(.app(size: 16)).opacity(0.5)
                         .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)

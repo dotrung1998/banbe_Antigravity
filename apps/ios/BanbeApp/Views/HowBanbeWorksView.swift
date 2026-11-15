@@ -67,7 +67,7 @@ private struct StoryThanksView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("🎉")
-                .font(.system(size: 52))
+                .font(.app(size: 52))
                 .frame(width: 100, height: 100)
                 .background(app.palette.honeyBg, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
                 .scaleEffect(shown || reduceMotion ? 1 : 0.6)
@@ -78,7 +78,7 @@ private struct StoryThanksView: View {
                 .padding(.top, 36)
                 .accessibilityHidden(true)
             Text(app.T("Cảm ơn bạn đã xem hết!", "Thanks for taking the tour!"))
-                .font(.system(.largeTitle, design: .rounded).weight(.semibold))
+                .font(.app(.largeTitle, design: .rounded).weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
                 .opacity(shown ? 1 : 0).offset(y: shown || reduceMotion ? 0 : 16)
                 .animation(motion(0.35), value: shown)
@@ -86,7 +86,7 @@ private struct StoryThanksView: View {
                 .accessibilityIdentifier("hiw.thanks")
             Text(app.T("Giờ bạn đã biết banbe hoạt động thế nào. Chúc bạn có những buổi tối thật ấm áp, món ngon và những người bạn mới. Hẹn gặp bạn bên bàn tiệc! 🥂",
                        "Now you know how banbe works. We wish you warm evenings, good food and new friends. See you at the table! 🥂"))
-                .font(.system(.title3, design: .rounded))
+                .font(.app(.title3, design: .rounded))
                 .foregroundStyle(app.palette.ink.opacity(0.8))
                 .fixedSize(horizontal: false, vertical: true)
                 .opacity(shown ? 1 : 0).offset(y: shown || reduceMotion ? 0 : 16)
@@ -120,7 +120,7 @@ struct HowItWorksScreen: View {
                         if finished { withAnimation(AuthMotion.animation(reduceMotion: reduceMotion)) { finished = false } }
                         else if (story.page ?? 0) > 0 { withAnimation(AuthMotion.animation(reduceMotion: reduceMotion)) { story.back() } } else { app.goBack() }
                     } label: {
-                        Image(systemName: "chevron.left").font(.body.weight(.semibold))
+                        Image(systemName: "chevron.left").font(.app(.body).weight(.semibold))
                             .frame(width: 44, height: 44).contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -128,7 +128,7 @@ struct HowItWorksScreen: View {
                     .accessibilityIdentifier("hiw.back")
                     Text(app.T("\((story.page ?? 0) + 1)/\(HowItWorksContent.pageCount)",
                                "\((story.page ?? 0) + 1) of \(HowItWorksContent.pageCount)"))
-                        .font(.footnote.weight(.semibold))
+                        .font(.app(.footnote).weight(.semibold))
                         .foregroundStyle(app.palette.ink.opacity(0.65))
                         .accessibilityIdentifier("welcome.story.progress")
                     Spacer(minLength: 0)
@@ -137,7 +137,7 @@ struct HowItWorksScreen: View {
                             Analytics.track(.publicStorySkipped(step: story.page ?? 0))
                             app.goBack()
                         } label: {
-                            Text(app.T("Bỏ qua", "Skip")).font(.subheadline.weight(.semibold))
+                            Text(app.T("Bỏ qua", "Skip")).font(.app(.subheadline).weight(.semibold))
                                 .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -196,7 +196,7 @@ private struct StoryPointsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(section.emoji)
-                .font(.system(size: 42))
+                .font(.app(size: 42))
                 .frame(width: 84, height: 84)
                 .background(tile, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
                 .scaleEffect(shown || reduceMotion ? 1 : 0.85)
@@ -206,7 +206,7 @@ private struct StoryPointsView: View {
                 .padding(.top, 40)
                 .accessibilityHidden(true)
             Text(app.T(section.vi, section.en))
-                .font(.system(.largeTitle, design: .rounded).weight(.semibold))
+                .font(.app(.largeTitle, design: .rounded).weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityFocused(headingFocused)
@@ -215,12 +215,12 @@ private struct StoryPointsView: View {
                 ForEach(Array(section.points.enumerated()), id: \.offset) { i, point in
                     HStack(spacing: 14) {
                         Text(point.emoji)
-                            .font(.system(size: 24))
+                            .font(.app(size: 24))
                             .frame(width: 46, height: 46)
                             .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .accessibilityHidden(true)
                         Text(app.T(point.vi, point.en))
-                            .font(.system(.body, design: .rounded).weight(.medium))
+                            .font(.app(.body, design: .rounded).weight(.medium))
                             .foregroundStyle(app.palette.ink)
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer(minLength: 0)
@@ -276,7 +276,7 @@ private struct StoryDeckSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             (Text(section.emoji + " ") + Text(app.T(section.vi, section.en)))
-                .font(.system(.largeTitle, design: .rounded).weight(.semibold))
+                .font(.app(.largeTitle, design: .rounded).weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 22)
                 .opacity(appeared ? 1 : 0)
@@ -288,7 +288,7 @@ private struct StoryDeckSection: View {
 
             let card = section.cards[current]
             Text(app.T(card.vi, card.en))
-                .font(.system(.body, design: .rounded))
+                .font(.app(.body, design: .rounded))
                 .foregroundStyle(app.palette.ink.opacity(0.78))
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, minHeight: 46, alignment: .topLeading)
@@ -324,7 +324,7 @@ private struct StoryDeckSection: View {
             .accessibilityIdentifier("hiw.dots")
 
             Text(app.T("Vuốt để xem tiếp ⟶", "Swipe to see more ⟶"))
-                .font(.caption.weight(.semibold))
+                .font(.app(.caption).weight(.semibold))
                 .opacity(swiped ? 0 : 0.55)
                 .animation(.easeOut(duration: 0.4), value: swiped)
                 .frame(maxWidth: .infinity)
@@ -400,8 +400,8 @@ private struct FinishHint: View {
     private var still: Bool { reduceMotion || !loopsMotion }
     var body: some View {
         VStack(spacing: 4) {
-            Image(systemName: "checkmark").font(.system(size: 14, weight: .heavy))
-            Image(systemName: "chevron.compact.right").font(.system(size: 22, weight: .semibold))
+            Image(systemName: "checkmark").font(.app(size: 14, weight: .heavy))
+            Image(systemName: "chevron.compact.right").font(.app(size: 22, weight: .semibold))
         }
         .foregroundStyle(app.palette.clay)
         .frame(width: 34, height: 72)
@@ -428,7 +428,7 @@ private struct NextSectionHint: View {
     private var still: Bool { reduceMotion || !loopsMotion }
     var body: some View {
         Image(systemName: "chevron.compact.right")
-            .font(.system(size: 30, weight: .semibold))
+            .font(.app(size: 30, weight: .semibold))
             .foregroundStyle(app.palette.ink.opacity(0.35))
             .frame(width: 30, height: 64)
             .background(app.palette.ink.opacity(0.06), in: Capsule())
@@ -521,7 +521,7 @@ private struct DemoCard: View {
 private struct DemoLabel: View {
     let text: String
     var body: some View {
-        Text(text.uppercased()).font(.system(size: 12, weight: .bold)).kerning(0.6).opacity(0.55)
+        Text(text.uppercased()).font(.app(size: 12, weight: .bold)).kerning(0.6).opacity(0.55)
     }
 }
 
@@ -534,7 +534,7 @@ private struct FieldBox<Content: View>: View {
     @ViewBuilder let content: () -> Content
     var body: some View {
         HStack(spacing: 10) { content() }
-            .font(.system(size: 15, weight: .medium))
+            .font(.app(size: 15, weight: .medium))
             .padding(.horizontal, 14).padding(.vertical, 12)
             .frame(maxWidth: .infinity, maxHeight: stretch ? .infinity : nil, alignment: .leading)
             .background(fill ?? app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -545,8 +545,8 @@ private struct ForYouChip: View {
     @EnvironmentObject private var app: AppState
     var body: some View {
         HStack(spacing: 3) {
-            Image(systemName: "star.fill").font(.system(size: 10, weight: .bold)).foregroundStyle(gold)
-            Text(app.T("Dành cho bạn", "For You")).font(.system(size: 12, weight: .bold))
+            Image(systemName: "star.fill").font(.app(size: 10, weight: .bold)).foregroundStyle(gold)
+            Text(app.T("Dành cho bạn", "For You")).font(.app(size: 12, weight: .bold))
         }
         .padding(.horizontal, 9).padding(.vertical, 4)
         .background(app.palette.paper, in: Capsule())
@@ -582,12 +582,12 @@ private struct QuizDemo: View {
                     .padding(.horizontal, 16).padding(.top, 8)
                     .allowsHitTesting(false)
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("🎟️").font(.system(size: 52)).accessibilityHidden(true)
+                    Text("🎟️").font(.app(size: 52)).accessibilityHidden(true)
                     Text(app.T("Loại sự kiện nào hợp với bạn?", "Which kinds of events are you into?"))
-                        .font(.system(.title, design: .rounded).weight(.semibold))
+                        .font(.app(.title, design: .rounded).weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
                     Text(app.T("Chỉ những loại bạn chọn được gắn ★.", "Only the kinds you pick get the ★."))
-                        .font(.subheadline).foregroundStyle(app.palette.ink.opacity(0.7))
+                        .font(.app(.subheadline)).foregroundStyle(app.palette.ink.opacity(0.7))
                         .padding(.bottom, 12)
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                         ForEach(EventPrefTaxonomy.interests) { o in
@@ -632,12 +632,12 @@ private struct StarsDemo: View {
                 HStack(spacing: 12) {
                     CatalogPhoto(path: e?.img ?? "", height: 76, width: 76, cornerRadius: 16)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(e?.name ?? "").font(.system(size: 16.5, weight: .bold)).lineLimit(1)
-                        Text("\(Demo.when(e)) · \(Demo.area(e))").font(.system(size: 13)).opacity(0.6).lineLimit(1)
+                        Text(e?.name ?? "").font(.app(size: 16.5, weight: .bold)).lineLimit(1)
+                        Text("\(Demo.when(e)) · \(Demo.area(e))").font(.app(size: 13)).opacity(0.6).lineLimit(1)
                         if i != 1 {
                             ForYouChip().stamp(active, delay: 0.25 + Double(i) * 0.3).padding(.top, 2)
                         } else {
-                            Text(e?.price ?? "").font(.system(size: 13, weight: .semibold)).opacity(0.75).padding(.top, 2)
+                            Text(e?.price ?? "").font(.app(size: 13, weight: .semibold)).opacity(0.75).padding(.top, 2)
                         }
                     }
                     Spacer(minLength: 0)
@@ -654,11 +654,11 @@ private struct PrivateDemo: View {
     var body: some View {
         DemoPad(spacing: 12) {
             HStack(spacing: 14) {
-                Text("🔒").font(.system(size: 40)).frame(width: 78, height: 78)
+                Text("🔒").font(.app(size: 40)).frame(width: 78, height: 78)
                     .background(app.palette.honeyBg, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(app.T("Câu trả lời", "Your answers")).font(BanbeTheme.display(24))
-                    Text(app.T("Riêng tư, chỉ mình bạn", "Private, just for you")).font(.system(size: 14)).opacity(0.65)
+                    Text(app.T("Riêng tư, chỉ mình bạn", "Private, just for you")).font(.app(size: 14)).opacity(0.65)
                 }
             }
             .padding(.bottom, 4)
@@ -679,8 +679,8 @@ private struct TicketsDemo: View {
                 CatalogPhoto(path: e?.img ?? "", height: geo.size.height * 0.36, width: geo.size.width, cornerRadius: 0)
                 VStack(alignment: .leading, spacing: 12) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(e?.name ?? "").font(.system(size: 18, weight: .bold))
-                        Text("\(Demo.when(e)) · \(Demo.vnd(Demo.price(e)))").font(.system(size: 13.5)).opacity(0.6)
+                        Text(e?.name ?? "").font(.app(size: 18, weight: .bold))
+                        Text("\(Demo.when(e)) · \(Demo.vnd(Demo.price(e)))").font(.app(size: 13.5)).opacity(0.6)
                     }
                     HStack(spacing: 8) {
                         ForEach(1...3, id: \.self) { k in
@@ -689,7 +689,7 @@ private struct TicketsDemo: View {
                                 withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.25)) { n = k }
                             } label: {
                                 Text("\(k) " + app.T("vé", k == 1 ? "ticket" : "tickets"))
-                                    .font(.system(size: 15, weight: .bold)).lineLimit(1).minimumScaleFactor(0.8)
+                                    .font(.app(size: 15, weight: .bold)).lineLimit(1).minimumScaleFactor(0.8)
                                     .frame(maxWidth: .infinity).padding(.vertical, 11)
                                     .foregroundStyle(n == k ? app.palette.paper : app.palette.ink)
                                     .background(n == k ? app.palette.ink : app.palette.field, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
@@ -706,12 +706,12 @@ private struct TicketsDemo: View {
                     Spacer(minLength: 0)
                     HStack(alignment: .bottom) {
                         VStack(alignment: .leading, spacing: 0) {
-                            Text(app.T("Tổng", "Total")).font(.system(size: 12.5)).opacity(0.55)
-                            Text(Demo.vnd(Demo.price(e) * n)).font(.system(size: 22, weight: .heavy))
+                            Text(app.T("Tổng", "Total")).font(.app(size: 12.5)).opacity(0.55)
+                            Text(Demo.vnd(Demo.price(e) * n)).font(.app(size: 22, weight: .heavy))
                                 .contentTransition(.numericText()).accessibilityIdentifier("hiw.tickets.total")
                         }
                         Spacer()
-                        Text(app.T("Giữ chỗ", "Hold seats")).font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                        Text(app.T("Giữ chỗ", "Hold seats")).font(.app(size: 15, weight: .bold)).foregroundStyle(.white)
                             .padding(.horizontal, 16).padding(.vertical, 12)
                             .background(app.palette.clay, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
                     }
@@ -740,10 +740,10 @@ private struct HoldDemo: View {
                     .animation(.linear(duration: 1), value: left)
                 VStack(spacing: 2) {
                     Text(String(format: "%02d:%02d", left / 60, left % 60))
-                        .font(.system(size: 40, weight: .heavy)).monospacedDigit()
+                        .font(.app(size: 40, weight: .heavy)).monospacedDigit()
                         .contentTransition(.numericText(countsDown: true))
                         .accessibilityIdentifier("hiw.hold.clock")
-                    Text(app.T("còn lại", "left")).font(.system(size: 13, weight: .semibold)).opacity(0.55)
+                    Text(app.T("còn lại", "left")).font(.app(size: 13, weight: .semibold)).opacity(0.55)
                 }
             }
             .frame(maxWidth: 190, maxHeight: 190)
@@ -751,9 +751,9 @@ private struct HoldDemo: View {
             FieldBox {
                 CatalogPhoto(path: e?.img ?? "", height: 40, width: 40, cornerRadius: 10)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(e?.name ?? "").font(.system(size: 15, weight: .bold)).lineLimit(1)
+                    Text(e?.name ?? "").font(.app(size: 15, weight: .bold)).lineLimit(1)
                     Text(app.T("2 vé · thanh toán trước khi hết giờ", "2 tickets · pay before time runs out"))
-                        .font(.system(size: 12.5)).opacity(0.65).lineLimit(1).minimumScaleFactor(0.8)
+                        .font(.app(size: 12.5)).opacity(0.65).lineLimit(1).minimumScaleFactor(0.8)
                 }
             }
         }
@@ -777,12 +777,12 @@ private struct PayDemo: View {
             DemoLabel(text: app.T("Chuyển khoản cho host", "Transfer to the host"))
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text(e?.orgName ?? "").font(.system(size: 13.5, weight: .semibold)).opacity(0.75)
+                    Text(e?.orgName ?? "").font(.app(size: 13.5, weight: .semibold)).opacity(0.75)
                     Spacer()
-                    Image(systemName: "building.columns").font(.system(size: 15)).opacity(0.75)
+                    Image(systemName: "building.columns").font(.app(size: 15)).opacity(0.75)
                 }
-                Text("VCB •••• 6543").font(.system(size: 19, weight: .bold)).kerning(1)
-                Text(Demo.vnd(Demo.price(e) * 2)).font(.system(size: 30, weight: .heavy)).padding(.top, 6)
+                Text("VCB •••• 6543").font(.app(size: 19, weight: .bold)).kerning(1)
+                Text(Demo.vnd(Demo.price(e) * 2)).font(.app(size: 30, weight: .heavy)).padding(.top, 6)
             }
             .foregroundStyle(.white)
             .padding(18)
@@ -795,14 +795,14 @@ private struct PayDemo: View {
                 Text(app.T("Nội dung", "Note")).opacity(0.6)
                 Text("BB-4821").bold()
                 Spacer()
-                Image(systemName: "doc.on.doc").font(.system(size: 14)).opacity(0.55)
+                Image(systemName: "doc.on.doc").font(.app(size: 14)).opacity(0.55)
             }
             FieldBox(fill: app.palette.clayBg) {
                 Text("⏱️")
                 Text(app.T("Chỗ còn giữ 28:41", "Seat still held 28:41")).monospacedDigit()
             }
             Spacer(minLength: 0)
-            Text(app.T("Tôi đã chuyển khoản", "I've transferred")).font(.system(size: 16, weight: .bold))
+            Text(app.T("Tôi đã chuyển khoản", "I've transferred")).font(.app(size: 16, weight: .bold))
                 .foregroundStyle(app.palette.paper)
                 .frame(maxWidth: .infinity).padding(.vertical, 14)
                 .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
@@ -835,13 +835,13 @@ private struct QrDemo: View {
             .shadow(color: .black.opacity(0.10), radius: 10, y: 6)
             .accessibilityHidden(true)
             VStack(spacing: 2) {
-                Text(e?.name ?? "").font(.system(size: 17, weight: .bold))
-                Text(Demo.when(e)).font(.system(size: 13)).opacity(0.6)
+                Text(e?.name ?? "").font(.app(size: 17, weight: .bold))
+                Text(Demo.when(e)).font(.app(size: 13)).opacity(0.6)
             }
             HStack(spacing: 6) {
                 ForEach(Array([("T5", "Thu"), ("T6", "Fri"), ("T7", "Sat"), ("CN", "Sun")].enumerated()), id: \.offset) { i, d in
                     VStack(spacing: 5) {
-                        Text(app.T(d.0, d.1)).font(.system(size: 13, weight: .semibold))
+                        Text(app.T(d.0, d.1)).font(.app(size: 13, weight: .semibold))
                         Circle().fill(app.palette.clay).frame(width: 9, height: 9)
                             .opacity(i == 2 ? 1 : 0)
                             .stamp(active && i == 2, delay: 0.5)
@@ -865,9 +865,9 @@ private struct OrganizerDemo: View {
                     .frame(width: 46, height: 46).clipShape(Circle())
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(app.T("Bạn", "You")).font(.system(size: 17, weight: .bold))
+                    Text(app.T("Bạn", "You")).font(.app(size: 17, weight: .bold))
                     Text(on ? app.T("Cá nhân · Host", "Personal · Host") : app.T("Cá nhân", "Personal"))
-                        .font(.system(size: 13)).opacity(0.6)
+                        .font(.app(size: 13)).opacity(0.6)
                         .contentTransition(.opacity)
                 }
                 Spacer(minLength: 0)
@@ -888,7 +888,7 @@ private struct OrganizerDemo: View {
             // Host tools: dimmed until the switch is on, then they light up. Fills the rest of the card.
             VStack(alignment: .leading, spacing: 10) {
                 Text(on ? app.T("✨ Đã mở công cụ host", "✨ Host tools on") : app.T("Bật để mở công cụ host", "Turn it on for host tools"))
-                    .font(.system(size: 14, weight: .bold)).opacity(on ? 1 : 0.6)
+                    .font(.app(size: 14, weight: .bold)).opacity(on ? 1 : 0.6)
                 HStack(spacing: 8) {
                     tool("plus.circle", app.T("Tạo", "Create"))
                     tool("person.2", app.T("Khách", "Guests"))
@@ -905,13 +905,13 @@ private struct OrganizerDemo: View {
     }
 
     private var chevron: some View {
-        Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).opacity(0.35)
+        Image(systemName: "chevron.right").font(.app(size: 13, weight: .semibold)).opacity(0.35)
     }
 
     private func row<T: View>(_ icon: String, _ title: String, @ViewBuilder trailing: () -> T) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: icon).font(.system(size: 17)).frame(width: 26)
-            Text(title).font(.system(size: 15.5, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
+            Image(systemName: icon).font(.app(size: 17)).frame(width: 26)
+            Text(title).font(.app(size: 15.5, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
             Spacer(minLength: 6)
             trailing()
         }
@@ -921,8 +921,8 @@ private struct OrganizerDemo: View {
 
     private func tool(_ icon: String, _ title: String) -> some View {
         VStack(spacing: 6) {
-            Image(systemName: icon).font(.system(size: 20, weight: .semibold))
-            Text(title).font(.system(size: 12.5, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
+            Image(systemName: icon).font(.app(size: 20, weight: .semibold))
+            Text(title).font(.app(size: 12.5, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(app.palette.paper.opacity(on ? 0.9 : 0.5), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -937,7 +937,7 @@ private struct FreeDemo: View {
             DemoLabel(text: app.T("Phí cho host", "Host fees"))
             VStack(alignment: .leading, spacing: 0) {
                 Text("0₫").font(BanbeTheme.display(80)).kerning(-2)
-                Text(app.T("để đăng và bán vé", "to list and sell tickets")).font(.system(size: 15, weight: .semibold)).opacity(0.7)
+                Text(app.T("để đăng và bán vé", "to list and sell tickets")).font(.app(size: 15, weight: .semibold)).opacity(0.7)
             }
             .frame(maxHeight: .infinity, alignment: .center)
             FieldBox { Text(app.T("Phí đăng", "Listing fee")); Spacer(); Text("0₫").bold() }
@@ -960,7 +960,7 @@ private struct DirectDemo: View {
         DemoPad(spacing: 0) {
             DemoLabel(text: app.T("Tiền đi thẳng", "Money goes direct"))
                 .padding(.bottom, 14)
-            person(Text("🙋").font(.system(size: 26)), app.palette.field,
+            person(Text("🙋").font(.app(size: 26)), app.palette.field,
                    app.T("Khách", "Guest"), app.T("Chuyển khoản \(amount)", "Transfers \(amount)"))
             GeometryReader { geo in
                 ZStack(alignment: .top) {
@@ -968,7 +968,7 @@ private struct DirectDemo: View {
                     if active {
                         TimelineView(.animation(paused: still)) { tl in
                             let t = still ? 0.5 : tl.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.8) / 1.8
-                            Text("💸").font(.system(size: 22))
+                            Text("💸").font(.app(size: 22))
                                 .offset(y: CGFloat(t) * max(geo.size.height - 26, 0))
                                 .opacity(still ? 1 : min(1, min(t, 1 - t) * 6))
                         }
@@ -982,16 +982,16 @@ private struct DirectDemo: View {
             .overlay(alignment: .leading) {
                 // What travels down the line, so it never reads as empty space.
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(app.T("Chuyển khoản ngân hàng", "Bank transfer")).font(.system(size: 14, weight: .bold))
+                    Text(app.T("Chuyển khoản ngân hàng", "Bank transfer")).font(.app(size: 14, weight: .bold))
                     Text(app.T("thẳng từ khách đến bạn,\nkhông qua trung gian", "straight from guest to you,\nno middleman"))
-                        .font(.system(size: 13)).opacity(0.65)
+                        .font(.app(size: 13)).opacity(0.65)
                 }
                 .padding(.horizontal, 12).padding(.vertical, 10)
                 .background(app.palette.honeyBg, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .fixedSize()
                 .offset(x: 64)
             }
-            person(Text("🎤").font(.system(size: 26)), app.palette.clayBg,
+            person(Text("🎤").font(.app(size: 26)), app.palette.clayBg,
                    app.T("Bạn (host)", "You (host)"), app.T("Nhận đủ \(amount)", "Receives all \(amount)"))
             HStack(spacing: 12) {
                 Image("BanbeFavicon").resizable().scaledToFill()
@@ -1000,9 +1000,9 @@ private struct DirectDemo: View {
                     .padding(.leading, 4)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("banbe · 0₫").font(.system(size: 15.5, weight: .bold))
+                    Text("banbe · 0₫").font(.app(size: 15.5, weight: .bold))
                     Text(app.T("Chỉ kết nối, không giữ tiền", "Connects you, never holds money"))
-                        .font(.system(size: 13)).opacity(0.65)
+                        .font(.app(size: 13)).opacity(0.65)
                 }
                 Spacer(minLength: 0)
             }
@@ -1016,8 +1016,8 @@ private struct DirectDemo: View {
         HStack(spacing: 12) {
             avatar.frame(width: 52, height: 52).background(bg, in: Circle())
             VStack(alignment: .leading, spacing: 1) {
-                Text(name).font(.system(size: 16.5, weight: .bold))
-                Text(detail).font(.system(size: 13.5)).opacity(0.65).lineLimit(1).minimumScaleFactor(0.8)
+                Text(name).font(.app(size: 16.5, weight: .bold))
+                Text(detail).font(.app(size: 13.5)).opacity(0.65).lineLimit(1).minimumScaleFactor(0.8)
             }
             Spacer(minLength: 0)
         }
@@ -1050,7 +1050,7 @@ private struct StepDemo: View {
             HStack(spacing: 12) {
                 ZStack {
                     StepRing(value: Double(active ? n : n - 1) / 5)
-                    Text("\(n)/5").font(.system(size: 13, weight: .heavy))
+                    Text("\(n)/5").font(.app(size: 13, weight: .heavy))
                 }
                 VStack(alignment: .leading, spacing: 0) {
                     DemoLabel(text: app.T("Bước \(n)", "Step \(n)"))
@@ -1061,7 +1061,7 @@ private struct StepDemo: View {
             if n < 5 {
                 let tip = HowItWorksContent.stepTips[n - 1]
                 Text("💡 " + app.T(tip.vi, tip.en))
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.app(size: 14, weight: .semibold))
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 14).padding(.vertical, 12)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1085,8 +1085,8 @@ private struct StepDemo: View {
                     HStack(spacing: 12) {
                         Image("BanbeFavicon").resizable().scaledToFill().frame(width: 52, height: 52).clipShape(Circle())
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(e?.orgName ?? "").font(.system(size: 16.5, weight: .bold))
-                            Text(app.T("Host", "Host")).font(.system(size: 13)).opacity(0.6)
+                            Text(e?.orgName ?? "").font(.app(size: 16.5, weight: .bold))
+                            Text(app.T("Host", "Host")).font(.app(size: 13)).opacity(0.6)
                         }
                         Spacer(minLength: 0)
                     }
@@ -1098,7 +1098,7 @@ private struct StepDemo: View {
                     FieldBox(stretch: true) { Text(e?.name ?? "").bold() }
                     HStack(spacing: 6) {
                         ForEach(Array([("🍽️", "Supper club"), ("🎨", app.T("Nghệ thuật", "Art"))].enumerated()), id: \.offset) { i, c in
-                            Text("\(c.0) \(c.1)").font(.system(size: 13.5, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.7)
+                            Text("\(c.0) \(c.1)").font(.app(size: 13.5, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.7)
                                 .padding(.horizontal, 10).padding(.vertical, 8)
                                 .fixedSize(horizontal: i == 0, vertical: false)
                                 .background(i == 0 ? app.palette.honeyBg : app.palette.field, in: Capsule())
@@ -1143,7 +1143,7 @@ private struct RecipeDemo: View {
             DemoLabel(text: "🧑‍🍳 " + app.T("Công thức thành công", "Recipe for success"))
             HStack(alignment: .firstTextBaseline) {
                 Text("8/10").font(BanbeTheme.display(30))
-                Text(app.T("nguyên liệu", "ingredients")).font(.system(size: 14, weight: .semibold)).opacity(0.65)
+                Text(app.T("nguyên liệu", "ingredients")).font(.app(size: 14, weight: .semibold)).opacity(0.65)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -1159,7 +1159,7 @@ private struct RecipeDemo: View {
                     Text(items[i].0)
                     Text(app.T(items[i].1, items[i].2))
                     Spacer()
-                    Text("✓").font(.system(size: 16, weight: .heavy)).foregroundStyle(app.palette.clay)
+                    Text("✓").font(.app(size: 16, weight: .heavy)).foregroundStyle(app.palette.clay)
                         .stamp(active, delay: 0.4 + Double(i) * 0.22)
                 }
             }
@@ -1182,7 +1182,7 @@ private struct LiveDemo: View {
                 HStack(spacing: 6) {
                     Circle().fill(liveGreen).frame(width: 9, height: 9)
                         .overlay(Circle().stroke(liveGreen.opacity(pulse ? 0 : 0.55), lineWidth: pulse ? 6 : 0))
-                    Text(app.T("Đang mở", "Live")).font(.system(size: 13, weight: .heavy))
+                    Text(app.T("Đang mở", "Live")).font(.app(size: 13, weight: .heavy))
                 }
                 .padding(.horizontal, 11).padding(.vertical, 5)
                 .background(app.palette.paper, in: Capsule())
@@ -1192,11 +1192,11 @@ private struct LiveDemo: View {
             .frame(maxHeight: .infinity)
             ForEach(steps.indices, id: \.self) { i in
                 HStack(spacing: 12) {
-                    Text("✓").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                    Text("✓").font(.app(size: 13, weight: .bold)).foregroundStyle(.white)
                         .frame(width: 26, height: 26)
                         .background(i == 2 ? liveGreen : app.palette.clay, in: Circle())
                         .stamp(active, delay: 0.2 + Double(i) * 0.5)
-                    Text(app.T(steps[i].0, steps[i].1)).font(.system(size: 16, weight: .semibold))
+                    Text(app.T(steps[i].0, steps[i].1)).font(.app(size: 16, weight: .semibold))
                     Spacer(minLength: 0)
                 }
             }

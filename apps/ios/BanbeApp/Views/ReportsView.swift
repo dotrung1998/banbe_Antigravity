@@ -81,12 +81,12 @@ struct ReportsView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
                 Image(systemName: "chart.bar.doc.horizontal")
-                    .font(.system(size: 20, weight: .medium))
+                    .font(.app(size: 20, weight: .medium))
                     .frame(width: 34, height: 34)
                     .background(reportsAccent.opacity(0.33), in: Circle())
                     .accessibilityHidden(true)
                 Text(app.T("Số liệu & báo cáo", "Metrics & Reports"))
-                    .font(.system(.title2, design: .rounded).weight(.semibold))
+                    .font(.app(.title2, design: .rounded).weight(.semibold))
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 8)
                 overflowMenu
@@ -101,7 +101,7 @@ struct ReportsView: View {
                     }
                 }
             }
-            .font(.footnote)
+            .font(.app(.footnote))
             .foregroundStyle(app.palette.ink.opacity(0.7))
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("reports.subtitle")
@@ -126,7 +126,7 @@ struct ReportsView: View {
             .disabled(app.reportsData == nil || !app.reportsExportBusy.isEmpty)
         } label: {
             Image(systemName: app.reportsExportBusy.isEmpty ? "ellipsis.circle" : "hourglass")
-                .font(.system(size: 22, weight: .regular))
+                .font(.app(size: 22, weight: .regular))
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
@@ -162,7 +162,7 @@ struct ReportsView: View {
             action()
         } label: {
             Text(text)
-                .font(.footnote.weight(.semibold))
+                .font(.app(.footnote).weight(.semibold))
                 .padding(.horizontal, 14).padding(.vertical, 8)
                 .frame(minHeight: 36)
                 .background(selected ? app.palette.ink : .clear, in: Capsule())
@@ -200,7 +200,7 @@ struct ReportsView: View {
     private var errorState: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label(app.reportsError, systemImage: "wifi.exclamationmark")
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .foregroundStyle(BanbeTheme.alert)
                 .accessibilityIdentifier("reports.error")
             InkButton(title: app.T("Thử lại", "Retry")) { app.loadAccountKpis() }
@@ -214,17 +214,17 @@ struct ReportsView: View {
             Image(systemName: "clock.arrow.circlepath").accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(app.T("Chưa làm mới được.", "Couldn't refresh."))
-                    .font(.subheadline.weight(.semibold))
+                    .font(.app(.subheadline).weight(.semibold))
                     .accessibilityIdentifier("reports.stale")
                 if let at = app.reportsLoadedAt {
                     Text(app.T("Đang hiện số liệu lúc \(at.formatted(date: .omitted, time: .shortened)).",
                                "Showing numbers from \(at.formatted(date: .omitted, time: .shortened))."))
-                        .font(.footnote)
+                        .font(.app(.footnote))
                 }
             }
             Spacer(minLength: 8)
             Button(app.T("Thử lại", "Retry")) { app.loadAccountKpis() }
-                .font(.footnote.weight(.semibold))
+                .font(.app(.footnote).weight(.semibold))
                 .frame(minHeight: 44)
                 .accessibilityIdentifier("reports.stale.retry")
         }
@@ -234,9 +234,9 @@ struct ReportsView: View {
 
     private var emptyState: some View {
         VStack(spacing: 8) {
-            Image(systemName: "chart.bar").font(.title).opacity(0.5).accessibilityHidden(true)
+            Image(systemName: "chart.bar").font(.app(.title)).opacity(0.5).accessibilityHidden(true)
             Text(app.T("Chưa có số liệu.", "Nothing to show yet."))
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .foregroundStyle(app.palette.ink.opacity(0.7))
         }
         .frame(maxWidth: .infinity)
@@ -305,14 +305,14 @@ struct ReportsView: View {
                     Button { open(m.key) } label: {
                         HStack(spacing: 12) {
                             Image(systemName: ReportsPresentation.symbol(for: m.key))
-                                .font(.footnote.weight(.semibold))
+                                .font(.app(.footnote).weight(.semibold))
                                 .frame(width: 22)
                                 .opacity(0.55)
                                 .accessibilityHidden(true)
-                            Text(m.title).font(.subheadline).multilineTextAlignment(.leading)
+                            Text(m.title).font(.app(.subheadline)).multilineTextAlignment(.leading)
                             Spacer(minLength: 8)
-                            Text(m.valueText).font(.subheadline.weight(.semibold)).monospacedDigit()
-                            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).opacity(0.4)
+                            Text(m.valueText).font(.app(.subheadline).weight(.semibold)).monospacedDigit()
+                            Image(systemName: "chevron.right").font(.app(.caption).weight(.semibold)).opacity(0.4)
                                 .accessibilityHidden(true)
                         }
                         .padding(.horizontal, 16)
@@ -362,7 +362,7 @@ private struct ReportCustomRangeSheet: View {
                     .accessibilityIdentifier("reports.custom.end")
                 if tooLong {
                     Label(app.T("Chọn tối đa 1 năm.", "Pick at most one year."), systemImage: "exclamationmark.circle")
-                        .font(.footnote)
+                        .font(.app(.footnote))
                         .foregroundStyle(BanbeTheme.alert)
                 }
                 InkButton(title: app.T("Áp dụng", "Apply"), enabled: !tooLong) {

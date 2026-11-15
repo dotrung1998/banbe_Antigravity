@@ -89,7 +89,7 @@ struct ProjectHubView: View {
                         // The role table's column names stay on screen while you read down the table.
                         if app.projectTab == "team", let top = matrixTop, let bottom = matrixBottom, top < 0, bottom > 70 {
                             HStack(spacing: 0) {
-                                Text(app.T("Ai làm được gì", "Who can do what")).font(.caption.weight(.bold)).foregroundStyle(app.palette.ink3)
+                                Text(app.T("Ai làm được gì", "Who can do what")).font(.app(.caption).weight(.bold)).foregroundStyle(app.palette.ink3)
                                 Spacer(minLength: 8)
                                 ProjectRoleMatrixView.header(app, mine: ProjectRoleMatrixView.myColumn(app))
                             }
@@ -155,13 +155,13 @@ struct ProjectHubView: View {
         HStack(spacing: 10) {
             Image(systemName: "theatermasks").accessibilityHidden(true)
             Text(app.T("Bản demo · dữ liệu mẫu · không lưu gì", "Demo · sample data · nothing is saved"))
-                .font(.subheadline.weight(.semibold))
+                .font(.app(.subheadline).weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityIdentifier("project.demoBanner")
             Button { app.endProjectDemo() } label: {
                 Text(app.T("Thoát demo", "Exit demo"))
-                    .font(.subheadline.weight(.bold))
+                    .font(.app(.subheadline).weight(.bold))
                     .padding(.horizontal, 14).frame(minHeight: 44)
                     .background(app.palette.paper.opacity(0.7), in: Capsule())
             }
@@ -179,7 +179,7 @@ struct ProjectHubView: View {
         HStack(spacing: 8) {
             circleButton("chevron.left", label: app.T("Quay lại", "Back"), id: "project.back") { app.backFromProject() }
             Text(app.projectSnapshot?.event?.name ?? app.T("Dự án", "Project"))
-                .font(.headline)
+                .font(.app(.headline))
                 .lineLimit(1)
                 .frame(maxWidth: .infinity)
                 .accessibilityAddTraits(.isHeader)
@@ -194,7 +194,7 @@ struct ProjectHubView: View {
                     }
                 }
             } label: {
-                Image(systemName: "ellipsis").font(.system(size: 17, weight: .semibold))
+                Image(systemName: "ellipsis").font(.app(size: 17, weight: .semibold))
                     .frame(width: 44, height: 44)
                     .background(app.palette.block, in: Circle())
             }
@@ -208,7 +208,7 @@ struct ProjectHubView: View {
 
     private func circleButton(_ icon: String, label: String, id: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: icon).font(.system(size: 17, weight: .semibold))
+            Image(systemName: icon).font(.app(size: 17, weight: .semibold))
                 .frame(width: 44, height: 44)
                 .background(app.palette.block, in: Circle())
         }
@@ -262,9 +262,9 @@ struct ProjectHubView: View {
         if !app.projectNotice.isEmpty {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "exclamationmark.circle.fill").foregroundStyle(BanbeTheme.alert).accessibilityHidden(true)
-                Text(app.projectNotice).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                Text(app.projectNotice).font(.app(.subheadline)).fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 4)
-                Button { app.projectNotice = "" } label: { Image(systemName: "xmark").font(.footnote.weight(.bold)).frame(width: 44, height: 44) }
+                Button { app.projectNotice = "" } label: { Image(systemName: "xmark").font(.app(.footnote).weight(.bold)).frame(width: 44, height: 44) }
                     .accessibilityLabel(app.T("Đóng", "Dismiss"))
             }
             .padding(.leading, 14)
@@ -276,7 +276,7 @@ struct ProjectHubView: View {
         if snap.project?.readOnly == true {
             Label(app.T("Dự án đã chuyển sang chỉ xem (30 ngày sau sự kiện).", "This project is read-only now (30 days after the event)."),
                   systemImage: "lock")
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(app.palette.honeyBg, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -321,7 +321,7 @@ struct ProjectHubView: View {
             }
         } label: {
             Label(app.T("Thêm việc / hạng mục", "Add task / lane"), systemImage: "plus")
-                .font(.body.weight(.bold))
+                .font(.app(.body).weight(.bold))
                 .padding(.horizontal, 20)
                 .frame(minHeight: 56)
                 .foregroundStyle(app.palette.paper)
@@ -338,7 +338,7 @@ struct ProjectHubView: View {
         let empty = !(snap.posts ?? []).contains { topicsLane == nil || $0.laneId == topicsLane }
         return Button { sheet = .compose(laneID: topicsLane) } label: {
             Label(app.T("Bài mới", "New post"), systemImage: "plus")
-                .font(.body.weight(.bold))
+                .font(.app(.body).weight(.bold))
                 .padding(.horizontal, 20)
                 .frame(minHeight: 56)
                 .foregroundStyle(app.palette.paper)
@@ -354,9 +354,9 @@ struct ProjectHubView: View {
     private var failed: some View {
         VStack(spacing: 14) {
             Text(app.projectError.isEmpty ? app.T("Chưa tải được dự án.", "Couldn't load the project.") : app.projectError)
-                .font(.body).multilineTextAlignment(.center)
+                .font(.app(.body)).multilineTextAlignment(.center)
             Button(app.T("Thử lại", "Try again")) { Task { await app.refreshProject(full: true) } }
-                .font(.body.weight(.semibold)).frame(minHeight: 44)
+                .font(.app(.body).weight(.semibold)).frame(minHeight: 44)
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

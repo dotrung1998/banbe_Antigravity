@@ -89,11 +89,11 @@ struct RefundDisputeEntry: View {
     private var deletedCopyCard: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(app.T("Bạn đã xoá bản của mình", "You deleted your copy"))
-                .font(.system(size: 13.5, weight: .bold))
+                .font(.app(size: 13.5, weight: .bold))
                 .foregroundStyle(app.palette.honey)
             Text(app.T("Cuộc trò chuyện không còn trong tài khoản của bạn. Khoản hoàn không thay đổi. Người tổ chức vẫn giữ bản ghi của họ đến khi hết hạn.",
                        "The conversation is no longer in your account. The refund is unchanged. The organizer keeps their record until it expires."))
-                .font(.system(size: 12))
+                .font(.app(size: 12))
                 .foregroundStyle(app.palette.ink.opacity(0.75))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -112,13 +112,13 @@ struct RefundDisputeEntry: View {
                     Text(completed
                          ? app.T("Tranh chấp đã hoàn tất", "Dispute completed")
                          : app.T("Chờ xác minh", "Awaiting Verification"))
-                        .font(.system(size: 13.5, weight: .bold))
+                        .font(.app(size: 13.5, weight: .bold))
                         .foregroundStyle(app.palette.honey)
                         .accessibilityIdentifier("refundDisputeEntry.title")
                     Spacer(minLength: 0)
                     if !completed {
                         Text(app.T("Tranh chấp đang diễn ra", "Dispute in progress"))
-                            .font(.system(size: 10.5, weight: .bold))
+                            .font(.app(size: 10.5, weight: .bold))
                             .foregroundStyle(BanbeTheme.alert)
                             .accessibilityIdentifier("refundDisputeEntry.inProgress")
                     }
@@ -129,24 +129,24 @@ struct RefundDisputeEntry: View {
                              "The refund itself is still being handled as usual. The dispute transcript stays readable for a while, then deletes itself.")
                      : app.T("Chưa thống nhất được về khoản hoàn này. Mở cuộc trò chuyện tạm thời để trao đổi trực tiếp với phía bên kia.",
                              "You and the other side aren't agreed on this refund yet. Open the temporary chat to sort it out directly."))
-                    .font(.system(size: 12))
+                    .font(.app(size: 12))
                     .foregroundStyle(app.palette.ink.opacity(0.75))
 
                 if eventName != nil || amountVnd != nil {
                     Text([eventName, amountVnd.map(formatVnd)].compactMap { $0 }.joined(separator: " ▪︎ "))
-                        .font(.system(size: 11.5))
+                        .font(.app(size: 11.5))
                         .foregroundStyle(app.palette.ink.opacity(0.6))
                 }
 
                 if let amount = dispute?.amountVnd, amountVnd != amount {
                     Text(formatVnd(amount))
-                        .font(.system(size: 11.5))
+                        .font(.app(size: 11.5))
                         .foregroundStyle(app.palette.ink.opacity(0.6))
                 }
 
                 if let retentionLabel {
                     Text(retentionLabel)
-                        .font(.system(size: 10.5, weight: .semibold))
+                        .font(.app(size: 10.5, weight: .semibold))
                         .foregroundStyle(app.palette.ink.opacity(0.55))
                         .accessibilityIdentifier("refundDisputeEntry.retention")
                 }
@@ -159,7 +159,7 @@ struct RefundDisputeEntry: View {
                     HStack(spacing: 10) {
                         BanbeLoadingVisual(size: 40)
                         Text(app.T("Đang mở cuộc trò chuyện tranh chấp…", "Opening the dispute chat…"))
-                            .font(.system(size: 11.5))
+                            .font(.app(size: 11.5))
                             .foregroundStyle(app.palette.ink.opacity(0.6))
                     }
                     .padding(.top, 4)
@@ -236,7 +236,7 @@ struct RefundDisputeEntry: View {
 
             if !app.disputeCloseError.isEmpty {
                 Text(app.disputeCloseError)
-                    .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
+                    .font(.app(size: 11)).foregroundStyle(BanbeTheme.alert)
                     .padding(.horizontal, 15).padding(.bottom, 12)
                     .accessibilityIdentifier("refundDisputeEntry.closeError")
             }
@@ -293,10 +293,10 @@ struct RefundDisputeEntry: View {
     private func actionRow(icon: String, label: String, tint: Color, identifier: String, disabled: Bool = false) -> some View {
         HStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.app(size: 12, weight: .semibold))
                 .foregroundStyle(tint)
             Text(label)
-                .font(.system(size: 12.5, weight: .semibold))
+                .font(.app(size: 12.5, weight: .semibold))
                 .foregroundStyle(tint)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)

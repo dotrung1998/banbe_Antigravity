@@ -16,7 +16,7 @@ struct NotificationPrefsSection: View {
         if app.weeklyDigestEnabled, app.isSignedIn {
             VStack(alignment: .leading, spacing: 8) {
                 Text(app.T("Thông báo", "Notifications"))
-                    .font(.system(size: 11.5, weight: .semibold))
+                    .font(.app(size: 11.5, weight: .semibold))
                     .padding(.top, 24)
                 VStack(spacing: 0) {
                     toggleRow(title: app.T("Bản tin cuối tuần: sự kiện cuối tuần, tối thứ Năm", "Weekly digest: this weekend's events, Thursday evening"),
@@ -34,7 +34,7 @@ struct NotificationPrefsSection: View {
                 }
                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 if !error.isEmpty {
-                    Text(error).font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert).padding(.horizontal, 2)
+                    Text(error).font(.app(size: 12.5)).foregroundStyle(BanbeTheme.alert).padding(.horizontal, 2)
                 }
             }
             .foregroundStyle(app.palette.ink)
@@ -52,9 +52,9 @@ struct NotificationPrefsSection: View {
                            change: @escaping (Bool) async -> Void) -> some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 14)).fixedSize(horizontal: false, vertical: true)
+                Text(title).font(.app(size: 14)).fixedSize(horizontal: false, vertical: true)
                 if let detail {
-                    Text(detail).font(.system(size: 11.5)).opacity(0.75).fixedSize(horizontal: false, vertical: true)
+                    Text(detail).font(.app(size: 11.5)).opacity(0.75).fixedSize(horizontal: false, vertical: true)
                 }
             }
             Spacer(minLength: 8)

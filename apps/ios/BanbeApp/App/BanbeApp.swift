@@ -5,6 +5,8 @@ struct BanbeApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var authViewModel = AuthViewModel()
     @StateObject private var appState = AppState()
+    /// Note 83: the font choice. The root is keyed on it, so a change redraws every screen in the new face at once.
+    @AppStorage(AppFontPref.key) private var fontChoice = AppFontChoice.current.rawValue
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -44,6 +46,7 @@ struct BanbeApp: App {
     var body: some Scene {
         WindowGroup {
             rootView
+                .id(fontChoice)
                 .environmentObject(authViewModel)
                 .environmentObject(appState)
                 .onOpenURL { url in appState.handleDeepLink(url) }

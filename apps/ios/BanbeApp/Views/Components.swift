@@ -331,7 +331,7 @@ struct PhotoChip: View {
 
     var body: some View {
         Text(text.uppercased())
-            .font(.system(size: 10, weight: .semibold))
+            .font(.app(size: 10, weight: .semibold))
             .kerning(0.4)
             .foregroundStyle(foreground)
             .padding(.horizontal, 10)
@@ -365,7 +365,7 @@ struct InkButton: View {
             VStack(spacing: 8) {
                 button.accessibilityHint(disabledReason)
                 Text(disabledReason)
-                    .font(.footnote)
+                    .font(.app(.footnote))
                     .foregroundStyle(app.palette.ink.opacity(0.7))
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
@@ -381,9 +381,9 @@ struct InkButton: View {
         Button(action: { if enabled { action() } }) {
             VStack(spacing: 2) {
                 Text(title)
-                    .font(font ?? .system(size: 15, weight: .semibold))
+                    .font(font ?? .app(size: 15, weight: .semibold))
                 if let subtitle {
-                    Text(subtitle).font(.footnote.monospacedDigit()).opacity(0.7)
+                    Text(subtitle).font(.app(.footnote).monospacedDigit()).opacity(0.7)
                 }
             }
                 .multilineTextAlignment(.center)
@@ -436,7 +436,7 @@ struct SecondaryButton: View {
                 if let systemImage { Image(systemName: systemImage).accessibilityHidden(true) }
                 Text(title)
             }
-            .font(.system(size: 15, weight: .semibold))
+            .font(.app(size: 15, weight: .semibold))
             .frame(maxWidth: .infinity, minHeight: 50)
             .foregroundStyle(app.palette.ink)
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
@@ -528,7 +528,7 @@ struct FieldNote: View {
                         .accessibilityIdentifier((identifier ?? "field.note") + ".action")
                 }
             }
-            .font(.system(size: 12.5, weight: .medium))
+            .font(.app(size: 12.5, weight: .medium))
             .foregroundStyle(color)
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityElement(children: .contain)
@@ -613,7 +613,7 @@ struct BanbeField: View {
             }
             input
             .frame(minHeight: lines == nil ? nil : LongText.minBoxHeight - 30, alignment: .topLeading)
-            .font(.system(size: 16))
+            .font(.app(size: 16))
             .keyboardType(keyboard)
             .autocorrectionDisabled()
             .textInputAutocapitalization(keyboard == .emailAddress ? .never : .sentences)
@@ -630,14 +630,14 @@ struct BanbeField: View {
         VStack(alignment: .leading, spacing: 5) {
             if let label {
                 HStack(spacing: 3) {
-                    Text(label).font(.system(size: 11.5)).foregroundStyle(app.palette.ink)
+                    Text(label).font(.app(size: 11.5)).foregroundStyle(app.palette.ink)
                     if required {
-                        Text("*").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
+                        Text("*").font(.app(size: 11.5, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
                     }
                 }
             }
             input
-            .font(.system(size: 14))
+            .font(.app(size: 14))
             .keyboardType(keyboard)
             .autocorrectionDisabled()
             .textInputAutocapitalization(keyboard == .emailAddress ? .never : .sentences)
@@ -679,11 +679,11 @@ struct PopoverMenuList: View {
                 } label: {
                     HStack(spacing: 14) {
                         Image(systemName: item.systemImage)
-                            .font(.system(size: 17, weight: .medium))
+                            .font(.app(size: 17, weight: .medium))
                             .frame(width: 24)
                             .accessibilityHidden(true)
                         Text(item.title)
-                            .font(.body)
+                            .font(.app(.body))
                             .multilineTextAlignment(.leading)
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer(minLength: 0)
@@ -819,21 +819,21 @@ struct FormFieldLabel: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.app(size: 13, weight: .semibold))
                 .frame(width: 18)
                 .accessibilityHidden(true)
             Text(text.uppercased())
-                .font(.system(size: 12, weight: .semibold))
+                .font(.app(size: 12, weight: .semibold))
                 .kerning(0.6)
             if isDone, let field {
                 DoneMark(field: field, pop: marks.fresh.contains(field))
             } else if required {
-                Text("*").font(.system(size: 12, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
+                Text("*").font(.app(size: 12, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
                     .accessibilityLabel(app.T("bắt buộc", "required"))
             }
             Spacer(minLength: 0)
             if let trailing {
-                Text(trailing).font(.system(size: 11, weight: .semibold))
+                Text(trailing).font(.app(size: 11, weight: .semibold))
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(app.palette.ink.opacity(0.08), in: Capsule())
             }
@@ -852,7 +852,7 @@ struct BackLink: View {
     var body: some View {
         Button(action: action) {
             Text("‹ \(label)")
-                .font(.system(size: 12))
+                .font(.app(size: 12))
                 .foregroundStyle(app.palette.ink)
         }
         .buttonStyle(.plain)

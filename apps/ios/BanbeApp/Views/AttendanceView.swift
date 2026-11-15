@@ -138,13 +138,13 @@ struct AttendanceView: View {
                     Text(app.attendanceEventState.isUnavailable
                          ? app.T("Không tải được thông tin sự kiện này.", "Couldn't load this event.")
                          : app.T("Đang tải sự kiện…", "Loading event…"))
-                        .font(.system(size: 13))
+                        .font(.app(size: 13))
                         .padding(.top, 40)
                 } else if event != nil, eventEnded {
                     Text(liveEvent?.cancelled == true
                          ? app.T("Sự kiện đã bị huỷ.", "This event was cancelled.")
                          : app.T("Sự kiện đã kết thúc.", "This event has ended."))
-                        .font(.system(size: 13))
+                        .font(.app(size: 13))
                         .padding(.top, 40)
                     // A cancelled event keeps its guest emails reachable, so the
                     // host can come back and finish drafting messages.
@@ -153,7 +153,7 @@ struct AttendanceView: View {
                             cancelEventOpen = true
                         } label: {
                             Label(app.T("Gửi thư cho người giữ vé", "Email ticket holders"), systemImage: "envelope")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.app(size: 13, weight: .semibold))
                         }
                         .buttonStyle(.plain)
                         .padding(.top, 14)
@@ -163,7 +163,7 @@ struct AttendanceView: View {
                     HStack(alignment: .top, spacing: 12) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(app.T("Điểm danh khách", "Guest check-in"))
-                                .font(.system(size: 11.5, weight: .semibold))
+                                .font(.app(size: 11.5, weight: .semibold))
                             Text(event.name).font(BanbeTheme.display(24))
                             // 2026-09-25 fix pass (Task 0 audit) — this used
                             // to read the raw `event` (the static catalogue
@@ -171,11 +171,11 @@ struct AttendanceView: View {
                             // computed above (used for `eventEnded`) —
                             // real bug: the guest check-in header showed the
                             // frozen catalogue date instead of the real one.
-                            Text(app.trStatus(liveEvent?.when ?? event.when)).font(.system(size: 12.5))
+                            Text(app.trStatus(liveEvent?.when ?? event.when)).font(.app(size: 12.5))
                         }
                         Spacer(minLength: 0)
                         Button(app.T("Quét QR", "Scan QR")) { app.scanningQr = true }
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.app(size: 12, weight: .semibold))
                             .foregroundStyle(app.palette.paper)
                             .padding(.horizontal, 14).padding(.vertical, 9)
                             .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -188,11 +188,11 @@ struct AttendanceView: View {
                     if EventReminder.phase(startsAt: liveEvent?.startDate ?? event.startDate) != nil {
                         Button { announceOpen = true } label: {
                             HStack(spacing: 12) {
-                                Text("📣").font(.system(size: 22))
+                                Text("📣").font(.app(size: 22))
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(app.T("Gửi thông báo cho khách", "Announce to guests")).font(.system(size: 14, weight: .bold)).foregroundStyle(BanbeTheme.alert)
+                                    Text(app.T("Gửi thông báo cho khách", "Announce to guests")).font(.app(size: 14, weight: .bold)).foregroundStyle(BanbeTheme.alert)
                                     Text(app.T("Mẫu có sẵn hoặc tự viết · gửi cho tất cả người giữ vé", "Quick templates or your own · sent to all ticket holders"))
-                                        .font(.system(size: 11.5)).opacity(0.7).multilineTextAlignment(.leading)
+                                        .font(.app(size: 11.5)).opacity(0.7).multilineTextAlignment(.leading)
                                 }
                                 Spacer(minLength: 0)
                                 Image(systemName: "chevron.right").foregroundStyle(BanbeTheme.alert)
@@ -211,7 +211,7 @@ struct AttendanceView: View {
                         promoSheetOpen = true
                     } label: {
                         Label(app.T("Nhắn tin quảng bá sự kiện", "Text a promo about this event"), systemImage: "message")
-                            .font(.system(size: 12.5))
+                            .font(.app(size: 12.5))
                     }
                     .buttonStyle(.plain)
                     .padding(.top, 10)
@@ -221,7 +221,7 @@ struct AttendanceView: View {
                         cancelEventOpen = true
                     } label: {
                         Label(app.T("Huỷ sự kiện", "Cancel event"), systemImage: "xmark.circle")
-                            .font(.system(size: 12.5))
+                            .font(.app(size: 12.5))
                             .foregroundStyle(BanbeTheme.alert)
                     }
                     .buttonStyle(.plain)
@@ -230,7 +230,7 @@ struct AttendanceView: View {
 
                     HStack {
                         Text(app.T("Đã đến", "Checked in"))
-                            .font(.system(size: 12.5))
+                            .font(.app(size: 12.5))
                             .foregroundStyle(app.palette.paper)
                         Spacer()
                         Text("\(checkedCount) / \(app.attendanceGuests.count)")
@@ -247,7 +247,7 @@ struct AttendanceView: View {
 
                     Text(app.T("Chạm vào tên khách hoặc quét mã QR vé khi họ tới nơi.",
                                "Tap a guest's name, or scan their ticket QR, when they arrive."))
-                        .font(.system(size: 11.5))
+                        .font(.app(size: 11.5))
                         .lineSpacing(2)
                         // Modest breathing room below the now-rounded panel
                         // (was flush, 0pt) — within this screen's own 12-16
@@ -256,7 +256,7 @@ struct AttendanceView: View {
 
                     Text(app.T("Đánh dấu \"Đã thanh toán\" khi bạn thấy tiền vào tài khoản, rồi tải lên hoá đơn/biên nhận thật của bạn cho khách.",
                                "Mark a guest paid once you see the money arrive, then upload your own real invoice/receipt for them."))
-                        .font(.system(size: 11.5))
+                        .font(.app(size: 11.5))
                         .foregroundStyle(app.palette.ink.opacity(0.7))
                         .lineSpacing(2)
                         .padding(.top, 10)
@@ -276,7 +276,7 @@ struct AttendanceView: View {
                                  : !app.refundCenterClaims.isEmpty
                                  ? app.T("Hiện không có khách đang hoạt động cho sự kiện này.", "There are no currently active guests for this event.")
                                  : app.T("Chưa có khách đặt sự kiện này.", "No one has booked this event yet."))
-                                .font(.system(size: 12.5))
+                                .font(.app(size: 12.5))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(16)
                         }
@@ -385,11 +385,11 @@ struct AttendanceView: View {
                     Text(guest.name).font(BanbeTheme.display(15))
                     Text((guest.qty > 1 ? "\(guest.qty)" + app.T(" vé", " tickets") : app.T("1 vé", "1 ticket"))
                          + " ▪︎ " + formatVnd(guest.totalVnd))
-                        .font(.system(size: 11.5))
+                        .font(.app(size: 11.5))
 
                     if guest.paid {
                         Text(app.T("Đã thanh toán ✓", "Paid ✓"))
-                            .font(.system(size: 11))
+                            .font(.app(size: 11))
                             .foregroundStyle(app.palette.ink.opacity(0.7))
                             .accessibilityIdentifier("guest.paid")
 
@@ -398,7 +398,7 @@ struct AttendanceView: View {
                                : (guest.hasReceipt ? app.T("Thay biên nhận", "Replace receipt") : app.T("Tải lên biên nhận", "Upload receipt"))) {
                             uploadTarget = guest.id
                         }
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.app(size: 11, weight: .semibold))
                         .foregroundStyle(app.palette.ink)
                         .padding(.horizontal, 8).padding(.vertical, 4)
                         .overlay(
@@ -426,13 +426,13 @@ struct AttendanceView: View {
                         if guest.receiptPendingDelete > 0 {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(app.T("Phiên bản hiện tại (\(guest.receiptVersionCount))", "Current version (\(guest.receiptVersionCount))"))
-                                    .font(.system(size: 10)).foregroundStyle(app.palette.ink.opacity(0.5))
+                                    .font(.app(size: 10)).foregroundStyle(app.palette.ink.opacity(0.5))
                                     .accessibilityIdentifier("guest.receiptVersion")
                                 ForEach(guest.receipts) { receipt in
                                     Button(receipt.isLive ? app.T("Bản hiện tại ›", "Current copy ›") : app.T("Bản cũ · xoá sau 24h ›", "Old copy · deletes in 24h ›")) {
                                         Task { await app.openDocumentFromNotification(receipt.id, backTo: .attendance, role: "host") }
                                     }
-                                    .font(.system(size: 10.5, weight: .semibold))
+                                    .font(.app(size: 10.5, weight: .semibold))
                                     .foregroundStyle(app.palette.ink.opacity(receipt.isLive ? 0.85 : 0.6))
                                     .underline()
                                     .buttonStyle(.plain)
@@ -445,13 +445,13 @@ struct AttendanceView: View {
                         if pendingReplace?.bookingID == guest.id {
                             VStack(alignment: .leading, spacing: 6) {
                                 TextField(app.T("Vì sao thay thế bản cũ?", "Why are you replacing the old one?"), text: $replaceReason, axis: .vertical)
-                                    .font(.system(size: 11.5))
+                                    .font(.app(size: 11.5))
                                     .padding(8)
                                     .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
                                     .accessibilityIdentifier("guest.replaceReason")
                                 HStack(spacing: 6) {
                                     Button(app.T("Huỷ", "Cancel")) { pendingReplace = nil; replaceReason = "" }
-                                        .font(.system(size: 11))
+                                        .font(.app(size: 11))
                                         .foregroundStyle(app.palette.ink.opacity(0.7))
                                         .buttonStyle(.plain)
                                     Spacer()
@@ -459,7 +459,7 @@ struct AttendanceView: View {
                                     Button(app.documentUploading ? app.T("Đang tải lên…", "Uploading…") : app.T("Xác nhận thay thế", "Confirm replacement")) {
                                         Task { await submitReplace() }
                                     }
-                                    .font(.system(size: 11, weight: .semibold))
+                                    .font(.app(size: 11, weight: .semibold))
                                     .foregroundStyle(app.palette.paper)
                                     .padding(.horizontal, 10).padding(.vertical, 6)
                                     .background(trimmedReason.isEmpty || app.documentUploading ? app.palette.ink.opacity(0.35) : app.palette.ink, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -473,13 +473,13 @@ struct AttendanceView: View {
                             Text(app.documentUploadError.isEmpty
                                  ? app.T("Không tải lên được. Thử lại nhé.", "Couldn't upload. Please try again.")
                                  : app.documentUploadError)
-                                .font(.system(size: 10.5))
+                                .font(.app(size: 10.5))
                                 .foregroundStyle(BanbeTheme.alert)
                                 .accessibilityIdentifier("guest.uploadError")
                         }
                     } else {
                         Text(app.T("Có nhận khách này không?", "Accept this guest?"))
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.app(size: 11, weight: .semibold))
                             .foregroundStyle(app.palette.ink.opacity(0.8))
 
                         HStack(spacing: 6) {
@@ -491,7 +491,7 @@ struct AttendanceView: View {
                                    : app.T("Nhận", "Accept")) {
                                 Task { await app.markGuestPaid(guest.id) }
                             }
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.app(size: 11, weight: .semibold))
                             .foregroundStyle(app.palette.ink)
                             .padding(.horizontal, 8).padding(.vertical, 4)
                             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
@@ -499,7 +499,7 @@ struct AttendanceView: View {
                             .accessibilityIdentifier("guest.accept")
 
                             Button(app.T("Từ chối", "Reject")) { app.openRejectGuest(guest) }
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.app(size: 11, weight: .semibold))
                                 .foregroundStyle(BanbeTheme.alert.opacity(0.8))
                                 .padding(.horizontal, 8).padding(.vertical, 4)
                                 .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(BanbeTheme.alert.opacity(0.2), lineWidth: 1))
@@ -516,7 +516,7 @@ struct AttendanceView: View {
                             Button(app.T("Kiểm tra thanh toán ›", "Check payment ›")) {
                                 app.openVerificationDetail(bookingID: guest.id, eventKey: app.attendanceEventKey)
                             }
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.app(size: 11, weight: .semibold))
                             .foregroundStyle(BanbeTheme.alert.opacity(0.8))
                             .buttonStyle(.plain)
                             .padding(.top, 2)
@@ -534,14 +534,14 @@ struct AttendanceView: View {
                     // queries status IN ('pending','confirmed','attended')).
                     if !guest.checkedIn {
                         Button(app.T("Huỷ vé", "Cancel booking")) { app.openCancelBooking(guest) }
-                            .font(.system(size: 11))
+                            .font(.app(size: 11))
                             .foregroundStyle(BanbeTheme.alert.opacity(0.8))
                             .buttonStyle(.plain)
                     }
                 }
                 Spacer(minLength: 0)
                 Text(guest.checkedIn ? app.T("Đã đến ✓", "Here ✓") : guest.paid ? app.T("Chưa đến", "Not yet") : app.T("Chưa thanh toán", "Not paid yet"))
-                    .font(.system(size: 11.5, weight: .semibold))
+                    .font(.app(size: 11.5, weight: .semibold))
                     .foregroundStyle(guest.checkedIn ? app.palette.paper : app.palette.ink)
                     .padding(.horizontal, 10).padding(.vertical, 5)
                     .background(guest.checkedIn ? app.palette.ink : app.palette.ink.opacity(0.16))
@@ -582,21 +582,21 @@ struct AttendanceView: View {
 
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text(app.T("Trung tâm hoàn tiền", "Refund Center")).font(.system(size: 11.5, weight: .semibold))
+                Text(app.T("Trung tâm hoàn tiền", "Refund Center")).font(.app(size: 11.5, weight: .semibold))
                 Spacer()
                 Text(app.T("\(refundedClaims.count)/\(claims.count) đã gửi ▪︎ \(formatVnd(refundedVnd)) / \(formatVnd(totalVnd))",
                             "\(refundedClaims.count)/\(claims.count) sent ▪︎ \(formatVnd(refundedVnd)) / \(formatVnd(totalVnd))"))
-                    .font(.system(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    .font(.app(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.7))
             }
             if !refundReviewOpen && !app.refundBatchError.isEmpty {
-                Text(app.refundBatchError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                Text(app.refundBatchError).font(.app(size: 12)).foregroundStyle(BanbeTheme.alert)
             }
 
             if !refundReviewOpen {
                 Button(selected == eligibleIDs && !eligibleIDs.isEmpty ? app.T("Bỏ chọn tất cả", "Deselect all") : app.T("Chọn tất cả", "Select all eligible")) {
                     if selected == eligibleIDs { app.clearRefundCenterSelection() } else { app.selectAllEligibleRefundCenter() }
                 }
-                .font(.system(size: 11.5))
+                .font(.app(size: 11.5))
                 .disabled(eligibleIDs.isEmpty)
 
                 VStack(spacing: 0) {
@@ -614,7 +614,7 @@ struct AttendanceView: View {
                     refundBulkConfirmed = false
                     refundReviewOpen = true
                 }
-                .font(.system(size: 13, weight: .semibold)).foregroundStyle(app.palette.paper)
+                .font(.app(size: 13, weight: .semibold)).foregroundStyle(app.palette.paper)
                 .frame(maxWidth: .infinity).padding(13)
                 .background(app.palette.ink.opacity(selected.isEmpty ? 0.4 : 1), in: RoundedRectangle(cornerRadius: 12))
                 .disabled(selected.isEmpty)
@@ -622,7 +622,7 @@ struct AttendanceView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text(app.T("Xác nhận đã chuyển tiền", "Confirm transfers sent")).font(BanbeTheme.display(16))
                     Text(app.T("\(selectedClaims.count) khách ▪︎ tổng \(formatVnd(selectedTotalVnd))", "\(selectedClaims.count) guests ▪︎ total \(formatVnd(selectedTotalVnd))"))
-                        .font(.system(size: 12.5))
+                        .font(.app(size: 12.5))
                     ScrollView {
                         VStack(alignment: .leading, spacing: 4) {
                             ForEach(selectedClaims) { c in
@@ -631,7 +631,7 @@ struct AttendanceView: View {
                                     Spacer()
                                     Text(formatVnd(c.claim.amountVnd))
                                 }
-                                .font(.system(size: 12))
+                                .font(.app(size: 12))
                             }
                         }
                     }
@@ -639,19 +639,19 @@ struct AttendanceView: View {
                     Toggle(isOn: $refundBulkConfirmed) {
                         Text(app.T("Tôi xác nhận đã chuyển tổng \(formatVnd(selectedTotalVnd)) cho \(selectedClaims.count) khách.",
                                     "I confirm I've transferred a total of \(formatVnd(selectedTotalVnd)) to \(selectedClaims.count) guests."))
-                            .font(.system(size: 12))
+                            .font(.app(size: 12))
                     }
                             .toggleStyle(BanbeLiquidToggleStyle())
                     if !app.refundBatchError.isEmpty {
-                        Text(app.refundBatchError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                        Text(app.refundBatchError).font(.app(size: 12)).foregroundStyle(BanbeTheme.alert)
                     }
                     if let skipped = app.refundBatchResult?.skippedCount, skipped > 0 {
                         Text(app.T("\(skipped) khoản đã bị bỏ qua vì không còn đủ điều kiện.", "\(skipped) refund(s) were skipped: no longer eligible."))
-                            .font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                            .font(.app(size: 12)).foregroundStyle(BanbeTheme.alert)
                     }
                     HStack(spacing: 10) {
                         Button(app.T("Quay lại", "Back")) { refundReviewOpen = false }
-                            .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                            .font(.app(size: 13)).foregroundStyle(app.palette.ink)
                             .frame(maxWidth: .infinity).padding(12)
                             .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
                         InkButton(title: app.refundBatchBusy ? app.T("Đang xử lý…", "Processing…") : app.T("Xác nhận đã chuyển tiền", "Confirm transfers sent")) {
@@ -690,22 +690,22 @@ struct AttendanceView: View {
                     HStack {
                         Text(c.guestName).font(BanbeTheme.display(14))
                         Spacer()
-                        Text(formatVnd(c.claim.amountVnd)).font(.system(size: 13, weight: .semibold))
+                        Text(formatVnd(c.claim.amountVnd)).font(.app(size: 13, weight: .semibold))
                     }
                     if let dest = c.destination {
                         Text("\(dest.bankName) ▪︎ \(maskAccountNumber(dest.accountNumber)) ▪︎ \(dest.accountHolderName)")
-                            .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
+                            .font(.app(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
                     } else {
                         Text(app.T("Khách chưa chọn tài khoản nhận hoàn tiền.", "The guest hasn't chosen a refund destination yet."))
-                            .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
+                            .font(.app(size: 11)).foregroundStyle(BanbeTheme.alert)
                     }
                     if let dest = c.destination { RefundRecipientQRView(snapshot: dest) }
                     if let ref = c.claim.transferReference {
-                        Text("REF \(ref)").font(.system(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                        Text("REF \(ref)").font(.app(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.6))
                     }
                     HStack(spacing: 8) {
                         Text(app.T(label.0, label.1))
-                            .font(.system(size: 10.5, weight: .semibold))
+                            .font(.app(size: 10.5, weight: .semibold))
                             .foregroundStyle(c.overdue ? BanbeTheme.alert : app.palette.ink.opacity(0.7))
                         if c.destination != nil {
                             Button(copiedFor == c.id ? app.T("Đã sao chép", "Copied") : app.T("Sao chép", "Copy")) {
@@ -715,14 +715,14 @@ struct AttendanceView: View {
                                 copiedFor = c.id
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { if copiedFor == c.id { copiedFor = nil } }
                             }
-                            .font(.system(size: 10.5))
+                            .font(.app(size: 10.5))
                         }
                         if c.claim.status == "disputed" {
                             Button(app.T("Gửi lại thông tin chuyển khoản", "Resend transfer info")) {
                                 resendFormFor = resendFormFor == c.id ? nil : c.id
                                 resendReference = ""; resendBank = ""
                             }
-                            .font(.system(size: 10.5))
+                            .font(.app(size: 10.5))
                             Button(app.T("Hoàn lại lần nữa", "Send again")) {
                                 guard app.refundActionBusy != c.id, let key = app.attendanceEventKey else { return }
                                 Task {
@@ -732,15 +732,15 @@ struct AttendanceView: View {
                                     await app.loadRefundCenter(eventKey: key)
                                 }
                             }
-                            .font(.system(size: 10.5))
+                            .font(.app(size: 10.5))
                         }
                     }
                     if resendFormFor == c.id {
                         VStack(alignment: .leading, spacing: 6) {
                             TextField(app.T("Ngân hàng", "Bank"), text: $resendBank)
-                                .font(.system(size: 12)).padding(9).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
+                                .font(.app(size: 12)).padding(9).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
                             TextField(app.T("Mã tham chiếu", "Reference"), text: $resendReference)
-                                .font(.system(size: 12)).padding(9).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
+                                .font(.app(size: 12)).padding(9).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
                             Button(app.refundResendBusy == c.id ? app.T("Đang gửi…", "Sending…") : app.T("Gửi", "Send")) {
                                 guard let key = app.attendanceEventKey else { return }
                                 Task {
@@ -748,7 +748,7 @@ struct AttendanceView: View {
                                     if ok { resendFormFor = nil }
                                 }
                             }
-                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.paper)
+                            .font(.app(size: 12, weight: .semibold)).foregroundStyle(app.palette.paper)
                             .frame(maxWidth: .infinity).padding(10)
                             .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 10))
                         }

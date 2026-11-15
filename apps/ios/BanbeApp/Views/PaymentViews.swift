@@ -74,7 +74,7 @@ struct PaymentDetailsView: View {
                     HStack { Spacer(); BanbeLoadingVisual(size: 64); Spacer() }.padding(.top, 120)
                 } else {
                     Text(app.T("Không tìm thấy khoản thanh toán này.", "Couldn't find that payment."))
-                        .font(.system(size: 13))
+                        .font(.app(size: 13))
                         .foregroundStyle(app.palette.ink)
                         .padding(.horizontal, 22).padding(.top, 18)
                 }
@@ -168,7 +168,7 @@ struct PaymentDetailsView: View {
                 .font(BanbeTheme.display(24)).foregroundStyle(app.palette.ink)
                 .padding(.top, 14)
             Text(booking.eventName)
-                .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                .font(.app(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
                 .padding(.top, 6)
 
             if phase == .holding, !isCancelledBooking, let deadline = booking.holdExpiresAt {
@@ -208,7 +208,7 @@ struct PaymentDetailsView: View {
                 Text(phase == .confirmed
                      ? app.T("Đã huỷ. Vé này không còn hiệu lực.", "Cancelled. This ticket is no longer valid.")
                      : app.T("Đã huỷ. Việc giữ chỗ đã dừng và không cần thanh toán nữa.", "Cancelled. The seat hold has stopped and no payment is needed."))
-                    .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                    .font(.app(size: 13)).foregroundStyle(app.palette.ink)
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -231,7 +231,7 @@ struct PaymentDetailsView: View {
                 if booking.hasAnyPayRail { transferBlock(booking) }
                 referenceBlock(booking)
                 if !booking.payNote.isEmpty {
-                    Text(booking.payNote).font(.system(size: 12.5)).padding(.top, 16)
+                    Text(booking.payNote).font(.app(size: 12.5)).padding(.top, 16)
                 }
                 if phase == .holding { transferredForm(booking) }
             } else if phase != .cancelled && !booking.hasAnyPayRail && (app.payQRByEvent[booking.eventKey]?.isEmpty ?? true) {
@@ -244,14 +244,14 @@ struct PaymentDetailsView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(app.T("Thông tin xuất hoá đơn", "Billing details"))
-                            .font(.system(size: 14)).foregroundStyle(app.palette.ink)
+                            .font(.app(size: 14)).foregroundStyle(app.palette.ink)
                         Text(app.T("Tên và địa chỉ in trên hoá đơn, biên nhận.",
                                    "The name and address printed on your documents."))
-                            .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                            .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
                             .multilineTextAlignment(.leading)
                     }
                     Spacer()
-                    Text("›").font(.system(size: 15)).foregroundStyle(app.palette.ink)
+                    Text("›").font(.app(size: 15)).foregroundStyle(app.palette.ink)
                 }
                 .padding(16)
                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -261,7 +261,7 @@ struct PaymentDetailsView: View {
 
             Text(app.T("banbe không thu tiền và không giữ tiền. Bạn chuyển trực tiếp cho người tổ chức. Nếu họ hủy, họ có trách nhiệm hoàn tiền cho bạn.",
                        "banbe does not collect or hold money. You pay the organizer directly. If they cancel, they are responsible for refunding you."))
-                .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.65))
+                .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.65))
                 .padding(.top, 20)
         }
         .padding(.horizontal, 22)
@@ -272,10 +272,10 @@ struct PaymentDetailsView: View {
         return HStack {
             VStack(alignment: .leading, spacing: 3) {
                 Text(app.T("Giữ chỗ còn", "Seat held for"))
-                    .font(.system(size: 11.5, weight: .semibold))
+                    .font(.app(size: 11.5, weight: .semibold))
                 Text(app.T("Chuyển khoản rồi bấm \"Tôi đã chuyển khoản\" trước khi hết giờ.",
                            "Transfer, then tap \"I have transferred\" before this runs out."))
-                    .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
                     .multilineTextAlignment(.leading)
             }
             Spacer(minLength: 8)
@@ -293,13 +293,13 @@ struct PaymentDetailsView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(app.T("Chỗ của bạn đã được khoá ▪︎ không còn đếm ngược",
                        "Your seat is locked ▪︎ the countdown has stopped"))
-                .font(.system(size: 13.5, weight: .semibold))
+                .font(.app(size: 13.5, weight: .semibold))
             Text(app.T("Người tổ chức đang đối chiếu khoản chuyển khoản của bạn. Chỗ sẽ không bị huỷ trong lúc chờ.",
                        "The organizer is checking your transfer against their statement. The seat will not be released while you wait."))
-                .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                .font(.app(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
             if !booking.transactionId.isEmpty {
                 Text(app.T("Mã giao dịch đã gửi: ", "Transaction ID submitted: ") + booking.transactionId)
-                    .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
             }
             // 14-organizer-checkin.md follow-up: read-only — this is the
             // organizer's own confirm-window clock, not a second "your seat
@@ -307,12 +307,12 @@ struct PaymentDetailsView: View {
             if let deadline = booking.verifyDueAt {
                 HStack {
                     Text(app.T("Người tổ chức xác nhận trong", "Organizer confirms within"))
-                        .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                        .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
                     Spacer()
                     // Capped at the 60-minute window: a few seconds of device-clock skew or
                     // network lag must never read as "1:00:04".
                     Text(Countdown.format(min(3600, Countdown.secondsUntil(deadline, now: tick))))
-                        .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                        .font(.app(size: 16, weight: .semibold, design: .monospaced))
                 }
                 .padding(.top, 4)
                 .accessibilityIdentifier("payment.organizerCountdown")
@@ -329,7 +329,7 @@ struct PaymentDetailsView: View {
                      : booking.nudgeCount >= 2
                      ? app.T("Đã nhắc tối đa 2 lần", "Nudged the max 2 times")
                      : app.T("Nhắc người tổ chức xác nhận", "Remind the organizer to confirm"))
-                    .font(.system(size: 12.5, weight: .semibold))
+                    .font(.app(size: 12.5, weight: .semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 11)
                     .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(app.palette.rule))
@@ -346,7 +346,7 @@ struct PaymentDetailsView: View {
             if booking.nudgeCount < 2 {
                 Text(app.T("Bạn chỉ có thể nhắc tối đa 2 lần, hãy chọn thời điểm phù hợp.",
                            "You can only nudge up to 2 times, choose the right moment."))
-                    .font(.system(size: 10.5))
+                    .font(.app(size: 10.5))
                     .foregroundStyle(app.palette.ink.opacity(0.55))
                     .frame(maxWidth: .infinity, alignment: .center)
                     .multilineTextAlignment(.center)
@@ -354,7 +354,7 @@ struct PaymentDetailsView: View {
                     .accessibilityIdentifier("payment.nudgeLimitNote")
             }
             if !app.nudgeError.isEmpty {
-                Text(app.nudgeError).font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                Text(app.nudgeError).font(.app(size: 11.5)).foregroundStyle(BanbeTheme.alert)
             }
         }
         .foregroundStyle(app.palette.ink)
@@ -369,10 +369,10 @@ struct PaymentDetailsView: View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(app.T("banbe đang xem xét", "banbe is reviewing this"))
-                    .font(.system(size: 13.5, weight: .semibold))
+                    .font(.app(size: 13.5, weight: .semibold))
                 Text(app.T("Người tổ chức chưa đối chiếu được khoản này. Chỗ của bạn vẫn được giữ trong lúc banbe xem xét.",
                            "The organizer couldn't match this against their statement. Your seat stays held while banbe reviews it."))
-                    .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                    .font(.app(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
             }
             .foregroundStyle(app.palette.ink)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -389,9 +389,9 @@ struct PaymentDetailsView: View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(app.T("Người tổ chức cần thêm thông tin", "The organizer needs more information"))
-                    .font(.system(size: 13.5, weight: .semibold))
+                    .font(.app(size: 13.5, weight: .semibold))
                 Text(reason)
-                    .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                    .font(.app(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
             }
             .foregroundStyle(app.palette.ink)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -411,13 +411,13 @@ struct PaymentDetailsView: View {
     private func rejectedCard(_ booking: PayableBooking) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(app.T("Người tổ chức đã từ chối yêu cầu này", "The organizer declined this booking"))
-                .font(.system(size: 13.5, weight: .semibold))
+                .font(.app(size: 13.5, weight: .semibold))
             Text((booking.cancelReason?.isEmpty == false ? booking.cancelReason! : nil)
                  ?? app.T("Không có lý do cụ thể được nêu.", "No specific reason was given."))
-                .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                .font(.app(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
             Text(app.T("Chỗ đã được trả lại. Bạn có thể tìm sự kiện khác hoặc nhắn cho người tổ chức nếu có thắc mắc.",
                        "The seat has been released. You can look for another event, or message the organizer if you have questions."))
-                .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
                 .padding(.top, 2)
         }
         .foregroundStyle(app.palette.ink)
@@ -432,9 +432,9 @@ struct PaymentDetailsView: View {
     private func refundCard(_ booking: PayableBooking, _ claim: RefundClaim) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(app.T("Người tổ chức đã huỷ vé của bạn", "The organizer cancelled your booking"))
-                .font(.system(size: 13.5, weight: .semibold))
+                .font(.app(size: 13.5, weight: .semibold))
             if let reason = booking.cancelReason, !reason.isEmpty {
-                Text(reason).font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                Text(reason).font(.app(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
             }
 
             if claim.status == "owed" {
@@ -443,22 +443,22 @@ struct PaymentDetailsView: View {
                         // Chosen account sits between the amount and the
                         // deadline: amount -> account -> due date.
                         Text(app.T("Bạn sẽ được hoàn \(formatVnd(claim.amountVnd)).", "You'll be refunded \(formatVnd(claim.amountVnd))."))
-                            .font(.system(size: 13))
+                            .font(.app(size: 13))
                             .accessibilityIdentifier("refund.owed")
                         refundDestinationSection(claim)
                         if let due = claim.refundDueAt, let dueLabel = formatShortDate(due, lang: app.isEN ? "en" : "vi") {
                             Text(app.T("Hạn hoàn tiền: trước \(dueLabel).", "Refund due before \(dueLabel)."))
-                                .font(.system(size: 13))
+                                .font(.app(size: 13))
                                 .accessibilityIdentifier("refund.dueDate")
                         }
                     } else {
                         if let due = claim.refundDueAt, let dueLabel = formatShortDate(due, lang: app.isEN ? "en" : "vi") {
                             Text(app.T("Bạn sẽ được hoàn \(formatVnd(claim.amountVnd)) trước \(dueLabel).", "You'll be refunded \(formatVnd(claim.amountVnd)) before \(dueLabel)."))
-                                .font(.system(size: 13))
+                                .font(.app(size: 13))
                                 .accessibilityIdentifier("refund.owed")
                         } else {
                             Text(app.T("Bạn sẽ được hoàn \(formatVnd(claim.amountVnd)).", "You'll be refunded \(formatVnd(claim.amountVnd))."))
-                                .font(.system(size: 13))
+                                .font(.app(size: 13))
                                 .accessibilityIdentifier("refund.owed")
                         }
                         refundDestinationSection(claim)
@@ -473,11 +473,11 @@ struct PaymentDetailsView: View {
             if claim.status == "host_marked_sent" {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(app.T("Host đã báo đã hoàn \(formatVnd(claim.amountVnd)) cho bạn.", "The host reported sending you \(formatVnd(claim.amountVnd))."))
-                        .font(.system(size: 13))
+                        .font(.app(size: 13))
                     if let proofPath = claim.proofPath {
                         VStack(alignment: .leading, spacing: 6) {
                             Text(app.T("Ảnh chuyển khoản từ host", "Host's transfer proof"))
-                                .font(.system(size: 11.5, weight: .semibold))
+                                .font(.app(size: 11.5, weight: .semibold))
                             if let url = app.refundProofUrls[proofPath] {
                                 AsyncImage(url: url) { phase in
                                     if let image = phase.image { image.resizable().scaledToFit() } else { Color.clear }
@@ -487,7 +487,7 @@ struct PaymentDetailsView: View {
                                 .accessibilityIdentifier("refund.proofImage")
                             } else {
                                 Text(app.T("Đang tải ảnh…", "Loading image…"))
-                                    .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                                    .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
                             }
                         }
                         .task { await app.signRefundProofUrls([proofPath]) }
@@ -495,7 +495,7 @@ struct PaymentDetailsView: View {
                     if let at = claim.autoConfirmAt {
                         Text(app.T("Nếu bạn không xác nhận hoặc báo chưa nhận được, khoản hoàn sẽ được tự động xác nhận sau \(RefundClaim.autoConfirmDays) ngày, vào \(formatShortDate(at, lang: "vi") ?? "").",
                                    "If you don't confirm or report it, the refund is confirmed automatically after \(RefundClaim.autoConfirmDays) days, on \(formatShortDate(at, lang: "en") ?? "")."))
-                            .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.75))
+                            .font(.app(size: 12)).foregroundStyle(app.palette.ink.opacity(0.75))
                             .accessibilityIdentifier("refund.autoConfirmNote")
                     }
                     if !disputeFormOpen {
@@ -505,7 +505,7 @@ struct PaymentDetailsView: View {
                             }
                             .accessibilityIdentifier("refund.confirmReceived")
                             Button(app.T("Chưa nhận được", "Dispute refund")) { disputeFormOpen = true }
-                                .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                                .font(.app(size: 13)).foregroundStyle(app.palette.ink)
                                 .frame(maxWidth: .infinity).padding(12)
                                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
                                 .accessibilityIdentifier("refund.disputeOpen")
@@ -513,13 +513,13 @@ struct PaymentDetailsView: View {
                     } else {
                         VStack(alignment: .leading, spacing: 8) {
                             TextField(app.T("Mô tả ngắn gọn (không bắt buộc)", "Briefly describe what happened (optional)"), text: $disputeReasonText)
-                                .font(.system(size: 13))
+                                .font(.app(size: 13))
                                 .padding(10)
                                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
                                 .accessibilityIdentifier("refund.disputeReason")
                             HStack(spacing: 10) {
                                 Button(app.T("Huỷ", "Cancel")) { disputeFormOpen = false; disputeReasonText = "" }
-                                    .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                                    .font(.app(size: 13)).foregroundStyle(app.palette.ink)
                                     .frame(maxWidth: .infinity).padding(12)
                                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
                                 InkButton(title: app.T("Gửi báo cáo", "Submit")) {
@@ -538,14 +538,14 @@ struct PaymentDetailsView: View {
 
             if claim.status == "guest_confirmed" {
                 Text(app.T("Đã hoàn tất ▪︎ bạn đã xác nhận nhận được tiền.", "Settled ▪︎ you confirmed receiving the refund."))
-                    .font(.system(size: 13)).padding(.top, 2)
+                    .font(.app(size: 13)).padding(.top, 2)
                     .accessibilityIdentifier("refund.settled")
             }
 
             if claim.status == "disputed" {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(app.T("Đang xử lý tranh chấp ▪︎ bạn đã báo chưa nhận được tiền.", "Dispute open ▪︎ you reported not receiving this refund."))
-                        .font(.system(size: 13)).foregroundStyle(BanbeTheme.alert)
+                        .font(.app(size: 13)).foregroundStyle(BanbeTheme.alert)
                         .accessibilityIdentifier("refund.disputed")
                     if let due = claim.hostResponseDueAt {
                         let viDate = formatShortDate(due, lang: "vi") ?? ""
@@ -553,14 +553,14 @@ struct PaymentDetailsView: View {
                         Text(due < Date()
                              ? app.T("Quá hạn phản hồi.", "Response overdue.")
                              : app.T("Host cần phản hồi trước \(viDate).", "Host needs to respond before \(enDate)."))
-                            .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
+                            .font(.app(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
                     }
                     if claim.resendReference != nil || claim.resendBankName != nil {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(app.T("Thông tin chuyển khoản mới nhất", "Latest transfer info"))
-                                .font(.system(size: 11.5, weight: .semibold))
-                            if let bank = claim.resendBankName { Text(bank).font(.system(size: 12)) }
-                            if let ref = claim.resendReference { Text(app.T("Mã tham chiếu: ", "Reference: ") + ref).font(.system(size: 12)) }
+                                .font(.app(size: 11.5, weight: .semibold))
+                            if let bank = claim.resendBankName { Text(bank).font(.app(size: 12)) }
+                            if let ref = claim.resendReference { Text(app.T("Mã tham chiếu: ", "Reference: ") + ref).font(.app(size: 12)) }
                         }
                         .padding(10)
                         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
@@ -599,20 +599,20 @@ struct PaymentDetailsView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(app.T("Đã quá hạn hoàn tiền. Nếu bạn chưa nhận được tiền, hãy nhắn cho host qua banbe trước. Nếu vẫn chưa được, bạn có thể báo tranh chấp để admin banbe (mục “Tranh chấp thanh toán”) xử lý.",
                        "The refund deadline has passed. If you haven't received the money, message the host through banbe first. If that doesn't work, raise a dispute and the banbe admin will handle it under “Payment disputes”."))
-                .font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert)
+                .font(.app(size: 12.5)).foregroundStyle(BanbeTheme.alert)
                 .accessibilityIdentifier("refund.overdueHelp")
             HStack(spacing: 10) {
                 Button(app.T("Nhắn cho host", "Message host")) {
                     Task { await app.openChat(for: booking.eventKey, back: .paymentDetails) }
                 }
-                .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                .font(.app(size: 13)).foregroundStyle(app.palette.ink)
                 .frame(maxWidth: .infinity).padding(12)
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
                 .accessibilityIdentifier("refund.messageHost")
                 Button(app.T("Báo tranh chấp", "Raise a dispute")) {
                     Task { await app.disputeRefund(claim.id, reason: "") }
                 }
-                .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                .font(.app(size: 13)).foregroundStyle(app.palette.ink)
                 .frame(maxWidth: .infinity).padding(12)
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
                 .accessibilityIdentifier("refund.overdueDispute")
@@ -632,7 +632,7 @@ struct PaymentDetailsView: View {
             Button(app.T("Chọn tài khoản nhận hoàn tiền", "Choose a refund destination")) {
                 destPickerOpen = true; destPickerID = nil
             }
-            .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+            .font(.app(size: 13)).foregroundStyle(app.palette.ink)
             .frame(maxWidth: .infinity).padding(12)
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
             .accessibilityIdentifier("refund.chooseDestination")
@@ -640,13 +640,13 @@ struct PaymentDetailsView: View {
             HStack {
                 Text(claim.refundAccountSummary(destinations: app.refundDestinationsLoaded ? app.refundDestinations : nil, T: app.T)
                      ?? "\(snapshot.bankName) ▪︎ \(snapshot.accountHolderName)")
-                    .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    .font(.app(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
                     .accessibilityIdentifier("refund.accountSummary")
                 Spacer()
                 Button(app.T("Đổi", "Change")) {
                     destPickerOpen = true; destPickerID = claim.selectedDestinationId
                 }
-                .font(.system(size: 12))
+                .font(.app(size: 12))
                 .accessibilityIdentifier("refund.changeDestination")
             }
         }
@@ -654,7 +654,7 @@ struct PaymentDetailsView: View {
             VStack(alignment: .leading, spacing: 8) {
                 if app.refundDestinations.isEmpty {
                     Text(app.T("Chưa có tài khoản nhận hoàn tiền", "No refund accounts saved yet"))
-                        .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                        .font(.app(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
                 } else {
                     VStack(spacing: 0) {
                         ForEach(app.refundDestinations) { d in
@@ -665,9 +665,9 @@ struct PaymentDetailsView: View {
                                     Image(systemName: destPickerID == d.id ? "largecircle.fill.circle" : "circle")
                                         .foregroundStyle(app.palette.ink)
                                     Text("\(d.label ?? app.T("Tài khoản", "Account")) ▪︎ \(d.bankName) ▪︎ \(d.accountHolderName)")
-                                        .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                                        .font(.app(size: 13)).foregroundStyle(app.palette.ink)
                                     if app.refundDestinationQR[d.id] != nil {
-                                        Image(systemName: "qrcode").font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.55))
+                                        Image(systemName: "qrcode").font(.app(size: 12)).foregroundStyle(app.palette.ink.opacity(0.55))
                                     }
                                     Spacer()
                                 }
@@ -682,16 +682,16 @@ struct PaymentDetailsView: View {
                 Button(app.T("Thêm tài khoản mới", "Add a new account")) {
                     app.openRefundAccounts(back: .paymentDetails, returnToClaimID: claim.id, returnToBookingID: booking?.id)
                 }
-                .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                .font(.app(size: 13)).foregroundStyle(app.palette.ink)
                 .frame(maxWidth: .infinity).padding(11)
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
                 .accessibilityIdentifier("refund.addNewDestination")
                 if !app.refundDestinationError.isEmpty {
-                    Text(app.refundDestinationError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                    Text(app.refundDestinationError).font(.app(size: 12)).foregroundStyle(BanbeTheme.alert)
                 }
                 HStack(spacing: 10) {
                     Button(app.T("Huỷ", "Cancel")) { destPickerOpen = false }
-                        .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                        .font(.app(size: 13)).foregroundStyle(app.palette.ink)
                         .frame(maxWidth: .infinity).padding(12)
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
                     InkButton(title: destPickerBusy ? app.T("Đang lưu…", "Saving…") : app.T("Xác nhận", "Confirm")) {
@@ -713,12 +713,12 @@ struct PaymentDetailsView: View {
     private func amountCard(_ booking: PayableBooking) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(app.T("Số tiền", "Amount"))
-                .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
             Text(formatVnd(booking.totalVnd))
                 .font(BanbeTheme.display(30)).foregroundStyle(app.palette.ink)
                 .accessibilityIdentifier("payment.amount")
             Text("\(booking.qty) " + app.T("vé", booking.qty == 1 ? "ticket" : "tickets"))
-                .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 20).padding(.vertical, 18)
@@ -732,13 +732,13 @@ struct PaymentDetailsView: View {
     private func uploadedQRCard(_ qr: PayQR) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(app.T("Quét để chuyển khoản", "Scan to pay"))
-                .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                .font(.app(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
             VStack(spacing: 10) {
                 PaymentQRImageView(bucket: "pay-qr", path: qr.path, payload: qr.payload, size: 210)
                     .accessibilityIdentifier("payment.uploadedQR")
                 Text(app.T("Quét bằng app ngân hàng hoặc ví, rồi nhập đúng số tiền và nội dung chuyển khoản bên dưới.",
                            "Scan with your banking or wallet app, then enter the exact amount and the reference shown here."))
-                    .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
                     .multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity)
@@ -751,7 +751,7 @@ struct PaymentDetailsView: View {
     private func qrCard(_ payload: String) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(app.T("Quét để chuyển khoản", "Scan to pay"))
-                .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                .font(.app(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
             VStack(spacing: 10) {
                 // Fixed black-on-white, like the ticket QR: a banking app's
                 // camera does not know about the app's palette.
@@ -762,7 +762,7 @@ struct PaymentDetailsView: View {
                 }
                 Text(app.T("Mở app ngân hàng, quét mã: số tiền và nội dung đã được điền sẵn.",
                            "Open your banking app and scan: the amount and reference are filled in already."))
-                    .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
                     .multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity)
@@ -782,7 +782,7 @@ struct PaymentDetailsView: View {
         if booking.hasMomo { rows.append(("MoMo", booking.momoPhone, "momo")) }
         return VStack(alignment: .leading, spacing: 10) {
             Text(app.T("Hoặc chuyển thủ công", "Or transfer manually"))
-                .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                .font(.app(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
             VStack(spacing: 0) {
                 ForEach(Array(rows.enumerated()), id: \.element.2) { index, row in
                     copyRow(label: row.0, value: row.1, key: row.2)
@@ -798,13 +798,13 @@ struct PaymentDetailsView: View {
         Button { app.copyPayField(key, value) } label: {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(label).font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.65))
-                    Text(value).font(.system(size: 14, weight: .semibold)).foregroundStyle(app.palette.ink)
+                    Text(label).font(.app(size: 11)).foregroundStyle(app.palette.ink.opacity(0.65))
+                    Text(value).font(.app(size: 14, weight: .semibold)).foregroundStyle(app.palette.ink)
                         .multilineTextAlignment(.leading)
                 }
                 Spacer()
                 Text(app.paymentCopied == key ? app.T("Đã chép", "Copied") : app.T("Chép", "Copy"))
-                    .font(.system(size: 11.5, weight: .semibold))
+                    .font(.app(size: 11.5, weight: .semibold))
                     .foregroundStyle(app.palette.ink.opacity(0.75))
             }
             .padding(.horizontal, 16).padding(.vertical, 13)
@@ -816,14 +816,14 @@ struct PaymentDetailsView: View {
         let reference = booking.paymentRef.isEmpty ? booking.code : booking.paymentRef
         return VStack(alignment: .leading, spacing: 10) {
             Text(app.T("Nội dung chuyển khoản", "Transfer reference"))
-                .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                .font(.app(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
             Button { app.copyPayField("reference", reference) } label: {
                 HStack {
                     Text(reference).font(BanbeTheme.display(20)).tracking(2.5)
                         .foregroundStyle(app.palette.ink)
                     Spacer()
                     Text(app.paymentCopied == "reference" ? app.T("Đã chép", "Copied") : app.T("Chép", "Copy"))
-                        .font(.system(size: 11.5, weight: .semibold))
+                        .font(.app(size: 11.5, weight: .semibold))
                         .foregroundStyle(app.palette.ink.opacity(0.75))
                 }
                 .padding(.horizontal, 16).padding(.vertical, 14)
@@ -834,7 +834,7 @@ struct PaymentDetailsView: View {
 
             Text(app.T("Ghi đúng mã này để khoản chuyển của bạn được xác nhận nhanh, tự động ngay khi tiền tới nếu Chủ sự kiện đã kết nối ngân hàng.",
                        "Use this exact reference so your transfer is confirmed quickly, automatically the moment the money lands if the host has connected their bank."))
-                .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
         }
         .padding(.top, 16)
     }
@@ -848,14 +848,14 @@ struct PaymentDetailsView: View {
 
         return VStack(alignment: .leading, spacing: 10) {
             Text(app.T("Sau khi chuyển", "After you transfer"))
-                .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                .font(.app(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
             VStack(alignment: .leading, spacing: 12) {
                 BanbeField(label: app.T("Mã giao dịch", "Transaction ID"),
                            placeholder: app.T("Ví dụ FT24123456789", "e.g. FT24123456789"),
                            text: $app.paymentTxnId)
                     .accessibilityIdentifier("payment.txnId")
                 Text(app.T("Tìm trong biên lai của app ngân hàng.", "Find it on the receipt in your banking app."))
-                    .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.65))
+                    .font(.app(size: 11)).foregroundStyle(app.palette.ink.opacity(0.65))
 
                 // A thumbnail of whatever was just picked — this row used
                 // to only ever show a static "Receipt image selected"
@@ -869,7 +869,7 @@ struct PaymentDetailsView: View {
                         .accessibilityIdentifier("payment.proofPreview")
                 }
                 if !pickError.isEmpty {
-                    Text(pickError).font(.system(size: 12)).foregroundStyle(Color(red: 0.60, green: 0.24, blue: 0.18))
+                    Text(pickError).font(.app(size: 12)).foregroundStyle(Color(red: 0.60, green: 0.24, blue: 0.18))
                 }
 
                 let pickTitle = pickedImage == nil ? app.T("Chọn ảnh biên lai", "Choose a receipt image") : pickedName
@@ -879,10 +879,10 @@ struct PaymentDetailsView: View {
                 PhotosPicker(selection: $photoItem, matching: .images) {
                     HStack {
                         Text(pickTitle)
-                            .font(.system(size: 13.5)).foregroundStyle(inkColor)
+                            .font(.app(size: 13.5)).foregroundStyle(inkColor)
                         Spacer()
                         Text(pickAction)
-                            .font(.system(size: 11.5, weight: .semibold))
+                            .font(.app(size: 11.5, weight: .semibold))
                             .foregroundStyle(inkColor.opacity(0.75))
                     }
                     .padding(13)
@@ -900,7 +900,7 @@ struct PaymentDetailsView: View {
                     Text(app.paymentProofUploading
                          ? app.T("Đang gửi…", "Sending…")
                          : app.T("Tôi đã chuyển khoản", "I have transferred"))
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.app(size: 14, weight: .semibold))
                         .frame(maxWidth: .infinity).padding(.vertical, 14)
                         .background(canSubmit ? app.palette.ink : app.palette.ink.opacity(0.35),
                                     in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -911,11 +911,11 @@ struct PaymentDetailsView: View {
 
                 Text(app.T("Bấm nút này sẽ dừng đồng hồ và khoá chỗ của bạn cho tới khi người tổ chức xác nhận.",
                            "Tapping this stops the clock and locks your seat until the organizer confirms."))
-                    .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.65))
+                    .font(.app(size: 11)).foregroundStyle(app.palette.ink.opacity(0.65))
 
                 if !app.paymentProofError.isEmpty {
                     Text(app.paymentProofError)
-                        .font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                        .font(.app(size: 12)).foregroundStyle(BanbeTheme.alert)
                         .accessibilityIdentifier("payment.submitError")
                 }
             }
@@ -929,7 +929,7 @@ struct PaymentDetailsView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(app.T("Đã xác nhận. Vé và biên nhận của bạn đã sẵn sàng.",
                        "Confirmed. Your ticket and receipt are ready."))
-                .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                .font(.app(size: 13)).foregroundStyle(app.palette.ink)
             // 15-organizer-checkin.md follow-up: this used to open the
             // Documents list directly (mislabeled "Xem biên nhận"/"View
             // receipt") — the ticket/QR screen (ConfirmedView) is the right
@@ -948,7 +948,7 @@ struct PaymentDetailsView: View {
 
     private func noticeCard(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+            .font(.app(size: 13)).foregroundStyle(app.palette.ink)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -1050,7 +1050,7 @@ struct BillingView: View {
                     .padding(.top, 14)
                 Text(app.T("Được in vào phần \"Bên mua\" trên hoá đơn và biên nhận của bạn.",
                            "Printed in the \"Buyer\" block of your invoices and receipts."))
-                    .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                    .font(.app(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
                     .padding(.top, 8)
 
                 VStack(spacing: 12) {
@@ -1082,18 +1082,18 @@ struct BillingView: View {
 
                 if app.billingSaved {
                     Text(app.T("Đã lưu.", "Saved."))
-                        .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                        .font(.app(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
                         .padding(.top, 12)
                         .accessibilityIdentifier("billing.saved")
                 }
                 if !app.billingError.isEmpty {
-                    Text(app.billingError).font(.system(size: 12))
+                    Text(app.billingError).font(.app(size: 12))
                         .foregroundStyle(BanbeTheme.alert).padding(.top, 12)
                 }
 
                 Text(app.T("Thay đổi ở đây chỉ áp dụng cho chứng từ phát hành sau đó. Hoá đơn đã thanh toán giữ nguyên thông tin lúc phát hành.",
                            "Changes apply to documents issued afterwards. Anything already paid keeps the details it was issued with."))
-                    .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.65))
+                    .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.65))
                     .padding(.top, 20)
             }
             .padding(.horizontal, 22).padding(.bottom, 40)
@@ -1135,7 +1135,7 @@ struct PayoutView: View {
                 // accent that row/group already uses.
                 HStack(spacing: 10) {
                     Image(systemName: "creditcard")
-                        .font(.system(size: 20, weight: .medium))
+                        .font(.app(size: 20, weight: .medium))
                         .frame(width: 34, height: 34)
                         .background((ROW_ACCENT_COLORS["hostOps"] ?? .clear).opacity(0.33), in: Circle())
                     Text(app.T("Nhận thanh toán", "Getting Paid"))
@@ -1144,7 +1144,7 @@ struct PayoutView: View {
                 .padding(.top, 14)
                 Text(app.T("Khách chuyển khoản thẳng cho bạn. banbe không giữ tiền và không thu phí.",
                            "Guests transfer straight to you. banbe never holds the money and takes no cut."))
-                    .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                    .font(.app(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
                     .padding(.top, 8)
 
                 section(app.T("Ngân hàng", "Bank")) {
@@ -1166,7 +1166,7 @@ struct PayoutView: View {
                 section(app.T("Mã QR nhận tiền", "Payment QR code")) {
                     Text(app.T("Tải ảnh mã QR của ngân hàng hoặc ví bạn dùng (VietQR, MoMo, Zelle, Venmo, Cash App…). Khách sẽ thấy mã này khi thanh toán và có thể nhấn giữ để mở app thanh toán.",
                                "Upload the QR from the bank or wallet you get paid on (VietQR, MoMo, Zelle, Venmo, Cash App…). Guests see it when they pay and can press and hold it to open their payment app."))
-                        .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.75))
+                        .font(.app(size: 12)).foregroundStyle(app.palette.ink.opacity(0.75))
                         .frame(maxWidth: .infinity, alignment: .leading)
                     if !app.payoutQR.isEmpty {
                         PaymentQRImageView(bucket: "pay-qr", path: app.payoutQR.path, payload: app.payoutQR.payload, size: 180)
@@ -1181,7 +1181,7 @@ struct PayoutView: View {
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
                     if !app.payoutQRError.isEmpty {
-                        Text(app.payoutQRError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                        Text(app.payoutQRError).font(.app(size: 12)).foregroundStyle(BanbeTheme.alert)
                     }
                 }
 
@@ -1210,12 +1210,12 @@ struct PayoutView: View {
                 if app.payoutSaved {
                     Text(app.T("Đã lưu. Khách sẽ thấy thông tin này khi thanh toán.",
                                "Saved. Guests will see this when they pay."))
-                        .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                        .font(.app(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
                         .padding(.top, 12)
                         .accessibilityIdentifier("payout.saved")
                 }
                 if !app.payoutError.isEmpty {
-                    Text(app.payoutError).font(.system(size: 12))
+                    Text(app.payoutError).font(.app(size: 12))
                         .foregroundStyle(BanbeTheme.alert).padding(.top, 12)
                 }
             }
@@ -1227,7 +1227,7 @@ struct PayoutView: View {
     @ViewBuilder
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+            Text(title).font(.app(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
             VStack(spacing: 12) { content() }
         }
         .padding(.top, 20)

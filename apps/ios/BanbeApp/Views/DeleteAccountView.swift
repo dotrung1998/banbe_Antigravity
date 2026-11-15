@@ -93,9 +93,9 @@ struct DeleteAccountView: View {
 
     private var identityCard: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(app.T("Tài khoản đang đăng nhập", "Currently signed in as")).font(.system(size: 11)).opacity(0.65)
-            Text(app.user?.displayName ?? auth.session?.user.email ?? app.T("tài khoản của bạn", "your account")).font(.system(size: 15, weight: .semibold))
-            if let email = auth.session?.user.email { Text(email).font(.system(size: 12)).opacity(0.7) }
+            Text(app.T("Tài khoản đang đăng nhập", "Currently signed in as")).font(.app(size: 11)).opacity(0.65)
+            Text(app.user?.displayName ?? auth.session?.user.email ?? app.T("tài khoản của bạn", "your account")).font(.app(size: 15, weight: .semibold))
+            if let email = auth.session?.user.email { Text(email).font(.app(size: 12)).opacity(0.7) }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -107,17 +107,17 @@ struct DeleteAccountView: View {
         Text(app.T(
             "Đây là hành động vĩnh viễn. Sau khi xóa: các đặt chỗ/tin nhắn của bạn sẽ được tách khỏi danh tính thay vì bị xóa hoàn toàn khi cần giữ hồ sơ giao dịch. Các dữ liệu cá nhân khác sẽ bị xóa hẳn. Nếu bạn đang sở hữu một sự kiện còn đang mở, bạn sẽ cần hủy/kết thúc sự kiện đó trước.",
             "This is permanent. After deletion: your bookings/messages are detached from your identity rather than fully erased where a transaction record needs to stay. Other personal data is erased outright. If you currently own an open event, you’ll need to cancel/end it first."
-        )).font(.system(size: 13)).lineSpacing(4)
+        )).font(.app(size: 13)).lineSpacing(4)
     }
 
     @ViewBuilder
     private var reasonSection: some View {
         Text(app.T("Vì sao bạn muốn rời đi?", "Why are you leaving?")).font(BanbeTheme.display(20))
-        Text(app.T("Không bắt buộc. Chỉ để chúng tôi cải thiện.", "Optional. Just helps us improve.")).font(.system(size: 12)).opacity(0.7)
+        Text(app.T("Không bắt buộc. Chỉ để chúng tôi cải thiện.", "Optional. Just helps us improve.")).font(.app(size: 12)).opacity(0.7)
         ForEach(deleteAccountReasons, id: \.code) { r in
             Button { reasonCode = r.code } label: {
                 HStack {
-                    Text(app.T(r.vi, r.en)).font(.system(size: 13.5))
+                    Text(app.T(r.vi, r.en)).font(.app(size: 13.5))
                     Spacer()
                     if reasonCode == r.code { Image(systemName: "checkmark") }
                 }
@@ -201,15 +201,15 @@ struct DeleteAccountView: View {
         // ID (BiometricAuthService/FaceIDLockView) is a LOCAL convenience
         // only and is never read here as server-side proof.
         VStack(alignment: .leading, spacing: 8) {
-            Text(app.T("Bước 1. Xác minh danh tính", "Step 1. Verify it’s you")).font(.system(size: 12.5, weight: .semibold))
+            Text(app.T("Bước 1. Xác minh danh tính", "Step 1. Verify it’s you")).font(.app(size: 12.5, weight: .semibold))
             if reauthMode == "dob" || reauthVerified {
                 if reauthVerified {
                     Label(app.T("Đã xác minh", "Verified"), systemImage: "checkmark.circle.fill")
-                        .font(.system(size: 13)).foregroundStyle(.green)
+                        .font(.app(size: 13)).foregroundStyle(.green)
                         .accessibilityIdentifier("deleteAccount.reauthDone")
                 } else {
                     Text(app.T("Nhập ngày sinh của bạn để xác nhận đây là bạn.", "Enter your date of birth to confirm it’s you."))
-                        .font(.system(size: 12.5)).opacity(0.8)
+                        .font(.app(size: 12.5)).opacity(0.8)
                     DOBFieldsView(input: $dob, identifierPrefix: "deleteAccount.dob")
                     Button {
                         Task { await submitDob() }
@@ -221,23 +221,23 @@ struct DeleteAccountView: View {
                     .accessibilityIdentifier("deleteAccount.dobVerify")
                     if !dobProblem.isEmpty || !reauthError.isEmpty {
                         Text(dobProblem.isEmpty ? reauthError : dobProblem)
-                            .font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                            .font(.app(size: 11.5)).foregroundStyle(BanbeTheme.alert)
                             .accessibilityIdentifier("deleteAccount.dobError")
                     }
                     Button(app.T("Dùng mã gửi qua email thay thế", "Use an emailed code instead")) {
                         dobProblem = ""; reauthError = ""; reauthMode = "email"
                     }
-                    .font(.system(size: 12)).underline().opacity(0.75).buttonStyle(.plain)
+                    .font(.app(size: 12)).underline().opacity(0.75).buttonStyle(.plain)
                     .accessibilityIdentifier("deleteAccount.useEmail")
                 }
             } else if let provider = oauthProvider {
                 Text(app.T(
                     "Tài khoản này đăng nhập qua \(provider). Vui lòng đăng xuất và đăng nhập lại gần đây trước khi xóa tài khoản.",
                     "This account signs in via \(provider). Please sign out and sign back in recently before deleting."
-                )).font(.system(size: 12.5)).lineSpacing(3)
+                )).font(.app(size: 12.5)).lineSpacing(3)
             } else if reauthVerified {
                 Label(app.T("Đã xác minh", "Verified"), systemImage: "checkmark.circle.fill")
-                    .font(.system(size: 13)).foregroundStyle(.green)
+                    .font(.app(size: 13)).foregroundStyle(.green)
                     .accessibilityIdentifier("deleteAccount.reauthDone")
             } else if !reauthSent {
                 Button {
@@ -279,12 +279,12 @@ struct DeleteAccountView: View {
                 .disabled(reauthBusy)
                 .accessibilityIdentifier("deleteAccount.reauthVerify")
                 if !reauthError.isEmpty {
-                    Text(reauthError).font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                    Text(reauthError).font(.app(size: 11.5)).foregroundStyle(BanbeTheme.alert)
                 }
             }
             if reauthMode == "email", !reauthVerified {
                 Button(app.T("Dùng ngày sinh thay thế", "Use date of birth instead")) { reauthError = ""; reauthMode = "dob" }
-                    .font(.system(size: 12)).underline().opacity(0.75).buttonStyle(.plain)
+                    .font(.app(size: 12)).underline().opacity(0.75).buttonStyle(.plain)
                     .accessibilityIdentifier("deleteAccount.useDob")
             }
         }
@@ -293,10 +293,10 @@ struct DeleteAccountView: View {
 
         // Exact-phrase gate.
         VStack(alignment: .leading, spacing: 8) {
-            Text(app.T("Bước 2. Gõ để xác nhận", "Step 2. Type to confirm")).font(.system(size: 12.5, weight: .semibold))
+            Text(app.T("Bước 2. Gõ để xác nhận", "Step 2. Type to confirm")).font(.app(size: 12.5, weight: .semibold))
             HStack(spacing: 4) {
-                Text(app.T("Gõ chính xác cụm sau:", "Type the exact phrase:")).font(.system(size: 12)).opacity(0.75)
-                Text(deleteAccountPhrase).font(.system(size: 12, weight: .bold))
+                Text(app.T("Gõ chính xác cụm sau:", "Type the exact phrase:")).font(.app(size: 12)).opacity(0.75)
+                Text(deleteAccountPhrase).font(.app(size: 12, weight: .bold))
             }
             TextField(deleteAccountPhrase, text: $phraseInput)
                 .autocorrectionDisabled()
@@ -309,7 +309,7 @@ struct DeleteAccountView: View {
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
         if !submitError.isEmpty {
-            Text(submitError).font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert)
+            Text(submitError).font(.app(size: 12.5)).foregroundStyle(BanbeTheme.alert)
                 .accessibilityIdentifier("deleteAccount.error")
         }
 
@@ -355,7 +355,7 @@ struct DeleteAccountView: View {
     private var doneSection: some View {
         Text(app.T("Đã xóa tài khoản", "Account deleted")).font(BanbeTheme.display(24)).padding(.top, 30)
         Text(app.T("Tài khoản của bạn đã được xóa. Cảm ơn bạn đã dùng banbe.", "Your account has been deleted. Thanks for using banbe."))
-            .font(.system(size: 13.5)).lineSpacing(4)
+            .font(.app(size: 13.5)).lineSpacing(4)
             .accessibilityIdentifier("deleteAccount.doneMessage")
         primaryButton(app.T("Đóng", "Close"), identifier: "deleteAccount.doneClose") {
             app.deleteAccountOpen = false
@@ -377,7 +377,7 @@ private struct DeleteAccountButtonStyle: ButtonStyle {
     var destructive: Bool = false
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 14, weight: .semibold))
+            .font(.app(size: 14, weight: .semibold))
             .padding(14)
             .foregroundStyle(destructive ? BanbeTheme.onAlert : app.palette.ink)
             .background(destructive ? BanbeTheme.alert : app.palette.field, in: RoundedRectangle(cornerRadius: 16, style: .continuous))

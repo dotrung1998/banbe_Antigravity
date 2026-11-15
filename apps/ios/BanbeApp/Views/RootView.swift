@@ -1463,6 +1463,7 @@ struct RootView: View {
         case .welcome: WelcomeView()
         case .schedule: ScheduleView()
         case .search: SearchView()
+        case .browse: BrowseView()
         case .eventList: EventListView()
         case .security: SecurityView()
         case .paymentDetails: PaymentDetailsView()
@@ -1516,7 +1517,7 @@ struct RootView: View {
                 BanbeLoadingVisual(size: 64)
                 Text(app.screen == .create ? app.T("Đang gửi sự kiện cho banbe duyệt…", "Sending your event to banbe…")
                                            : app.T("Đang giữ chỗ cho bạn…", "Holding your seat…"))
-                    .font(.system(size: 13))
+                    .font(.app(size: 13))
                     .foregroundStyle(app.palette.ink)
             }
         }

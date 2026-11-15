@@ -30,7 +30,7 @@ struct PublicProfileView: View {
                     Spacer()
                     if profileURL != nil {
                         Button { shareCardOpen = true } label: {
-                            Text(app.T("Chia sẻ", "Share")).font(.subheadline.weight(.semibold)).foregroundStyle(app.palette.ink)
+                            Text(app.T("Chia sẻ", "Share")).font(.app(.subheadline).weight(.semibold)).foregroundStyle(app.palette.ink)
                                 .frame(minHeight: 44)
                                 .contentShape(Rectangle())
                         }
@@ -65,7 +65,7 @@ struct PublicProfileView: View {
                         .padding(.top, BanbeTheme.Space.xl)
                 } else {
                     Text(app.publicProfileError.isEmpty ? app.T("Không tìm thấy hồ sơ này.", "This profile couldn't be found.") : app.publicProfileError)
-                        .font(.subheadline).foregroundStyle(app.palette.ink)
+                        .font(.app(.subheadline)).foregroundStyle(app.palette.ink)
                         .frame(maxWidth: .infinity).padding(.top, 60)
                 }
             }
@@ -96,8 +96,8 @@ struct PublicProfileView: View {
     private func profileActionButton(icon: String, label: String, id: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                Image(systemName: icon).font(.system(size: 15, weight: .regular))
-                Text(label).font(.footnote.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.85)
+                Image(systemName: icon).font(.app(size: 15, weight: .regular))
+                Text(label).font(.app(.footnote).weight(.semibold)).lineLimit(1).minimumScaleFactor(0.85)
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 10)
@@ -126,11 +126,11 @@ struct PublicProfileView: View {
                         }
                         .accessibilityHint(app.T("Nhấn giữ để mở hồ sơ", "Press and hold to open the profile"))
                         .accessibilityIdentifier("publicProfile.qrCode")
-                    Text("@\(handle)").font(.system(size: 14, weight: .semibold)).foregroundStyle(app.palette.ink)
+                    Text("@\(handle)").font(.app(size: 14, weight: .semibold)).foregroundStyle(app.palette.ink)
                     Text(app.T(
                         "Quét bằng camera điện thoại để mở hồ sơ này trong ứng dụng banbe. Nhấn giữ mã QR để mở ngay.",
                         "Scan with a phone camera to open this profile in the banbe app. Press and hold the QR code to open it right now."))
-                        .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
+                        .font(.app(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 8)
                 }
@@ -140,7 +140,7 @@ struct PublicProfileView: View {
 
             Button { qrOpen = false } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.app(size: 14, weight: .semibold))
                     .foregroundStyle(app.palette.ink)
                     .frame(width: 44, height: 44)
                     .background(app.palette.field, in: Circle())
@@ -211,15 +211,15 @@ struct PublicProfileView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("publicProfile.displayName")
                     // One role line. Organizer mode OFF hides the host role for every visitor (migration 096).
-                    Text(role(p)).font(.footnote).foregroundStyle(app.palette.ink2)
+                    Text(role(p)).font(.app(.footnote)).foregroundStyle(app.palette.ink2)
                         .accessibilityIdentifier(isHost(p) ? "publicProfile.founderLine" : "publicProfile.role")
                     Text("@\(p.handle ?? "")" + (p.city?.isEmpty == false ? " · \(p.city!)" : ""))
-                        .font(.footnote).foregroundStyle(app.palette.ink2)
+                        .font(.app(.footnote)).foregroundStyle(app.palette.ink2)
                 }
                 Spacer(minLength: 0)
             }
             if let bio = p.bio, !bio.isEmpty {
-                Text(bio).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                Text(bio).font(.app(.subheadline)).fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("publicProfile.bio")
             }
             if !stats.isEmpty {
@@ -230,8 +230,8 @@ struct PublicProfileView: View {
                             HStack(spacing: 0) {
                                 if i > 0 { Rectangle().fill(app.palette.divider).frame(width: 1).padding(.trailing, BanbeTheme.Space.m) }
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(verbatim: "\(st.value)").font(.headline.monospacedDigit())
-                                    Text(statLabel(st.id)).font(.footnote).foregroundStyle(app.palette.ink2)
+                                    Text(verbatim: "\(st.value)").font(.app(.headline).monospacedDigit())
+                                    Text(statLabel(st.id)).font(.app(.footnote)).foregroundStyle(app.palette.ink2)
                                 }
                                 Spacer(minLength: 0)
                             }
@@ -274,7 +274,7 @@ struct PublicProfileView: View {
                     ZStack {
                         app.palette.ink
                         Text(String((p.displayName ?? p.handle ?? "?").prefix(1)).uppercased())
-                            .font(.system(size: 26, weight: .semibold)).foregroundStyle(app.palette.paper)
+                            .font(.app(size: 26, weight: .semibold)).foregroundStyle(app.palette.paper)
                     }
                 }
             }
@@ -305,7 +305,7 @@ struct PublicProfileView: View {
                     Text(app.T("Sở thích & nhóm", "Interests & teams")).font(BanbeTheme.display(17))
                     FlowRow(spacing: BanbeTheme.Space.s) {
                         ForEach(interests, id: \.self) { tag in
-                            Text(tag).font(.footnote.weight(.semibold))
+                            Text(tag).font(.app(.footnote).weight(.semibold))
                                 .padding(.horizontal, 12).padding(.vertical, 6)
                                 .background(app.palette.surface2, in: Capsule())
                         }
@@ -324,7 +324,7 @@ struct PublicProfileView: View {
                                 }
                             } label: {
                                 Text(app.T("Thành viên của \(badge.organizerName) Team", "Member of the \(badge.organizerName) Team"))
-                                    .font(.footnote.weight(.semibold))
+                                    .font(.app(.footnote).weight(.semibold))
                                     .padding(.horizontal, 12).padding(.vertical, 6)
                                     .background(app.palette.clayBg, in: Capsule())
                                     .foregroundStyle(app.palette.clay)
@@ -341,10 +341,10 @@ struct PublicProfileView: View {
                     if upcoming.isEmpty {
                         // Owner empty state: say what this is and where to go next.
                         HStack {
-                            Text(app.T("Chưa có sự kiện sắp tới", "Nothing coming up yet")).font(.subheadline).foregroundStyle(app.palette.ink2)
+                            Text(app.T("Chưa có sự kiện sắp tới", "Nothing coming up yet")).font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
                             Spacer(minLength: BanbeTheme.Space.m)
                             Button(app.T("Xem sự kiện ›", "Browse events ›")) { app.goHome() }
-                                .font(.subheadline.weight(.semibold)).foregroundStyle(app.palette.clay)
+                                .font(.app(.subheadline).weight(.semibold)).foregroundStyle(app.palette.clay)
                                 .frame(minHeight: 44)
                                 .accessibilityIdentifier("publicProfile.browse")
                         }
@@ -358,16 +358,16 @@ struct PublicProfileView: View {
                                 Button { app.goEvent(e.key) } label: {
                                     HStack(spacing: BanbeTheme.Space.m) {
                                         VStack(alignment: .leading, spacing: 2) {
-                                            Text(e.name).font(.subheadline.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
-                                            Text(app.trStatus(e.when)).font(.footnote).foregroundStyle(app.palette.ink2)
+                                            Text(e.name).font(.app(.subheadline).weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+                                            Text(app.trStatus(e.when)).font(.app(.footnote)).foregroundStyle(app.palette.ink2)
                                         }
                                         Spacer(minLength: 0)
                                         Text(u.role == "hosting" ? app.T("Tổ chức", "Hosting") : app.T("Sẽ đi", "Going"))
-                                            .font(.footnote.weight(.semibold))
+                                            .font(.app(.footnote).weight(.semibold))
                                             .foregroundStyle(u.role == "hosting" ? app.palette.clay : app.palette.ink2)
                                             .padding(.horizontal, 10).padding(.vertical, 4)
                                             .background(u.role == "hosting" ? app.palette.clayBg : .clear, in: Capsule())
-                                        Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(app.palette.ink2)
+                                        Image(systemName: "chevron.right").font(.app(.footnote).weight(.semibold)).foregroundStyle(app.palette.ink2)
                                     }
                                     .padding(.horizontal, BanbeTheme.Space.l).padding(.vertical, BanbeTheme.Space.m)
                                     .frame(minHeight: 44)
@@ -391,8 +391,8 @@ struct PublicProfileView: View {
                     ForEach(credited) { ev in
                         Button { app.goEvent(ev.eventId) } label: {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(ev.eventName).font(.subheadline)
-                                Text(ev.organizerName).font(.footnote).foregroundStyle(app.palette.ink2)
+                                Text(ev.eventName).font(.app(.subheadline))
+                                Text(ev.organizerName).font(.app(.footnote)).foregroundStyle(app.palette.ink2)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, BanbeTheme.Space.l).padding(.vertical, BanbeTheme.Space.m)

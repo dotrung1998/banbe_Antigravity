@@ -44,7 +44,7 @@ struct SurveyStoryCardView: View {
 
     private var initialGlyph: some View {
         Text(String((hostName.isEmpty ? "?" : hostName).prefix(1)).uppercased())
-            .font(.system(size: 14, weight: .bold))
+            .font(.app(size: 14, weight: .bold))
             .foregroundStyle(app.palette.ink)
     }
 
@@ -80,28 +80,28 @@ struct SurveyStoryCardView: View {
                 .frame(width: 34, height: 34)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 Text(hostName.isEmpty ? app.T("Người tổ chức", "Organizer") : hostName)
-                    .font(.system(size: 12.5, weight: .bold)).foregroundStyle(app.palette.ink).lineLimit(1)
+                    .font(.app(size: 12.5, weight: .bold)).foregroundStyle(app.palette.ink).lineLimit(1)
             }
 
             Spacer(minLength: 18)
             VStack(alignment: .leading, spacing: 10) {
                 Text(title).font(BanbeTheme.display(fill ? 25 : 18)).foregroundStyle(app.palette.ink).lineLimit(fill ? 4 : 3)
                 if let description, !description.isEmpty {
-                    Text(description).font(.system(size: fill ? 14 : 12.5)).foregroundStyle(app.palette.ink.opacity(0.85)).lineLimit(fill ? 6 : 4)
+                    Text(description).font(.app(size: fill ? 14 : 12.5)).foregroundStyle(app.palette.ink.opacity(0.85)).lineLimit(fill ? 6 : 4)
                 }
             }
             Spacer(minLength: 18)
 
             if let closesAt {
                 Text("\(app.T("Hạn trả lời", "Deadline")): \(closesAt.formatted(date: .abbreviated, time: .shortened))")
-                    .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.75))
+                    .font(.app(size: 12)).foregroundStyle(app.palette.ink.opacity(0.75))
                     .padding(.bottom, 12)
             }
             Button {
                 onAnswerSurvey?()
             } label: {
                 Text(closed ? app.T("Khảo sát đã đóng", "Survey closed") : app.T("Trả lời khảo sát", "Answer Survey"))
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.app(size: 14, weight: .bold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
                     .foregroundStyle(closed ? app.palette.ink : app.palette.paper)

@@ -18,11 +18,11 @@ struct DebugPushTestSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Debug · Notifications test")
-                .font(.system(size: 11.5, weight: .semibold))
+                .font(.app(size: 11.5, weight: .semibold))
                 .padding(.top, 24)
             VStack(alignment: .leading, spacing: 10) {
                 Text("Debug builds only. Lets you try notifications on the simulator without the Apple account or the push switch. Nothing reaches the server.")
-                    .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    .font(.app(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.7))
                 HStack(spacing: 10) {
                     Button("Allow notifications") { Task { await allow() } }
                         .buttonStyle(.bordered)
@@ -32,7 +32,7 @@ struct DebugPushTestSection: View {
                         .accessibilityIdentifier("debug.push.sample")
                 }
                 if !status.isEmpty {
-                    Text(status).font(.system(size: 12.5)).accessibilityIdentifier("debug.push.status")
+                    Text(status).font(.app(size: 12.5)).accessibilityIdentifier("debug.push.status")
                 }
             }
             .padding(14)

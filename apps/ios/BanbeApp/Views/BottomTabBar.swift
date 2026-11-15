@@ -497,7 +497,7 @@ struct BottomTabBar: View {
                 Group {
                     if item.id == "profile", simpleShell, app.isSignedIn {
                         Text(Self.initials(app.displayName))
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.app(size: 10, weight: .bold))
                             .foregroundStyle(.white)
                             .frame(width: iconSize, height: iconSize)
                             .background(app.palette.clay, in: Circle())
@@ -510,7 +510,7 @@ struct BottomTabBar: View {
                 // Icon under the lifted pill swells with it (Photos-style).
                 .scaleEffect(1 + (pressScale - 1) * 1.9 * iconProximity(item))
                 Text(item.label)
-                    .font(.system(size: 11, weight: isActive ? .bold : .medium))
+                    .font(.app(size: 11, weight: isActive ? .bold : .medium))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                     .foregroundStyle(app.palette.ink)
@@ -519,7 +519,7 @@ struct BottomTabBar: View {
             }
             if item.badge > 0 {
                 Text(badgeText)
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.app(size: 9, weight: .bold))
                     .foregroundStyle(BanbeTheme.onAlert)
                     .padding(.horizontal, 4)
                     .frame(minWidth: 14, minHeight: 14)

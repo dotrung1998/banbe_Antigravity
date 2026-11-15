@@ -41,7 +41,7 @@ struct AccountGateOverlay: View {
                     // Lifted so the GIF's rotating bounds never cover the line below.
                     BanbeLoadingVisual(size: 44).offset(y: -22)
                     Text(app.T("Đang tải, vui lòng đợi một chút…", "Loading, just a moment…"))
-                        .font(.system(size: 13))
+                        .font(.app(size: 13))
                         .padding(.top, 6)
                 }
                 .onAppear {
@@ -82,13 +82,13 @@ private struct GateScaffold<Content: View>: View {
                 }
                 Text(title).font(BanbeTheme.display(26)).padding(.top, 28)
                 Text(subtitle)
-                    .font(.system(size: 14)).lineSpacing(3)
+                    .font(.app(size: 14)).lineSpacing(3)
                     .foregroundStyle(app.palette.ink.opacity(0.8))
                     .padding(.top, 10)
                 VStack(alignment: .leading, spacing: 14) { content() }
                     .padding(.top, 22)
                 Button(app.T("Đăng xuất", "Sign out")) { Task { await auth.signOut() } }
-                    .font(.system(size: 13))
+                    .font(.app(size: 13))
                     .buttonStyle(.plain)
                     .frame(maxWidth: .infinity)
                     .padding(.top, 28)
@@ -135,12 +135,12 @@ struct DOBFieldsView: View {
 
     private func field(_ label: String, _ placeholder: String, _ text: Binding<String>, _ f: Field, max: Int, width: CGFloat?) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(.system(size: 11.5, weight: .semibold))
+            Text(label).font(.app(size: 11.5, weight: .semibold))
             TextField(placeholder, text: text)
                 .keyboardType(.numberPad)
                 .textContentType(.none)
                 .multilineTextAlignment(.center)
-                .font(.system(size: 17, weight: .medium))
+                .font(.app(size: 17, weight: .medium))
                 .padding(.vertical, 12)
                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .focused($focus, equals: f)
@@ -261,7 +261,7 @@ struct PhoneVerificationForm: View {
         VStack(alignment: .leading, spacing: 14) {
             if model.codeSent { codeStep } else { numberStep }
             if let message = model.message {
-                Text(message).font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert)
+                Text(message).font(.app(size: 12.5)).foregroundStyle(BanbeTheme.alert)
                     .accessibilityIdentifier("gate.phone.error")
             }
         }
@@ -278,8 +278,8 @@ struct PhoneVerificationForm: View {
                 } label: {
                     HStack(spacing: 6) {
                         Text(model.country.flag)
-                        Text("+\(model.country.dial)").font(.system(size: 16, weight: .medium))
-                        Image(systemName: "chevron.down").font(.system(size: 10))
+                        Text("+\(model.country.dial)").font(.app(size: 16, weight: .medium))
+                        Image(systemName: "chevron.down").font(.app(size: 10))
                     }
                     .padding(.horizontal, 12).padding(.vertical, 13)
                     .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -288,7 +288,7 @@ struct PhoneVerificationForm: View {
                 TextField(app.T("Số điện thoại", "Phone number"), text: $model.number)
                     .keyboardType(.phonePad)
                     .textContentType(.telephoneNumber)
-                    .font(.system(size: 17))
+                    .font(.app(size: 17))
                     .padding(.horizontal, 14).padding(.vertical, 13)
                     .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .accessibilityIdentifier("gate.phone.number")
@@ -303,12 +303,12 @@ struct PhoneVerificationForm: View {
         VStack(alignment: .leading, spacing: 14) {
             Text(app.T("Mã 6 số đã được gửi tới \(model.e164). Mã chỉ xác minh bạn nhận được tin nhắn trên số này.",
                        "A 6-digit code was sent to \(model.e164). It only confirms you can receive texts on this number."))
-                .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                .font(.app(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
             TextField("123456", text: $model.code)
                 .keyboardType(.numberPad)
                 .textContentType(.oneTimeCode)
                 .multilineTextAlignment(.center)
-                .font(.system(size: 24, weight: .semibold))
+                .font(.app(size: 24, weight: .semibold))
                 .padding(.vertical, 14)
                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .onChange(of: model.code) { _, v in
@@ -324,10 +324,10 @@ struct PhoneVerificationForm: View {
                        ? app.T("Gửi lại sau \(model.cooldown)s", "Resend in \(model.cooldown)s")
                        : app.T("Gửi lại mã", "Resend code")) { model.resend(auth: auth, T: app.T) }
                     .disabled(model.cooldown > 0 || model.busy)
-                    .font(.system(size: 13))
+                    .font(.app(size: 13))
                 Spacer()
                 Button(app.T("Đổi số", "Change number")) { model.changeNumber() }
-                    .font(.system(size: 13))
+                    .font(.app(size: 13))
             }
             .buttonStyle(.plain)
         }
@@ -369,7 +369,7 @@ struct PhoneVerificationSection: View {
                 HStack(spacing: 10) {
                     Image(systemName: "checkmark.seal.fill").foregroundStyle(Color(red: 0.13, green: 0.58, blue: 0.33))
                     Text(app.T("Số điện thoại đã được xác minh.", "Your phone number is verified."))
-                        .font(.system(size: 14))
+                        .font(.app(size: 14))
                 }
                 .padding(.horizontal, 18).padding(.vertical, 15)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -383,7 +383,7 @@ struct PhoneVerificationSection: View {
                         Image(systemName: "exclamationmark.shield").foregroundStyle(app.palette.ink.opacity(0.75))
                         Text(app.T("Tài khoản thử nghiệm: bước xác minh SMS được miễn. Số điện thoại CHƯA được xác minh.",
                                    "Test account: SMS verification is waived. Your phone number is NOT verified."))
-                            .font(.system(size: 14))
+                            .font(.app(size: 14))
                     }
                     .padding(.horizontal, 18).padding(.vertical, 15)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -392,14 +392,14 @@ struct PhoneVerificationSection: View {
                 }
                 Text(app.T("Không bắt buộc với tài khoản của bạn. Thêm và xác minh số điện thoại để bảo vệ tài khoản và nhận hỗ trợ dễ hơn. Mã chỉ xác minh bạn nhận được SMS trên số này, không xác minh danh tính.",
                            "Optional for your account. Add and verify a phone number for easier account recovery. The code only confirms you can receive texts on this number. It doesn't verify who you are."))
-                    .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.75))
+                    .font(.app(size: 12)).foregroundStyle(app.palette.ink.opacity(0.75))
                 if open {
                     PhoneVerificationForm(model: model)
                         .padding(16)
                         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 } else {
                     Button(app.T("Xác minh số điện thoại", "Verify my phone number")) { open = true }
-                        .font(.system(size: 13.5, weight: .semibold))
+                        .font(.app(size: 13.5, weight: .semibold))
                         .buttonStyle(.plain)
                         .padding(.horizontal, 16).padding(.vertical, 11)
                         .background(app.palette.field, in: Capsule())
@@ -428,9 +428,9 @@ struct DOBEnrollmentView: View {
         ) {
             DOBFieldsView(input: $input, identifierPrefix: "gate.enroll")
             Text(app.T("Bạn không thể tự đổi ngày sinh sau khi lưu.", "You can't change your date of birth yourself after saving."))
-                .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
+                .font(.app(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
             if let message {
-                Text(message).font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert)
+                Text(message).font(.app(size: 12.5)).foregroundStyle(BanbeTheme.alert)
                     .accessibilityIdentifier("gate.enroll.error")
             }
             InkButton(title: busy ? app.T("Đang lưu…", "Saving…") : app.T("Hoàn tất đăng ký", "Complete registration"),
@@ -474,7 +474,7 @@ struct ConfirmDOBView: View {
         ) {
             DOBFieldsView(input: $input, identifierPrefix: "gate.confirm")
             if let message {
-                Text(message).font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert)
+                Text(message).font(.app(size: 12.5)).foregroundStyle(BanbeTheme.alert)
                     .accessibilityIdentifier("gate.confirm.error")
             }
             InkButton(title: busy ? app.T("Đang kiểm tra…", "Checking…") : app.T("Tiếp tục", "Continue"),
@@ -482,12 +482,12 @@ struct ConfirmDOBView: View {
                 .accessibilityIdentifier("gate.confirm.submit")
             VStack(alignment: .leading, spacing: 6) {
                 Text(app.T("Quên ngày sinh đã đăng ký?", "Forgot your registered date of birth?"))
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.app(size: 12, weight: .semibold))
                 Text(app.T("Ngày sinh không thể tự đặt lại trong ứng dụng. Hãy đăng xuất và liên hệ hỗ trợ banbe để được trợ giúp.",
                            "It can't be reset in the app. Sign out and contact banbe support for help."))
-                    .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.75))
+                    .font(.app(size: 12)).foregroundStyle(app.palette.ink.opacity(0.75))
                 if let email = AccountGateSupport.email, let url = URL(string: "mailto:\(email)") {
-                    Link(email, destination: url).font(.system(size: 12))
+                    Link(email, destination: url).font(.app(size: 12))
                 }
             }
             .padding(.top, 6)

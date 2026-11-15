@@ -699,6 +699,19 @@ body.reduced .pagerPage.on .endCard,body.reduced .pagerPage.on .endMark i{animat
 .hostRowL .ht small{display:block;font-size:11.5px;color:var(--fg3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hostRowL .n{flex:none;font-size:11px;font-weight:700;color:var(--fg2);padding:4px 9px;border-radius:999px;background:var(--block)}
 .hostRowL mark,.ev mark{background:color-mix(in srgb,var(--honey) 28%,transparent);color:inherit;border-radius:3px}
+/* Appearance: three tiles, each a tiny picture of the theme it picks. */
+.themePick{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:6px 0 18px}
+.themePick button{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 6px 12px;border-radius:18px;
+  border:1.5px solid var(--rule);text-align:center;transition:border-color var(--t-quick),background var(--t-quick),transform var(--t-press)}
+.themePick button:active{transform:scale(.96)}
+.themePick button.on{border-color:var(--fg);background:var(--block)}
+.themePick b{font-size:13.5px;font-weight:700}
+.themePick small{font-size:11px;color:var(--fg3)}
+.tSw{position:relative;width:64px;height:44px;border-radius:10px;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)}
+.tSw i{position:absolute;left:8px;right:8px;bottom:7px;height:8px;border-radius:99px}
+.tSw.light{background:#F3EEE3}.tSw.light i{background:#181410}
+.tSw.dark{background:#14110D}.tSw.dark i{background:#F1EBDF}
+.tSw.auto{background:linear-gradient(135deg,#F3EEE3 50%,#14110D 50%)}.tSw.auto i{background:linear-gradient(90deg,#181410 50%,#F1EBDF 50%)}
 .hostNone{padding:28px 0;text-align:center;font-size:13px;color:var(--fg2)}
 /* Host profile: who they are, what they have hosted, and what is on with them now. */
 .sheet.tall{max-height:92%;height:92%}
@@ -1505,7 +1518,7 @@ body.fill .panelClose{display:flex;position:sticky;top:0;margin:-6px -8px 6px au
             </div>
             <button class="gbtn sBtn" data-toast="Search events, hosts, places" aria-label="Search" tabindex="-1"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16 16 4.5 4.5"/></svg></button>
             <button class="gbtn" data-toast="Map" aria-label="Map"><svg class="i" viewBox="0 0 24 24"><path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4Z"/><path d="M9 4v13M15 6.5v13"/></svg></button>
-            <button class="avatar" data-toast="Account" aria-label="Account">M</button>
+            <button class="avatar" id="homeAvatar" aria-label="You · appearance">M</button>
           </div>
           <button class="hsearch" data-toast="Search events, hosts, places">
             <svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16 16 4.5 4.5"/></svg>
@@ -1519,7 +1532,7 @@ body.fill .panelClose{display:flex;position:sticky;top:0;margin:-6px -8px 6px au
           <button class="dk" data-toast="Map"><svg class="i" viewBox="0 0 24 24"><path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4Z"/><path d="M9 4v13M15 6.5v13"/></svg><span>Map</span><i></i></button>
           <button class="dk plusDk" id="plusBtn" aria-label="Create"><span class="plusBtn" id="plusInner"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span></button>
           <button class="dk" data-toast="Inbox"><svg class="i" viewBox="0 0 24 24"><path d="M4 6h16v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z"/><path d="M4 7l8 6 8-6"/></svg><span>Inbox</span><i></i></button>
-          <button class="dk" data-toast="Account"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg><span>You</span><i></i></button>
+          <button class="dk" id="dockYou" aria-label="You · appearance"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg><span>You</span><i></i></button>
         </nav>
       </section>
 
@@ -1756,6 +1769,22 @@ body.fill .panelClose{display:flex;position:sticky;top:0;margin:-6px -8px 6px au
           </div>
         </div>
         <div class="sheetBody" id="hpBody"></div>
+      </div>
+      <div class="sheet" id="youSheet" role="dialog" aria-modal="true" aria-label="Appearance">
+        <div class="sheetHead">
+          <div class="grab"></div>
+          <div class="st">
+            <div><h3>Appearance</h3><div class="liveSub" id="themeSub">Following your device</div></div>
+            <button class="xbtn" id="closeYou" aria-label="Close"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+          </div>
+        </div>
+        <div class="sheetBody">
+          <div class="themePick" id="themePick" role="radiogroup" aria-label="Theme">
+            <button role="radio" data-pick="auto"><span class="tSw auto"><i></i></span><b>Auto</b><small>Like your device</small></button>
+            <button role="radio" data-pick="light"><span class="tSw light"><i></i></span><b>Light</b><small>Warm paper</small></button>
+            <button role="radio" data-pick="dark"><span class="tSw dark"><i></i></span><b>Dark</b><small>Night ink</small></button>
+          </div>
+        </div>
       </div>
       <div class="sheet" id="hostSheet" role="dialog" aria-modal="true" aria-label="Hosts">
         <div class="sheetHead">
@@ -4239,9 +4268,45 @@ window.addEventListener('resize', refit);
 /* first paint */
 /* the app follows the device: light or dark, and reduced motion, from the system settings */
 const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
-const followTheme = () => { document.documentElement.dataset.theme = darkQuery.matches ? 'dark' : 'light'; };
+/* Auto follows the device; Light or Dark is a choice this browser remembers. */
+let themePick = 'auto';
+try { themePick = localStorage.getItem('banbe-v24-theme') || 'auto'; } catch (_) {}
+const followTheme = () => {
+  const dark = themePick === 'auto' ? darkQuery.matches : themePick === 'dark';
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#14110D' : '#F3EEE3');
+  $$('#themePick button').forEach(b => {
+    const on = b.dataset.pick === themePick;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-checked', String(on));
+  });
+  $('#themeSub').textContent = themePick === 'auto' ? `Following your device · ${dark ? 'dark' : 'light'} now` : `Always ${themePick}`;
+  if (typeof updateStatus === 'function') updateStatus();
+};
 followTheme();
-darkQuery.addEventListener?.('change', followTheme);
+darkQuery.addEventListener?.('change', () => { if (themePick === 'auto') followTheme(); });
+$('#themePick').addEventListener('click', e => {
+  const b = e.target.closest('button[data-pick]');
+  if (!b) return;
+  themePick = b.dataset.pick;
+  try { localStorage.setItem('banbe-v24-theme', themePick); } catch (_) {}
+  haptic('select', b);
+  followTheme();
+});
+const youSheet = $('#youSheet');
+function openYou() {
+  followTheme();
+  youSheet.classList.add('on');
+  $('#scrim').classList.add('on');
+}
+function closeYou() {
+  youSheet.classList.remove('on');
+  $('#scrim').classList.remove('on');
+}
+$('#dockYou').addEventListener('click', openYou);
+$('#homeAvatar').addEventListener('click', openYou);
+$('#closeYou').addEventListener('click', closeYou);
+$('#scrim').addEventListener('click', closeYou);
 applyMotion(reduced);
 applyDevice(false);
 requestAnimationFrame(() => {

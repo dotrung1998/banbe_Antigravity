@@ -33,7 +33,7 @@ struct HostRecapView: View {
                     .padding(.top, 8)
                     .accessibilityIdentifier("hostRecap.back")
                 Text(app.T("Tổng kết sự kiện", "Event recap"))
-                    .font(.system(size: 11.5, weight: .semibold)).opacity(0.7).padding(.top, 14)
+                    .font(.app(size: 11.5, weight: .semibold)).opacity(0.7).padding(.top, 14)
                 Button { if let eventID { app.goEvent(eventID) } } label: {
                     Text(summary?.name ?? "…").font(BanbeTheme.display(26)).multilineTextAlignment(.leading)
                 }
@@ -43,18 +43,18 @@ struct HostRecapView: View {
                 .accessibilityIdentifier("hostRecap.title")
                 if let start = summary?.startsAt {
                     Text(app.discoveryWhenLabel(start, timeZone: EventMarket.timeZone(summary?.timeZoneID)))
-                        .font(.system(size: 13)).opacity(0.7).padding(.top, 6)
+                        .font(.app(size: 13)).opacity(0.7).padding(.top, 6)
                 }
 
                 if !app.hostRecapEnabled {
-                    Text(message("NOT_AVAILABLE")).font(.system(size: 13.5)).opacity(0.7).padding(.top, 18)
+                    Text(message("NOT_AVAILABLE")).font(.app(size: 13.5)).opacity(0.7).padding(.top, 18)
                         .accessibilityIdentifier("hostRecap.off")
                 } else if !error.isEmpty {
                     HStack(spacing: 8) {
-                        Text(message(error)).font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert)
+                        Text(message(error)).font(.app(size: 12.5)).foregroundStyle(BanbeTheme.alert)
                         if error == "NETWORK" {
                             Button(app.T("Thử lại", "Retry")) { reload += 1 }
-                                .font(.system(size: 12.5, weight: .semibold)).buttonStyle(.plain).underline()
+                                .font(.app(size: 12.5, weight: .semibold)).buttonStyle(.plain).underline()
                         }
                     }
                     .padding(.top, 18)
@@ -63,7 +63,7 @@ struct HostRecapView: View {
                     stats(recap).padding(.top, 20)
                     feedback(CoreLoops.hostFeedbackView(recap.feedback)).padding(.top, 26)
                 } else {
-                    Text(app.T("Đang tải…", "Loading…")).font(.system(size: 13)).opacity(0.7).padding(.top, 18)
+                    Text(app.T("Đang tải…", "Loading…")).font(.app(size: 13)).opacity(0.7).padding(.top, 18)
                 }
 
                 if app.hostRecapEnabled, let summary {
@@ -72,7 +72,7 @@ struct HostRecapView: View {
                         .accessibilityIdentifier("hostRecap.runAgain")
                     Text(app.T("Mở bản nháp mới từ sự kiện này. Bạn xem lại và gửi khi sẵn sàng.",
                                "Opens a new draft from this event. You review it and submit when ready."))
-                        .font(.system(size: 12)).opacity(0.65)
+                        .font(.app(size: 12)).opacity(0.65)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity)
                         .padding(.top, 8)
@@ -110,9 +110,9 @@ struct HostRecapView: View {
         return VStack(spacing: 0) {
             ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
                 HStack(spacing: 12) {
-                    Text(row.0).font(.system(size: 14))
+                    Text(row.0).font(.app(size: 14))
                     Spacer(minLength: 0)
-                    Text(row.1).font(.system(size: 14, weight: .semibold)).monospacedDigit()
+                    Text(row.1).font(.app(size: 14, weight: .semibold)).monospacedDigit()
                 }
                 .padding(.horizontal, 14).padding(.vertical, 12)
                 .overlay(alignment: .top) { if index > 0 { Rectangle().fill(app.palette.rule).frame(height: 1) } }
@@ -128,15 +128,15 @@ struct HostRecapView: View {
             Text(app.T("Cảm nhận của khách", "Guest feedback")).font(BanbeTheme.display(20))
             if fb.hidden {
                 Text(app.T(CoreLoops.hostFeedbackHidden.vi, CoreLoops.hostFeedbackHidden.en))
-                    .font(.system(size: 13)).opacity(0.75).padding(.top, 8)
+                    .font(.app(size: 13)).opacity(0.75).padding(.top, 8)
                     .accessibilityIdentifier("hostRecap.feedbackHidden")
             } else {
-                Text("👍 \(fb.up) · 👎 \(fb.down)").font(.system(size: 15, weight: .semibold)).padding(.top, 8)
+                Text("👍 \(fb.up) · 👎 \(fb.down)").font(.app(size: 15, weight: .semibold)).padding(.top, 8)
                     .accessibilityIdentifier("hostRecap.feedbackCounts")
                 if !fb.notes.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(Array(fb.notes.enumerated()), id: \.offset) { index, n in
-                            Text(n).font(.system(size: 13.5))
+                            Text(n).font(.app(size: 13.5))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 14).padding(.vertical, 11)
                                 .overlay(alignment: .top) { if index > 0 { Rectangle().fill(app.palette.rule).frame(height: 1) } }
@@ -147,7 +147,7 @@ struct HostRecapView: View {
                     .padding(.top, 10)
                 }
                 Text(app.T("Ghi chú không kèm tên, thứ tự ngẫu nhiên.", "Notes are unnamed and in random order."))
-                    .font(.system(size: 11.5)).opacity(0.6).padding(.top, 8)
+                    .font(.app(size: 11.5)).opacity(0.6).padding(.top, 8)
             }
         }
         .accessibilityElement(children: .contain)

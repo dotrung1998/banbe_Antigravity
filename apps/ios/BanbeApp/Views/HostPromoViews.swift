@@ -30,11 +30,11 @@ struct HostPromoSheet: View {
             HStack {
                 Text(app.T("Nhắn tin quảng bá", "Text a promo")).font(BanbeTheme.display(22))
                 Spacer()
-                Button(app.T("Đóng", "Close")) { dismiss() }.font(.system(size: 13)).buttonStyle(.plain)
+                Button(app.T("Đóng", "Close")) { dismiss() }.font(.app(size: 13)).buttonStyle(.plain)
             }
             Text(app.T("Chỉ những người đã bật “Tin nhắn quảng bá từ host” và từng đặt chỗ, theo dõi hoặc lưu sự kiện của bạn. Tin mở trong ứng dụng Tin nhắn. Bạn tự bấm gửi hoặc huỷ. banbe không gửi hộ và không xác nhận tin đã được nhận.",
                        "Only people who turned on “Host promotional messages” and have booked, followed or saved one of your events. The text opens in Messages. You send or cancel it yourself. banbe doesn't send for you and can't confirm delivery."))
-                .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.75))
+                .font(.app(size: 12)).foregroundStyle(app.palette.ink.opacity(0.75))
 
             switch phase {
             case .loading:
@@ -43,7 +43,7 @@ struct HostPromoSheet: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text(r.displayName).font(BanbeTheme.display(20))
                     Text(app.T("Đã đồng ý nhận tin quảng bá.", "Has opted in to promotional texts."))
-                        .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
+                        .font(.app(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
                     InkButton(title: busy ? app.T("Đang chuẩn bị…", "Preparing…") : app.T("Mở Tin nhắn", "Open Messages"),
                               enabled: !busy) { prepare(r) }
                         .accessibilityIdentifier("promo.open")
@@ -53,12 +53,12 @@ struct HostPromoSheet: View {
             case .none:
                 Text(app.T("Hiện chưa có ai khác đủ điều kiện nhận tin quảng bá cho sự kiện này.",
                            "No one else is eligible for a promo about this event right now."))
-                    .font(.system(size: 13))
+                    .font(.app(size: 13))
             case .failed(let text):
-                Text(text).font(.system(size: 13)).foregroundStyle(BanbeTheme.alert)
+                Text(text).font(.app(size: 13)).foregroundStyle(BanbeTheme.alert)
             case .finished(let text, let retry):
                 VStack(alignment: .leading, spacing: 12) {
-                    Text(text).font(.system(size: 13))
+                    Text(text).font(.app(size: 13))
                     // A cancelled / failed text doesn't use the person up: the
                     // host can try again (a limited number of times). A text
                     // that was sent is final for this event.
@@ -71,7 +71,7 @@ struct HostPromoSheet: View {
                 }
             }
             if let notice {
-                Text(notice).font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert)
+                Text(notice).font(.app(size: 12.5)).foregroundStyle(BanbeTheme.alert)
             }
             Spacer(minLength: 0)
         }

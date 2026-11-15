@@ -63,11 +63,11 @@ struct ProjectTabBar: View {
             onSelect(tab.id)
         } label: {
             VStack(spacing: 3) {
-                Image(systemName: tab.icon).font(.system(size: 18, weight: .semibold)).accessibilityHidden(true)
+                Image(systemName: tab.icon).font(.app(size: 18, weight: .semibold)).accessibilityHidden(true)
                 // Always one line that shrinks to fit, so every tab is the same height ("Money & door" used to wrap and
                 // stand taller than the rest).
                 Text(tab.label)
-                    .font(.caption2.weight(.semibold))
+                    .font(.app(.caption2).weight(.semibold))
                     .lineLimit(1).minimumScaleFactor(0.55)
             }
             .frame(maxWidth: .infinity, minHeight: 54, maxHeight: 54)
@@ -94,7 +94,7 @@ struct ProjectTabBar: View {
             LinearGradient(colors: [app.palette.paper.opacity(0), app.palette.paper], startPoint: .leading, endPoint: .trailing)
                 .frame(width: 22)
             Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .bold))
+                .font(.app(size: 13, weight: .bold))
                 .foregroundStyle(app.palette.ink3)
                 .padding(.trailing, 2)
         }
@@ -107,7 +107,7 @@ struct ProjectTabBar: View {
             #if DEBUG
             // UI tests only: the hint itself is hidden from VoiceOver, so a fixture run exposes its state here.
             if UITestFixture.isActive {
-                Text(atEnd ? "atEnd" : "more").font(.system(size: 1)).opacity(0.01)
+                Text(atEnd ? "atEnd" : "more").font(.app(size: 1)).opacity(0.01)
                     .accessibilityIdentifier(atEnd ? "project.tabs.atEnd" : "project.tabs.more")
             }
             #endif

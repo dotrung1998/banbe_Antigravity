@@ -52,7 +52,7 @@ struct AdminRetentionView: View {
                     .accessibilityIdentifier("adminRetention.title")
                 Text(app.T("Nhóm dưới 20 người được ẩn để bảo vệ quyền riêng tư. Tài khoản thử nghiệm không được tính.",
                            "Groups under 20 people are hidden to protect privacy. Test accounts are excluded."))
-                    .font(.system(size: 13.5)).foregroundStyle(app.palette.ink.opacity(0.75)).padding(.top, 8)
+                    .font(.app(size: 13.5)).foregroundStyle(app.palette.ink.opacity(0.75)).padding(.top, 8)
                     .accessibilityIdentifier("adminRetention.privacy")
 
                 HStack(spacing: 6) {
@@ -61,14 +61,14 @@ struct AdminRetentionView: View {
                 .padding(.top, 16)
 
                 if let report, let from = report.from, let to = report.to {
-                    Text("\(from) → \(to)").font(.system(size: 12)).opacity(0.6).padding(.top, 10)
+                    Text("\(from) → \(to)").font(.app(size: 12)).opacity(0.6).padding(.top, 10)
                         .accessibilityIdentifier("adminRetention.period")
                 }
                 if loading && report == nil {
-                    Text(app.T("Đang tải…", "Loading…")).font(.system(size: 13)).opacity(0.7).padding(.top, 18)
+                    Text(app.T("Đang tải…", "Loading…")).font(.app(size: 13)).opacity(0.7).padding(.top, 18)
                 }
                 if !error.isEmpty {
-                    Text(message(error)).font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert).padding(.top, 14)
+                    Text(message(error)).font(.app(size: 12.5)).foregroundStyle(BanbeTheme.alert).padding(.top, 14)
                         .accessibilityIdentifier("adminRetention.error")
                 }
 
@@ -90,7 +90,7 @@ struct AdminRetentionView: View {
             days = n
         } label: {
             Text(app.T("\(n) ngày", "\(n) days"))
-                .font(.footnote.weight(.semibold))
+                .font(.app(.footnote).weight(.semibold))
                 .padding(.horizontal, 14).padding(.vertical, 8)
                 .frame(minHeight: 36)
                 .background(selected ? app.palette.ink : .clear, in: Capsule())
@@ -106,15 +106,15 @@ struct AdminRetentionView: View {
         let label = RetentionReport.marketLabel(m.market)
         let rows = RetentionReport.rows(m)
         return VStack(alignment: .leading, spacing: 8) {
-            Text(app.T(label.vi, label.en)).font(.system(size: 15, weight: .bold)).padding(.horizontal, 2)
+            Text(app.T(label.vi, label.en)).font(.app(size: 15, weight: .bold)).padding(.horizontal, 2)
                 .accessibilityAddTraits(.isHeader)
             VStack(spacing: 0) {
                 ForEach(Array(rows.enumerated()), id: \.element.key) { i, r in
                     if i > 0 { Divider().overlay(app.palette.rule) }
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
-                        Text(app.T(r.vi, r.en)).font(.system(size: 13.5)).opacity(0.8)
+                        Text(app.T(r.vi, r.en)).font(.app(size: 13.5)).opacity(0.8)
                         Spacer(minLength: 8)
-                        Text(r.value).font(.system(size: 13.5, weight: .semibold)).monospacedDigit()
+                        Text(r.value).font(.app(size: 13.5, weight: .semibold)).monospacedDigit()
                             .multilineTextAlignment(.trailing)
                             .accessibilityIdentifier("adminRetention.\(m.market).\(r.key)")
                     }
@@ -131,7 +131,7 @@ struct AdminRetentionView: View {
     private func notificationsSection(_ report: RetentionReport.Reply) -> some View {
         let kinds = report.notifications ?? []
         return VStack(alignment: .leading, spacing: 8) {
-            Text(app.T("Thông báo theo loại", "Notifications by kind")).font(.system(size: 15, weight: .bold)).padding(.horizontal, 2)
+            Text(app.T("Thông báo theo loại", "Notifications by kind")).font(.app(size: 15, weight: .bold)).padding(.horizontal, 2)
                 .accessibilityAddTraits(.isHeader)
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
@@ -140,7 +140,7 @@ struct AdminRetentionView: View {
                     Text(app.T("Đã đọc", "Read")).frame(width: 52, alignment: .trailing)
                     Text(app.T("Phút đọc (TV)", "Med. min")).frame(width: 64, alignment: .trailing)
                 }
-                .font(.system(size: 11.5, weight: .semibold)).opacity(0.7)
+                .font(.app(size: 11.5, weight: .semibold)).opacity(0.7)
                 .padding(.horizontal, 14).padding(.vertical, 10)
                 ForEach(kinds) { n in
                     Divider().overlay(app.palette.rule)
@@ -150,7 +150,7 @@ struct AdminRetentionView: View {
                         Text(RetentionReport.count(n.read)).frame(width: 52, alignment: .trailing)
                         Text(RetentionReport.median(n.readMinutesMedian)).frame(width: 64, alignment: .trailing)
                     }
-                    .font(.system(size: 13)).monospacedDigit()
+                    .font(.app(size: 13)).monospacedDigit()
                     .padding(.horizontal, 14).padding(.vertical, 10)
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("adminRetention.kind.\(n.kind)")
@@ -158,17 +158,17 @@ struct AdminRetentionView: View {
                 if kinds.isEmpty {
                     Divider().overlay(app.palette.rule)
                     Text(app.T("Chưa có loại nào đủ 20 người.", "No kind has reached 20 people yet."))
-                        .font(.system(size: 13)).opacity(0.7)
+                        .font(.app(size: 13)).opacity(0.7)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 14).padding(.vertical, 10)
                 }
             }
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             Text(app.T("Phút đọc (TV): số phút trung vị từ lúc gửi tới lúc đọc.", "Med. min: median minutes from sent to read."))
-                .font(.system(size: 11.5)).opacity(0.6).padding(.horizontal, 2)
+                .font(.app(size: 11.5)).opacity(0.6).padding(.horizontal, 2)
             if let hiddenKinds = report.notificationKindsHidden, hiddenKinds > 0 {
                 Text(app.T("\(hiddenKinds) loại dưới 20 người được ẩn.", "\(hiddenKinds) kind(s) under 20 people hidden."))
-                    .font(.system(size: 12)).opacity(0.65).padding(.horizontal, 2)
+                    .font(.app(size: 12)).opacity(0.65).padding(.horizontal, 2)
                     .accessibilityIdentifier("adminRetention.kindsHidden")
             }
         }

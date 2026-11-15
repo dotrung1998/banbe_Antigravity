@@ -90,7 +90,7 @@ struct ChatAttachButton: View {
             }
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: 17, weight: .medium))
+                .font(.app(size: 17, weight: .medium))
                 .frame(width: 40, height: 40)
                 .background(app.palette.field, in: Circle())
                 .foregroundStyle(app.palette.ink)

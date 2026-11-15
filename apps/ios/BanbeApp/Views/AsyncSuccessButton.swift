@@ -53,7 +53,7 @@ struct AsyncSuccessButton: View {
         Button(action: activate) {
             ZStack {
                 Text(title)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.app(size: 15, weight: .semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                     .opacity(state.phase == .idle || state.phase == .failure ? 1 : 0)
@@ -62,7 +62,7 @@ struct AsyncSuccessButton: View {
                 }
                 if showCheck {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.app(size: 18, weight: .bold))
                         .transition(reduceMotion ? .opacity : .scale(scale: 0.6).combined(with: .opacity))
                         .accessibilityHidden(true)
                 }

@@ -141,12 +141,12 @@ struct QuickSheetView: View {
                     if app.user != nil {
                         Button { prefsOpen = true } label: {
                             HStack(spacing: 14) {
-                                Image(systemName: "bell").font(.system(size: 20, weight: .light)).frame(width: 26)
-                                Text(app.T("Tùy chọn thông báo", "Notification preferences")).font(.system(size: 15))
+                                Image(systemName: "bell").font(.app(size: 20, weight: .light)).frame(width: 26)
+                                Text(app.T("Tùy chọn thông báo", "Notification preferences")).font(.app(size: 15))
                                     .lineLimit(1).minimumScaleFactor(0.8)
                                 Spacer(minLength: 8)
-                                Text(prefsSummary).font(.system(size: 13)).foregroundStyle(app.palette.ink2)
-                                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink3)
+                                Text(prefsSummary).font(.app(size: 13)).foregroundStyle(app.palette.ink2)
+                                Image(systemName: "chevron.right").font(.app(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink3)
                             }
                             .frame(minHeight: 56)
                             .contentShape(Rectangle())
@@ -160,8 +160,8 @@ struct QuickSheetView: View {
                 if app.user != nil {
                     Button { onClose(); Task { await app.signOut() } } label: {
                         HStack(spacing: 8) {
-                            Image(systemName: "rectangle.portrait.and.arrow.right").font(.system(size: 15))
-                            Text(app.T("Đăng xuất", "Sign out")).font(.system(size: 15, weight: .semibold))
+                            Image(systemName: "rectangle.portrait.and.arrow.right").font(.app(size: 15))
+                            Text(app.T("Đăng xuất", "Sign out")).font(.app(size: 15, weight: .semibold))
                         }
                         .foregroundStyle(BanbeTheme.alert)
                         .frame(maxWidth: .infinity, minHeight: 48)
@@ -205,12 +205,12 @@ struct QuickSheetView: View {
             Button { onClose(); app.goProfile() } label: {
                 HStack(spacing: 16) {
                     Text(initials)
-                        .font(.system(size: 22, weight: .medium)).foregroundStyle(.white)
+                        .font(.app(size: 22, weight: .medium)).foregroundStyle(.white)
                         .frame(width: 64, height: 64)
                         .background(app.palette.clay, in: Circle())
                     VStack(alignment: .leading, spacing: 6) {
                         Text(name).font(BanbeTheme.display(20)).lineLimit(1)
-                        Text(app.T("Tài khoản", "Account") + " ›").font(.system(size: 13))
+                        Text(app.T("Tài khoản", "Account") + " ›").font(.app(size: 13))
                             .overlay(alignment: .bottom) { Rectangle().fill(app.palette.rule).frame(height: 1) }
                     }
                     Spacer(minLength: 0)
@@ -228,7 +228,7 @@ struct QuickSheetView: View {
                     app.toggleOrganizerMode()
                 }
                 if !app.organizerModeError.isEmpty {
-                    Text(app.organizerModeError).font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert).padding(.horizontal, 4)
+                    Text(app.organizerModeError).font(.app(size: 12.5)).foregroundStyle(BanbeTheme.alert).padding(.horizontal, 4)
                 }
             }
             .padding(.horizontal, 20).padding(.top, 18)
@@ -238,7 +238,7 @@ struct QuickSheetView: View {
                     ForEach(tabs, id: \.self) { k in
                         let on = tab == k
                         Button { tabSel = k } label: {
-                            Text(tabLabel(k)).font(.system(size: 14, weight: .semibold))
+                            Text(tabLabel(k)).font(.app(size: 14, weight: .semibold))
                                 .frame(maxWidth: .infinity, minHeight: 38)
                                 .foregroundStyle(on ? app.palette.paper : app.palette.ink2)
                                 .background(on ? app.palette.ink : Color.clear, in: Capsule())
@@ -257,13 +257,13 @@ struct QuickSheetView: View {
                 ForEach(shortcuts) { s in
                     Button(action: go(s.action)) {
                         VStack(spacing: 8) {
-                            Image(systemName: s.icon).font(.system(size: 22, weight: .light)).frame(height: 26)
-                            Text(s.label).font(.system(size: 12)).foregroundStyle(app.palette.ink2)
+                            Image(systemName: s.icon).font(.app(size: 22, weight: .light)).frame(height: 26)
+                            Text(s.label).font(.app(size: 12)).foregroundStyle(app.palette.ink2)
                         }
                         .frame(maxWidth: .infinity).padding(.top, 16).padding(.bottom, 12)
                         .overlay(alignment: .topTrailing) {
                             if s.badge > 0 {
-                                Text("\(s.badge)").font(.system(size: 10, weight: .bold)).foregroundStyle(BanbeTheme.onAlert)
+                                Text("\(s.badge)").font(.app(size: 10, weight: .bold)).foregroundStyle(BanbeTheme.onAlert)
                                     .padding(.horizontal, 4).frame(minWidth: 17, minHeight: 17)
                                     .background(BanbeTheme.alert, in: Capsule())
                                     .padding(.top, 8).padding(.trailing, 14)
@@ -285,9 +285,9 @@ struct QuickSheetView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(app.T("Bạn đang xem với tư cách khách", "You're browsing as a guest")).font(BanbeTheme.display(20))
             Text(app.T("Đăng nhập để đặt chỗ, lưu sự kiện và nhắn tin cho host.", "Log in to reserve, save and message hosts."))
-                .font(.system(size: 14)).foregroundStyle(app.palette.ink2)
+                .font(.app(size: 14)).foregroundStyle(app.palette.ink2)
             Button { onClose(); app.goLogin() } label: {
-                Text(app.T("Đăng nhập", "Log in")).font(.system(size: 15, weight: .semibold))
+                Text(app.T("Đăng nhập", "Log in")).font(.app(size: 15, weight: .semibold))
                     .foregroundStyle(app.palette.paper)
                     .frame(maxWidth: .infinity, minHeight: 46)
                     .background(app.palette.ink, in: Capsule())
@@ -304,8 +304,8 @@ struct QuickSheetView: View {
     private func settingRow<Content: View>(icon: String, title: String, @ViewBuilder trailing: () -> Content) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: 14) {
-                Image(systemName: icon).font(.system(size: 20, weight: .light)).frame(width: 26)
-                Text(title).font(.system(size: 15))
+                Image(systemName: icon).font(.app(size: 20, weight: .light)).frame(width: 26)
+                Text(title).font(.app(size: 15))
                 Spacer(minLength: 8)
                 trailing()
             }
@@ -318,7 +318,7 @@ struct QuickSheetView: View {
         HStack(spacing: 0) {
             ForEach(Array(items.enumerated()), id: \.offset) { _, it in
                 Button(action: it.3) {
-                    Text(it.0).font(.system(size: 12, weight: it.1 ? .semibold : .regular))
+                    Text(it.0).font(.app(size: 12, weight: it.1 ? .semibold : .regular))
                         .padding(.horizontal, 11).frame(height: 30)
                         .foregroundStyle(it.1 ? app.palette.paper : app.palette.ink2)
                         .background(it.1 ? app.palette.ink : Color.clear, in: Capsule())

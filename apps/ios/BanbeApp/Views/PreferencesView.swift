@@ -6,6 +6,8 @@ struct PreferencesView: View {
     @EnvironmentObject var app: AppState
     @AppStorage(Haptics.defaultsKey) private var hapticsEnabled = true
     @AppStorage(MapSurfaceStyle.defaultsKey) private var mapSurface = MapSurfaceStyle.glass.rawValue
+    /// Note 83: the app's one typeface (Lib/AppFont.swift). Changing it redraws the whole app at once.
+    @AppStorage(AppFontPref.key) private var fontChoice = AppFontChoice.current.rawValue
 
     var body: some View {
         ScreenScaffold {
@@ -23,9 +25,17 @@ struct PreferencesView: View {
                     .padding(.top, 16)
                 Text(app.T("Chọn cách banbe xuất hiện với bạn. Bạn có thể đổi lại bất cứ lúc nào.",
                            "Choose how banbe looks. You can change it anytime."))
-                    .font(.system(size: 13.5))
+                    .font(.app(size: 13.5))
                     .lineSpacing(3)
                     .padding(.top, 10)
+
+                // Note 83: each choice is ONE typeface for the whole app, shown in its own face.
+                section(app.T("Phông chữ", "Font")) {
+                    fontRow(.current, title: app.T("Hiện tại", "Current"), subtitle: app.T("Phông hệ thống của Apple", "Apple's system font"))
+                    fontRow(.serif, title: "Serif", subtitle: app.T("Một kiểu chữ có chân cho cả ứng dụng", "One serif typeface for the whole app"))
+                    fontRow(.beVietnam, title: "Be Vietnam Pro", subtitle: app.T("Một kiểu chữ cho cả ứng dụng", "One typeface for the whole app"))
+                }
+                .id("pref.font")
 
                 section(app.T("Giao diện bản đồ", "Map controls")) {
                     choice(title: app.T("Kính (Liquid Glass)", "Glass (Liquid Glass)"),
@@ -72,7 +82,7 @@ struct PreferencesView: View {
                     // Liquid Glass, Reduce Transparency); no in-app setting.
                     Text(app.T("Hiệu ứng kính (Liquid Glass) theo cài đặt của iPhone: Cài đặt > Màn hình & Độ sáng.",
                                "Glass effects follow your iPhone's own setting: Settings > Display & Brightness."))
-                        .font(.system(size: 12.5))
+                        .font(.app(size: 12.5))
                         .foregroundStyle(app.palette.ink.opacity(0.68))
                         .lineSpacing(3)
                         .accessibilityIdentifier("pref.glassNote")
@@ -81,9 +91,9 @@ struct PreferencesView: View {
                 section(app.T("Phản hồi xúc giác", "Haptic Feedback")) {
                     Toggle(isOn: $hapticsEnabled) {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(app.T("Rung nhẹ khi thao tác", "Haptic feedback")).font(.system(size: 14))
+                            Text(app.T("Rung nhẹ khi thao tác", "Haptic feedback")).font(.app(size: 14))
                             Text(app.T("Rung nhẹ khi chọn, lưu và hoàn tất một thao tác.", "Light taps when you choose, save or finish something."))
-                                .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                                .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
                         }
                     }
                     .toggleStyle(BanbeLiquidToggleStyle())
@@ -104,10 +114,36 @@ struct PreferencesView: View {
 
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(.system(size: 11.5, weight: .semibold))
+            Text(title).font(.app(size: 11.5, weight: .semibold))
             content()
         }
         .padding(.top, 28)
+    }
+
+    /// One font choice, its title and line drawn in that face.
+    private func fontRow(_ c: AppFontChoice, title: String, subtitle: String) -> some View {
+        let active = fontChoice == c.rawValue
+        return Button {
+            Haptics.selection()
+            fontChoice = c.rawValue
+        } label: {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(.app(size: 17, weight: .semibold, choice: c))
+                    Text(subtitle).font(.app(size: 11.5, choice: c))
+                }
+                Spacer()
+                Text(active ? "✓" : "›").font(.app(size: 15))
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(.horizontal, 18).padding(.vertical, 17)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(active ? app.palette.ink : app.palette.rule, lineWidth: active ? 1.5 : 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(active ? .isSelected : [])
+        .accessibilityIdentifier("pref.font.\(c.rawValue)")
     }
 
     private func choice(title: String, subtitle: String, active: Bool, action: @escaping () -> Void) -> some View {
@@ -115,10 +151,10 @@ struct PreferencesView: View {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title).font(BanbeTheme.display(17))
-                    Text(subtitle).font(.system(size: 11.5))
+                    Text(subtitle).font(.app(size: 11.5))
                 }
                 Spacer()
-                Text(active ? "✓" : "›").font(.system(size: 15))
+                Text(active ? "✓" : "›").font(.app(size: 15))
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 18).padding(.vertical, 17)
@@ -155,7 +191,7 @@ struct EditNameView: View {
                     "Đây là tên mà người tổ chức và khách khác thấy. Nếu bạn từng giữ chỗ ở đâu, đổi tên sẽ báo cho người tổ chức đó qua thông báo và email.",
                     "This is the name organizers and other guests see. If you have any bookings, changing it notifies those organizers by in-app notification and email."
                 ))
-                .font(.system(size: 13.5))
+                .font(.app(size: 13.5))
                 .lineSpacing(3)
                 .padding(.top, 10)
 
@@ -164,7 +200,7 @@ struct EditNameView: View {
 
                 if !app.editNameError.isEmpty {
                     Text(app.editNameError)
-                        .font(.system(size: 12))
+                        .font(.app(size: 12))
                         .foregroundStyle(BanbeTheme.alert)
                         .padding(.top, 10)
                 }

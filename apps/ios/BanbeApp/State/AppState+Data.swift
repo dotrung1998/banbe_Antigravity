@@ -1330,19 +1330,22 @@ extension AppState {
         guard ticketDemo == nil else { return }   // the ticket demo carries its own sample booking
         guard let uid = userID else { booking = nil; holdDeadline = nil; return }
         do {
+            // Note 81 phase e: all of them (a hold plus added tickets is two bookings); `booking` stays the newest.
             let rows: [Booking] = try await SupabaseService.client
                 .from("bookings").select()
                 .eq("event_id", value: eventKey)
                 .eq("user_id", value: uid)
                 .order("created_at", ascending: false)
-                .limit(1)
+                .limit(20)
                 .execute().value
             // Always set, even to nil — otherwise navigating from a booked
             // event to one you have no booking for keeps the stale ticket.
             booking = rows.first
+            eventBookings = rows
             holdDeadline = rows.first?.expiresAt
         } catch {
             booking = nil
+            eventBookings = []
             holdDeadline = nil
         }
     }
@@ -2925,12 +2928,13 @@ extension AppState {
     // MARK: - Reserve / booking
 
     func qtyMinus() { qty = max(1, qty - 1); syncAttendeeDrafts() }
-    func qtyPlus() { qty = min(6, qty + 1); syncAttendeeDrafts() }
+    func qtyPlus() { qty = min(reserveAddingAlready.map { max(1, 6 - $0) } ?? 6, qty + 1); syncAttendeeDrafts() }
 
     /// Keep the form exactly `qty` rows long without losing what's typed.
     /// Reads the buyer's own birthday from their profile (server-side, gate-checked) and,
     /// if there is one, lets ticket 1 use it and shows it for a double check.
     func applyProfileDOBToFirstAttendee() async {
+        guard reserveAddingAlready == nil else { return }   // note 81: added tickets are never the buyer's
         guard let iso: String = try? await SupabaseService.client.rpc("get_my_dob").execute().value,
               !iso.isEmpty else { return }
         let f = DateFormatter()
@@ -2995,9 +2999,9 @@ extension AppState {
             let party = attendeeDrafts.prefix(qty).enumerated().map { i, d in
                 HoldSeatsWithAttendeesParams.Attendee(
                     name: d.name.trimmingCharacters(in: .whitespacesAndNewlines),
-                    dob: (i == 0 && d.useProfileDOB) ? nil : dobFormat.string(from: d.dob ?? Date()),
-                    useProfileDob: (i == 0 && d.useProfileDOB) ? true : nil,
-                    email: (i > 0 && !d.emailTrimmed.isEmpty) ? d.emailTrimmed : nil)
+                    dob: (i == 0 && d.useProfileDOB && reserveAddingAlready == nil) ? nil : dobFormat.string(from: d.dob ?? Date()),
+                    useProfileDob: (i == 0 && d.useProfileDOB && reserveAddingAlready == nil) ? true : nil,
+                    email: ((i > 0 || reserveAddingAlready != nil) && !d.emailTrimmed.isEmpty) ? d.emailTrimmed : nil)
             }
             Analytics.trackFirst(.firstReservationStarted, userID: userID)
             let created: Booking = try await SupabaseService.client
@@ -3005,6 +3009,8 @@ extension AppState {
                 .execute().value
             bookingAttendees = []
             booking = created
+            if created.eventId == eventKey { eventBookings.insert(created, at: 0) }
+            reserveAddingAlready = nil
             Task { await loadBookingAttendees(created.id) }
             holdDeadline = created.holdExpiresAt
             now = Date()
@@ -3053,6 +3059,9 @@ extension AppState {
                 // Strict invite-only events (migration 113) — hold_seats'
                 // own gate; a specific, truthful message, not "try again".
                 "INVITE_REQUIRED": T("Sự kiện này chỉ dành cho người được mời.", "This event is invite-only."),
+                // Migration 219: 6 tickets per person per event, across bookings.
+                "PER_PERSON_LIMIT": T("Mỗi người giữ tối đa 6 vé cho một sự kiện, tính cả các vé bạn đã giữ.",
+                                      "You can hold up to 6 tickets for one event, counting the ones you already hold."),
             ][code] ?? T(
                 "Không thể giữ chỗ lúc này. Vui lòng thử lại.",
                 "Could not hold this spot right now. Please try again."
@@ -3078,7 +3087,8 @@ extension AppState {
     /// (falls back to opening it in Safari).
     func addToCalendarGoogle(_ event: CatalogEvent) {
         let start = event.startDate ?? Date()
-        let end = start.addingTimeInterval(2 * 60 * 60) // 2h default — the catalogue has no end time of its own
+        // Note 82: the event's own end when it has one, else a 2h default.
+        let end = eventEndDate(event) ?? start.addingTimeInterval(2 * 60 * 60)
         var comps = URLComponents(string: "https://calendar.google.com/calendar/render")!
         comps.queryItems = [
             URLQueryItem(name: "action", value: "TEMPLATE"),
@@ -5366,6 +5376,27 @@ try await SupabaseService.client
                 }
             }
 
+            // When it ends (note 82, migration 220): the host's own update, best-effort like the greeting.
+            if let eventID, !createEndMode.isEmpty || createEditEventId != nil {
+                struct EndUpdate: Encodable {
+                    let endTime: String?
+                    let endOpen: Bool
+                    enum CodingKeys: String, CodingKey { case endTime = "end_time", endOpen = "end_open" }
+                    func encode(to encoder: Encoder) throws {
+                        var c = encoder.container(keyedBy: CodingKeys.self)
+                        try c.encode(endTime, forKey: .endTime)   // explicit null clears it
+                        try c.encode(endOpen, forKey: .endOpen)
+                    }
+                }
+                let timed = createEndMode == "time" && !createEndTime.isEmpty
+                let patch = EndUpdate(endTime: timed ? String(createEndTime.prefix(5)) + ":00" : nil, endOpen: createEndMode == "open")
+                do {
+                    try await SupabaseService.client.from("events").update(patch).eq("id", value: eventID).execute()
+                } catch {
+                    print("end time update failed (migration 220 applied?):", error)
+                }
+            }
+
             if let eventID {
                 struct SetKeywordsParams: Encodable {
                     let eventId: String
@@ -5667,6 +5698,9 @@ try await SupabaseService.client
             return EventMarket.priceInputText(amount, currency: real.rowCurrency)
         } ?? ""
         createSeats = real.capacity.map(String.init) ?? ""
+        // Note 82: when it ends, as saved.
+        createEndMode = EventEnd.mode(endTime: real.endTime, endOpen: real.endOpen ?? false)?.rawValue ?? ""
+        createEndTime = real.endTime.map { String($0.prefix(5)) } ?? ""
         createIncludedItems = real.includedItems ?? []
         createKeywords = (real.keywords ?? []).joined(separator: ", ")
         screen = .create
@@ -6154,12 +6188,14 @@ enum EventDetailsColumns {
     static var missing: Bool { lock.lock(); defer { lock.unlock() }; return _missing }
     static func markMissing() { lock.lock(); _missing = true; lock.unlock() }
 
-    static var suffix: String { missing ? "" : ", details" }
+    /// Note 82: the end time (migration 220) rides with the details (203); both are live in production.
+    static var suffix: String { missing ? "" : ", details, end_time, end_open" }
 
     static func isMissingColumnError(_ error: Error) -> Bool {
         let s = String(describing: error).lowercased()
         guard s.contains("42703") || s.contains("does not exist") || s.contains("could not find") else { return false }
         return s.contains(".details") || s.contains("\"details\"") || s.contains("'details'") || s.contains(" details ")
+            || s.contains("end_time") || s.contains("end_open")
     }
 
     static func retrying<T>(_ body: () async throws -> T) async throws -> T {
@@ -6223,6 +6259,7 @@ extension AppState {
         d.price = createPrice; d.seats = createSeats; d.visibility = createVisibility
         d.hostGoal = createHostGoal; d.criteria = createCriteria
         d.eventDate = createEventDate; d.eventTime = createEventTime
+        d.endMode = createEndMode; d.endTime = createEndTime
         d.loc = createLoc; d.locLabel = createLocLabel; d.addressLine = createAddressLine
         d.district = createDistrict; d.city = createCity; d.postalCode = createPostalCode
         d.lat = createLat; d.lng = createLng
@@ -6253,6 +6290,7 @@ extension AppState {
         createDistrict = d.district; createCity = d.city; createPostalCode = d.postalCode
         createLat = d.lat; createLng = d.lng; createLocConfirmed = d.locConfirmed
         createEventDate = d.eventDate; createEventTime = d.eventTime
+        createEndMode = d.endMode ?? ""; createEndTime = d.endTime ?? ""
         createDefaultsSource = nil; createAppliedDefaults = nil
         createUndoOffer = nil
     }

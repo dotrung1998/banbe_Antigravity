@@ -377,6 +377,7 @@ extension AppState {
     /// called from the view's own `.task` regardless of entry path (in-app
     /// nav or a deep link).
     func openOrganizerProfile(organizerID: String, back: Screen = .profile) {
+        profileEventReturnBack = nil
         organizerProfileBackScreen = back
         organizerProfileReturnsToPulse = false
         organizerProfile = nil
@@ -436,6 +437,13 @@ extension AppState {
     func openEventOrganizer(eventKey key: String, back: Screen = .event) {
         Task {
             guard let id = await resolveOrganizerID(forEventKey: key) else { return }
+            // Note 81: from an event that was itself opened from this same profile, this is going BACK to the profile:
+            // keep its own back target and return memory (otherwise profile ↔ event would loop).
+            if homeV23Enabled, back == .event, screen == .event, eventBackScreen == .organizerProfile, organizerProfileID == id,
+               organizerProfile != nil {
+                screen = .organizerProfile
+                return
+            }
             organizerProfileEventKey = key
             if back == .event { eventKey = key }
             openOrganizerProfile(organizerID: id, back: back)
@@ -483,6 +491,9 @@ extension AppState {
             Task { await loadBookingForCurrentEvent() }
             Task { await loadLiveEventStatus() }
         }
+        // Note 81: back on the first event, with that event's own back target.
+        if organizerProfileBackScreen == .event, let first = profileEventReturnBack { eventBackScreen = first }
+        profileEventReturnBack = nil
         screen = organizerProfileBackScreen
         if toPulse { pulseOpen = true }  // lists kept — no refetch/clear
     }

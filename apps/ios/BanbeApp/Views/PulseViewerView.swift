@@ -176,7 +176,7 @@ struct PulseViewerView: View {
                     // word "Close"); glass disc on iOS 26 like the sheet toolbars' system X.
                     Button { commitDismiss() } label: {
                         let icon = Image(systemName: "xmark")
-                            .font(.system(size: 22, weight: .regular))
+                            .font(.app(size: 22, weight: .regular))
                             .foregroundStyle(app.palette.ink)
                             .frame(width: 44, height: 44)
                         if #available(iOS 26.0, *), !reduceTransparency {
@@ -223,7 +223,7 @@ struct PulseViewerView: View {
                                         .accessibilityIdentifier("pulse.loading")
                                 } else {
                                     Text(app.T("Chưa có dữ liệu xếp hạng.", "Nothing ranked yet."))
-                                        .font(.system(size: 13)).foregroundStyle(app.palette.ink.opacity(0.7))
+                                        .font(.app(size: 13)).foregroundStyle(app.palette.ink.opacity(0.7))
                                         .padding(.top, 60)
                                         .accessibilityIdentifier("pulse.empty")
                                 }
@@ -239,7 +239,7 @@ struct PulseViewerView: View {
                                     .accessibilityIdentifier("pulse.loading")
                             } else {
                                 Text(app.T("Chưa có dữ liệu xếp hạng.", "Nothing ranked yet."))
-                                    .font(.system(size: 13)).foregroundStyle(app.palette.ink.opacity(0.7))
+                                    .font(.app(size: 13)).foregroundStyle(app.palette.ink.opacity(0.7))
                                     .padding(.top, 60)
                                     .accessibilityIdentifier("pulse.empty")
                             }
@@ -392,18 +392,18 @@ struct PulseViewerView: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
-                        Text("#\(rank)").font(.system(size: 11, weight: .bold)).foregroundStyle(app.palette.ink.opacity(0.5))
+                        Text("#\(rank)").font(.app(size: 11, weight: .bold)).foregroundStyle(app.palette.ink.opacity(0.5))
                         Text(item.eventName).font(BanbeTheme.display(14)).lineLimit(1)
                     }
                     HStack(spacing: 8) {
                         Text(item.organizerName + (item.organizerVerified ? " ✓" : ""))
-                            .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                            .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.75))
                             .accessibilityIdentifier("pulse.organizerIdentity")
                         if app.isFollowing(item.organizerId) { FollowingBadge() }
                     }
                     if let included = item.included, !included.isEmpty {
                         Text(app.T("Bao gồm: ", "Includes: ") + included)
-                            .font(.system(size: 10)).foregroundStyle(app.palette.ink.opacity(0.55))
+                            .font(.app(size: 10)).foregroundStyle(app.palette.ink.opacity(0.55))
                             .lineLimit(1)
                     }
                 }
@@ -419,18 +419,18 @@ struct PulseViewerView: View {
                 VStack(alignment: .trailing, spacing: 3) {
                     if let cat = item.catLabel, !cat.isEmpty {
                         Text(cat)
-                            .font(.system(size: 9.5, weight: .semibold))
+                            .font(.app(size: 9.5, weight: .semibold))
                             .padding(.horizontal, 7).padding(.vertical, 3)
                             .background(app.palette.paper, in: Capsule())
                             .foregroundStyle(app.palette.ink)
                             .lineLimit(1)
                     }
                     Text(app.T("\(item.bookingCount) vé", "\(item.bookingCount) bkgs"))
-                        .font(.system(size: 9.5)).foregroundStyle(app.palette.ink.opacity(0.65)).lineLimit(1)
+                        .font(.app(size: 9.5)).foregroundStyle(app.palette.ink.opacity(0.65)).lineLimit(1)
                     Text(app.T("\(item.checkinCount) check-in", "\(item.checkinCount) chk-in"))
-                        .font(.system(size: 9.5)).foregroundStyle(app.palette.ink.opacity(0.65)).lineLimit(1)
+                        .font(.app(size: 9.5)).foregroundStyle(app.palette.ink.opacity(0.65)).lineLimit(1)
                     Text(app.T("\(item.followCount) theo dõi", "\(item.followCount) follows"))
-                        .font(.system(size: 9.5)).foregroundStyle(app.palette.ink.opacity(0.5)).lineLimit(1)
+                        .font(.app(size: 9.5)).foregroundStyle(app.palette.ink.opacity(0.5)).lineLimit(1)
                 }
                 .frame(width: 82, alignment: .trailing)
                 .padding(.trailing, 12)
@@ -538,11 +538,11 @@ struct PulseViewerView: View {
                         VStack(spacing: 8) {
                             Text(title).font(BanbeTheme.display(18)).multilineTextAlignment(.center).lineLimit(3)
                             if let subtitle, !subtitle.isEmpty {
-                                Text(subtitle).font(.subheadline).foregroundStyle(app.palette.ink.opacity(0.75))
+                                Text(subtitle).font(.app(.subheadline)).foregroundStyle(app.palette.ink.opacity(0.75))
                                     .multilineTextAlignment(.center)
                             }
                             if let metaLine, !metaLine.isEmpty {
-                                Text(metaLine).font(.footnote).foregroundStyle(app.palette.ink.opacity(0.6))
+                                Text(metaLine).font(.app(.footnote)).foregroundStyle(app.palette.ink.opacity(0.6))
                                     .multilineTextAlignment(.center)
                             }
                             actions().padding(.top, 6)
@@ -577,7 +577,7 @@ struct PulseViewerView: View {
                 .overlay(alignment: .topTrailing) {
                     Button { closeExpandedPanel(onClose: onClose) } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.app(size: 14, weight: .semibold))
                             .foregroundStyle(app.palette.ink)
                             .frame(width: 44, height: 44)
                             .background(.regularMaterial, in: Circle())
@@ -645,7 +645,7 @@ struct PulseViewerView: View {
                     Task { await app.followPulseOrganizer(item.organizerId) }
                 } label: {
                     Text((item.following ? "✓ " : "") + (item.following ? app.T("Đang theo dõi", "Following") : app.T("Theo dõi tổ chức này", "Follow this host")))
-                        .font(.system(size: 13.5, weight: .semibold))
+                        .font(.app(size: 13.5, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14).padding(.horizontal, 10)
                         .background(item.following ? Color.clear : app.palette.ink, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -662,7 +662,7 @@ struct PulseViewerView: View {
                     app.goEvent(item.eventId)
                 } label: {
                     Text(app.T("Xem sự kiện", "View event"))
-                        .font(.system(size: 13.5, weight: .semibold))
+                        .font(.app(size: 13.5, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14).padding(.horizontal, 10)
                         .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -676,7 +676,7 @@ struct PulseViewerView: View {
                 app.openOrganizerProfileFromPulse(organizerID: item.organizerId)
             } label: {
                 Text(app.T("Xem trang tổ chức", "View host page"))
-                    .font(.system(size: 12.5, weight: .semibold))
+                    .font(.app(size: 12.5, weight: .semibold))
                     .underline()
                     .frame(minHeight: 44)
             }
@@ -724,7 +724,7 @@ struct PulseViewerView: View {
                 // outline heart badge in the unliked state.
                 if eng.likedByMe {
                     Image(systemName: "heart.fill")
-                        .font(.system(size: 13))
+                        .font(.app(size: 13))
                         .foregroundStyle(.white)
                         .shadow(color: .black.opacity(0.55), radius: 2, y: 1)
                         .padding(6)
@@ -737,12 +737,12 @@ struct PulseViewerView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text("#\(rank)").font(.system(size: 11, weight: .bold)).foregroundStyle(app.palette.ink.opacity(0.5))
+                    Text("#\(rank)").font(.app(size: 11, weight: .bold)).foregroundStyle(app.palette.ink.opacity(0.5))
                     Text(item.eventName).font(BanbeTheme.display(14)).lineLimit(1)
                 }
                 HStack(spacing: 8) {
                     Text(item.organizerName + (item.organizerVerified ? " ✓" : ""))
-                        .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                        .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.75))
                     if app.isFollowing(item.organizerId) { FollowingBadge() }
                 }
             }
@@ -754,11 +754,11 @@ struct PulseViewerView: View {
                     Task { await app.togglePhotoLike(item.photoId) }
                 } label: {
                     HStack(spacing: 4) {
-                        Text("\(eng.likeCount)").font(.system(size: 11)).foregroundStyle(app.palette.ink)
+                        Text("\(eng.likeCount)").font(.app(size: 11)).foregroundStyle(app.palette.ink)
                         if eng.likedByMe {
-                            Image(systemName: "heart.fill").font(.system(size: 12)).foregroundStyle(app.palette.ink)
+                            Image(systemName: "heart.fill").font(.app(size: 12)).foregroundStyle(app.palette.ink)
                         } else {
-                            Text(app.T("Thích", "Like")).font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.55))
+                            Text(app.T("Thích", "Like")).font(.app(size: 11)).foregroundStyle(app.palette.ink.opacity(0.55))
                         }
                     }
                 }
@@ -770,8 +770,8 @@ struct PulseViewerView: View {
                     sharePulsePhoto(item)
                 } label: {
                     HStack(spacing: 4) {
-                        Text("\(eng.shareCount)").font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
-                        Image(systemName: "square.and.arrow.up").font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
+                        Text("\(eng.shareCount)").font(.app(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
+                        Image(systemName: "square.and.arrow.up").font(.app(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
                     }
                 }
                 .buttonStyle(.plain)
@@ -830,11 +830,11 @@ struct PulseViewerView: View {
                     } label: {
                         HStack(spacing: 6) {
                             if eng.likedByMe {
-                                Image(systemName: "heart.fill").font(.system(size: 13))
+                                Image(systemName: "heart.fill").font(.app(size: 13))
                             }
                             Text(app.T("Thích", "Like") + " · \(eng.likeCount)")
                         }
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.app(size: 13, weight: .semibold))
                         .padding(.horizontal, 18).padding(.vertical, 10)
                         .frame(minHeight: 44)
                         .background(eng.likedByMe ? app.palette.ink : Color.clear, in: Capsule())
@@ -850,7 +850,7 @@ struct PulseViewerView: View {
                         sharePulsePhoto(item)
                     } label: {
                         Text(app.T("Chia sẻ", "Share") + " · \(eng.shareCount)")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.app(size: 13, weight: .semibold))
                             .padding(.horizontal, 18).padding(.vertical, 10)
                             .frame(minHeight: 44)
                             .overlay(Capsule().stroke(app.palette.rule))
@@ -865,7 +865,7 @@ struct PulseViewerView: View {
                     app.closePulseViewer()
                     app.goEvent(item.eventId)
                 }
-                .font(.system(size: 12)).foregroundStyle(app.palette.ink).underline()
+                .font(.app(size: 12)).foregroundStyle(app.palette.ink).underline()
                 .frame(minHeight: 44)
                 .accessibilityIdentifier("pulse.photoViewEvent")
             }

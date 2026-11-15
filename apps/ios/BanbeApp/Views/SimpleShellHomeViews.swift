@@ -46,13 +46,13 @@ struct HomeModeSwitch: View {
             HStack(spacing: 5) {
                 if locked {
                     Image(systemName: "lock.fill")
-                        .font(.system(size: font - 3, weight: .semibold))
+                        .font(.app(size: font - 3, weight: .semibold))
                         .accessibilityHidden(true)
                         // The lock fades and shrinks away when hosting unlocks (a plain fade under Reduce Motion).
                         .transition(Motion.transition(.scale(scale: 0.4).combined(with: .opacity), reduce: reduceMotion))
                 }
                 Text(title)
-                    .font(.system(size: font, weight: .semibold))
+                    .font(.app(size: font, weight: .semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(fitsWidth ? 0.5 : 1)
                     .fixedSize(horizontal: !fitsWidth, vertical: false)
@@ -184,13 +184,13 @@ struct HostHomeSections: View {
                     Button { Haptics.light(); a.run() } label: {
                         VStack(spacing: 6) {
                             Image(systemName: a.icon)
-                                .font(.system(size: 20, weight: .semibold))
+                                .font(.app(size: 20, weight: .semibold))
                                 .frame(width: 56, height: 56)
                                 .background(app.palette.block, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                             // Note 71 phase 4: at accessibility sizes the one-word label truncated to "K…"; there the
                             // tile is wider and the full title wraps (the row scrolls on its own).
                             Text(dynamicTypeSize.isAccessibilitySize ? a.title : a.short)
-                                .font(.caption.weight(.semibold))
+                                .font(.app(.caption).weight(.semibold))
                                 .foregroundStyle(app.palette.ink2)
                                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1).minimumScaleFactor(0.8)
                                 .multilineTextAlignment(.center)
@@ -224,7 +224,7 @@ struct HostHomeSections: View {
         if let variant = HostHomeEmpty.comingUp(upcoming: list.count, hasHero: nextHosted != nil,
                                                 pending: app.myPendingEvents.count, needsFix: app.myNeedsFixEvents.count) {
             VStack(alignment: .leading, spacing: 10) {
-                Text(app.T("Sắp tới", "Coming up")).font(.headline)
+                Text(app.T("Sắp tới", "Coming up")).font(.app(.headline))
                     .accessibilityAddTraits(.isHeader)
                 comingUpEmpty(variant)
             }
@@ -232,7 +232,7 @@ struct HostHomeSections: View {
             .accessibilityIdentifier("home.host.upcoming")
         } else if !list.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                Text(app.T("Sắp tới", "Coming up")).font(.headline)
+                Text(app.T("Sắp tới", "Coming up")).font(.app(.headline))
                     .accessibilityAddTraits(.isHeader)
                 VStack(spacing: 0) {
                     ForEach(Array(list.enumerated()), id: \.element.key) { i, e in
@@ -241,17 +241,17 @@ struct HostHomeSections: View {
                             HStack(spacing: 12) {
                                 CatalogPhoto(path: e.img, height: 40, width: 40, cornerRadius: 8)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(e.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                                    Text(e.name).font(.app(.subheadline).weight(.semibold)).lineLimit(1)
                                     Text(app.discoveryWhenLabel(e.startDate, timeZone: EventMarket.timeZone(e.timeZoneID)))
-                                        .font(.footnote).foregroundStyle(app.palette.ink2)
+                                        .font(.app(.footnote)).foregroundStyle(app.palette.ink2)
                                 }
                                 Spacer(minLength: 8)
                                 if let fill = app.eventFill[e.key], fill.capacity > 0 {
                                     Text("\(fill.booked)/\(fill.capacity)")
-                                        .font(.footnote.weight(.semibold)).monospacedDigit()
+                                        .font(.app(.footnote).weight(.semibold)).monospacedDigit()
                                         .accessibilityLabel(app.T("\(fill.booked) trên \(fill.capacity) chỗ đã bán", "\(fill.booked) of \(fill.capacity) seats sold"))
                                 }
-                                Image(systemName: "chevron.right").font(.footnote.weight(.semibold))
+                                Image(systemName: "chevron.right").font(.app(.footnote).weight(.semibold))
                                     .foregroundStyle(app.palette.ink3).accessibilityHidden(true)
                             }
                             .padding(.horizontal, 12).padding(.vertical, 10)
@@ -343,14 +343,14 @@ struct HostHomeSections: View {
                     CatalogPhoto(path: e.img, height: 64, width: 64, cornerRadius: 12)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(app.T("Sự kiện tiếp theo của bạn", "Your next event"))
-                            .font(.footnote.weight(.semibold))
+                            .font(.app(.footnote).weight(.semibold))
                             .foregroundStyle(app.palette.ink2)
                         Text(e.name).font(BanbeTheme.display(20)).lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
-                        Text(when).font(.subheadline).foregroundStyle(app.palette.ink2)
+                        Text(when).font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
                         if let fill, fill.capacity > 0 {
                             Text(app.T("\(fill.booked)/\(fill.capacity) chỗ đã bán", "\(fill.booked)/\(fill.capacity) seats sold"))
-                                .font(.subheadline.weight(.semibold)).monospacedDigit()
+                                .font(.app(.subheadline).weight(.semibold)).monospacedDigit()
                                 .accessibilityIdentifier("home.host.hero.seats")
                         }
                     }
@@ -397,7 +397,7 @@ struct HostHomeSections: View {
             }
             .disabled(app.projectBusy)
             if !app.projectNotice.isEmpty {
-                Text(app.projectNotice).font(.footnote).foregroundStyle(BanbeTheme.alert)
+                Text(app.projectNotice).font(.app(.footnote)).foregroundStyle(BanbeTheme.alert)
                     .accessibilityIdentifier("home.host.project.notice")
             }
         }
@@ -409,7 +409,7 @@ struct HostHomeSections: View {
             action()
         } label: {
             Label(title, systemImage: icon)
-                .font(.subheadline.weight(.semibold))
+                .font(.app(.subheadline).weight(.semibold))
                 .lineLimit(1).minimumScaleFactor(0.85)
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .foregroundStyle(primary ? app.palette.paper : app.palette.ink)
@@ -435,7 +435,7 @@ struct HostHomeSections: View {
                     Text(app.T("Khoảng 5 phút", "About 5 minutes"))
                 }
             }
-            .font(.subheadline)
+            .font(.app(.subheadline))
             .foregroundStyle(app.palette.ink2)
             .lineLimit(1)
             InkButton(title: app.T("Tạo sự kiện", "Create event"), cornerRadius: 999) { app.goCreate() }
@@ -469,9 +469,9 @@ struct HostHomeSections: View {
                 app.goDashboard(back: .home)
             } label: {
                 HStack {
-                    Text(app.T("Sự kiện đã gửi", "Submitted events")).font(.headline)
+                    Text(app.T("Sự kiện đã gửi", "Submitted events")).font(.app(.headline))
                     Spacer()
-                    Image(systemName: "chevron.right").font(.footnote.weight(.semibold))
+                    Image(systemName: "chevron.right").font(.app(.footnote).weight(.semibold))
                         .foregroundStyle(app.palette.ink3).accessibilityHidden(true)
                 }
                 .frame(minHeight: 44)
@@ -512,13 +512,13 @@ struct HostHomeSections: View {
         if state != .hidden {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text(HostHomeEmpty.rangeHeading(app.reportsRangeDays, app.T)).font(.headline)
+                    Text(HostHomeEmpty.rangeHeading(app.reportsRangeDays, app.T)).font(.app(.headline))
                         .accessibilityAddTraits(.isHeader)
                     Spacer()
                     Button {
                         app.openReports(scope: "host", organizerID: app.myOrganizerID, back: .home)
                     } label: {
-                        Text(app.T("Báo cáo ›", "Reports ›")).font(.subheadline.weight(.semibold))
+                        Text(app.T("Báo cáo ›", "Reports ›")).font(.app(.subheadline).weight(.semibold))
                             .frame(minHeight: 44).contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -616,11 +616,11 @@ struct HostTileGrid: View {
     private func tile(_ t: Tile) -> some View {
         let base = VStack(alignment: .leading, spacing: 4) {
             Text(t.value)
-                .font(.system(size: 20, weight: .semibold))
+                .font(.app(size: 20, weight: .semibold))
                 .monospacedDigit()
                 .lineLimit(1).minimumScaleFactor(0.6)
             Text(t.label)
-                .font(.system(size: 13))
+                .font(.app(size: 13))
                 .foregroundStyle(app.palette.ink2)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -665,7 +665,7 @@ struct DockEventStoryPickerSheet: View {
                         ProgressView().padding(.top, 40)
                     } else if events.isEmpty {
                         Text(app.T("Bạn chưa có sự kiện nào đang mở để đăng.", "You have no live events to post yet."))
-                            .font(.subheadline).foregroundStyle(app.palette.ink2).padding(.top, 40)
+                            .font(.app(.subheadline)).foregroundStyle(app.palette.ink2).padding(.top, 40)
                     }
                     ForEach(events, id: \.key) { ev in
                         Button {
@@ -682,11 +682,11 @@ struct DockEventStoryPickerSheet: View {
                                 CatalogPhoto(path: ev.img, height: 52, width: 52, cornerRadius: 10)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(ev.name).font(BanbeTheme.display(15)).lineLimit(1)
-                                    Text(ev.when).font(.footnote).foregroundStyle(app.palette.ink2).lineLimit(1)
+                                    Text(ev.when).font(.app(.footnote)).foregroundStyle(app.palette.ink2).lineLimit(1)
                                 }
                                 Spacer(minLength: 0)
                                 if busyKey == ev.key { ProgressView() }
-                                else { Image(systemName: "chevron.right").font(.footnote).foregroundStyle(app.palette.ink3) }
+                                else { Image(systemName: "chevron.right").font(.app(.footnote)).foregroundStyle(app.palette.ink3) }
                             }
                             .padding(12)
                             .frame(minHeight: 44)
@@ -698,7 +698,7 @@ struct DockEventStoryPickerSheet: View {
                     }
                     Text(app.T("Bạn có thể thêm chữ và liên kết trước khi đăng. Story hiển thị trong 24 giờ.",
                                "You can add text and a link before posting. The story stays up for 24 hours."))
-                        .font(.caption).foregroundStyle(app.palette.ink2).padding(.top, 6)
+                        .font(.app(.caption)).foregroundStyle(app.palette.ink2).padding(.top, 6)
                 }
                 .padding(20)
             }

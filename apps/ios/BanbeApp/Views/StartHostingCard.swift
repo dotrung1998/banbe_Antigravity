@@ -51,7 +51,7 @@ struct StartHostingSheet: View {
                     dismiss()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.app(size: 15, weight: .semibold))
                         .foregroundStyle(app.palette.ink2)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
@@ -67,7 +67,7 @@ struct StartHostingSheet: View {
             .padding(.horizontal, 24)
             if !app.organizerModeError.isEmpty {
                 Text(app.organizerModeError)
-                    .font(.footnote)
+                    .font(.app(.footnote))
                     .foregroundStyle(BanbeTheme.alert)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 24)

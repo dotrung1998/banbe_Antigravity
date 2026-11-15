@@ -93,14 +93,14 @@ struct GlassSegmentedControl: View {
     private func segmentLabel(_ seg: GlassSegment, selected: Bool) -> some View {
         HStack(spacing: 6) {
             if showsIcons, let icon = seg.icon {
-                Image(systemName: icon).font(.system(size: 15, weight: .semibold)).accessibilityHidden(true)
+                Image(systemName: icon).font(.app(size: 15, weight: .semibold)).accessibilityHidden(true)
             }
             Text(seg.label)
-                .font(.system(.subheadline, design: .rounded).weight(selected ? .bold : .semibold))
+                .font(.app(.subheadline, design: .rounded).weight(selected ? .bold : .semibold))
                 .lineLimit(1).minimumScaleFactor(0.75)
             if seg.badge > 0 {
                 Text(AccountBadges.format(seg.badge))
-                    .font(.system(size: 11, weight: .bold)).monospacedDigit()
+                    .font(.app(size: 11, weight: .bold)).monospacedDigit()
                     .padding(.horizontal, 5).frame(minWidth: 18, minHeight: 18)
                     .background(BanbeTheme.alert, in: Capsule())
                     .foregroundStyle(BanbeTheme.onAlert)

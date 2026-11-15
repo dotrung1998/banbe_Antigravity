@@ -25,7 +25,7 @@ struct FaceIDLockView: View {
                     BanbeLoadingVisual(size: 44).offset(y: -14)
                 } else {
                     Image(systemName: "faceid")
-                        .font(.system(size: 44))
+                        .font(.app(size: 44))
                         .foregroundStyle(.secondary)
                 }
                 HStack(spacing: 4) {
@@ -33,11 +33,11 @@ struct FaceIDLockView: View {
                     // standing in for the word "banbe" itself.
                     BanbeLogo(kind: .wordmark, height: 50)
                     Text("is locked")
-                        .font(.headline)
+                        .font(.app(.headline))
                 }
                 if let errorMessage {
                     Text(errorMessage)
-                        .font(.footnote)
+                        .font(.app(.footnote))
                         .foregroundStyle(.red)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)

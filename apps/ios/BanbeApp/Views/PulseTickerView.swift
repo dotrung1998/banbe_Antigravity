@@ -34,7 +34,7 @@ struct PulseTickerView: View {
                 chip
                 track(its)
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .bold)).opacity(0.5)
+                    .font(.app(size: 12, weight: .bold)).opacity(0.5)
                     .accessibilityHidden(true)
             }
             .padding(.leading, 5).padding(.trailing, 12)
@@ -61,7 +61,7 @@ struct PulseTickerView: View {
 
     private var chip: some View {
         Text("✦ Pulse")
-            .font(.system(size: 12, weight: .bold))
+            .font(.app(size: 12, weight: .bold))
             .foregroundStyle(.white)
             .shadow(color: .white.opacity(0.45), radius: 3)
             .padding(.horizontal, 11).frame(height: 28)
@@ -88,11 +88,11 @@ struct PulseTickerView: View {
     private func trackContent(_ items: [PulseTicker.Item]) -> some View {
         if items.isEmpty {
             Text(app.T("Xem điều gì đang hot tuần này", "See what's trending this week"))
-                .font(.system(size: 13.5)).opacity(0.7).lineLimit(1)
+                .font(.app(size: 13.5)).opacity(0.7).lineLimit(1)
                 .accessibilityIdentifier("home.pulseTicker.empty")
         } else if reduceMotion {
             Text(items.map { "\($0.rank) \($0.name)" }.joined(separator: "   ·   "))
-                .font(.system(size: 13.5, weight: .medium)).lineLimit(1)
+                .font(.app(size: 13.5, weight: .medium)).lineLimit(1)
         } else {
             MarqueeStrip(startedAt: startedAt, paused: scenePhase != .active,
                          secondsPerPass: PulseTicker.seconds(for: items),
@@ -105,8 +105,8 @@ struct PulseTickerView: View {
         HStack(spacing: 22) {
             ForEach(items) { it in
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("\(it.rank)").font(.system(size: 12, weight: .bold)).monospacedDigit().opacity(0.55)
-                    Text(it.name).font(.system(size: 13.5, weight: .medium)).lineLimit(1).fixedSize()
+                    Text("\(it.rank)").font(.app(size: 12, weight: .bold)).monospacedDigit().opacity(0.55)
+                    Text(it.name).font(.app(size: 13.5, weight: .medium)).lineLimit(1).fixedSize()
                 }
             }
         }

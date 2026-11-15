@@ -75,42 +75,42 @@ struct DobCorrectionRequestView: View {
             if mine?.status == "pending" {
                 Text(app.T("Yêu cầu sửa thành \(shortDate(mine?.requestedDob)) đang chờ quản trị viên xem xét.",
                            "Your request to change it to \(shortDate(mine?.requestedDob)) is waiting for an admin."))
-                    .font(.system(size: 11.5)).opacity(0.75)
+                    .font(.app(size: 11.5)).opacity(0.75)
                     .accessibilityIdentifier("dobCorrection.pending")
             } else {
                 if mine?.status == "rejected" {
                     Text(app.T("Yêu cầu sửa trước đó đã bị từ chối", "Your last correction request was declined")
                          + ((mine?.decisionNote ?? "").isEmpty ? "." : ": \(mine?.decisionNote ?? "")"))
-                        .font(.system(size: 11.5)).opacity(0.75)
+                        .font(.app(size: 11.5)).opacity(0.75)
                 }
                 if !open {
                     Button(app.T("Sai ngày sinh? Yêu cầu sửa", "Wrong? Request a correction")) { open = true }
-                        .font(.system(size: 11.5, weight: .semibold)).underline().buttonStyle(.plain)
+                        .font(.app(size: 11.5, weight: .semibold)).underline().buttonStyle(.plain)
                         .accessibilityIdentifier("dobCorrection.open")
                 } else {
                     HStack {
-                        Text(app.T("Ngày sinh đúng", "Correct date of birth")).font(.system(size: 12.5))
+                        Text(app.T("Ngày sinh đúng", "Correct date of birth")).font(.app(size: 12.5))
                         Spacer()
                         DatePicker("", selection: $dob, in: ...Date(), displayedComponents: .date).labelsHidden()
                             .accessibilityIdentifier("dobCorrection.dob")
                     }
                     TextField(app.T("Lý do (ví dụ: nhập nhầm khi đăng ký)", "Reason (for example: mistyped at sign-up)"), text: $reason, axis: .vertical)
                         .lineLimit(2...4)
-                        .font(.system(size: 13))
+                        .font(.app(size: 13))
                         .padding(10)
                         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .accessibilityIdentifier("dobCorrection.reason")
                     Text(app.T("Quản trị viên sẽ xem xét. Ngày sinh chỉ đổi khi yêu cầu được duyệt.",
                                "An admin reviews it. Your birthday only changes if the request is approved."))
-                        .font(.system(size: 11)).opacity(0.65)
-                    if !errorMsg.isEmpty { Text(errorMsg).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert) }
+                        .font(.app(size: 11)).opacity(0.65)
+                    if !errorMsg.isEmpty { Text(errorMsg).font(.app(size: 12)).foregroundStyle(BanbeTheme.alert) }
                     HStack(spacing: 14) {
                         Button(busy ? app.T("Đang gửi…", "Sending…") : app.T("Gửi yêu cầu", "Send request")) { Task { await submit() } }
                             .disabled(busy || reason.trimmingCharacters(in: .whitespacesAndNewlines).count < 5)
                             .accessibilityIdentifier("dobCorrection.submit")
                         Button(app.T("Hủy", "Cancel")) { open = false; errorMsg = "" }
                     }
-                    .font(.system(size: 12.5, weight: .semibold)).buttonStyle(.plain)
+                    .font(.app(size: 12.5, weight: .semibold)).buttonStyle(.plain)
                 }
             }
         }
@@ -186,27 +186,27 @@ struct AdminDobCorrectionsView: View {
 
     private func card(_ r: Row, actions: Bool) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(r.displayName?.isEmpty == false ? (r.displayName ?? "") : r.email).font(.system(size: 14, weight: .semibold))
-            Text(r.email).font(.system(size: 12)).opacity(0.75)
+            Text(r.displayName?.isEmpty == false ? (r.displayName ?? "") : r.email).font(.app(size: 14, weight: .semibold))
+            Text(r.email).font(.app(size: 12)).opacity(0.75)
             Text("\(app.T("Hiện tại", "Current")): \(shortDate(r.currentDob))\n\(app.T("Yêu cầu đổi thành", "Requested")): \(shortDate(r.requestedDob))\n\(app.T("Lý do", "Reason")): \(r.reason)")
-                .font(.system(size: 12.5)).lineSpacing(3)
+                .font(.app(size: 12.5)).lineSpacing(3)
             if actions {
                 TextField(app.T("Ghi chú cho người dùng (không bắt buộc)", "Note to the user (optional)"),
                           text: Binding(get: { notes[r.id] ?? "" }, set: { notes[r.id] = $0 }))
-                    .font(.system(size: 13)).padding(12)
+                    .font(.app(size: 13)).padding(12)
                     .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 HStack(spacing: 8) {
                     InkButton(title: app.T("Duyệt", "Approve")) { Task { await decide(r, approve: true) } }
                         .disabled(busy).accessibilityIdentifier("dobAdmin.approve.\(r.id)")
                     Button(app.T("Từ chối", "Decline")) { Task { await decide(r, approve: false) } }
-                        .font(.system(size: 15, weight: .semibold)).frame(maxWidth: .infinity).padding(.vertical, 14)
+                        .font(.app(size: 15, weight: .semibold)).frame(maxWidth: .infinity).padding(.vertical, 14)
                         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .buttonStyle(.plain).disabled(busy).accessibilityIdentifier("dobAdmin.decline.\(r.id)")
                 }
             } else {
                 Text((r.status == "approved" ? app.T("Đã duyệt", "Approved") : app.T("Đã từ chối", "Declined"))
                      + ((r.decisionNote ?? "").isEmpty ? "" : ": \(r.decisionNote ?? "")"))
-                    .font(.system(size: 12)).opacity(0.75)
+                    .font(.app(size: 12)).opacity(0.75)
             }
         }
         .padding(16)
@@ -222,18 +222,18 @@ struct AdminDobCorrectionsView: View {
                 Text(app.T("Sửa ngày sinh", "Birthday corrections")).font(BanbeTheme.display(24)).padding(.top, 14)
                 Text(app.T("Người dùng gửi yêu cầu khi ngày sinh trong hồ sơ bị sai. Duyệt sẽ ghi đè ngày sinh đã lưu.",
                            "People file a request when the birthday on their profile is wrong. Approving overwrites the stored birthday."))
-                    .font(.system(size: 12.5)).opacity(0.75).padding(.top, 8)
+                    .font(.app(size: 12.5)).opacity(0.75).padding(.top, 8)
                 if !message.isEmpty {
-                    Text(message).font(.system(size: 12.5))
+                    Text(message).font(.app(size: 12.5))
                         .foregroundStyle(messageIsError ? BanbeTheme.alert : app.palette.ink).padding(.top, 12)
                 }
                 let pending = rows.filter { $0.status == "pending" }
                 let done = rows.filter { $0.status != "pending" }
-                if loading { Text(app.T("Đang tải…", "Loading…")).font(.system(size: 13)).opacity(0.65).padding(.top, 18) }
-                else if pending.isEmpty { Text(app.T("Không có yêu cầu nào đang chờ.", "No requests waiting.")).font(.system(size: 13)).opacity(0.65).padding(.top, 18) }
+                if loading { Text(app.T("Đang tải…", "Loading…")).font(.app(size: 13)).opacity(0.65).padding(.top, 18) }
+                else if pending.isEmpty { Text(app.T("Không có yêu cầu nào đang chờ.", "No requests waiting.")).font(.app(size: 13)).opacity(0.65).padding(.top, 18) }
                 ForEach(pending) { card($0, actions: true) }
                 if !done.isEmpty {
-                    Text(app.T("Đã xử lý", "Handled")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 24)
+                    Text(app.T("Đã xử lý", "Handled")).font(.app(size: 11.5, weight: .semibold)).padding(.top, 24)
                     ForEach(done) { card($0, actions: false) }
                 }
             }

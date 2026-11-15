@@ -167,7 +167,7 @@ struct SearchView: View {
     private func groupTitle(_ text: String, count: Int? = nil, id: String? = nil) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(text).font(BanbeTheme.display(16)).accessibilityAddTraits(.isHeader)
-            if let count { Text("\(count)").font(.system(size: 12.5)).opacity(0.6) }
+            if let count { Text("\(count)").font(.app(size: 12.5)).opacity(0.6) }
         }
         .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 10)
         .modifier(OptionalIdentifier(identifier: id))
@@ -176,10 +176,10 @@ struct SearchView: View {
     private func chip(_ title: String, icon: String? = nil, id: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                if let icon { Image(systemName: icon).font(.system(size: 13)) }
+                if let icon { Image(systemName: icon).font(.app(size: 13)) }
                 Text(title).lineLimit(1)
             }
-            .font(.system(size: 13.5))
+            .font(.app(size: 13.5))
             .padding(.horizontal, 14).frame(minHeight: 36)
             .overlay(Capsule().strokeBorder(app.palette.rule, lineWidth: 1))
             .contentShape(Capsule())
@@ -195,7 +195,7 @@ struct SearchView: View {
                 Text(app.T("Tìm gần đây", "Recent")).font(BanbeTheme.display(16))
                 Spacer()
                 Button(app.T("Xoá", "Clear")) { recent = []; RecentSearches.save([]) }
-                    .font(.system(size: 12.5)).opacity(0.6).buttonStyle(.plain)
+                    .font(.app(size: 12.5)).opacity(0.6).buttonStyle(.plain)
                     .accessibilityIdentifier("search.recent.clear")
             }
             .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 10)
@@ -219,10 +219,10 @@ struct SearchView: View {
             ForEach(Array(app.pulseDaily.prefix(5).enumerated()), id: \.element.id) { i, p in
                 Button { app.goEvent(p.eventId) } label: {
                     HStack(spacing: 12) {
-                        Text("\(i + 1)").font(.system(size: 14, weight: .bold)).monospacedDigit().opacity(0.5).frame(width: 22, alignment: .leading)
-                        Text(p.eventName).font(.system(size: 14.5)).lineLimit(1)
+                        Text("\(i + 1)").font(.app(size: 14, weight: .bold)).monospacedDigit().opacity(0.5).frame(width: 22, alignment: .leading)
+                        Text(p.eventName).font(.app(size: 14.5)).lineLimit(1)
                         Spacer(minLength: 0)
-                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).opacity(0.4)
+                        Image(systemName: "chevron.right").font(.app(size: 12, weight: .semibold)).opacity(0.4)
                     }
                     .padding(.horizontal, 20).frame(minHeight: 44).contentShape(Rectangle())
                 }
@@ -291,7 +291,7 @@ struct SearchView: View {
             VStack(spacing: 6) {
                 Text(app.T("Không có kết quả cho \"\(query)\"", "Nothing for \"\(query)\"")).font(BanbeTheme.display(17))
                 Text(app.T("Thử một từ ngắn hơn, tên khu vực, hoặc một danh mục.", "Try a shorter word, an area, or a category."))
-                    .font(.system(size: 13)).foregroundStyle(app.palette.ink2)
+                    .font(.app(size: 13)).foregroundStyle(app.palette.ink2)
                 // Calm Pass phase 2: a way forward instead of a dead end. Categories are the real list, not suggestions.
                 HStack(spacing: 8) {
                     Button { app.pickFilter("all"); app.goHome() } label: {
@@ -346,10 +346,10 @@ struct SearchView: View {
                             HStack(alignment: .firstTextBaseline, spacing: 10) {
                                 Text(d.event.name).font(BanbeTheme.display(15)).lineLimit(1)
                                 Spacer(minLength: 0)
-                                Text(priceLabel(d.event)).font(.system(size: 13, weight: .bold)).lineLimit(1).fixedSize()
+                                Text(priceLabel(d.event)).font(.app(size: 13, weight: .bold)).lineLimit(1).fixedSize()
                             }
                             Text([app.discoveryWhenLabel(d.startsAt, timeZone: d.event.eventTimeZone), d.event.locationLabel ?? ""].filter { !$0.isEmpty }.joined(separator: " · "))
-                                .font(.system(size: 12)).opacity(0.65).lineLimit(1)
+                                .font(.app(size: 12)).opacity(0.65).lineLimit(1)
                         }
                     }
                     .padding(.horizontal, 20).padding(.bottom, 12)
@@ -395,7 +395,7 @@ struct SearchView: View {
             app.seeSearchOnMap(query)
         } label: {
             Text(app.T("Xem trên bản đồ", "See on map") + " ›")
-                .font(.system(size: 13.5, weight: .semibold))
+                .font(.app(size: 13.5, weight: .semibold))
                 .padding(.horizontal, 16).frame(minHeight: 40)
                 .overlay(Capsule().strokeBorder(app.palette.rule, lineWidth: 1))
                 .contentShape(Capsule())
@@ -408,18 +408,18 @@ struct SearchView: View {
     private func resultRow(icon: String?, initial: String?, title: String, subtitle: String) -> some View {
         HStack(spacing: 12) {
             Group {
-                if let icon { Image(systemName: icon).font(.system(size: 17)) }
-                else { Text(initial ?? "?").font(.system(size: 16, weight: .bold)) }
+                if let icon { Image(systemName: icon).font(.app(size: 17)) }
+                else { Text(initial ?? "?").font(.app(size: 16, weight: .bold)) }
             }
             .frame(width: 40, height: 40)
             .background(app.palette.ink.opacity(0.08),
                         in: RoundedRectangle(cornerRadius: icon == nil ? 20 : BanbeTheme.Radius.tile, style: .continuous))
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.system(size: 14.5, weight: .semibold)).lineLimit(1)
-                Text(subtitle).font(.system(size: 12)).opacity(0.6)
+                Text(title).font(.app(size: 14.5, weight: .semibold)).lineLimit(1)
+                Text(subtitle).font(.app(size: 12)).opacity(0.6)
             }
             Spacer(minLength: 0)
-            Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).opacity(0.4)
+            Image(systemName: "chevron.right").font(.app(size: 12, weight: .semibold)).opacity(0.4)
         }
         .padding(.horizontal, 20).padding(.vertical, 6)
         .frame(minHeight: 52)

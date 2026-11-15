@@ -35,11 +35,11 @@ struct AccountTilesGrid: View {
         } label: {
             VStack(spacing: 8) {
                 Image(systemName: tile.symbol)
-                    .font(.system(size: 22, weight: .light))
+                    .font(.app(size: 22, weight: .light))
                     .frame(height: 26)
                     .foregroundStyle(app.palette.ink)
                 Text(tile.title)
-                    .font(.system(size: 12))
+                    .font(.app(size: 12))
                     .foregroundStyle(app.palette.ink2)
                     .lineLimit(1).minimumScaleFactor(0.8)
             }
@@ -48,7 +48,7 @@ struct AccountTilesGrid: View {
             .overlay(alignment: .topTrailing) {
                 if tile.badge > 0 {
                     Text(AccountBadges.format(tile.badge))
-                        .font(.caption2.weight(.bold)).monospacedDigit()
+                        .font(.app(.caption2).weight(.bold)).monospacedDigit()
                         .padding(.horizontal, 6)
                         .frame(minWidth: 20, minHeight: 20)
                         .background(BanbeTheme.alert, in: Capsule())
@@ -86,15 +86,15 @@ struct HostingModeCard: View {
         SwipeSafeButton(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: "storefront")
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.app(size: 16, weight: .medium))
                     .frame(width: 36, height: 36)
                     .background(app.palette.paper, in: Circle())
                     .foregroundStyle(app.palette.ink)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(app.T("Chế độ tổ chức", "Hosting mode")).font(.system(size: 15, weight: .semibold))
+                    Text(app.T("Chế độ tổ chức", "Hosting mode")).font(.app(size: 15, weight: .semibold))
                     Text(app.T("Bật để tạo và quản lý sự kiện", "Turn on to create and manage events"))
-                        .font(.system(size: 12.5))
+                        .font(.app(size: 12.5))
                         .foregroundStyle(app.palette.ink2)
                         .fixedSize(horizontal: false, vertical: true)
                 }

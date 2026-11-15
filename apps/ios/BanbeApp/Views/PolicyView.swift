@@ -30,19 +30,19 @@ struct PolicyView: View {
                     HStack {
                         if gateActive {
                             Text("Đọc và đồng ý để tiếp tục / Read and agree to continue")
-                                .font(.system(size: 12)).opacity(0.7)
+                                .font(.app(size: 12)).opacity(0.7)
                         } else {
                             Button("‹ Quay lại / Back") { app.screen = app.policyBackScreen }
-                                .font(.system(size: 12)).buttonStyle(.plain)
+                                .font(.app(size: 12)).buttonStyle(.plain)
                         }
                         Spacer()
                         Text("Phiên bản / Version \(Self.version)")
-                            .font(.system(size: 11)).opacity(0.5)
+                            .font(.app(size: 11)).opacity(0.5)
                     }
                     .padding(.top, 8)
 
                     Text("Điều khoản và quyền riêng tư · v1.1 · Terms and privacy")
-                        .font(.system(size: 11)).opacity(0.55).textCase(.uppercase)
+                        .font(.app(size: 11)).opacity(0.55).textCase(.uppercase)
                         .padding(.top, 14)
                     Text("Điều khoản sử dụng và Thông báo quyền riêng tư banbe")
                         .font(BanbeTheme.display(22))
@@ -55,10 +55,10 @@ struct PolicyView: View {
                        "The summary below is the screen you see at sign-up. Everything in it is set out in full in Part A (Terms) and Part B (Privacy). This document is written in Vietnamese and English. Where they differ, the Vietnamese text prevails. Effective 6 October 2026.")
 
                     Text("Tóm tắt: bạn đang đồng ý điều gì")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.app(size: 15, weight: .semibold))
                         .padding(.top, 18)
                     Text("In short: what you are agreeing to")
-                        .font(.system(size: 13, weight: .semibold)).opacity(0.7)
+                        .font(.app(size: 13, weight: .semibold)).opacity(0.7)
                         .padding(.top, 1).padding(.bottom, 10)
 
                     summaryList
@@ -77,7 +77,7 @@ struct PolicyView: View {
                         Text("Liên hệ. CÔNG TY TNHH CÓMPANY · [registered address] · Mã số doanh nghiệp [enterprise code] · [contact email]. Bản này có hiệu lực từ 06/10/2026. Các bản trước được lưu và cung cấp khi bạn yêu cầu.")
                         Text("Contact. CÓMPANY CO., LTD · [registered address] · Enterprise code [enterprise code] · [contact email]. This version is effective from 6 October 2026. Earlier versions are kept and provided on request.")
                     }
-                    .font(.system(size: 12)).lineSpacing(4).opacity(0.7)
+                    .font(.app(size: 12)).lineSpacing(4).opacity(0.7)
                     .padding(.top, 18)
                     .overlay(alignment: .top) { Rectangle().fill(app.palette.rule).frame(height: 1) }
                     .padding(.top, 20)
@@ -98,7 +98,7 @@ struct PolicyView: View {
                     jumped = true
                 } label: {
                     Text("↓ Xuống cuối / Jump to end")
-                        .font(.system(size: 12.5, weight: .semibold))
+                        .font(.app(size: 12.5, weight: .semibold))
                         .padding(.horizontal, 14).padding(.vertical, 10)
                         .background(app.palette.ink, in: Capsule())
                         .foregroundStyle(app.palette.paper)
@@ -121,7 +121,7 @@ struct PolicyView: View {
                     } label: {
                         // Note 53: the shared button levels, rounded — Decline is the quieter secondary.
                         Text("Từ chối / Decline")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.app(size: 14, weight: .semibold))
                             .frame(maxWidth: .infinity, minHeight: 52)
                             .background(app.palette.field, in: Capsule())
                             .overlay(Capsule().stroke(app.palette.rule, lineWidth: 1))
@@ -134,7 +134,7 @@ struct PolicyView: View {
                         app.acceptPolicyGate()
                     } label: {
                         Text("Tôi đồng ý ▪︎ Tiếp tục / I agree ▪︎ Continue")
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.app(size: 15, weight: .bold))
                             .frame(maxWidth: .infinity, minHeight: 52)
                             .padding(.horizontal, 8)
                             .background(app.palette.ink, in: Capsule())
@@ -177,9 +177,9 @@ struct PolicyView: View {
     private var consentBox: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Tôi đồng ý với Điều khoản sử dụng (Phần A) và để CÔNG TY TNHH CÓMPANY xử lý dữ liệu cá nhân của tôi theo Thông báo quyền riêng tư (Phần B), gồm việc host của sự kiện tôi đặt nhận được số điện thoại của tôi, và việc lưu trữ ngoài Việt Nam.\n\nI agree to the Terms of Use (Part A) and consent to CÓMPANY CO., LTD processing my personal data under the Privacy Notice (Part B), including hosts of events I book receiving my phone number, and storage outside Vietnam.")
-                .font(.system(size: 12.5)).lineSpacing(4)
+                .font(.app(size: 12.5)).lineSpacing(4)
             Text("Ô đánh dấu không được chọn sẵn. Mỗi điểm trong tóm tắt mở tới điều tương ứng bên dưới.\nThe box is never pre-ticked. Each point in the summary opens the matching section below.")
-                .font(.system(size: 11)).opacity(0.6)
+                .font(.app(size: 11)).opacity(0.6)
         }
         .padding(14)
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule, lineWidth: 1))
@@ -450,7 +450,7 @@ struct PolicyView: View {
             Text(vi).opacity(0.92)
             Text(en).opacity(0.68)
         }
-        .font(.system(size: 13)).lineSpacing(4)
+        .font(.app(size: 13)).lineSpacing(4)
         .padding(.bottom, 8)
     }
 
@@ -459,7 +459,7 @@ struct PolicyView: View {
             Text(vi).opacity(0.92)
             Text(en).opacity(0.68)
         }
-        .font(.system(size: 13)).lineSpacing(3)
+        .font(.app(size: 13)).lineSpacing(3)
     }
 
     private func partHeading(_ vi: String, _ en: String) -> some View {
@@ -472,8 +472,8 @@ struct PolicyView: View {
 
     private func section<Content: View>(_ id: String, _ titleVi: String, _ titleEn: String, @ViewBuilder _ content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(titleVi).font(.system(size: 14, weight: .semibold))
-            Text(titleEn).font(.system(size: 12.5, weight: .semibold)).opacity(0.65)
+            Text(titleVi).font(.app(size: 14, weight: .semibold))
+            Text(titleEn).font(.app(size: 12.5, weight: .semibold)).opacity(0.65)
                 .padding(.bottom, 8)
             content()
         }
@@ -489,7 +489,7 @@ struct PolicyView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 10) {
                 ForEach(columns, id: \.self) { col in
-                    Text(col).font(.system(size: 12, weight: .semibold)).opacity(0.6)
+                    Text(col).font(.app(size: 12, weight: .semibold)).opacity(0.6)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
@@ -499,7 +499,7 @@ struct PolicyView: View {
             ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                 HStack(alignment: .top, spacing: 10) {
                     ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
-                        Text(cell).font(.system(size: 12)).lineSpacing(3)
+                        Text(cell).font(.app(size: 12)).lineSpacing(3)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }

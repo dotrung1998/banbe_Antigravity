@@ -35,6 +35,9 @@ extension AppState {
     var simpleShellEnabled: Bool { FeatureFlags.isOn(featureFlags, "simple_shell") }
     /// Migration 208, note 71 (Calm Pass phase 3): Home event cards as polaroids. Off until set.
     var polaroidCardsEnabled: Bool { FeatureFlags.isOn(featureFlags, "polaroid_cards") }
+    /// Migration 218, note 81: the v2.3 Home, Browse by type, Event Detail and host profile (web twin `home_v23`), on top of
+    /// Simple Shell. Off until set; off renders today's screens unchanged.
+    var homeV23Enabled: Bool { simpleShellEnabled && FeatureFlags.isOn(featureFlags, "home_v23") }
     /// The dock's tab order for the active layout (RootView's root tab swipe walks it).
     var dockOrder: [Screen] { DockLayout.dockOrder(simpleShell: simpleShellEnabled) }
 

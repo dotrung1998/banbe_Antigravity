@@ -59,7 +59,7 @@ struct ChatPhotoViewerView: View {
 
                 if let actionMessage {
                     Text(actionMessage)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.app(size: 12, weight: .semibold))
                         .foregroundStyle(app.palette.ink)
                         .padding(.horizontal, 14).padding(.vertical, 8)
                         .background(Color.white.opacity(0.92), in: Capsule())
@@ -180,7 +180,7 @@ struct ChatPhotoViewerView: View {
     private var topBar: some View {
         HStack {
             Button { dismiss() } label: {
-                Image(systemName: "xmark").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
+                Image(systemName: "xmark").font(.app(size: 18, weight: .semibold)).foregroundStyle(.white)
                     .frame(width: 44, height: 44).contentShape(Rectangle())
             }
             .accessibilityIdentifier("chat.photoViewer.close")
@@ -189,18 +189,18 @@ struct ChatPhotoViewerView: View {
             HStack(spacing: 4) {
                 if app.canHost {
                     Button { app.openPostToStoryConfirm() } label: {
-                        Image(systemName: "plus.circle").font(.system(size: 18)).foregroundStyle(.white)
+                        Image(systemName: "plus.circle").font(.app(size: 18)).foregroundStyle(.white)
                             .frame(width: 44, height: 44).contentShape(Rectangle())
                     }
                     .accessibilityIdentifier("chat.photoViewer.postToStory")
                 }
                 Button { Task { await saveTapped() } } label: {
-                    Image(systemName: "arrow.down.circle").font(.system(size: 18)).foregroundStyle(.white)
+                    Image(systemName: "arrow.down.circle").font(.app(size: 18)).foregroundStyle(.white)
                         .frame(width: 44, height: 44).contentShape(Rectangle())
                 }
                 .accessibilityIdentifier("chat.photoViewer.save")
                 Button { menuOpen.toggle() } label: {
-                    Image(systemName: "ellipsis").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
+                    Image(systemName: "ellipsis").font(.app(size: 18, weight: .semibold)).foregroundStyle(.white)
                         .frame(width: 44, height: 44).contentShape(Rectangle())
                 }
                 .accessibilityIdentifier("chat.photoViewer.menu")
@@ -235,7 +235,7 @@ struct ChatPhotoViewerView: View {
         Button(action: action) {
             HStack(spacing: 10) {
                 Image(systemName: systemImage).frame(width: 18)
-                Text(title).font(.system(size: 13.5))
+                Text(title).font(.app(size: 13.5))
                 Spacer()
             }
             .foregroundStyle(app.palette.ink)
@@ -250,9 +250,9 @@ struct ChatPhotoViewerView: View {
     private var postToStoryConfirmSheet: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(app.T("Đăng ảnh này lên story?", "Post this photo to your Story?"))
-                .font(.system(size: 15, weight: .semibold))
+                .font(.app(size: 15, weight: .semibold))
             Text(app.T("Story sẽ tự động ẩn sau 24 giờ.", "Your Story disappears automatically after 24 hours."))
-                .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                .font(.app(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.7))
             HStack(spacing: 10) {
                 Button(app.T("Huỷ", "Cancel")) { app.closePostToStoryConfirm() }
                     .frame(maxWidth: .infinity).padding(.vertical, 13)
@@ -285,7 +285,7 @@ struct ChatPhotoViewerView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 ForEach(QUICK_EMOJI, id: \.self) { emoji in
-                    Text(emoji).font(.system(size: 20))
+                    Text(emoji).font(.app(size: 20))
                         .onTapGesture { Task { await quickReaction(emoji) } }
                         .accessibilityIdentifier("chat.photoViewer.quickReaction")
                 }
@@ -302,7 +302,7 @@ struct ChatPhotoViewerView: View {
                     .accessibilityIdentifier("chat.photoViewer.replyInput")
                 Button(app.T("Gửi", "Send")) { Task { await sendReply() } }
                     .foregroundStyle(.white)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.app(size: 13, weight: .bold))
                     .opacity(draft.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
                     .accessibilityIdentifier("chat.photoViewer.replySend")
             }

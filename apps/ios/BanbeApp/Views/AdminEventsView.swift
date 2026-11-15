@@ -53,7 +53,7 @@ struct AdminEventsView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 10) {
                             Image(systemName: "exclamationmark.shield")
-                                .font(.system(size: 20, weight: .medium))
+                                .font(.app(size: 20, weight: .medium))
                                 .frame(width: 34, height: 34)
                                 .background((ROW_ACCENT_COLORS["adminReview"] ?? .clear).opacity(0.33), in: Circle())
                             Text(app.T("Sự Kiện Chờ Duyệt", "Pending Events"))
@@ -61,7 +61,7 @@ struct AdminEventsView: View {
                                 .accessibilityIdentifier("adminEvents.title")
                         }
                         Text(app.T("Sự kiện chỉ hiển thị công khai sau khi được duyệt ở đây.", "An event only shows publicly once approved here."))
-                            .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                            .font(.app(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
                     }
                     Spacer()
                     if !app.adminEvents.isEmpty {
@@ -72,7 +72,7 @@ struct AdminEventsView: View {
                             }
                             Button(app.T("Thu gọn tất cả", "Collapse all")) { expanded.removeAll() }
                         }
-                        .font(.system(size: 11.5, weight: .semibold))
+                        .font(.app(size: 11.5, weight: .semibold))
                         .buttonStyle(.plain)
                     }
                 }
@@ -80,7 +80,7 @@ struct AdminEventsView: View {
 
                 if !app.adminEventError.isEmpty {
                     Text(app.adminEventError)
-                        .font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                        .font(.app(size: 11.5)).foregroundStyle(BanbeTheme.alert)
                         .padding(.top, 10)
                         .accessibilityIdentifier("adminEvents.error")
                 }
@@ -94,7 +94,7 @@ struct AdminEventsView: View {
                         Text(app.adminEventsLoading
                              ? app.T("Đang tải…", "Loading…")
                              : app.T("Không có sự kiện nào đang chờ duyệt.", "No pending events."))
-                            .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                            .font(.app(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .accessibilityIdentifier("adminEvents.empty")
                     }
@@ -125,16 +125,16 @@ struct AdminEventsView: View {
                         Text(row.name).font(BanbeTheme.display(16))
                             .accessibilityIdentifier("adminEvents.name.\(row.id)")
                         Text(row.organizerName.isEmpty ? app.T("Không rõ người tổ chức", "Unknown host") : row.organizerName)
-                            .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                            .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
                         Text("\(app.T("Mã", "ID")) \(row.id) ▪︎ \(app.T("Gửi lúc", "Submitted")) \(row.submittedAt.map { $0.formatted() } ?? app.T("Không rõ", "Unknown"))")
-                            .font(.system(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.55))
+                            .font(.app(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.55))
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 4) {
                         Text((row.priceVnd ?? 0) > 0 ? EventMarket.formatMoney(row.priceVnd!, currency: row.rowCurrency) : app.T("Miễn phí", "Free"))
                             .font(BanbeTheme.display(19))
                         Text(isOpen ? app.T("Thu gọn", "Collapse") : app.T("Mở rộng", "Expand"))
-                            .font(.system(size: 11, weight: .semibold)).underline()
+                            .font(.app(size: 11, weight: .semibold)).underline()
                     }
                 }
             }
@@ -158,7 +158,7 @@ struct AdminEventsView: View {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .fill(app.palette.field)
                         .frame(height: 100)
-                        .overlay(Text(app.T("Chưa có ảnh", "No photo yet")).font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.55)))
+                        .overlay(Text(app.T("Chưa có ảnh", "No photo yet")).font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.55)))
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -180,7 +180,7 @@ struct AdminEventsView: View {
                     line(app.T("Đã xác minh (chủ nhà tự khai)", "Address confirmed (host-provided)"), (row.addressVerified ?? false) ? app.T("Có", "Yes") : app.T("Không", "No"))
                     if let lat = row.lat, let lng = row.lng, let url = URL(string: "https://www.google.com/maps/search/?api=1&query=\(lat),\(lng)") {
                         Link(app.T("Mở trên Google Maps", "Open in Google Maps") + " (\(String(format: "%.5f", lat)), \(String(format: "%.5f", lng)))", destination: url)
-                            .font(.system(size: 11.5, weight: .semibold))
+                            .font(.app(size: 11.5, weight: .semibold))
                     }
                 }
                 .padding(10)
@@ -189,8 +189,8 @@ struct AdminEventsView: View {
 
                 if let intro = row.intro, !intro.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(app.T("Giới thiệu sự kiện", "Event introduction")).font(.system(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.65))
-                        Text(intro).font(.system(size: 12.5)).lineSpacing(3)
+                        Text(app.T("Giới thiệu sự kiện", "Event introduction")).font(.app(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.65))
+                        Text(intro).font(.app(size: 12.5)).lineSpacing(3)
                     }
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -227,7 +227,7 @@ struct AdminEventsView: View {
 
                 TextField(app.T("Lý do từ chối (bắt buộc nếu từ chối)", "Rejection reason (required if rejecting)"),
                           text: Binding(get: { reasonByEvent[row.id] ?? "" }, set: { reasonByEvent[row.id] = $0 }))
-                    .font(.system(size: 13))
+                    .font(.app(size: 13))
                     .padding(11)
                     .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .accessibilityIdentifier("adminEvents.reason.\(row.id)")
@@ -238,7 +238,7 @@ struct AdminEventsView: View {
                         Task { await app.reviewEvent(row.id, approve: true, reason: "") }
                     } label: {
                         Text(busy ? app.T("Đang lưu…", "Saving…") : app.T("Duyệt ▪︎ đăng công khai", "Approve ▪︎ publish"))
-                            .font(.system(size: 12.5, weight: .semibold))
+                            .font(.app(size: 12.5, weight: .semibold))
                             .frame(maxWidth: .infinity).padding(.vertical, 11)
                             .foregroundStyle(app.palette.paper)
                             .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 12))
@@ -255,7 +255,7 @@ struct AdminEventsView: View {
                         Task { await app.reviewEvent(row.id, approve: false, reason: reason) }
                     } label: {
                         Text(app.T("Từ chối", "Reject"))
-                            .font(.system(size: 12.5, weight: .semibold))
+                            .font(.app(size: 12.5, weight: .semibold))
                             .frame(maxWidth: .infinity).padding(.vertical, 11)
                             .foregroundStyle(app.palette.ink)
                             .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule, lineWidth: 1))
@@ -275,9 +275,9 @@ struct AdminEventsView: View {
 
     private func line(_ label: String, _ value: String) -> some View {
         HStack(alignment: .top) {
-            Text(label).font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.65))
+            Text(label).font(.app(size: 11)).foregroundStyle(app.palette.ink.opacity(0.65))
             Spacer()
-            Text(value).font(.system(size: 12, weight: .semibold)).multilineTextAlignment(.trailing)
+            Text(value).font(.app(size: 12, weight: .semibold)).multilineTextAlignment(.trailing)
         }
     }
 }

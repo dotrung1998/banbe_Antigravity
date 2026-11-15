@@ -55,13 +55,13 @@ private struct GlassSegmentedTabs: View {
                             Text(item.label).lineLimit(1).minimumScaleFactor(0.8)
                             if item.badge > 0 {
                                 Text("\(item.badge)")
-                                    .font(.system(size: 10.5, weight: .bold))
+                                    .font(.app(size: 10.5, weight: .bold))
                                     .padding(.horizontal, 5).frame(minWidth: 16, minHeight: 16)
                                     .background(app.palette.ink, in: Capsule())
                                     .foregroundStyle(app.palette.paper)
                             }
                         }
-                        .font(.system(size: 12.5, weight: on ? .semibold : .medium))
+                        .font(.app(size: 12.5, weight: on ? .semibold : .medium))
                         .foregroundStyle(app.palette.ink.opacity(on ? 1 : 0.55))
                         .frame(maxWidth: .infinity)
                     }
@@ -139,7 +139,7 @@ struct SurveysHostingView: View {
                     } else {
                         Button { showCreate = true } label: {
                             Text(app.T("+ Tạo khảo sát mới", "+ Create a new survey"))
-                                .font(.system(size: 13))
+                                .font(.app(size: 13))
                                 .frame(maxWidth: .infinity)
                                 .padding(12)
                                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4])).foregroundStyle(app.palette.rule))
@@ -156,7 +156,7 @@ struct SurveysHostingView: View {
                     ProgressView().frame(maxWidth: .infinity).padding(.vertical, 20)
                 } else if filtered.isEmpty {
                     Text(tab == .active ? app.T("Chưa có khảo sát nào đang mở.", "No active surveys yet.") : app.T("Chưa có khảo sát đã đóng.", "No closed surveys yet."))
-                        .font(.system(size: 13)).opacity(0.6)
+                        .font(.app(size: 13)).opacity(0.6)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.vertical, 20)
                 } else {
@@ -244,7 +244,7 @@ struct SurveysHostingView: View {
             if selected.contains(id) { selected.remove(id) } else { selected.insert(id) }
         } label: {
             Image(systemName: selected.contains(id) ? "checkmark.square.fill" : "square")
-                .font(.system(size: 20))
+                .font(.app(size: 20))
                 .animation(.easeInOut(duration: 0.15), value: selected.contains(id))
         }
         .buttonStyle(.plain)
@@ -296,9 +296,9 @@ struct SurveysHostingView: View {
         let used = app.mySurveyCandidates.filter { $0.status == "used" }
         VStack(alignment: .leading, spacing: 22) {
             VStack(alignment: .leading, spacing: 8) {
-                Text(app.T("Khảo sát đã lưu trữ", "Archived surveys")).font(.system(size: 12.5, weight: .semibold))
+                Text(app.T("Khảo sát đã lưu trữ", "Archived surveys")).font(.app(size: 12.5, weight: .semibold))
                 if archivedSurveys.isEmpty {
-                    Text(app.T("Chưa có khảo sát nào được lưu trữ.", "No archived surveys yet.")).font(.system(size: 13)).opacity(0.6)
+                    Text(app.T("Chưa có khảo sát nào được lưu trữ.", "No archived surveys yet.")).font(.app(size: 13)).opacity(0.6)
                 }
                 selectBar(ids: archivedSurveys.map(\.id), allLabel: app.T("Xoá tất cả", "Delete all"),
                           bulkLabel: app.T("Xoá đã chọn", "Delete selected"), destructive: true) { ids in
@@ -308,7 +308,7 @@ struct SurveysHostingView: View {
                     HStack(alignment: .top, spacing: 10) {
                         if selectMode { checkbox(sv.id) }
                         VStack(alignment: .leading, spacing: 8) {
-                            Text(sv.title).font(.system(size: 14, weight: .semibold))
+                            Text(sv.title).font(.app(size: 14, weight: .semibold))
                             HStack(spacing: 8) {
                                 pill(app.T("Xem trước", "Preview")) { openPreview(sv) }
                                 pill(app.T("Khôi phục", "Restore"), id: "survey.unarchive") { Task { await app.unarchiveSurvey(sv.id) } }
@@ -323,9 +323,9 @@ struct SurveysHostingView: View {
                 }
             }
             VStack(alignment: .leading, spacing: 8) {
-                Text(app.T("Ý tưởng sự kiện đã dùng", "Used event ideas")).font(.system(size: 12.5, weight: .semibold))
+                Text(app.T("Ý tưởng sự kiện đã dùng", "Used event ideas")).font(.app(size: 12.5, weight: .semibold))
                 if used.isEmpty {
-                    Text(app.T("Ý tưởng đã dùng sẽ tự động chuyển vào đây.", "Ideas you use move here automatically.")).font(.system(size: 13)).opacity(0.6)
+                    Text(app.T("Ý tưởng đã dùng sẽ tự động chuyển vào đây.", "Ideas you use move here automatically.")).font(.app(size: 13)).opacity(0.6)
                 }
                 selectBar(ids: used.map(\.id), allLabel: app.T("Xoá tất cả", "Delete all"),
                           bulkLabel: app.T("Xoá đã chọn", "Delete selected"), destructive: true) { ids in
@@ -336,8 +336,8 @@ struct SurveysHostingView: View {
                     HStack(alignment: .top, spacing: 10) {
                         if selectMode { checkbox(c.id) }
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(title.isEmpty ? surveyTitle(c.surveyId) : title).font(.system(size: 14, weight: .semibold))
-                            Text(surveyTitle(c.surveyId)).font(.system(size: 12)).opacity(0.6)
+                            Text(title.isEmpty ? surveyTitle(c.surveyId) : title).font(.app(size: 14, weight: .semibold))
+                            Text(surveyTitle(c.surveyId)).font(.app(size: 12)).opacity(0.6)
                             HStack(spacing: 8) {
                                 pill(app.T("Đưa về gợi ý", "Move back"), id: "survey.candidate.unarchive") { Task { await app.restoreSurveyCandidate(c) } }
                                 pill(app.T("Xoá", "Delete"), .danger, id: "survey.candidate.delete") { _ = requestDelete([c.id], isSurvey: false) }
@@ -365,7 +365,7 @@ struct SurveysHostingView: View {
                 Button(showDismissed ? app.T("Ẩn gợi ý đã bỏ qua", "Hide dismissed") : app.T("Hiện gợi ý đã bỏ qua (\(dismissedCount))", "Show dismissed (\(dismissedCount))")) {
                     showDismissed.toggle()
                 }
-                .font(.system(size: 12)).underline().opacity(0.75)
+                .font(.app(size: 12)).underline().opacity(0.75)
                 .accessibilityIdentifier("survey.candidates.toggleDismissed")
             }
             selectBar(ids: suggestedIDs, allLabel: app.T("Bỏ qua tất cả", "Dismiss all"),
@@ -374,7 +374,7 @@ struct SurveysHostingView: View {
                 return true
             }
             if !app.mySurveyCandidatesError.isEmpty {
-                Text(app.mySurveyCandidatesError).font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert)
+                Text(app.mySurveyCandidatesError).font(.app(size: 12.5)).foregroundStyle(BanbeTheme.alert)
             }
             if (app.mySurveysLoading || app.mySurveyCandidatesLoading) && groups.isEmpty {
                 ProgressView().frame(maxWidth: .infinity).padding(.vertical, 20)
@@ -384,7 +384,7 @@ struct SurveysHostingView: View {
                              "No suggestions yet. Event drafts are generated automatically when a survey closes with responses.")
                      : app.T("Không còn gợi ý nào cần xử lý. Có thể làm mới bên dưới để tạo lại.",
                              "No suggestions left to review. You can refresh below to generate them again."))
-                    .font(.system(size: 13)).opacity(0.7)
+                    .font(.app(size: 13)).opacity(0.7)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .multilineTextAlignment(.center)
                     .padding(.vertical, 20)
@@ -392,12 +392,12 @@ struct SurveysHostingView: View {
             ForEach(groups, id: \.0.id) { sv, items in
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text(sv.title).font(.system(size: 13, weight: .semibold))
+                        Text(sv.title).font(.app(size: 13, weight: .semibold))
                         Spacer()
                         Button(app.mySurveyCandidatesBusySurveyID == sv.id ? app.T("Đang làm mới…", "Refreshing…") : app.T("Làm mới", "Refresh")) {
                             Task { await app.refreshSurveyCandidates(sv.id) }
                         }
-                        .font(.system(size: 11.5)).underline().opacity(0.7)
+                        .font(.app(size: 11.5)).underline().opacity(0.7)
                         .disabled(app.mySurveyCandidatesBusySurveyID != nil)
                     }
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, c in
@@ -411,12 +411,12 @@ struct SurveysHostingView: View {
             if !app.mySurveysLoading {
                 ForEach(closedSurveys.filter { sv in !groups.contains { $0.0.id == sv.id } }) { sv in
                     HStack {
-                        Text(sv.title).font(.system(size: 12.5))
+                        Text(sv.title).font(.app(size: 12.5))
                         Spacer()
                         Button(app.mySurveyCandidatesBusySurveyID == sv.id ? app.T("Đang làm mới…", "Refreshing…") : app.T("Tạo gợi ý", "Generate suggestions")) {
                             Task { await app.refreshSurveyCandidates(sv.id) }
                         }
-                        .font(.system(size: 12.5)).underline()
+                        .font(.app(size: 12.5)).underline()
                         .disabled(app.mySurveyCandidatesBusySurveyID != nil)
                     }
                     .opacity(0.7)
@@ -434,13 +434,13 @@ struct SurveysHostingView: View {
         let extra = ([c.budgetLabel] + [c.activityLabels.joined(separator: ", ")]).filter { !$0.isEmpty }.joined(separator: " · ")
         return VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline) {
-                Text(title.isEmpty ? survey.title : title).font(.system(size: 14, weight: .semibold))
+                Text(title.isEmpty ? survey.title : title).font(.app(size: 14, weight: .semibold))
                 Spacer()
                 Text(c.status == "used" ? app.T("Đã dùng", "Used").uppercased() : c.status == "dismissed" ? app.T("Đã bỏ qua", "Dismissed").uppercased() : "#\(index + 1)")
-                    .font(.system(size: 10.5)).opacity(0.6)
+                    .font(.app(size: 10.5)).opacity(0.6)
             }
-            Text(fit).font(.system(size: 12)).opacity(0.7)
-            if !extra.isEmpty { Text(extra).font(.system(size: 12)).opacity(0.6) }
+            Text(fit).font(.app(size: 12)).opacity(0.7)
+            if !extra.isEmpty { Text(extra).font(.app(size: 12)).opacity(0.6) }
             HStack(spacing: 8) {
                 pill(app.T("Dùng ý tưởng này", "Use This Idea"), .filled, id: "survey.candidate.use") { app.applySurveyCandidate(c, survey: survey) }
                 if c.status == "dismissed" {
@@ -476,7 +476,7 @@ struct SurveysHostingView: View {
 
     private func pillLabel(_ text: String, _ kind: PillKind) -> some View {
         Text(text)
-            .font(.system(size: 12.5, weight: .semibold))
+            .font(.app(size: 12.5, weight: .semibold))
             .lineLimit(1).minimumScaleFactor(0.75)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10).padding(.horizontal, 6)
@@ -497,18 +497,18 @@ struct SurveysHostingView: View {
     private func surveyCard(_ survey: SurveySummary) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(survey.title).font(.system(size: 14, weight: .semibold))
+                Text(survey.title).font(.app(size: 14, weight: .semibold))
                 Spacer()
-                Text(survey.status.uppercased()).font(.system(size: 10.5)).opacity(0.6)
+                Text(survey.status.uppercased()).font(.app(size: 10.5)).opacity(0.6)
             }
             if let closesAt = survey.closesAt {
                 Text("\(app.T("Hạn", "Deadline")): \(closesAt.formatted(date: .abbreviated, time: .shortened))")
-                    .font(.system(size: 12)).opacity(0.6)
+                    .font(.app(size: 12)).opacity(0.6)
             }
             if survey.status != "draft" {
                 let link = AppConfig.publicWebOrigin + "/surveys/" + survey.publicId
                 Text(link)
-                    .font(.system(size: 11))
+                    .font(.app(size: 11))
                     .opacity(0.6)
                     .onTapGesture { UIPasteboard.general.string = link }
             }
@@ -521,7 +521,7 @@ struct SurveysHostingView: View {
             // AppState.swift — populated by `loadMySurveys()`).
             if survey.status == "active" && !app.mySurveySharedIds.contains(survey.id) {
                 Text(app.T("Chưa chia sẻ lên story", "Not Shared To Story"))
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.app(size: 11, weight: .semibold))
                     .foregroundStyle(BanbeTheme.alert)
                     .accessibilityIdentifier("survey-not-shared-badge")
             }
@@ -593,10 +593,10 @@ private struct ShareSurveyToStoryConfirmView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(app.T("Xem trước story", "Story preview")).font(.system(size: 12.5, weight: .semibold)).opacity(0.7)
+                Text(app.T("Xem trước story", "Story preview")).font(.app(size: 12.5, weight: .semibold)).opacity(0.7)
                 Spacer()
                 Button { app.closeShareToStoryConfirm(); dismiss() } label: {
-                    Image(systemName: "xmark").font(.system(size: 16, weight: .semibold))
+                    Image(systemName: "xmark").font(.app(size: 16, weight: .semibold))
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("survey.shareToStory.close")
@@ -616,7 +616,7 @@ private struct ShareSurveyToStoryConfirmView: View {
             .padding(.horizontal, 16)
 
             if !app.surveyShareToStoryError.isEmpty {
-                Text(app.surveyShareToStoryError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                Text(app.surveyShareToStoryError).font(.app(size: 12)).foregroundStyle(BanbeTheme.alert)
                     .padding(.horizontal, 16).padding(.top, 10)
             }
 
@@ -629,7 +629,7 @@ private struct ShareSurveyToStoryConfirmView: View {
                 }
             } label: {
                 Label(app.T("Chỉnh sửa trước khi đăng (thêm chữ, liên kết)", "Edit before posting (add text, a link)"), systemImage: "slider.horizontal.3")
-                    .font(.system(size: 13.5, weight: .semibold))
+                    .font(.app(size: 13.5, weight: .semibold))
                     .frame(maxWidth: .infinity).padding(.vertical, 13)
                     .background(app.palette.honeyBg, in: RoundedRectangle(cornerRadius: 11))
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(app.palette.honey.opacity(0.45)))
@@ -655,7 +655,7 @@ private struct ShareSurveyToStoryConfirmView: View {
                 .opacity(app.surveyShareToStoryBusy ? 0.6 : 1)
             }
             .buttonStyle(.plain)
-            .font(.system(size: 13.5, weight: .semibold))
+            .font(.app(size: 13.5, weight: .semibold))
             .padding(.horizontal, 16).padding(.top, 10)
         }
         .padding(.bottom, 8)
@@ -720,13 +720,13 @@ private struct CreateSurveyFormView: View {
 
     private var locationsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(app.T("Địa điểm (tìm địa chỉ, có thể thêm nhiều)", "Locations (search an address, add as many as you like)")).font(.system(size: 11.5)).opacity(0.7)
+            Text(app.T("Địa điểm (tìm địa chỉ, có thể thêm nhiều)", "Locations (search an address, add as many as you like)")).font(.app(size: 11.5)).opacity(0.7)
             if !locations.isEmpty {
                 FlowRow(spacing: 6) {
                     ForEach(Array(locations.enumerated()), id: \.offset) { index, loc in
                         HStack(spacing: 6) {
-                            Text(loc.label).font(.system(size: 12))
-                            Button { locations.remove(at: index) } label: { Image(systemName: "xmark").font(.system(size: 10, weight: .bold)) }
+                            Text(loc.label).font(.app(size: 12))
+                            Button { locations.remove(at: index) } label: { Image(systemName: "xmark").font(.app(size: 10, weight: .bold)) }
                                 .buttonStyle(.plain)
                         }
                         .padding(.horizontal, 10).padding(.vertical, 5)
@@ -738,15 +738,15 @@ private struct CreateSurveyFormView: View {
                 .padding(10)
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(app.palette.rule))
                 .accessibilityIdentifier("survey.location.search")
-            if locSearching { Text(app.T("Đang tìm…", "Searching…")).font(.system(size: 11.5)).opacity(0.6) }
-            if !locError.isEmpty { Text(locError).font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert) }
+            if locSearching { Text(app.T("Đang tìm…", "Searching…")).font(.app(size: 11.5)).opacity(0.6) }
+            if !locError.isEmpty { Text(locError).font(.app(size: 11.5)).foregroundStyle(BanbeTheme.alert) }
             if !locSuggestions.isEmpty {
                 VStack(spacing: 0) {
                     ForEach(Array(locSuggestions.enumerated()), id: \.offset) { index, sg in
                         Button { addLocation(sg) } label: {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(sg.addressLine).font(.system(size: 12.5, weight: .semibold))
-                                Text([sg.district, sg.city].filter { !$0.isEmpty }.joined(separator: ", ")).font(.system(size: 11.5)).opacity(0.6)
+                                Text(sg.addressLine).font(.app(size: 12.5, weight: .semibold))
+                                Text([sg.district, sg.city].filter { !$0.isEmpty }.joined(separator: ", ")).font(.app(size: 11.5)).opacity(0.6)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 12).padding(.vertical, 9)
@@ -790,13 +790,13 @@ private struct CreateSurveyFormView: View {
 
     private var slotsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(app.T("Lựa chọn ngày/giờ (có thể thêm nhiều)", "Date/time options (add as many as you like)")).font(.system(size: 11.5)).opacity(0.7)
+            Text(app.T("Lựa chọn ngày/giờ (có thể thêm nhiều)", "Date/time options (add as many as you like)")).font(.app(size: 11.5)).opacity(0.7)
             if !slots.isEmpty {
                 FlowRow(spacing: 6) {
                     ForEach(Array(slots.enumerated()), id: \.offset) { index, slot in
                         HStack(spacing: 6) {
-                            Text(slot.label).font(.system(size: 12))
-                            Button { slots.remove(at: index) } label: { Image(systemName: "xmark").font(.system(size: 10, weight: .bold)) }
+                            Text(slot.label).font(.app(size: 12))
+                            Button { slots.remove(at: index) } label: { Image(systemName: "xmark").font(.app(size: 10, weight: .bold)) }
                                 .buttonStyle(.plain)
                         }
                         .padding(.horizontal, 10).padding(.vertical, 5)
@@ -806,7 +806,7 @@ private struct CreateSurveyFormView: View {
             }
             Button { showSlotSheet = true } label: {
                 Text(app.T("+ Thêm ngày/giờ", "+ Add date & time"))
-                    .font(.system(size: 13))
+                    .font(.app(size: 13))
                     .frame(maxWidth: .infinity).padding(10)
                     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4])).foregroundStyle(app.palette.rule))
             }
@@ -834,7 +834,7 @@ private struct CreateSurveyFormView: View {
                        unit: app.T("người", "people"), id: "survey.groupSizeMax")
 
             if !app.mySurveyCreateError.isEmpty {
-                Text(app.mySurveyCreateError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                Text(app.mySurveyCreateError).font(.app(size: 12)).foregroundStyle(BanbeTheme.alert)
             }
 
             Button {
@@ -852,7 +852,7 @@ private struct CreateSurveyFormView: View {
                 }
             } label: {
                 Text(app.T("Tạo khảo sát (bản nháp)", "Create survey (draft)"))
-                    .font(.system(size: 13.5, weight: .semibold))
+                    .font(.app(size: 13.5, weight: .semibold))
                     .frame(maxWidth: .infinity)
                     .padding(12)
                     .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 10))
@@ -868,7 +868,7 @@ private struct CreateSurveyFormView: View {
 
     private func stepperRow(_ label: String, value: Binding<Int>, range: ClosedRange<Int>, unit: String, id: String) -> some View {
         HStack {
-            Text(label).font(.system(size: 11.5)).opacity(0.7)
+            Text(label).font(.app(size: 11.5)).opacity(0.7)
             Spacer()
             CountStepper(value: value, range: range, unit: unit, identifier: id)
         }
@@ -876,14 +876,14 @@ private struct CreateSurveyFormView: View {
 
     private func optionsRow(_ label: String, _ options: Binding<[String]>, placeholder: String, id: String) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(label).font(.system(size: 11.5)).opacity(0.7)
+            Text(label).font(.app(size: 11.5)).opacity(0.7)
             OptionChipsEditor(options: options, placeholder: placeholder, identifier: id)
         }
     }
 
     private func field(_ label: String, _ text: Binding<String>, keyboard: UIKeyboardType = .default) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(label).font(.system(size: 11.5)).opacity(0.7)
+            Text(label).font(.app(size: 11.5)).opacity(0.7)
             TextField("", text: text)
                 .keyboardType(keyboard)
                 .padding(10)

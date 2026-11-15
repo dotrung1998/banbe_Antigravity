@@ -16,7 +16,7 @@ struct ProjectSectionHeader: View {
             Spacer(minLength: 8)
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.app(.subheadline).weight(.semibold))
                     .foregroundStyle(app.palette.clay)
                     .frame(minHeight: 44)
                     .accessibilityIdentifier(actionID ?? "project.section.action")
@@ -53,7 +53,7 @@ struct ProjectStatusCircle: View {
             switch status {
             case "done":
                 Circle().fill(app.palette.ink)
-                Image(systemName: "checkmark").font(.system(size: 13, weight: .heavy)).foregroundStyle(app.palette.paper)
+                Image(systemName: "checkmark").font(.app(size: 13, weight: .heavy)).foregroundStyle(app.palette.paper)
             case "doing":
                 Circle().fill(app.palette.honeyBg)
                 Circle().strokeBorder(app.palette.honey, lineWidth: 2)
@@ -83,7 +83,7 @@ struct ProjectStatusTag: View {
             }
         }()
         Text(app.projectStatusName(status))
-            .font(.caption.weight(.bold))
+            .font(.app(.caption).weight(.bold))
             .lineLimit(1)
             .padding(.horizontal, 9).padding(.vertical, 4)
             .foregroundStyle(fg)
@@ -105,14 +105,14 @@ struct ProjectChip: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                if let icon { Image(systemName: icon).font(.system(size: 13, weight: .semibold)).accessibilityHidden(true) }
+                if let icon { Image(systemName: icon).font(.app(size: 13, weight: .semibold)).accessibilityHidden(true) }
                 Text(title)
                 if let count {
-                    Text("\(count)").font(.caption.weight(.bold).monospacedDigit())
+                    Text("\(count)").font(.app(.caption).weight(.bold).monospacedDigit())
                         .foregroundStyle(selected ? app.palette.paper.opacity(0.7) : app.palette.ink3)
                 }
             }
-                .font(.subheadline.weight(.semibold))
+                .font(.app(.subheadline).weight(.semibold))
                 .lineLimit(1)
                 .padding(.horizontal, 14)
                 .frame(minHeight: 40)
@@ -150,11 +150,11 @@ struct ProjectTaskRow: View {
             Button(action: onOpen) {
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(task.title).font(.body.weight(.semibold))
+                        Text(task.title).font(.app(.body).weight(.semibold))
                             .strikethrough(task.status == "done", color: app.palette.ink3)
                             .foregroundStyle(task.status == "done" ? app.palette.ink2 : app.palette.ink)
                             .fixedSize(horizontal: false, vertical: true)
-                        Text(meta).font(.footnote).foregroundStyle(late ? BanbeTheme.alert : app.palette.ink2)
+                        Text(meta).font(.app(.footnote)).foregroundStyle(late ? BanbeTheme.alert : app.palette.ink2)
                             .fixedSize(horizontal: false, vertical: true)
                         // Large text: the tag moves under the title instead of squeezing it.
                         if dynamicTypeSize.isAccessibilitySize { ProjectStatusTag(status: task.status).padding(.top, 4) }
@@ -300,8 +300,8 @@ struct ProjectGuidance: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: firm ? "exclamationmark.circle.fill" : "lightbulb")
-                .font(.system(size: 15, weight: .semibold)).padding(.top, 1).accessibilityHidden(true)
-            Text(text).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                .font(.app(size: 15, weight: .semibold)).padding(.top, 1).accessibilityHidden(true)
+            Text(text).font(.app(.subheadline)).fixedSize(horizontal: false, vertical: true)
         }
         .foregroundStyle(firm ? app.palette.honey : app.palette.ink2)
         .padding(12)

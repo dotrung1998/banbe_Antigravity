@@ -35,8 +35,14 @@ struct ReserveView: View {
         case nil: return nil
         }
     }
+    /// Note 81 phase e: adding tickets after a hold (a second booking).
+    private var adding: Int? { app.reserveAddingAlready }
     private var holdTitle: String {
-        app.qty == 1
+        if adding != nil {
+            return app.qty == 1 ? app.T("Giữ thêm 1 chỗ ▪︎ 30 phút", "Hold 1 more seat ▪︎ 30 min")
+                                : app.T("Giữ thêm \(app.qty) chỗ ▪︎ 30 phút", "Hold \(app.qty) more seats ▪︎ 30 min")
+        }
+        return app.qty == 1
             ? app.T("Giữ 1 chỗ ▪︎ 30 phút", "Hold 1 seat ▪︎ 30 min")
             : app.T("Giữ \(app.qty) chỗ ▪︎ 30 phút", "Hold \(app.qty) seats ▪︎ 30 min")
     }
@@ -48,7 +54,7 @@ struct ReserveView: View {
     private func attendeeCard(_ index: Int) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(app.T("Vé \(index + 1)", "Ticket \(index + 1)"))
-                .font(.system(size: 11.5, weight: .semibold))
+                .font(.app(size: 11.5, weight: .semibold))
                 .foregroundStyle(app.palette.ink.opacity(0.7))
             BanbeField(label: nil,
                        placeholder: app.T("Họ và tên", "Full name"),
@@ -57,18 +63,18 @@ struct ReserveView: View {
                 .accessibilityIdentifier("reserve.attendee\(index).name")
             if index == 0, app.attendeeDrafts[safe: 0]?.useProfileDOB == true {
                 HStack {
-                    Text(app.T("Ngày sinh (từ hồ sơ của bạn)", "Date of birth (from your profile)")).font(.system(size: 13))
+                    Text(app.T("Ngày sinh (từ hồ sơ của bạn)", "Date of birth (from your profile)")).font(.app(size: 13))
                     Spacer()
                     if let d = app.attendeeDrafts[safe: 0]?.profileDOB {
                         Text(d.formatted(.dateTime.day(.twoDigits).month(.twoDigits).year()))
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.app(size: 13, weight: .semibold))
                     }
                 }
                     .accessibilityIdentifier("reserve.attendee0.dobProfile")
                 DobCorrectionRequestView()
             } else {
                 HStack {
-                    Text(app.T("Ngày sinh", "Date of birth")).font(.system(size: 13))
+                    Text(app.T("Ngày sinh", "Date of birth")).font(.app(size: 13))
                     Spacer()
                     if app.attendeeDrafts[safe: index]?.dob == nil {
                         Button(app.T("Chọn ngày", "Choose date")) {
@@ -76,7 +82,7 @@ struct ReserveView: View {
                                 app.attendeeDrafts[index].dob = Calendar.current.date(byAdding: .year, value: -25, to: Date())
                             }
                         }
-                        .font(.system(size: 12.5, weight: .semibold))
+                        .font(.app(size: 12.5, weight: .semibold))
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("reserve.attendee\(index).dobPick")
                     } else {
@@ -89,7 +95,7 @@ struct ReserveView: View {
                     }
                 }
             }
-            if index > 0 {
+            if index > 0 || adding != nil {
                 BanbeField(label: nil,
                            placeholder: app.T("Email (không bắt buộc)", "Email (optional)"),
                            text: Binding(get: { app.attendeeDrafts[safe: index]?.email ?? "" },
@@ -112,16 +118,23 @@ struct ReserveView: View {
                 BookingJourneyProgress(current: 1)
                     .padding(.top, 14)
 
-                Text(app.T("Gần xong rồi.", "Almost there."))
+                Text(adding != nil ? app.T("Thêm vé", "Add tickets") : app.T("Gần xong rồi.", "Almost there."))
                     .font(BanbeTheme.display(24))
                     .padding(.top, 16)
+                if let already = adding {
+                    Text(app.T("Bạn đang giữ \(already) vé. Vé thêm là một lượt đặt mới, có thời gian giữ chỗ và xác nhận của chủ nhà riêng. Tối đa 6 vé mỗi người.",
+                               "You already hold \(already). The added tickets are a new booking with their own hold and host confirmation. Up to 6 per person."))
+                        .font(.app(size: 13)).lineSpacing(2).opacity(0.75)
+                        .padding(.top, 8)
+                        .accessibilityIdentifier("reserve.addingNote")
+                }
 
                 HStack(spacing: 14) {
                     CatalogPhoto(path: event.img, height: 52, width: 52)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(event.name).font(BanbeTheme.display(15))
                         Text("\(event.when) ▪︎ \(app.qty) " + app.T("chỗ", "seats") + " ▪︎ \(app.trStatus(totalLabel))")
-                            .font(.system(size: 11.5))
+                            .font(.app(size: 11.5))
                     }
                     Spacer(minLength: 0)
                 }
@@ -132,18 +145,18 @@ struct ReserveView: View {
                 VStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 5) {
                         HStack {
-                            Text(app.T("Tên", "Name")).font(.system(size: 11.5))
+                            Text(app.T("Tên", "Name")).font(.app(size: 11.5))
                             Spacer()
                             if hasName {
                                 Button(app.T("Đổi trong Tài khoản", "Change in Account")) { app.goEditName() }
-                                    .font(.system(size: 11))
+                                    .font(.app(size: 11))
                                     .foregroundStyle(app.palette.ink.opacity(0.6))
                                     .buttonStyle(.plain)
                             }
                         }
                         if hasName {
                             Text(app.user?.displayName ?? "")
-                                .font(.system(size: 14))
+                                .font(.app(size: 14))
                                 .foregroundStyle(app.palette.ink)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(13)
@@ -155,7 +168,7 @@ struct ReserveView: View {
                             Button(app.reserveNameSaving ? app.T("Đang lưu…", "Saving…") : app.T("Lưu tên", "Save name")) {
                                 Task { await app.setNameAtHold(app.formName) }
                             }
-                            .font(.system(size: 11.5, weight: .semibold))
+                            .font(.app(size: 11.5, weight: .semibold))
                             .foregroundStyle(app.palette.ink)
                             .padding(.horizontal, 10).padding(.vertical, 6)
                             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
@@ -163,14 +176,14 @@ struct ReserveView: View {
                             .disabled(app.reserveNameSaving)
                             .accessibilityIdentifier("reserve.nameSave")
                             if !app.reserveNameError.isEmpty {
-                                Text(app.reserveNameError).font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
+                                Text(app.reserveNameError).font(.app(size: 11)).foregroundStyle(BanbeTheme.alert)
                             }
                         }
                     }
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("Email").font(.system(size: 11.5))
+                        Text("Email").font(.app(size: 11.5))
                         Text(app.userEmail ?? "")
-                            .font(.system(size: 14))
+                            .font(.app(size: 14))
                             .foregroundStyle(app.palette.ink.opacity(0.75))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(13)
@@ -181,19 +194,19 @@ struct ReserveView: View {
                 .padding(.top, 20)
 
                 Text(app.T("Số vé", "Tickets"))
-                    .font(.system(size: 11.5, weight: .semibold))
+                    .font(.app(size: 11.5, weight: .semibold))
                     .padding(.top, 22)
 
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("\(app.qty) " + app.T("vé", "tickets"))
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.app(size: 14, weight: .semibold))
                         Text(app.qty > 1 ? app.T("Tổng ", "Total ") + app.trStatus(totalLabel)
                                          : app.trStatus(event.price))
-                            .font(.system(size: 11.5))
+                            .font(.app(size: 11.5))
                     }
                     Spacer()
-                    CountStepper(value: app.qty, range: 1...6, unit: app.T("vé", "tickets"),
+                    CountStepper(value: app.qty, range: 1...(adding.map { max(1, 6 - $0) } ?? 6), unit: app.T("vé", "tickets"),
                                  identifier: "reserve.qty") { newValue in
                         if newValue > app.qty { app.qtyPlus() } else if newValue < app.qty { app.qtyMinus() }
                     }
@@ -206,11 +219,13 @@ struct ReserveView: View {
                 // One name + date of birth per ticket (migration 151): each
                 // attendee gets their own QR and PDF, and the door sees their age.
                 Text(app.T("Người tham dự", "Attendees"))
-                    .font(.system(size: 11.5, weight: .semibold))
+                    .font(.app(size: 11.5, weight: .semibold))
                     .padding(.top, 22)
-                Text(app.T("Mỗi vé cần tên và ngày sinh của người sẽ tham dự. Vé 1 là của bạn và dùng ngày sinh trong hồ sơ.",
+                Text(adding != nil
+                     ? app.T("Mỗi vé cần tên và ngày sinh của người sẽ tham dự.", "Each ticket needs the name and date of birth of the person attending.")
+                     : app.T("Mỗi vé cần tên và ngày sinh của người sẽ tham dự. Vé 1 là của bạn và dùng ngày sinh trong hồ sơ.",
                            "Each ticket needs the name and date of birth of the person attending. Ticket 1 is yours and uses the birthday on your profile."))
-                    .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.65))
+                    .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.65))
                     .padding(.top, 4)
                 VStack(spacing: 10) {
                     ForEach(Array(app.attendeeDrafts.enumerated()), id: \.element.id) { index, _ in
@@ -223,7 +238,7 @@ struct ReserveView: View {
                     "banbe không thu tiền. Bạn giữ chỗ 30 phút để chuyển khoản trực tiếp cho người tổ chức. Bấm \"Tôi đã chuyển khoản\" là đồng hồ dừng và chỗ được khoá cho tới khi người tổ chức xác nhận.",
                     "banbe does not collect money. Your seat is held for 30 minutes while you transfer to the organizer directly. Tapping \"I have transferred\" stops the clock and locks your seat until they confirm."
                 ))
-                .font(.system(size: 12))
+                .font(.app(size: 12))
                 .lineSpacing(3)
                 .padding(.top, 22)
 
@@ -243,7 +258,7 @@ struct ReserveView: View {
                                        onSuccessAnimationComplete: { app.screen = .confirmed })
                     if !formOK, let holdBlockReason, !holdBlockReason.isEmpty {
                         Text(holdBlockReason)
-                            .font(.footnote)
+                            .font(.app(.footnote))
                             .foregroundStyle(app.palette.ink.opacity(0.7))
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: .infinity)
@@ -254,7 +269,7 @@ struct ReserveView: View {
 
                 if !app.reserveError.isEmpty {
                     Text(app.reserveError)
-                        .font(.system(size: 12))
+                        .font(.app(size: 12))
                         .foregroundStyle(BanbeTheme.alert)
                         .padding(.top, 12)
                 }

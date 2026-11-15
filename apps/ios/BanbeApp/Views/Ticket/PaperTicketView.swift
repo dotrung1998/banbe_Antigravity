@@ -48,7 +48,7 @@ struct PaperTicketView<Strip: View, Stub: View>: View {
         VStack(alignment: .leading, spacing: 4) {
             // Label and pill share a row; at accessibility text sizes the pill drops under the label so neither wraps badly.
             let labelView = Text(holderLabel.uppercased())
-                .font(.caption2.weight(.semibold)).tracking(0.8)
+                .font(.app(.caption2).weight(.semibold)).tracking(0.8)
                 .foregroundStyle(app.palette.ink3)
                 .frame(maxWidth: .infinity, alignment: .leading)
             // The name and this pill both open the Event details sheet.
@@ -56,9 +56,9 @@ struct PaperTicketView<Strip: View, Stub: View>: View {
                 if let onOpenDetails {
                     Button(action: onOpenDetails) {
                         HStack(spacing: 8) {
-                            Text(viewLabel).font(.footnote.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
+                            Text(viewLabel).font(.app(.footnote).weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
                             Image(systemName: "chevron.right")
-                                .font(.system(size: 9, weight: .bold)).foregroundStyle(app.palette.paper)
+                                .font(.app(size: 9, weight: .bold)).foregroundStyle(app.palette.paper)
                                 .frame(width: 20, height: 20).background(app.palette.ink, in: Circle())
                         }
                         .foregroundStyle(app.palette.ink)
@@ -96,9 +96,9 @@ struct PaperTicketView<Strip: View, Stub: View>: View {
     private var tileGrid: some View {
         let cells = ForEach(shown) { t in
             VStack(alignment: .leading, spacing: 2) {
-                Text(t.label.uppercased()).font(.caption2.weight(.semibold)).tracking(0.6).foregroundStyle(app.palette.ink3)
+                Text(t.label.uppercased()).font(.app(.caption2).weight(.semibold)).tracking(0.6).foregroundStyle(app.palette.ink3)
                 // The date stays on one line (it shrinks a little instead of wrapping); the others may wrap.
-                Text(t.value).font(.subheadline.weight(.semibold)).foregroundStyle(app.palette.ink)
+                Text(t.value).font(.app(.subheadline).weight(.semibold)).foregroundStyle(app.palette.ink)
                     .lineLimit(t.id == "date" && !typeSize.isAccessibilitySize ? 1 : nil)
                     .minimumScaleFactor(t.id == "date" ? 0.7 : 1)
                     .fixedSize(horizontal: false, vertical: true)

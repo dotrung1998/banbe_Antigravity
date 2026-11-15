@@ -104,7 +104,7 @@ struct RefundAccountsView: View {
 
                 HStack(spacing: 10) {
                     Image(systemName: "banknote")
-                        .font(.system(size: 20, weight: .medium))
+                        .font(.app(size: 20, weight: .medium))
                         .frame(width: 34, height: 34)
                         .background((ROW_ACCENT_COLORS["payments"] ?? .clear).opacity(0.33), in: Circle())
                     Text(app.T("Tài khoản nhận hoàn tiền", "Refund accounts"))
@@ -113,30 +113,30 @@ struct RefundAccountsView: View {
                 .padding(.top, 10)
                 if app.refundDestinations.count > 1 {
                     Text(app.T("Kéo để sắp xếp", "Drag to reorder"))
-                        .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6)).padding(.top, 6)
+                        .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6)).padding(.top, 6)
                 }
 
                 if savedFlash {
                     Text(app.T("Tài khoản nhận hoàn đã được lưu", "Refund account saved"))
-                        .font(.system(size: 12.5)).padding(.top, 12)
+                        .font(.app(size: 12.5)).padding(.top, 12)
                 }
                 if !formOpen && app.refundDestinationsReordering {
                     Text(app.T("Đang lưu thứ tự…", "Saving order…"))
-                        .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6)).padding(.top, 12)
+                        .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6)).padding(.top, 12)
                 }
                 if !formOpen && !app.refundDestinationsReordering && !app.refundDestinationError.isEmpty {
                     Text(app.refundDestinationError)
-                        .font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert).padding(.top, 12)
+                        .font(.app(size: 12.5)).foregroundStyle(BanbeTheme.alert).padding(.top, 12)
                 }
 
                 if formOpen {
                     ScrollView { formView.padding(.top, 4) }
                 } else if app.refundDestinations.isEmpty {
                     Text(app.T("Chưa có tài khoản nhận hoàn tiền", "No refund accounts saved yet"))
-                        .font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .center)
+                        .font(.app(size: 13)).frame(maxWidth: .infinity, alignment: .center)
                         .padding(20).background(app.palette.field, in: RoundedRectangle(cornerRadius: 14)).padding(.top, 16)
                     Button(app.T("+ Thêm tài khoản", "+ Add account"), action: openAddForm)
-                        .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                        .font(.app(size: 13)).foregroundStyle(app.palette.ink)
                         .frame(maxWidth: .infinity).padding(13)
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
                         .padding(.top, 12)
@@ -185,7 +185,7 @@ struct RefundAccountsView: View {
             }
             Section {
                 Button(app.T("+ Thêm tài khoản", "+ Add account"), action: openAddForm)
-                    .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                    .font(.app(size: 13)).foregroundStyle(app.palette.ink)
                     .frame(maxWidth: .infinity).padding(13)
                     .accessibilityIdentifier("refund.accountAdd")
                     .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
@@ -208,17 +208,17 @@ struct RefundAccountsView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(d.label ?? app.T("Tài khoản", "Account")).font(BanbeTheme.display(14))
                 Text("\(d.bankName) ▪︎ \(maskAccountNumber(d.accountNumber))")
-                    .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                    .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
             }
             Spacer(minLength: 8)
             if app.refundDestinationQR[d.id] != nil {
-                Image(systemName: "qrcode").font(.system(size: 13)).foregroundStyle(app.palette.ink.opacity(0.55))
+                Image(systemName: "qrcode").font(.app(size: 13)).foregroundStyle(app.palette.ink.opacity(0.55))
                     .accessibilityLabel(app.T("Có mã QR", "Has QR code"))
             }
             if d.isDefault {
-                Text(app.T("Mặc định", "Default")).font(.system(size: 11, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.55))
+                Text(app.T("Mặc định", "Default")).font(.app(size: 11, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.55))
             } else {
-                Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.35))
+                Image(systemName: "chevron.right").font(.app(size: 12)).foregroundStyle(app.palette.ink.opacity(0.35))
             }
         }
         .contentShape(Rectangle())
@@ -231,7 +231,7 @@ struct RefundAccountsView: View {
     private func accountRowMenu(_ d: RefundDestination) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("\(revealedID == d.id ? d.accountNumber : maskAccountNumber(d.accountNumber)) ▪︎ \(d.accountHolderName)")
-                .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
             HStack(spacing: 14) {
                 Button(revealedID == d.id ? app.T("Ẩn", "Hide") : app.T("Hiện số TK", "Reveal")) {
                     revealedID = revealedID == d.id ? nil : d.id
@@ -243,14 +243,14 @@ struct RefundAccountsView: View {
                 Button(app.T("Xoá", "Delete")) { confirmDeleteID = d.id }
                     .foregroundStyle(BanbeTheme.alert)
             }
-            .font(.system(size: 11.5))
+            .font(.app(size: 11.5))
             if confirmDeleteID == d.id {
                 HStack {
-                    Text(app.T("Xoá tài khoản này?", "Delete this account?")).font(.system(size: 11.5))
+                    Text(app.T("Xoá tài khoản này?", "Delete this account?")).font(.app(size: 11.5))
                     Spacer()
-                    Button(app.T("Huỷ", "Cancel")) { confirmDeleteID = nil }.font(.system(size: 11.5))
+                    Button(app.T("Huỷ", "Cancel")) { confirmDeleteID = nil }.font(.app(size: 11.5))
                     Button(app.T("Xoá", "Delete")) { Haptics.warning(); Task { await app.deleteRefundDestination(d.id); confirmDeleteID = nil } }
-                        .font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                        .font(.app(size: 11.5)).foregroundStyle(BanbeTheme.alert)
                 }
             }
         }
@@ -265,14 +265,14 @@ struct RefundAccountsView: View {
         let existing = editingID.flatMap { app.refundDestinationQR[$0] }
         return VStack(alignment: .leading, spacing: 8) {
             Text(app.T("Mã QR nhận tiền (không bắt buộc)", "Receiving QR code (optional)"))
-                .font(.system(size: 12, weight: .semibold))
+                .font(.app(size: 12, weight: .semibold))
             Text(app.T("Thêm mã QR của tài khoản/ví này để người tổ chức hoàn tiền nhanh hơn: họ chỉ cần nhấn giữ mã để mở app thanh toán.",
                        "Add this account's or wallet's QR so the host can refund you faster: they just press and hold the code to open their payment app."))
-                .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
             if pendingQR != nil {
                 Label(app.T("Đã chọn mã QR. Sẽ lưu cùng tài khoản.", "QR chosen. It will be saved with the account."),
                       systemImage: "checkmark.circle")
-                    .font(.system(size: 12))
+                    .font(.app(size: 12))
             } else if let existing, !existing.isEmpty {
                 PaymentQRImageView(bucket: "refund-qr", path: existing.path, payload: existing.payload, size: 150, showHint: false)
                     .accessibilityIdentifier("refund.accountQR")
@@ -294,7 +294,7 @@ struct RefundAccountsView: View {
     private var formView: some View {
         VStack(alignment: .leading, spacing: 8) {
             TextField(app.T("Nhãn (VD: Tài khoản chính)", "Label (e.g. Main account)"), text: $label)
-                .font(.system(size: 13)).padding(10).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
+                .font(.app(size: 13)).padding(10).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     ForEach(SmartDefaults.commonBanks, id: \.self) { name in
@@ -306,37 +306,37 @@ struct RefundAccountsView: View {
             .accessibilityElement(children: .contain)
             .accessibilityLabel(app.T("Ngân hàng phổ biến", "Common banks"))
             TextField(app.T("Tên ngân hàng (hoặc chọn ở trên)", "Bank name (or pick above)"), text: $bank)
-                .font(.system(size: 13)).padding(10).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
+                .font(.app(size: 13)).padding(10).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
                 .accessibilityIdentifier("refund.bankField")
             TextField(app.T("Số tài khoản", "Account number"), text: $account)
-                .font(.system(size: 13)).padding(10).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
+                .font(.app(size: 13)).padding(10).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
                 .keyboardType(.numberPad)
             TextField(app.T("Tên chủ tài khoản", "Account holder name"), text: $holder)
-                .font(.system(size: 13)).padding(10).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
+                .font(.app(size: 13)).padding(10).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
             TextField(app.T("Ghi chú (không bắt buộc)", "Note (optional)"), text: $note)
-                .font(.system(size: 13)).padding(10).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
+                .font(.app(size: 13)).padding(10).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
             qrSection
             Toggle(isOn: $setDefault) {
-                Text(app.T("Đặt làm tài khoản mặc định", "Set as default account")).font(.system(size: 12))
+                Text(app.T("Đặt làm tài khoản mặc định", "Set as default account")).font(.app(size: 12))
             }
             .toggleStyle(BanbeLiquidToggleStyle())
             Toggle(isOn: $confirmed) {
-                Text(app.T("Tôi xác nhận thông tin tài khoản trên là chính xác.", "I confirm this account information is correct.")).font(.system(size: 12))
+                Text(app.T("Tôi xác nhận thông tin tài khoản trên là chính xác.", "I confirm this account information is correct.")).font(.app(size: 12))
             }
             .toggleStyle(BanbeLiquidToggleStyle())
             .accessibilityIdentifier("refund.accountConfirmToggle")
             if !app.refundDestinationError.isEmpty {
-                Text(app.refundDestinationError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                Text(app.refundDestinationError).font(.app(size: 12)).foregroundStyle(BanbeTheme.alert)
             }
             if let saveGapReason, !app.refundDestinationBusy {
                 Text(saveGapReason)
-                    .font(.footnote).foregroundStyle(app.palette.ink.opacity(0.7))
+                    .font(.app(.footnote)).foregroundStyle(app.palette.ink.opacity(0.7))
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .accessibilityIdentifier("refund.accountSaveReason")
             }
             HStack(spacing: 10) {
                 Button(app.T("Huỷ", "Cancel")) { formOpen = false }
-                    .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                    .font(.app(size: 13)).foregroundStyle(app.palette.ink)
                     .frame(maxWidth: .infinity).padding(12)
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
                 InkButton(title: app.refundDestinationBusy ? app.T("Đang lưu…", "Saving…") : app.T("Lưu tài khoản", "Save account"),

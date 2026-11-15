@@ -105,7 +105,7 @@ struct CancelEventSheet: View {
         Text(app.T("Huỷ sự kiện \"\(eventName)\"", "Cancel \"\(eventName)\"")).font(BanbeTheme.display(22))
         Text(app.T("Tất cả vé sẽ bị huỷ và các khoản đã thanh toán được chuyển vào mục hoàn tiền. Việc này không thể hoàn tác.",
                    "Every ticket will be cancelled and paid tickets move to refunds. This can't be undone."))
-            .font(.system(size: 12.5)).opacity(0.75)
+            .font(.app(size: 12.5)).opacity(0.75)
 
         if loading {
             ProgressView().frame(maxWidth: .infinity).padding(.vertical, 20)
@@ -116,17 +116,17 @@ struct CancelEventSheet: View {
                  ? app.T("Chưa có người giữ vé nào để gửi thư.", "No ticket holders to email.")
                  : app.T("Sau khi huỷ, bạn sẽ soạn thư xin lỗi riêng cho \(holders.count) người giữ vé, gửi từ email của bạn.",
                          "After cancelling you'll draft a separate apology to each of \(holders.count) ticket holder(s), sent from your own email."))
-                .font(.system(size: 12.5))
+                .font(.app(size: 12.5))
             templatePicker
             preview
         }
 
-        if !error.isEmpty { Text(error).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert) }
+        if !error.isEmpty { Text(error).font(.app(size: 12)).foregroundStyle(BanbeTheme.alert) }
 
         Button { confirming = true } label: {
             HStack {
                 if busy { ProgressView().tint(.white) }
-                Text(app.T("Huỷ sự kiện", "Cancel event")).font(.system(size: 15, weight: .semibold))
+                Text(app.T("Huỷ sự kiện", "Cancel event")).font(.app(size: 15, weight: .semibold))
             }
             .frame(maxWidth: .infinity).padding(.vertical, 15)
             .background(BanbeTheme.alert, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -142,7 +142,7 @@ struct CancelEventSheet: View {
         Text(app.T("Gửi thư cho khách", "Email your guests")).font(BanbeTheme.display(22))
         Text(app.T("Mỗi thư mở trong ứng dụng email của bạn, gửi riêng cho từng khách. Bạn tự bấm Gửi từ hộp thư của mình.",
                    "Each email opens in your own mail app, addressed to one guest. You press Send from your own mailbox."))
-            .font(.system(size: 12.5)).opacity(0.75)
+            .font(.app(size: 12.5)).opacity(0.75)
 
         if loading {
             ProgressView().frame(maxWidth: .infinity).padding(.vertical, 20)
@@ -154,7 +154,7 @@ struct CancelEventSheet: View {
             Text(holders.isEmpty
                  ? app.T("Không có người giữ vé nào để gửi thư.", "No ticket holders to email.")
                  : app.T("Đã mở thư cho \(draftedCount)/\(holders.count) khách", "\(draftedCount) of \(holders.count) guests drafted"))
-                .font(.system(size: 11.5, weight: .semibold)).padding(.top, 4)
+                .font(.app(size: 11.5, weight: .semibold)).padding(.top, 4)
 
             VStack(spacing: 0) {
                 ForEach(Array(holders.enumerated()), id: \.element.email) { i, h in
@@ -169,7 +169,7 @@ struct CancelEventSheet: View {
                     let d = draft(for: nil, group: true)
                     mail = MailDraft(subject: d.subject, body: d.body, to: [], bcc: holders.map(\.email))
                 }
-                .font(.system(size: 12)).buttonStyle(.plain).underline()
+                .font(.app(size: 12)).buttonStyle(.plain).underline()
                 .accessibilityIdentifier("cancelEvent.draftGroup")
             }
         }
@@ -178,8 +178,8 @@ struct CancelEventSheet: View {
     private func holderRow(_ h: AppState.TicketHolder) -> some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(h.name.isEmpty ? app.T("Khách", "Guest") : h.name).font(.system(size: 14, weight: .semibold)).lineLimit(1)
-                Text(h.email).font(.system(size: 11.5)).opacity(0.7).lineLimit(1)
+                Text(h.name.isEmpty ? app.T("Khách", "Guest") : h.name).font(.app(size: 14, weight: .semibold)).lineLimit(1)
+                Text(h.email).font(.app(size: 11.5)).opacity(0.7).lineLimit(1)
             }
             Spacer(minLength: 0)
             Button {
@@ -187,7 +187,7 @@ struct CancelEventSheet: View {
                 mail = MailDraft(subject: d.subject, body: d.body, to: [h.email], bcc: [])
             } label: {
                 Text(drafted.contains(h.email) ? app.T("Đã mở ✓", "Drafted ✓") : app.T("Soạn thư", "Draft email"))
-                    .font(.system(size: 12.5, weight: .semibold))
+                    .font(.app(size: 12.5, weight: .semibold))
                     .padding(.horizontal, 14).padding(.vertical, 8)
                     .overlay(Capsule().stroke(app.palette.rule))
             }
@@ -203,17 +203,17 @@ struct CancelEventSheet: View {
 
     private var loadError: some View {
         Text(app.T("Không tải được danh sách người giữ vé. Hãy thử lại.", "Couldn't load the ticket holders. Please try again."))
-            .font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert)
+            .font(.app(size: 12.5)).foregroundStyle(BanbeTheme.alert)
     }
 
     private var templatePicker: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(app.T("Chọn mẫu thư xin lỗi", "Choose an apology template")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 4)
+            Text(app.T("Chọn mẫu thư xin lỗi", "Choose an apology template")).font(.app(size: 11.5, weight: .semibold)).padding(.top, 4)
             ForEach(EventCancellationTemplates.all) { template in
                 Button { selected = template } label: {
                     HStack {
                         Image(systemName: selected == template ? "checkmark.circle.fill" : "circle")
-                        Text(template.title(isEN: app.isEN)).font(.system(size: 14))
+                        Text(template.title(isEN: app.isEN)).font(.app(size: 14))
                         Spacer(minLength: 0)
                     }
                     .padding(14)
@@ -231,11 +231,11 @@ struct CancelEventSheet: View {
         let sample = draft(for: holders.first?.name)
         return VStack(alignment: .leading, spacing: 8) {
             Text(holders.first.map { app.T("Xem trước · ví dụ cho \($0.name)", "Preview · as sent to \($0.name)") } ?? app.T("Xem trước", "Preview"))
-                .font(.system(size: 11.5, weight: .semibold))
+                .font(.app(size: 11.5, weight: .semibold))
             VStack(alignment: .leading, spacing: 8) {
-                Text(sample.subject).font(.system(size: 13, weight: .semibold))
+                Text(sample.subject).font(.app(size: 13, weight: .semibold))
                 Divider().overlay(app.palette.rule)
-                Text(sample.body).font(.system(size: 12.5)).lineSpacing(3)
+                Text(sample.body).font(.app(size: 12.5)).lineSpacing(3)
             }
             .padding(14)
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))

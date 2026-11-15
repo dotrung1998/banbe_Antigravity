@@ -17,7 +17,7 @@ struct StorySurveyHotspot: View {
         GeometryReader { geo in
             let k = geo.size.width / 360                 // canvas is 360x640
             let button = Text(label.isEmpty ? app.T("Trả lời khảo sát", "Answer Survey") : label)
-                .font(.system(size: 14 * k, weight: .bold))
+                .font(.app(size: 14 * k, weight: .bold))
                 .frame(width: 304 * k, height: 43 * k)
                 .foregroundStyle(app.palette.paper)
                 .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 12 * k, style: .continuous))
@@ -66,7 +66,7 @@ private struct StoryStickerText: View {
     var body: some View {
         let color = Color(hex: overlay.colorHex)
         Text(overlay.text)
-            .font(.system(size: 24 * overlay.scale * canvasWidth / 360, weight: .bold))
+            .font(.app(size: 24 * overlay.scale * canvasWidth / 360, weight: .bold))
             .foregroundStyle(color)
             .multilineTextAlignment(.center)
             .padding(.horizontal, overlay.background ? 10 : 0).padding(.vertical, overlay.background ? 5 : 0)
@@ -104,9 +104,9 @@ struct StoryLinkPill: View {
         if let url = URL(string: urlString) {
             Button { openURL(url) } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "link").font(.system(size: 12, weight: .semibold))
+                    Image(systemName: "link").font(.app(size: 12, weight: .semibold))
                     Text((label?.isEmpty == false ? label! : url.host ?? urlString))
-                        .font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                        .font(.app(size: 13, weight: .semibold)).lineLimit(1)
                 }
                 .foregroundStyle(.black)
                 .padding(.horizontal, 16).padding(.vertical, 10)
@@ -164,7 +164,7 @@ private struct LinkEditSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(app.T("Thêm liên kết", "Add a link")).font(.system(size: 16, weight: .semibold))
+            Text(app.T("Thêm liên kết", "Add a link")).font(.app(size: 16, weight: .semibold))
             TextField("https://…", text: $url)
                 .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
                 .padding(12).background(app.palette.field, in: RoundedRectangle(cornerRadius: 12))
@@ -174,7 +174,7 @@ private struct LinkEditSheet: View {
                 .accessibilityIdentifier("story.editor.linkLabel")
             if invalid {
                 Text(app.T("Liên kết không hợp lệ. Dùng địa chỉ http(s)://…", "That link isn't valid. Use an http(s):// address."))
-                    .font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                    .font(.app(size: 12)).foregroundStyle(BanbeTheme.alert)
             }
             HStack {
                 if !app.storyDraftLinkURL.isEmpty {
@@ -190,7 +190,7 @@ private struct LinkEditSheet: View {
                         app.storyDraftLinkURL = ok; app.storyDraftLinkLabel = label; dismiss()
                     } else { invalid = true }
                 } label: {
-                    Text(app.T("Xong", "Done")).font(.system(size: 14, weight: .semibold))
+                    Text(app.T("Xong", "Done")).font(.app(size: 14, weight: .semibold))
                         .padding(.horizontal, 22).padding(.vertical, 10)
                         .background(app.palette.ink, in: Capsule()).foregroundStyle(app.palette.paper)
                 }
@@ -339,14 +339,14 @@ struct StoryEditorView: View {
                             editingID = nil
                             app.storyDraftOverlays.removeAll { $0.id == id }
                         } label: {
-                            Image(systemName: "trash").font(.system(size: 16, weight: .semibold))
+                            Image(systemName: "trash").font(.app(size: 16, weight: .semibold))
                                 .frame(width: 46, height: 46).background(Color.white.opacity(0.3), in: Circle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(app.T("Xóa", "Delete"))
                         .accessibilityIdentifier("story.editor.textDelete")
                         Button { o.wrappedValue.background.toggle() } label: {
-                            Text("A").font(.system(size: 17, weight: .bold))
+                            Text("A").font(.app(size: 17, weight: .bold))
                                 .foregroundStyle(o.wrappedValue.background ? .black : .white)
                                 .frame(width: 44, height: 44)
                                 .background(o.wrappedValue.background ? Color.white : Color.white.opacity(0.18), in: Circle())
@@ -355,7 +355,7 @@ struct StoryEditorView: View {
                         .accessibilityLabel(app.T("Nền cho chữ", "Text background"))
                         Spacer()
                         Button { closeTextEditor(id) } label: {
-                            Text(app.T("Xong", "Done")).font(.system(size: 14, weight: .semibold))
+                            Text(app.T("Xong", "Done")).font(.app(size: 14, weight: .semibold))
                                 .padding(.horizontal, 22).frame(minHeight: 44)
                                 .background(Color.white, in: Capsule()).foregroundStyle(.black)
                         }
@@ -375,8 +375,8 @@ struct StoryEditorView: View {
     private func editorPill(icon: String, title: String, id: String, highlighted: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                Image(systemName: icon).font(.system(size: 16, weight: .bold))
-                Text(title).font(.system(size: 15, weight: .bold))
+                Image(systemName: icon).font(.app(size: 16, weight: .bold))
+                Text(title).font(.app(size: 15, weight: .bold))
             }
             .foregroundStyle(Color.black)
             .padding(.horizontal, 18).frame(minHeight: 46)
@@ -391,7 +391,7 @@ struct StoryEditorView: View {
     private var topBar: some View {
         HStack(spacing: 12) {
             Button { app.clearStoryDraft() } label: {
-                Image(systemName: "xmark").font(.system(size: 17, weight: .bold))
+                Image(systemName: "xmark").font(.app(size: 17, weight: .bold))
                     .foregroundStyle(.black)
                     .frame(width: 46, height: 46)
                     .background(Color.white, in: Circle())
@@ -420,7 +420,7 @@ struct StoryEditorView: View {
             }
             Text(app.T("Chạm chữ để sửa · kéo để di chuyển · chụm hai ngón để đổi cỡ",
                        "Tap text to edit · drag to move · pinch to resize"))
-                .font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))
+                .font(.app(size: 11)).foregroundStyle(.white.opacity(0.75))
             HStack(spacing: 10) {
                 if !isEditing {
                     Button {
@@ -428,7 +428,7 @@ struct StoryEditorView: View {
                         app.storyCameraOpen = true
                     } label: {
                         Text(app.T("Chụp lại", "Retake"))
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.app(size: 15, weight: .bold))
                             .frame(maxWidth: .infinity).padding(.vertical, 15)
                             .foregroundStyle(.white)
                             .background(Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 12))
@@ -441,7 +441,7 @@ struct StoryEditorView: View {
                 } label: {
                     Text(app.storyCreateBusy ? app.T("Đang lưu…", "Saving…")
                          : isEditing ? app.T("Lưu thay đổi", "Save changes") : app.T("Đăng story", "Post story"))
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.app(size: 15, weight: .bold))
                         .frame(maxWidth: .infinity).padding(.vertical, 15)
                         .foregroundStyle(.black)
                         .background(Color.white, in: RoundedRectangle(cornerRadius: 12))
@@ -464,7 +464,7 @@ private struct StoryInlineTextField: View {
         let color = Color(hex: overlay.colorHex)
         TextField("", text: $overlay.text, prompt: Text("Aa").foregroundColor(.white.opacity(0.5)), axis: .vertical)
             .lineLimit(1...5)
-            .font(.system(size: 28 * overlay.scale, weight: .bold))
+            .font(.app(size: 28 * overlay.scale, weight: .bold))
             .foregroundStyle(color)
             .multilineTextAlignment(.center)
             .padding(.horizontal, overlay.background ? 12 : 0).padding(.vertical, overlay.background ? 6 : 0)
@@ -495,9 +495,9 @@ private struct StoryEventCard: View {
             }
             LinearGradient(colors: [.black.opacity(0.35), .clear, .black.opacity(0.78)], startPoint: .top, endPoint: .bottom)
             VStack(alignment: .leading, spacing: 8) {
-                Text(name).font(.system(size: 34, weight: .bold)).lineLimit(3)
-                if !when.isEmpty { Text(when).font(.system(size: 16, weight: .semibold)).opacity(0.95) }
-                if !place.isEmpty { Text(place).font(.system(size: 14)).opacity(0.85).lineLimit(2) }
+                Text(name).font(.app(size: 34, weight: .bold)).lineLimit(3)
+                if !when.isEmpty { Text(when).font(.app(size: 16, weight: .semibold)).opacity(0.95) }
+                if !place.isEmpty { Text(place).font(.app(size: 14)).opacity(0.85).lineLimit(2) }
             }
             .foregroundStyle(.white)
             .padding(.horizontal, 24).padding(.bottom, 56)
@@ -506,7 +506,7 @@ private struct StoryEventCard: View {
                 if let mark = UIImage(named: "banbe-wordmark") {
                     Image(uiImage: mark).renderingMode(.template).resizable().scaledToFit().frame(height: 26)
                 } else {
-                    Text("banbe").font(.system(size: 20, weight: .heavy))
+                    Text("banbe").font(.app(size: 20, weight: .heavy))
                 }
                 Spacer()
             }.padding(.horizontal, 16).padding(.top, 22); Spacer() }

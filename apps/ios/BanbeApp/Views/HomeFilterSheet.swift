@@ -25,7 +25,10 @@ struct HomeFilterSheet: View {
     var mapExtras: AnyView? = nil
     /// For You on/off for this screen (Home's or the Map's own); nil hides the row. Shown in both modes.
     var forYou: Binding<Bool>? = nil
-    private var mapMode: Bool { onApplyMap != nil }
+    /// v2.3 Browse (note 81): the sheet filters that list (When, Price, Seats) through `onApplyMap`, without the Map's
+    /// own copy and with no sort.
+    var browseTitle: String? = nil
+    private var mapMode: Bool { onApplyMap != nil && browseTitle == nil }
     private var dateOptions: [String] { mapMode ? HomeDiscovery.mapDateOptions : HomeDiscovery.dateOptions }
 
     @State private var draft = HomeDiscovery.Filters.default
@@ -68,7 +71,7 @@ struct HomeFilterSheet: View {
                     // again (one source of truth), so the sheet drops both while the switch is on. OFF: unchanged.
                     categorySection
                     seatsSection
-                    if !mapMode { sortSection }
+                    if !mapMode && browseTitle == nil { sortSection }
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 12)
@@ -92,12 +95,12 @@ struct HomeFilterSheet: View {
                 Text(mapMode
                      ? app.T("trên tổng \(items.count) sự kiện trong vùng bản đồ", "out of \(items.count) event\(items.count == 1 ? "" : "s") in this map area")
                      : app.T("trên tổng \(items.count) sự kiện", "out of \(items.count) events"))
-                    .font(.system(size: 11.5)).opacity(0.55)
+                    .font(.app(size: 11.5)).opacity(0.55)
             }
             .padding(.horizontal, 20).padding(.top, 12).padding(.bottom, 18)
         }
         .background(app.palette.paper.ignoresSafeArea())
-        .navigationTitle(app.T("Bộ lọc", "Filters"))
+        .navigationTitle(browseTitle ?? app.T("Bộ lọc", "Filters"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -158,13 +161,13 @@ struct HomeFilterSheet: View {
             action()
         } label: {
             HStack(spacing: 6) {
-                if let icon { Image(systemName: icon).font(.system(size: 13)) }
+                if let icon { Image(systemName: icon).font(.app(size: 13)) }
                 Text(title)
                 if let count {
-                    Text("\(count)").font(.system(size: 12)).monospacedDigit().opacity(0.65)
+                    Text("\(count)").font(.app(size: 12)).monospacedDigit().opacity(0.65)
                 }
             }
-            .font(.system(size: pillFont, weight: active ? .semibold : .medium))
+            .font(.app(size: pillFont, weight: active ? .semibold : .medium))
             .lineLimit(1)
             .padding(.horizontal, 14)
             .frame(minHeight: 38)
@@ -269,7 +272,7 @@ struct HomeFilterSheet: View {
                 forTwo.toggle()
             } label: {
                 Text((forTwo ? "✓ " : "") + app.T("Giá cho 2 người", "Price for 2"))
-                    .font(.system(size: 12.5, weight: .semibold))
+                    .font(.app(size: 12.5, weight: .semibold))
                     .opacity(forTwo ? 1 : 0.6)
                     .frame(minHeight: 32)
             }
@@ -280,7 +283,7 @@ struct HomeFilterSheet: View {
             if let hist {
                 (Text(contextLine.isEmpty ? "" : contextLine + " · ")
                  + Text(app.T("\(inRange) / \(paid.count) sự kiện", "\(inRange) of \(paid.count) events")).bold())
-                    .font(.system(size: 12.5))
+                    .font(.app(size: 12.5))
                     .opacity(0.75)
                     .accessibilityIdentifier("home.filter.priceContext")
                 let peak = max(hist.counts.max() ?? 1, 1)
@@ -305,10 +308,10 @@ struct HomeFilterSheet: View {
                     Spacer()
                     Text(draft.priceMax != nil ? shown(hi) : "\(shown(sliderMax))+")
                 }
-                .font(.system(size: 12.5, weight: .semibold))
+                .font(.app(size: 12.5, weight: .semibold))
             } else {
                 Text(app.T("Chưa có sự kiện trả phí nào khớp.", "No paid events match yet."))
-                    .font(.system(size: 12.5)).opacity(0.6)
+                    .font(.app(size: 12.5)).opacity(0.6)
             }
             pill(app.T("Chỉ miễn phí", "Free only"), active: draft.free, count: freeCount, disabled: freeCount == 0,
                  id: "home.filter.free") {
@@ -365,7 +368,7 @@ struct HomeFilterSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             if let forYou {
                 Toggle(isOn: forYou) {
-                    Label(app.T("Dành cho bạn", "For You"), systemImage: "star.fill").font(.subheadline.weight(.semibold))
+                    Label(app.T("Dành cho bạn", "For You"), systemImage: "star.fill").font(.app(.subheadline).weight(.semibold))
                 }
                 .tint(app.palette.ink)
                 .frame(minHeight: 48)
@@ -373,10 +376,10 @@ struct HomeFilterSheet: View {
             }
             Button { Haptics.selection(); areaOpen = true } label: {
                 HStack {
-                    Label(app.T("Khu vực", "Location"), systemImage: "mappin.and.ellipse").font(.subheadline.weight(.semibold))
+                    Label(app.T("Khu vực", "Location"), systemImage: "mappin.and.ellipse").font(.app(.subheadline).weight(.semibold))
                     Spacer()
-                    Text(areaLabel ?? app.T("Mọi nơi", "Everywhere")).font(.subheadline).foregroundStyle(app.palette.ink2)
-                    Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(app.palette.ink3)
+                    Text(areaLabel ?? app.T("Mọi nơi", "Everywhere")).font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
+                    Image(systemName: "chevron.right").font(.app(.footnote).weight(.semibold)).foregroundStyle(app.palette.ink3)
                 }
                 .frame(minHeight: 48).contentShape(Rectangle())
             }
@@ -397,7 +400,7 @@ struct HomeFilterSheet: View {
             }
             if !canSortNearest {
                 Text(app.T("Bật vị trí để sắp xếp theo khoảng cách.", "Turn on location to sort by distance."))
-                    .font(.system(size: 11.5)).opacity(0.6)
+                    .font(.app(size: 11.5)).opacity(0.6)
             }
         }
     }

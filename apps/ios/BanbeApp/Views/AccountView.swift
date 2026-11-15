@@ -266,7 +266,7 @@ struct AccountView: View {
         HStack(alignment: .center) {
             if searchOpen {
                 TextField(app.T("Tìm trong tài khoản…", "Search Account…"), text: $app.accountSearchQuery)
-                    .font(.system(size: 13.5))
+                    .font(.app(size: 13.5))
                     .padding(.horizontal, 14).padding(.vertical, 10)
                     .background(app.palette.field, in: Capsule())
                     // Note 53: same focus ring as every other field (clay border + soft halo) while typing.
@@ -293,19 +293,34 @@ struct AccountView: View {
                     searchFocused = false
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 14))
+                        .font(.app(size: 14))
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(app.T("Đóng", "Close"))
                 .accessibilityIdentifier("account.searchToggle")
-            } else if app.isSignedIn {
+            } else {
+                // Note 83: the search button is back (the search itself was never removed): finds any row, "font" too.
+                SwipeSafeButton {
+                    withAnimation(.easeInOut(duration: 0.22)) { app.accountSearchOpen = true }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { searchFocused = true }
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .font(.app(size: 19, weight: .light))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(app.T("Tìm trong Tài khoản", "Search Account"))
+                .accessibilityIdentifier("account.searchOpen")
+            }
+            if !searchOpen && app.isSignedIn {
                 SwipeSafeButton {
                     shareCardForHost = false; shareCardOpen = true
                 } label: {
                     Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 19, weight: .light))
+                        .font(.app(size: 19, weight: .light))
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
@@ -462,6 +477,10 @@ struct AccountView: View {
             }
             moreDivider()
             // Everything that used to live under Settings only (image cache, digest, account deletion) stays one tap away.
+            // Note 83: the font choice (and the rest of Language & Appearance).
+            moreRow(app.T("Phông chữ & hiển thị", "Font & more display"), sub: fontLabel, icon: "textformat",
+                    identifier: "account.font") { openFontSettings() }
+            moreDivider()
             moreRow(app.T("Thêm cài đặt", "More settings"), icon: "gearshape", identifier: "account.moreSettings") { openGroup("preferences") }
             moreDivider()
             moreRow(imageCacheClearedAt == nil ? app.T("Xoá bộ nhớ đệm hình ảnh", "Clear image cache")
@@ -480,7 +499,7 @@ struct AccountView: View {
         }
         if !app.organizerModeError.isEmpty {
             Text(app.organizerModeError)
-                .font(.system(size: 12))
+                .font(.app(size: 12))
                 .foregroundStyle(BanbeTheme.alert)
                 .padding(.top, 10)
         }
@@ -572,7 +591,7 @@ struct AccountView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Web `RowGroup`: small-caps label, then plain rows split by hairlines (no card fill).
             Text(title.uppercased())
-                .font(.system(size: 12, weight: .semibold))
+                .font(.app(size: 12, weight: .semibold))
                 .kerning(0.5)
                 .foregroundStyle(app.palette.ink3)
                 .padding(.bottom, 6)
@@ -634,7 +653,7 @@ struct AccountView: View {
                             if let avatarURL {
                                 AsyncImage(url: avatarURL) { $0.resizable().scaledToFill() } placeholder: { app.palette.clay }
                             } else {
-                                Text(initials).font(.system(size: 22, weight: .medium)).foregroundStyle(.white)
+                                Text(initials).font(.app(size: 22, weight: .medium)).foregroundStyle(.white)
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                                     .background(app.palette.clay)
                             }
@@ -651,15 +670,15 @@ struct AccountView: View {
                     Text(title).font(BanbeTheme.display(22))
                         .lineLimit(2).minimumScaleFactor(0.85)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(sub).font(.system(size: 13)).foregroundStyle(app.palette.ink3)
+                    Text(sub).font(.app(size: 13)).foregroundStyle(app.palette.ink3)
                     if app.hostReminderPhase != nil && hostTab {
                         Text(app.T("Điểm danh", "Check-in"))
-                            .font(.system(size: 12, weight: .bold)).foregroundStyle(Color(hex: 0x7A5200))
+                            .font(.app(size: 12, weight: .bold)).foregroundStyle(Color(hex: 0x7A5200))
                             .accessibilityIdentifier("org.profile.checkinHint")
                     }
                     if canOpen {
                         SwipeSafeButton(action: open) {
-                            Text(linkLabel + " ›").font(.system(size: 13))
+                            Text(linkLabel + " ›").font(.app(size: 13))
                                 .padding(.top, 6)
                                 .overlay(alignment: .bottom) { Rectangle().fill(app.palette.rule).frame(height: 1) }
                                 .frame(minHeight: 32, alignment: .bottom)
@@ -760,15 +779,15 @@ struct AccountView: View {
             if n == 0 { app.openProjectJoinEntry(back: .profile) } else { app.screen = .myProjects }
         } label: {
             HStack(spacing: 10) {
-                Image(systemName: n == 0 ? "person.badge.plus" : "rectangle.3.group").font(.system(size: 16, weight: .medium)).accessibilityHidden(true)
-                Text(text).font(.subheadline.weight(.semibold))
+                Image(systemName: n == 0 ? "person.badge.plus" : "rectangle.3.group").font(.app(size: 16, weight: .medium)).accessibilityHidden(true)
+                Text(text).font(.app(.subheadline).weight(.semibold))
                 Spacer(minLength: 8)
                 if tasks > 0 {
-                    Text(app.T("\(tasks) việc", tasks == 1 ? "1 task" : "\(tasks) tasks")).font(.caption.weight(.bold))
+                    Text(app.T("\(tasks) việc", tasks == 1 ? "1 task" : "\(tasks) tasks")).font(.app(.caption).weight(.bold))
                         .padding(.horizontal, 8).padding(.vertical, 3)
                         .foregroundStyle(app.palette.clay).background(app.palette.clayBg, in: Capsule())
                 }
-                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink3)
+                Image(systemName: "chevron.right").font(.app(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink3)
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 16)
@@ -802,12 +821,12 @@ struct AccountView: View {
         return SwipeSafeButton { app.openRewards(from: .profile) } label: {
             HStack(spacing: 10) {
                 if summary == nil {
-                    Image(systemName: "circle.hexagongrid.circle").font(.system(size: 16, weight: .medium)).accessibilityHidden(true)
+                    Image(systemName: "circle.hexagongrid.circle").font(.app(size: 16, weight: .medium)).accessibilityHidden(true)
                 }
-                Text(text).font(.subheadline.weight(.semibold)).monospacedDigit()
+                Text(text).font(.app(.subheadline).weight(.semibold)).monospacedDigit()
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 8)
-                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink3)
+                Image(systemName: "chevron.right").font(.app(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink3)
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 16)
@@ -827,16 +846,16 @@ struct AccountView: View {
     private var teamInviteBanner: some View {
         SwipeSafeButton { openGroup("team") } label: {
             HStack(spacing: 12) {
-                Image(systemName: "person.3").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
-                Text(app.T("Bạn có lời mời Team", "You have a team invite")).font(.system(size: 14))
+                Image(systemName: "person.3").font(.app(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
+                Text(app.T("Bạn có lời mời Team", "You have a team invite")).font(.app(size: 14))
                 Spacer()
                 Text("\(app.myOrganizerInvites.count)")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.app(size: 11, weight: .bold))
                     .foregroundStyle(BanbeTheme.onAlert)
                     .padding(.horizontal, 7).padding(.vertical, 2)
                     .background(BanbeTheme.alert, in: Capsule())
                     .accessibilityIdentifier("account.teamInviteBanner.badge")
-                Text("›").font(.system(size: 15))
+                Text("›").font(.app(size: 15))
             }
             .foregroundStyle(app.palette.ink)
             .padding(16)
@@ -855,26 +874,26 @@ struct AccountView: View {
     private func moreRowLabel(_ title: String, sub: String? = nil, icon: String, badge: Int = 0, trailing: String? = nil, chevron: Bool = true) -> some View {
         HStack(spacing: 14) {
             Image(systemName: icon)
-                .font(.system(size: 18, weight: .light))
+                .font(.app(size: 18, weight: .light))
                 .frame(width: 24, height: 24)
                 .foregroundStyle(app.palette.ink)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 15)).fixedSize(horizontal: false, vertical: true)
-                if let sub { Text(sub).font(.system(size: 12)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true) }
+                Text(title).font(.app(size: 15)).fixedSize(horizontal: false, vertical: true)
+                if let sub { Text(sub).font(.app(size: 12)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true) }
             }
             Spacer(minLength: 8)
             if badge > 0 {
                 Text(AccountBadges.format(badge))
-                    .font(.caption2.weight(.bold)).monospacedDigit()
+                    .font(.app(.caption2).weight(.bold)).monospacedDigit()
                     .padding(.horizontal, 6)
                     .frame(minWidth: 20, minHeight: 20)
                     .background(BanbeTheme.alert, in: Capsule())
                     .foregroundStyle(BanbeTheme.onAlert)
             }
-            if let trailing { Text(trailing).font(.subheadline).foregroundStyle(app.palette.ink2) }
+            if let trailing { Text(trailing).font(.app(.subheadline)).foregroundStyle(app.palette.ink2) }
             if chevron {
-                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink3)
+                Image(systemName: "chevron.right").font(.app(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink3)
                     .accessibilityHidden(true)
             }
         }
@@ -903,11 +922,11 @@ struct AccountView: View {
                             options: [(String, String, Bool, () -> Void)]) -> some View {
         HStack(spacing: 14) {
             Image(systemName: icon)
-                .font(.system(size: 18, weight: .light))
+                .font(.app(size: 18, weight: .light))
                 .frame(width: 24, height: 24)
                 .foregroundStyle(app.palette.ink)
                 .accessibilityHidden(true)
-            Text(title).font(.system(size: 15)).fixedSize(horizontal: false, vertical: true)
+            Text(title).font(.app(size: 15)).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             HStack(spacing: 2) {
                 ForEach(options, id: \.0) { opt in
@@ -917,7 +936,7 @@ struct AccountView: View {
                         opt.3()
                     } label: {
                         Text(opt.1)
-                            .font(.system(size: 12, weight: opt.2 ? .semibold : .regular))
+                            .font(.app(size: 12, weight: opt.2 ? .semibold : .regular))
                             .padding(.horizontal, 11)
                             .frame(minWidth: 44, minHeight: 30)
                             .background(opt.2 ? app.palette.ink : Color.clear, in: Capsule())
@@ -952,7 +971,7 @@ struct AccountView: View {
         } label: {
             moreRowLabel(app.T("Đăng story", "Post a story"), sub: app.T("Thêm chữ và liên kết, sửa hoặc xóa sau khi đăng", "Add text and a link, edit or delete after posting"), icon: "pencil", chevron: false)
                 .overlay(alignment: .trailing) {
-                    Image(systemName: "chevron.up.chevron.down").font(.system(size: 12)).foregroundStyle(app.palette.ink3)
+                    Image(systemName: "chevron.up.chevron.down").font(.app(size: 12)).foregroundStyle(app.palette.ink3)
                         .accessibilityHidden(true)
                 }
         }
@@ -997,7 +1016,7 @@ struct AccountView: View {
             .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
-        .font(.system(size: 14))
+        .font(.app(size: 14))
         .foregroundStyle(app.palette.ink)
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)   // one element (the Label's icon was a second "button")
@@ -1033,6 +1052,20 @@ struct AccountView: View {
     }
 
     // MARK: Search
+
+    /// Note 83: Language & Appearance, where the Font section is; Back returns to Account.
+    private func openFontSettings() {
+        app.accountSubOrigin = .profile
+        app.openPreferences()
+    }
+
+    private var fontLabel: String {
+        switch AppFontPref.choice {
+        case .current: return app.T("Hiện tại", "Current")
+        case .serif: return "Serif"
+        case .beVietnam: return "Be Vietnam Pro"
+        }
+    }
 
     private func openGroup(_ key: String) {
         app.accountGroupParentKey = nil   // note 66: opened straight from Account
@@ -1091,6 +1124,8 @@ struct AccountView: View {
               "settings cài đặt tùy chỉnh preferences app preferences") { openGroup("preferences") },
             e("language", "personal", setVi, setEn, "Ngôn ngữ & Hiển thị", "Language & Appearance", "slider.horizontal.3",
               "ngôn ngữ language tiếng việt english vn en theme giao diện sáng tối dark light mode hiển thị appearance kính glass độ trong suốt") { app.openPreferences() },
+            e("font", "personal", setVi, setEn, "Phông chữ & hiển thị", "Font & more display", "textformat",
+              "font phông chữ kiểu chữ typeface serif be vietnam pro chữ text hiển thị display cỡ chữ") { openFontSettings() },
             e("security", "personal", setVi, setEn, "Bảo mật", "Security", "lock.shield",
               "security mật khẩu password face id sinh trắc biometric đăng nhập login khóa lock đổi mật khẩu") { app.openSecurity() },
             e("organizerMode", "personal", setVi, setEn, "Chế độ tổ chức", "Hosting mode", "person.2.badge.gearshape",
@@ -1186,7 +1221,7 @@ struct AccountView: View {
         return VStack(alignment: .leading, spacing: 0) {
             if groups.isEmpty {
                 Text(app.T("Không tìm thấy kết quả phù hợp.", "No matching results."))
-                    .font(.system(size: 13))
+                    .font(.app(size: 13))
                     .opacity(0.7)
                     .frame(maxWidth: .infinity)
                     .padding(.top, 40)
@@ -1206,16 +1241,16 @@ struct AccountView: View {
                         } label: {
                             HStack(spacing: 12) {
                                 Image(systemName: entry.icon)
-                                    .font(.system(size: 16, weight: .medium))
+                                    .font(.app(size: 16, weight: .medium))
                                     .frame(width: 22, height: 22)
                                     .opacity(0.72)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(app.T(entry.vi, entry.en)).font(.system(size: 14))
+                                    Text(app.T(entry.vi, entry.en)).font(.app(size: 14))
                                     Text(app.T(entry.secVi, entry.secEn))
-                                        .font(.system(size: 11)).opacity(0.55)
+                                        .font(.app(size: 11)).opacity(0.55)
                                 }
                                 Spacer()
-                                Text("›").font(.system(size: 15)).opacity(0.85)
+                                Text("›").font(.app(size: 15)).opacity(0.85)
                             }
                             .foregroundStyle(app.palette.ink)
                             .padding(.horizontal, 16).padding(.vertical, 12)
@@ -1243,7 +1278,7 @@ struct AccountView: View {
     // presentational — never changes a groupKey/identifier/route.
     private func sectionHeader(_ label: String, topPadding: CGFloat = 22) -> some View {
         Text(label)
-            .font(.system(size: 11.5, weight: .semibold))
+            .font(.app(size: 11.5, weight: .semibold))
             .foregroundStyle(app.palette.ink)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, topPadding)
@@ -1291,15 +1326,15 @@ struct AccountView: View {
     @ViewBuilder
     private var teamInvitesAndMemberships: some View {
         if !app.myOrganizerInvites.isEmpty {
-            Text(app.T("Lời mời Team", "Team invites")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            Text(app.T("Lời mời Team", "Team invites")).font(.app(size: 11.5, weight: .semibold)).padding(.top, 18)
             ForEach(app.myOrganizerInvites) { inv in
                 VStack(alignment: .leading, spacing: 8) {
                     Text(app.T("\(inv.organizers?.name ?? "Một tổ chức") mời bạn làm \(inv.publicRole)", "\(inv.organizers?.name ?? "An organizer") invited you as \(inv.publicRole)"))
-                        .font(.system(size: 13))
+                        .font(.app(size: 13))
                     HStack(spacing: 8) {
                         InkButton(title: app.T("Chấp nhận", "Accept")) { Task { await app.respondToOrganizerInvite(membershipID: inv.id, accept: true) } }
                         SwipeSafeButton { Task { await app.respondToOrganizerInvite(membershipID: inv.id, accept: false) } } label: { Text(app.T("Từ chối", "Decline")) }
-                            .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                            .font(.app(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
                             .frame(maxWidth: .infinity).padding(.vertical, 10)
                             .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
                     }
@@ -1314,19 +1349,19 @@ struct AccountView: View {
             }
         }
         if !app.myTeamMemberships.isEmpty {
-            Text(app.T("Đội ngũ của tôi", "My teams")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            Text(app.T("Đội ngũ của tôi", "My teams")).font(.app(size: 11.5, weight: .semibold)).padding(.top, 18)
             ForEach(app.myTeamMemberships) { m in
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(m.organizers?.name ?? app.T("Một tổ chức", "An organizer")).font(.system(size: 13))
-                        Text(m.publicRole).font(.system(size: 11)).opacity(0.65)
+                        Text(m.organizers?.name ?? app.T("Một tổ chức", "An organizer")).font(.app(size: 13))
+                        Text(m.publicRole).font(.app(size: 11)).opacity(0.65)
                     }
                     Spacer()
                     SwipeSafeButton {
                         Task { await app.setOrganizerMemberVisibility(membershipID: m.id, visible: !m.publicVisible) }
                     } label: {
                         HStack(spacing: 6) {
-                            Text(app.T("Hiển thị tôi trong Team", "Show me in the Team")).font(.system(size: 10.5))
+                            Text(app.T("Hiển thị tôi trong Team", "Show me in the Team")).font(.app(size: 10.5))
                             ZStack(alignment: m.publicVisible ? .trailing : .leading) {
                                 Capsule().fill(m.publicVisible ? app.palette.ink : app.palette.ink.opacity(0.18)).frame(width: 38, height: 22)
                                 Circle().fill(app.palette.paper).frame(width: 17, height: 17).padding(2.5)
@@ -1350,17 +1385,17 @@ struct AccountView: View {
         // section (myConfirmedEventCredits) below, per this ticket's own
         // "pending invites separately from confirmed credits" ask.
         if !app.myEventCredits.isEmpty {
-            Text(app.T("Đóng góp sự kiện: lời mời đang chờ", "Event contributions: pending invites")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            Text(app.T("Đóng góp sự kiện: lời mời đang chờ", "Event contributions: pending invites")).font(.app(size: 11.5, weight: .semibold)).padding(.top, 18)
             ForEach(app.myEventCredits) { c in
                 VStack(alignment: .leading, spacing: 8) {
                     Text(app.T(
                         "\(c.organizers?.name ?? "Một tổ chức") ghi nhận bạn đã tổ chức \"\(c.events?.name ?? "")\"",
                         "\(c.organizers?.name ?? "An organizer") credited you for organizing \"\(c.events?.name ?? "")\""
-                    )).font(.system(size: 13))
+                    )).font(.app(size: 13))
                     HStack(spacing: 8) {
                         InkButton(title: app.T("Chấp nhận", "Accept")) { Task { await app.respondToEventCredit(creditID: c.id, accept: true) } }
                         SwipeSafeButton { Task { await app.respondToEventCredit(creditID: c.id, accept: false) } } label: { Text(app.T("Từ chối", "Decline")) }
-                            .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                            .font(.app(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
                             .frame(maxWidth: .infinity).padding(.vertical, 10)
                             .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
                     }
@@ -1381,16 +1416,16 @@ struct AccountView: View {
         // migration 100). Read-only (no Accept/Decline — already resolved),
         // tappable straight to the event.
         if !app.myConfirmedEventCredits.isEmpty {
-            Text(app.T("Đóng góp sự kiện: đã xác nhận", "Event contributions: confirmed")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            Text(app.T("Đóng góp sự kiện: đã xác nhận", "Event contributions: confirmed")).font(.app(size: 11.5, weight: .semibold)).padding(.top, 18)
             ForEach(app.myConfirmedEventCredits) { c in
                 SwipeSafeButton { app.goEvent(c.eventId) } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(c.events?.name ?? app.T("Một sự kiện", "An event")).font(.system(size: 13, weight: .semibold))
-                            Text(c.organizers?.name ?? app.T("Một tổ chức", "An organizer")).font(.system(size: 11)).opacity(0.65)
+                            Text(c.events?.name ?? app.T("Một sự kiện", "An event")).font(.app(size: 13, weight: .semibold))
+                            Text(c.organizers?.name ?? app.T("Một tổ chức", "An organizer")).font(.app(size: 11)).opacity(0.65)
                         }
                         Spacer(minLength: 0)
-                        Text("›").font(.system(size: 18)).opacity(0.5)
+                        Text("›").font(.app(size: 18)).opacity(0.5)
                     }
                     .foregroundStyle(app.palette.ink)
                     .padding(14)
@@ -1424,13 +1459,13 @@ struct AccountView: View {
             ScrollView {
                 VStack(spacing: 10) {
                     if let msg = eventStoryMessage {
-                        Text(msg).font(.system(size: 12.5, weight: .semibold)).frame(maxWidth: .infinity, alignment: .leading)
+                        Text(msg).font(.app(size: 12.5, weight: .semibold)).frame(maxWidth: .infinity, alignment: .leading)
                     }
                     if !eventStoryLoaded {
                         ProgressView().padding(.top, 40)
                     } else if events.isEmpty {
                         Text(app.T("Bạn chưa có sự kiện nào đang mở để đăng.", "You have no live events to post yet."))
-                            .font(.system(size: 13)).opacity(0.7).padding(.top, 40)
+                            .font(.app(size: 13)).opacity(0.7).padding(.top, 40)
                     }
                     ForEach(events, id: \.key) { ev in
                         Button {
@@ -1449,11 +1484,11 @@ struct AccountView: View {
                                 CatalogPhoto(path: ev.img, height: 52, width: 52, cornerRadius: 10)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(ev.name).font(BanbeTheme.display(15)).lineLimit(1)
-                                    Text(ev.when).font(.system(size: 11.5)).opacity(0.7).lineLimit(1)
+                                    Text(ev.when).font(.app(size: 11.5)).opacity(0.7).lineLimit(1)
                                 }
                                 Spacer(minLength: 0)
                                 if eventStoryBusyKey == ev.key { ProgressView() }
-                                else { Image(systemName: "chevron.right").font(.system(size: 12)).opacity(0.4) }
+                                else { Image(systemName: "chevron.right").font(.app(size: 12)).opacity(0.4) }
                             }
                             .padding(12)
                             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -1463,7 +1498,7 @@ struct AccountView: View {
                         .accessibilityIdentifier("account.eventStory.\(ev.key)")
                     }
                     Text(app.T("Bạn có thể thêm chữ và liên kết trước khi đăng. Story hiển thị trong 24 giờ.", "You can add text and a link before posting. The story stays up for 24 hours."))
-                        .font(.system(size: 11)).opacity(0.6).padding(.top, 6)
+                        .font(.app(size: 11)).opacity(0.6).padding(.top, 6)
                 }
                 .padding(20)
             }
@@ -1523,7 +1558,7 @@ struct AccountView: View {
                 Text(app.T("Hoàn tất hồ sơ tổ chức", "Finish your host profile")).font(BanbeTheme.display(18))
                 Text(app.T("Chọn ảnh bìa, đặt tên và viết vài dòng giới thiệu để khách biết bạn là ai.",
                            "Pick a cover, name it and add a short intro so guests know who you are."))
-                    .font(.system(size: 12.5)).opacity(0.75)
+                    .font(.app(size: 12.5)).opacity(0.75)
                 InkButton(title: app.T("Thiết lập hồ sơ", "Set up profile")) { app.hostSetupOpen = true }
                     .accessibilityIdentifier("account.setupHostProfile")
             }

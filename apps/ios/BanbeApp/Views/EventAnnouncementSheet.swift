@@ -34,21 +34,21 @@ struct EventAnnouncementSheet: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("📣 " + app.T("Thông báo cho khách", "Announce to guests")).font(BanbeTheme.display(21))
-                    Text(eventName).font(.system(size: 11.5)).opacity(0.65).lineLimit(1)
+                    Text(eventName).font(.app(size: 11.5)).opacity(0.65).lineLimit(1)
                 }
                 Spacer()
                 Button(sent != nil ? app.T("Xong", "Done") : app.T("Đóng", "Close")) { dismiss() }
-                    .font(.system(size: 12.5)).buttonStyle(.plain)
+                    .font(.app(size: 12.5)).buttonStyle(.plain)
                     .accessibilityIdentifier("announcement.close")
             }
             .padding(.horizontal, 22).padding(.top, 20)
 
             if let sent {
                 VStack(spacing: 8) {
-                    Text("✓").font(.system(size: 34)).foregroundStyle(BanbeTheme.alert)
-                    Text(sent == 0 ? app.T("Chưa có khách nào khác để gửi", "No other ticket holders to notify") : app.T("Đã gửi cho \(sent) khách", "Sent to \(sent) guest\(sent == 1 ? "" : "s")")).font(.system(size: 15, weight: .semibold))
+                    Text("✓").font(.app(size: 34)).foregroundStyle(BanbeTheme.alert)
+                    Text(sent == 0 ? app.T("Chưa có khách nào khác để gửi", "No other ticket holders to notify") : app.T("Đã gửi cho \(sent) khách", "Sent to \(sent) guest\(sent == 1 ? "" : "s")")).font(.app(size: 15, weight: .semibold))
                     Text(sent == 0 ? app.T("Thông báo chỉ gửi cho người giữ vé khác bạn (bạn không tự nhận thông báo của mình).", "Announcements go to ticket holders other than you. You don't receive your own.") : app.T("Khách nhận thông báo và tin nhắn nổi bật màu đỏ trong chat.", "Guests get a notification and a red-highlighted chat message."))
-                        .font(.system(size: 12.5)).opacity(0.7).multilineTextAlignment(.center)
+                        .font(.app(size: 12.5)).opacity(0.7).multilineTextAlignment(.center)
                 }
                 .padding(.vertical, 40).padding(.horizontal, 22)
                 .accessibilityIdentifier("announcement.sent")
@@ -58,7 +58,7 @@ struct EventAnnouncementSheet: View {
                     VStack(alignment: .leading, spacing: 0) {
                         TextField(app.T("Chọn mẫu bên dưới hoặc tự viết tin nhắn…", "Pick a template below or write your own…"), text: $text, axis: .vertical)
                             .lineLimit(3...6)
-                            .font(.system(size: 14))
+                            .font(.app(size: 14))
                             .padding(.horizontal, 14).padding(.vertical, 12)
                             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(BanbeTheme.alert, lineWidth: 1))
@@ -69,9 +69,9 @@ struct EventAnnouncementSheet: View {
                             Spacer()
                             Text("\(trimmed.count)/\(EventAnnouncements.maxLength)").foregroundStyle(tooLong ? BanbeTheme.alert : app.palette.ink)
                         }
-                        .font(.system(size: 11)).opacity(0.65).padding(.top, 4).padding(.horizontal, 2)
+                        .font(.app(size: 11)).opacity(0.65).padding(.top, 4).padding(.horizontal, 2)
 
-                        Text(app.T("Gửi nhanh", "Quick send")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 14).padding(.bottom, 8)
+                        Text(app.T("Gửi nhanh", "Quick send")).font(.app(size: 11.5, weight: .semibold)).padding(.top, 14).padding(.bottom, 8)
                         FlowChips {
                             ForEach(EventAnnouncements.quickIDs, id: \.self) { id in
                                 if let t = EventAnnouncements.templates.first(where: { $0.id == id }) {
@@ -84,7 +84,7 @@ struct EventAnnouncementSheet: View {
                         HStack(spacing: 8) {
                             Image(systemName: "magnifyingglass").opacity(0.55)
                             TextField(app.T("Tìm mẫu thông báo…", "Search templates…"), text: $query)
-                                .font(.system(size: 14)).autocorrectionDisabled()
+                                .font(.app(size: 14)).autocorrectionDisabled()
                                 .accessibilityIdentifier("announcement.search")
                             if !query.isEmpty { Button { query = "" } label: { Image(systemName: "xmark").opacity(0.55) }.buttonStyle(.plain) }
                         }
@@ -106,11 +106,11 @@ struct EventAnnouncementSheet: View {
                         VStack(spacing: 8) {
                             if list.isEmpty {
                                 Text(app.T("Không có mẫu phù hợp. Bạn có thể tự viết ở khung trên.", "No matching template. Write your own in the box above."))
-                                    .font(.system(size: 12.5)).opacity(0.7).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8)
+                                    .font(.app(size: 12.5)).opacity(0.7).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8)
                             }
                             ForEach(list) { t in
                                 Button { pick(t) } label: {
-                                    Text(body(of: t)).font(.system(size: 13.5)).multilineTextAlignment(.leading)
+                                    Text(body(of: t)).font(.app(size: 13.5)).multilineTextAlignment(.leading)
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                         .padding(.horizontal, 14).padding(.vertical, 12)
                                         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -128,17 +128,17 @@ struct EventAnnouncementSheet: View {
                 VStack(spacing: 8) {
                     Divider().overlay(app.palette.rule)
                     if !error.isEmpty {
-                        Text(error).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert).frame(maxWidth: .infinity, alignment: .leading)
+                        Text(error).font(.app(size: 12)).foregroundStyle(BanbeTheme.alert).frame(maxWidth: .infinity, alignment: .leading)
                             .accessibilityIdentifier("announcement.error")
                     }
                     if confirming {
                         HStack(spacing: 12) {
-                            Text(app.T("Gửi cho tất cả người giữ vé?", "Send to all ticket holders?")).font(.system(size: 12.5, weight: .semibold))
+                            Text(app.T("Gửi cho tất cả người giữ vé?", "Send to all ticket holders?")).font(.app(size: 12.5, weight: .semibold))
                             Spacer()
-                            Button(app.T("Huỷ", "Cancel")) { if !busy { confirming = false } }.font(.system(size: 13)).buttonStyle(.plain)
+                            Button(app.T("Huỷ", "Cancel")) { if !busy { confirming = false } }.font(.app(size: 13)).buttonStyle(.plain)
                             Button { Task { await send() } } label: {
                                 Text(busy ? app.T("Đang gửi…", "Sending…") : app.T("Gửi ngay", "Send now"))
-                                    .font(.system(size: 13.5, weight: .bold)).foregroundStyle(BanbeTheme.onAlert)
+                                    .font(.app(size: 13.5, weight: .bold)).foregroundStyle(BanbeTheme.onAlert)
                                     .padding(.horizontal, 20).padding(.vertical, 11)
                                     .background(BanbeTheme.alert, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             }
@@ -148,7 +148,7 @@ struct EventAnnouncementSheet: View {
                     } else {
                         Button { if canSend { confirming = true } } label: {
                             Text(app.T("Gửi thông báo", "Send announcement"))
-                                .font(.system(size: 14.5, weight: .bold)).foregroundStyle(BanbeTheme.onAlert)
+                                .font(.app(size: 14.5, weight: .bold)).foregroundStyle(BanbeTheme.onAlert)
                                 .frame(maxWidth: .infinity).padding(.vertical, 14)
                                 .background(BanbeTheme.alert, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                         }
@@ -172,7 +172,7 @@ struct EventAnnouncementSheet: View {
 
     private func chip(_ label: String, active: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(label).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+            Text(label).font(.app(size: 12, weight: .semibold)).lineLimit(1)
                 .foregroundStyle(active ? BanbeTheme.onAlert : app.palette.ink)
                 .padding(.horizontal, 13).padding(.vertical, 7)
                 .background(active ? BanbeTheme.alert : .clear, in: Capsule())

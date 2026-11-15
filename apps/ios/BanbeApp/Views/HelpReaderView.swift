@@ -94,11 +94,11 @@ struct HelpReaderView: View {
                     BackLink(label: backLabel, action: onBack)
                         .accessibilityIdentifier("\(idPrefix).back")
                     Text(pick(doc.vi, doc.en)).font(BanbeTheme.display(26)).padding(.top, 14)
-                    Text(pick(doc.introVi, doc.introEn)).font(.system(size: 13)).opacity(0.75).padding(.top, 8)
+                    Text(pick(doc.introVi, doc.introEn)).font(.app(size: 13)).opacity(0.75).padding(.top, 8)
 
                     TextField(app.T("Tìm trong tài liệu…", "Search this page…"), text: $query)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
-                        .font(.system(size: 14))
+                        .font(.app(size: 14))
                         .padding(14)
                         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .padding(.top, 16)
@@ -106,7 +106,7 @@ struct HelpReaderView: View {
                     if !tokens.isEmpty {
                         Text(visible.isEmpty ? app.T("Không có kết quả. Thử từ khóa khác.", "No results. Try different words.")
                              : app.T("\(visible.count) mục khớp", "\(visible.count) matching section\(visible.count == 1 ? "" : "s")"))
-                            .font(.system(size: 12)).opacity(0.65).padding(.top, 8)
+                            .font(.app(size: 12)).opacity(0.65).padding(.top, 8)
                             .accessibilityIdentifier("\(idPrefix).resultCount")
                     }
 
@@ -118,7 +118,7 @@ struct HelpReaderView: View {
                             // ForEach's own generated row is not found by `scrollTo` on iOS 27 (Contents did nothing).
                             Color.clear.frame(height: 1).id("sec-\(sec.id)")
                             Text(highlighted((tokens.isEmpty ? "\(n + 1). " : "") + pick(sec.vi, sec.en)))
-                                .font(.system(size: 17, weight: .semibold))
+                                .font(.app(size: 17, weight: .semibold))
                                 .padding(.top, 25)
                             ForEach(Array(sec.blocks.enumerated()), id: \.offset) { _, b in blockView(b) }
                         }
@@ -155,7 +155,7 @@ struct HelpReaderView: View {
 
     private func floatButton(_ icon: String, label: String, id: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: icon).font(.system(size: 15, weight: .semibold))
+            Image(systemName: icon).font(.app(size: 15, weight: .semibold))
                 .foregroundStyle(app.palette.paper)
                 .frame(width: 40, height: 40)
                 .background(app.palette.ink, in: Circle())
@@ -170,7 +170,7 @@ struct HelpReaderView: View {
         VStack(alignment: .leading, spacing: 0) {
             Button { tocOpen.toggle() } label: {
                 HStack {
-                    Text(app.T("Mục lục", "Contents")).font(.system(size: 13, weight: .semibold))
+                    Text(app.T("Mục lục", "Contents")).font(.app(size: 13, weight: .semibold))
                     Spacer()
                     Text(tocOpen ? "▾" : "▸")
                 }
@@ -182,7 +182,7 @@ struct HelpReaderView: View {
                 ForEach(Array(visible.enumerated()), id: \.element.id) { n, sec in
                     Button { requestJump("sec-\(sec.id)", .top) } label: {
                         Text("\(n + 1). \(pick(sec.vi, sec.en))")
-                            .font(.system(size: 13.5)).underline()
+                            .font(.app(size: 13.5)).underline()
                             .multilineTextAlignment(.leading)
                             .padding(.vertical, 6)
                             // The whole row is the tap target, not just the underlined glyphs: with
@@ -205,12 +205,12 @@ struct HelpReaderView: View {
     private func blockView(_ b: HelpBlock) -> some View {
         switch b {
         case .p(let vi, let en):
-            Text(highlighted(pick(vi, en))).font(.system(size: 13.5)).lineSpacing(4).padding(.top, 8)
+            Text(highlighted(pick(vi, en))).font(.app(size: 13.5)).lineSpacing(4).padding(.top, 8)
         case .h(let vi, let en):
-            Text(highlighted(pick(vi, en))).font(.system(size: 13.5, weight: .semibold)).padding(.top, 16)
+            Text(highlighted(pick(vi, en))).font(.app(size: 13.5, weight: .semibold)).padding(.top, 16)
         case .tip(let vi, let en):
             Text(highlighted("💡 " + pick(vi, en)))
-                .font(.system(size: 13)).lineSpacing(3)
+                .font(.app(size: 13)).lineSpacing(3)
                 .padding(.horizontal, 12).padding(.vertical, 10)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -221,8 +221,8 @@ struct HelpReaderView: View {
             list(items, ordered: true)
         case .q(let qv, let qe, let av, let ae):
             VStack(alignment: .leading, spacing: 4) {
-                Text(highlighted(pick(qv, qe))).font(.system(size: 14, weight: .semibold))
-                Text(highlighted(pick(av, ae))).font(.system(size: 13.5)).lineSpacing(3).opacity(0.88)
+                Text(highlighted(pick(qv, qe))).font(.app(size: 14, weight: .semibold))
+                Text(highlighted(pick(av, ae))).font(.app(size: 13.5)).lineSpacing(3).opacity(0.88)
                 Divider().overlay(app.palette.rule).padding(.top, 8)
             }
             .padding(.top, 12)
@@ -235,8 +235,8 @@ struct HelpReaderView: View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(Array(items.enumerated()), id: \.offset) { i, it in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(ordered ? "\(i + 1)." : "•").font(.system(size: 13.5)).frame(width: 18, alignment: .trailing)
-                    Text(highlighted(pick(it[0], it[1]))).font(.system(size: 13.5)).lineSpacing(3)
+                    Text(ordered ? "\(i + 1)." : "•").font(.app(size: 13.5)).frame(width: 18, alignment: .trailing)
+                    Text(highlighted(pick(it[0], it[1]))).font(.app(size: 13.5)).lineSpacing(3)
                 }
             }
         }

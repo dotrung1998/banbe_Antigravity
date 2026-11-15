@@ -45,7 +45,7 @@ struct GuestPromptSheet: View {
                     .fill(LinearGradient(colors: [app.palette.ink.opacity(0.10), app.palette.ink.opacity(0.03)],
                                          startPoint: .topLeading, endPoint: .bottomTrailing))
                 Image(systemName: symbol)
-                    .font(.system(size: 30, weight: .semibold))
+                    .font(.app(size: 30, weight: .semibold))
                     .foregroundStyle(app.palette.ink)
                     .symbolRenderingMode(.hierarchical)
             }
@@ -53,11 +53,11 @@ struct GuestPromptSheet: View {
             .accessibilityHidden(true)
 
             Text(copy.title)
-                .font(.system(.title, design: .rounded).weight(.semibold))
+                .font(.app(.title, design: .rounded).weight(.semibold))
                 .accessibilityAddTraits(.isHeader)
                 .padding(.top, 18)
             Text(copy.body)
-                .font(.subheadline).lineSpacing(3)
+                .font(.app(.subheadline)).lineSpacing(3)
                 .foregroundStyle(app.palette.ink.opacity(0.75))
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 6)
@@ -66,12 +66,12 @@ struct GuestPromptSheet: View {
                 ForEach(Array(benefits.enumerated()), id: \.offset) { _, row in
                     HStack(spacing: 12) {
                         Image(systemName: row.icon)
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.app(size: 15, weight: .semibold))
                             .frame(width: 32, height: 32)
                             .background(app.palette.ink.opacity(0.07), in: Circle())
                             .accessibilityHidden(true)
                         Text(row.text)
-                            .font(.subheadline)
+                            .font(.app(.subheadline))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -93,7 +93,7 @@ struct GuestPromptSheet: View {
                     app.continueFromGuestPrompt(.login)
                 } label: {
                     Text(app.T("Đăng nhập", "Log in"))
-                        .font(.subheadline.weight(.semibold))
+                        .font(.app(.subheadline).weight(.semibold))
                         .frame(minWidth: 44, minHeight: 44)
                         .contentShape(Rectangle())
                 }
@@ -103,7 +103,7 @@ struct GuestPromptSheet: View {
                     app.guestPrompt = nil
                 } label: {
                     Text(app.T("Để sau", "Not now"))
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                         .foregroundStyle(app.palette.ink.opacity(0.7))
                         .frame(minWidth: 44, minHeight: 44)
                         .contentShape(Rectangle())
@@ -134,16 +134,16 @@ struct GuestBrowseBanner: View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(app.T("Bạn đang xem với tư cách khách", "You're browsing as a guest"))
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.app(size: 13, weight: .semibold))
                 Text(app.T("Tạo tài khoản để lưu, giữ chỗ và nhắn tin cho host.",
                            "Create an account to save, hold seats and message hosts."))
-                    .font(.system(size: 12))
+                    .font(.app(size: 12))
                     .foregroundStyle(app.palette.ink.opacity(0.75))
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
             Button(app.T("Đăng nhập", "Log in")) { app.openAuth(.login, from: app.screen) }
-                .font(.system(size: 13, weight: .semibold))
+                .font(.app(size: 13, weight: .semibold))
                 .buttonStyle(.plain)
                 .frame(minHeight: 44)
                 .accessibilityIdentifier("home.guest.login")

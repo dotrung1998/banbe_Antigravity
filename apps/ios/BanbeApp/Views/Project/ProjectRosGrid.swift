@@ -45,7 +45,7 @@ struct ProjectRosGrid: View {
             HStack(spacing: 10) {
                 if let axis = result.axis, nowMs >= axis.start, nowMs <= axis.end {
                     Button { scrollTo("project.ros.now") } label: {
-                        Label(app.T("Về giờ hiện tại", "Jump to now"), systemImage: "scope").font(.subheadline.weight(.semibold))
+                        Label(app.T("Về giờ hiện tại", "Jump to now"), systemImage: "scope").font(.app(.subheadline).weight(.semibold))
                             .padding(.horizontal, 12).frame(minHeight: 44).background(app.palette.blockInset, in: Capsule())
                     }
                     .buttonStyle(PressableButtonStyle())
@@ -68,13 +68,13 @@ struct ProjectRosGrid: View {
             if let axis = result.axis {
                 grid(result, axis: axis, items: items, nowMs: nowMs)
             } else {
-                Text(app.T("Chưa có mốc nào.", "No items yet.")).font(.subheadline).foregroundStyle(app.palette.ink2)
+                Text(app.T("Chưa có mốc nào.", "No items yet.")).font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
                     .padding(.vertical, 18).frame(maxWidth: .infinity).projectCard()
             }
             Text(app.T("Việc chưa tick sẽ kéo dài theo giờ; chỉ việc ngay sau bị rút ngắn (tối thiểu 10 phút), các việc sau giữ nguyên. Tick xong thì chốt giờ kết thúc.",
                        "An unticked item stretches along the clock; only the very next one is squeezed (10 minutes at least), later ones stay put. Ticking it freezes its end.")
                  + (editor ? app.T(" Chạm vào khối để sửa.", " Tap a block to edit it.") : ""))
-                .font(.footnote).foregroundStyle(app.palette.ink3)
+                .font(.app(.footnote)).foregroundStyle(app.palette.ink3)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project.ros.grid")
@@ -93,7 +93,7 @@ struct ProjectRosGrid: View {
     private func legendItem(_ color: Color, _ text: String) -> some View {
         HStack(spacing: 5) {
             RoundedRectangle(cornerRadius: 3).fill(color).frame(width: 10, height: 10)
-            Text(text).font(.caption).foregroundStyle(app.palette.ink2)
+            Text(text).font(.app(.caption)).foregroundStyle(app.palette.ink2)
         }
     }
 
@@ -122,7 +122,7 @@ struct ProjectRosGrid: View {
             ForEach(hours, id: \.self) { h in
                 HStack(spacing: 6) {
                     Text(app.projectClock(Date(timeIntervalSince1970: Double(h) / 1000)))
-                        .font(.caption.monospacedDigit()).foregroundStyle(app.palette.ink3)
+                        .font(.app(.caption).monospacedDigit()).foregroundStyle(app.palette.ink3)
                         .lineLimit(1).fixedSize()
                         .frame(width: gutter - 6, alignment: .leading)
                     Rectangle().fill(app.palette.divider).frame(height: 1)
@@ -159,7 +159,7 @@ struct ProjectRosGrid: View {
     private func nowLine(_ nowMs: Int) -> some View {
         HStack(spacing: 0) {
             Text(app.projectClock(Date(timeIntervalSince1970: Double(nowMs) / 1000)))
-                .font(.caption.weight(.heavy).monospacedDigit()).foregroundStyle(.white)
+                .font(.app(.caption).weight(.heavy).monospacedDigit()).foregroundStyle(.white)
                 .padding(.horizontal, 6).padding(.vertical, 3)
                 .background(app.palette.clay, in: RoundedRectangle(cornerRadius: 7))
             Circle().fill(app.palette.clay).frame(width: 10, height: 10)
@@ -186,10 +186,10 @@ struct ProjectRosGrid: View {
                 if editor { openSheet(.rosItem(item.id)) }
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(item.title).font(.subheadline.weight(.bold)).lineLimit(1)
+                    Text(item.title).font(.app(.subheadline).weight(.bold)).lineLimit(1)
                         .strikethrough(p.done, color: app.palette.ink3)
                     HStack(spacing: 6) {
-                        Text("\(times) · \(app.projectPersonName(item.ownerId))").font(.caption.monospacedDigit())
+                        Text("\(times) · \(app.projectPersonName(item.ownerId))").font(.app(.caption).monospacedDigit())
                             .foregroundStyle(app.palette.ink2).lineLimit(1)
                         if late { ProjectRosBadge(text: "+\(p.overrunMin)′", tone: .alert) }
                         else if p.overlap { ProjectRosBadge(text: app.T("chồng giờ", "overlap"), tone: .alert) }

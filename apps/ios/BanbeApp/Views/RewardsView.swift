@@ -26,7 +26,7 @@ struct RewardsView: View {
                     .accessibilityAddTraits(.isHeader)
                 Text(app.T("Chỉ mình bạn thấy trang này. Huy hiệu và lịch sử không hiển thị công khai.",
                            "Only you can see this page. Badges and history are never shown publicly."))
-                    .font(.system(size: 13)).opacity(0.75).padding(.top, 8)
+                    .font(.app(size: 13)).opacity(0.75).padding(.top, 8)
 
                 switch app.rewardsStatus {
                 case .unavailable:
@@ -34,9 +34,9 @@ struct RewardsView: View {
                         .padding(.top, 16).accessibilityIdentifier("rewards.unavailable")
                 case .error:
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(app.T("Không tải được phần thưởng.", "Couldn't load your rewards.")).font(.system(size: 13)).foregroundStyle(BanbeTheme.alert)
+                        Text(app.T("Không tải được phần thưởng.", "Couldn't load your rewards.")).font(.app(size: 13)).foregroundStyle(BanbeTheme.alert)
                         Button { Task { await app.loadRewards() } } label: {
-                            Text(app.T("Thử lại", "Retry")).font(.system(size: 13, weight: .semibold)).underline()
+                            Text(app.T("Thử lại", "Retry")).font(.app(size: 13, weight: .semibold)).underline()
                         }.buttonStyle(.plain).accessibilityIdentifier("rewards.retry")
                     }
                     .padding(16).frame(maxWidth: .infinity, alignment: .leading)
@@ -82,7 +82,7 @@ struct RewardsView: View {
         if let c = celebration {
             VStack(spacing: 2) {
                 Text(c.title).font(BanbeTheme.display(18))
-                if !c.sub.isEmpty { Text(c.sub).font(.system(size: 12.5)).opacity(0.8) }
+                if !c.sub.isEmpty { Text(c.sub).font(.app(size: 12.5)).opacity(0.8) }
             }
             .multilineTextAlignment(.center)
             .padding(.horizontal, 18).padding(.vertical, 14).frame(maxWidth: 340)
@@ -129,7 +129,7 @@ struct RewardsView: View {
     }
 
     private func note(_ s: String) -> some View {
-        Text(s).font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .leading).padding(16)
+        Text(s).font(.app(size: 13)).frame(maxWidth: .infinity, alignment: .leading).padding(16)
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
@@ -138,11 +138,11 @@ struct RewardsView: View {
         // Balance + streak
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(app.T("Số dư xu", "Coin balance")).font(.system(size: 11.5)).opacity(0.7)
+                Text(app.T("Số dư xu", "Coin balance")).font(.app(size: 11.5)).opacity(0.7)
                 Text("\(r.balance)").font(BanbeTheme.display(30))
                 if r.balance < 0 {
                     Text(app.T("Số dư âm do điểm danh bị huỷ. Kiếm thêm để về 0.", "Negative because a check-in was undone. Earn coins to get back to 0."))
-                        .font(.system(size: 11)).opacity(0.7)
+                        .font(.app(size: 11)).opacity(0.7)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(16)
@@ -155,16 +155,16 @@ struct RewardsView: View {
                 weekStreakCard(ws)
             } else {
             VStack(alignment: .leading, spacing: 4) {
-                Text(app.T("Chuỗi ngày", "Streak")).font(.system(size: 11.5)).opacity(0.7)
+                Text(app.T("Chuỗi ngày", "Streak")).font(.app(size: 11.5)).opacity(0.7)
                 HStack(spacing: 6) { Text("🔥").accessibilityHidden(true); Text("\(r.streak.current)") }.font(BanbeTheme.display(30))
-                Text(app.T("Dài nhất: \(r.streak.longest) ngày", "Longest: \(r.streak.longest) days")).font(.system(size: 11)).opacity(0.7)
+                Text(app.T("Dài nhất: \(r.streak.longest) ngày", "Longest: \(r.streak.longest) days")).font(.app(size: 11)).opacity(0.7)
                 let today = r.streak.activeToday == true
                 Text(today ? app.T("✓ Hôm nay đã được tính", "✓ Today's counted") : app.T("Hôm nay chưa được tính", "Today isn't counted yet"))
-                    .font(.system(size: 11.5, weight: .semibold)).padding(.top, 6)
+                    .font(.app(size: 11.5, weight: .semibold)).padding(.top, 6)
                     .accessibilityIdentifier("rewards.streak.status")
                 Text(today ? app.T("Quay lại ngày mai để giữ chuỗi.", "Come back tomorrow to keep it going.")
                            : app.T("Lưu 1 sự kiện hoặc đi 1 sự kiện để được +1 ngày. Chỉ mở app thì chưa tính.", "Save an event or attend one to earn +1 day. Just opening the app does not count."))
-                    .font(.system(size: 11)).lineSpacing(2).opacity(0.75)
+                    .font(.app(size: 11)).lineSpacing(2).opacity(0.75)
                     .accessibilityIdentifier("rewards.streak.how")
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(16)
@@ -190,13 +190,13 @@ struct RewardsView: View {
 
         section(app.T("Trang trí (móc khoá)", "Decorations (keychain designs)")) {
             Text(app.T("Tuỳ chọn, chỉ để trang trí. 24 mẫu miễn phí vẫn luôn dùng được.", "Optional and cosmetic only. The 24 free charms always stay available."))
-                .font(.system(size: 12)).opacity(0.75).padding(.bottom, 4)
+                .font(.app(size: 12)).opacity(0.75).padding(.bottom, 4)
             if let res = app.rewardsRedeemResult {
                 if !res.ok {
-                    Text(RewardsLogic.redeemErrorMessage(res.error, T: app.T)).font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert)
+                    Text(RewardsLogic.redeemErrorMessage(res.error, T: app.T)).font(.app(size: 12.5)).foregroundStyle(BanbeTheme.alert)
                         .accessibilityIdentifier("rewards.redeemError")
                 } else if !res.already {
-                    Text(app.T("Đã mở khoá!", "Unlocked!")).font(.system(size: 12.5)).accessibilityIdentifier("rewards.redeemOk")
+                    Text(app.T("Đã mở khoá!", "Unlocked!")).font(.app(size: 12.5)).accessibilityIdentifier("rewards.redeemOk")
                 }
             }
             VStack(spacing: 8) { ForEach(r.catalog) { catalogRow($0, balance: r.balance) } }
@@ -205,7 +205,7 @@ struct RewardsView: View {
         if RewardsLogic.showsOffersSection(r) {
             section(app.T("Ưu đãi", "Offers")) {
                 Text(app.T("Ưu đãi do đối tác cung cấp. Hiện chưa thể đổi.", "Offers come from partners. They cannot be redeemed yet."))
-                    .font(.system(size: 12)).opacity(0.75).padding(.bottom, 4)
+                    .font(.app(size: 12)).opacity(0.75).padding(.bottom, 4)
                 VStack(spacing: 8) { ForEach(r.offers) { offerRow($0) } }
             }
             .accessibilityIdentifier("rewards.offers")
@@ -232,11 +232,11 @@ struct RewardsView: View {
             let weekly = app.rewardsV2Enabled && r.weekStreak != nil
             bullets(RewardsLogic.ruleLines(r.rules, T: app.T) + RewardsLogic.noCoinLines(T: app.T)
                     + (weekly ? RewardsLogic.weekStreakLines(r.weekStreak, T: app.T) : RewardsLogic.streakLines(tz: r.streak.timezone, T: app.T)))
-            Text(app.T("Điều kiện đổi thưởng", "Redemption terms")).font(.system(size: 13, weight: .semibold)).padding(.top, 12)
+            Text(app.T("Điều kiện đổi thưởng", "Redemption terms")).font(.app(size: 13, weight: .semibold)).padding(.top, 12)
             bullets(RewardsLogic.termsLines(weekly: weekly, T: app.T))
             Text(app.T("Phiên bản quy tắc \(r.rules.version ?? 1). Các con số là đề xuất MVP và có thể thay đổi. Mọi thay đổi có số phiên bản mới.",
                        "Rules version \(r.rules.version ?? 1). Numbers are an MVP proposal and may change. Any change gets a new version."))
-                .font(.system(size: 11)).opacity(0.6).padding(.top, 10)
+                .font(.app(size: 11)).opacity(0.6).padding(.top, 10)
         }
     }
 
@@ -269,14 +269,14 @@ struct RewardsView: View {
                      : (tz.chosen == true
                         ? app.T("Đổi múi giờ có hiệu lực từ ngày kế tiếp, tối đa 2 lần mỗi 30 ngày.", "A change takes effect from the next day, at most twice per 30 days.")
                         : app.T("Mặc định là giờ Việt Nam. Chọn múi giờ của bạn nếu khác.", "Defaults to Vietnam time. Pick yours if different.")))
-                if !tzError.isEmpty { Text(tzError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert) }
+                if !tzError.isEmpty { Text(tzError).font(.app(size: 12)).foregroundStyle(BanbeTheme.alert) }
             }
         }
     }
 
     private func section<C: View>(_ title: String, @ViewBuilder _ body: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.system(size: 13, weight: .semibold)).accessibilityAddTraits(.isHeader)
+            Text(title).font(.app(size: 13, weight: .semibold)).accessibilityAddTraits(.isHeader)
             body()
         }
         .padding(.top, 22)
@@ -286,8 +286,8 @@ struct RewardsView: View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(lines.enumerated()), id: \.offset) { _, l in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("•").font(.system(size: 12.5)).frame(width: 10, alignment: .leading).accessibilityHidden(true)
-                    Text(l).font(.system(size: 12.5)).lineSpacing(2)
+                    Text("•").font(.app(size: 12.5)).frame(width: 10, alignment: .leading).accessibilityHidden(true)
+                    Text(l).font(.app(size: 12.5)).lineSpacing(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -300,17 +300,17 @@ struct RewardsView: View {
     private func weekStreakCard(_ ws: RewardsPayload.WeekStreak) -> some View {
         let h = RewardsLogic.weekStreakHint(ws, en: app.isEN, T: app.T)
         return VStack(alignment: .leading, spacing: 4) {
-            Text(app.T("Chuỗi tuần", "Week streak")).font(.system(size: 11.5)).opacity(0.7)
+            Text(app.T("Chuỗi tuần", "Week streak")).font(.app(size: 11.5)).opacity(0.7)
             HStack(spacing: 6) { Text("🔥").accessibilityHidden(true); Text("\(ws.current)") }.font(BanbeTheme.display(30))
-            Text(app.T("Dài nhất: \(ws.longest) tuần", "Longest: \(ws.longest) \(ws.longest == 1 ? "week" : "weeks")")).font(.system(size: 11)).opacity(0.7)
-            Text(h.status).font(.system(size: 11.5, weight: .semibold)).padding(.top, 6).accessibilityIdentifier("rewards.streak.status")
-            Text(h.how).font(.system(size: 11)).lineSpacing(2).opacity(0.75).accessibilityIdentifier("rewards.streak.how")
+            Text(app.T("Dài nhất: \(ws.longest) tuần", "Longest: \(ws.longest) \(ws.longest == 1 ? "week" : "weeks")")).font(.app(size: 11)).opacity(0.7)
+            Text(h.status).font(.app(size: 11.5, weight: .semibold)).padding(.top, 6).accessibilityIdentifier("rewards.streak.status")
+            Text(h.how).font(.app(size: 11)).lineSpacing(2).opacity(0.75).accessibilityIdentifier("rewards.streak.how")
             if ws.graceMax > 0 {
                 HStack(spacing: 4) {
                     Text(String(repeating: "🛡", count: ws.graceHeld) + String(repeating: "·", count: max(0, ws.graceMax - ws.graceHeld))).accessibilityHidden(true)
                     Text(RewardsLogic.graceLine(ws, T: app.T))
                 }
-                .font(.system(size: 11)).opacity(0.75).padding(.top, 4)
+                .font(.app(size: 11)).opacity(0.75).padding(.top, 4)
                 .accessibilityIdentifier("rewards.grace")
             }
         }
@@ -323,10 +323,10 @@ struct RewardsView: View {
     private func nextBadgeCard(_ nb: RewardsPayload.NextBadge) -> some View {
         let shown = min(nb.progress, nb.target)
         return VStack(alignment: .leading, spacing: 6) {
-            Text(app.T("Huy hiệu tiếp theo", "Next badge")).font(.system(size: 11.5)).opacity(0.7)
-            Text(RewardsLogic.nextBadgeLine(nb, en: app.isEN, T: app.T)).font(.system(size: 14, weight: .semibold))
+            Text(app.T("Huy hiệu tiếp theo", "Next badge")).font(.app(size: 11.5)).opacity(0.7)
+            Text(RewardsLogic.nextBadgeLine(nb, en: app.isEN, T: app.T)).font(.app(size: 14, weight: .semibold))
             ProgressView(value: Double(shown), total: Double(max(nb.target, 1))).tint(app.palette.ink)
-            Text("\(shown) / \(nb.target)").font(.system(size: 11)).opacity(0.7)
+            Text("\(shown) / \(nb.target)").font(.app(size: 11)).opacity(0.7)
         }
         .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).padding(.vertical, 14)
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -346,8 +346,8 @@ struct RewardsView: View {
                     .frame(width: 34, height: 34).accessibilityHidden(true)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(app.T("Mục tiêu tháng này", "My goal this month")).font(.system(size: 13.5, weight: .semibold))
-                    Text(RewardsLogic.goalLine(g, T: app.T)).font(.system(size: 12)).opacity(0.8).accessibilityIdentifier("rewards.goal.line")
+                    Text(app.T("Mục tiêu tháng này", "My goal this month")).font(.app(size: 13.5, weight: .semibold))
+                    Text(RewardsLogic.goalLine(g, T: app.T)).font(.app(size: 12)).opacity(0.8).accessibilityIdentifier("rewards.goal.line")
                 }
             }
             HStack(spacing: 8) {
@@ -364,7 +364,7 @@ struct RewardsView: View {
                         }
                     } label: {
                         Text(choice == 0 ? app.T("Không đặt", "None") : app.T("\(choice) / tháng", "\(choice) / month"))
-                            .font(.system(size: 12.5, weight: .semibold))
+                            .font(.app(size: 12.5, weight: .semibold))
                             .padding(.horizontal, 14).padding(.vertical, 9)
                             .background(on ? app.palette.ink : .clear, in: Capsule())
                             .foregroundStyle(on ? app.palette.paper : app.palette.ink)
@@ -376,7 +376,7 @@ struct RewardsView: View {
                     .accessibilityIdentifier("rewards.goal.\(choice)")
                 }
             }
-            if !goalError.isEmpty { Text(goalError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert) }
+            if !goalError.isEmpty { Text(goalError).font(.app(size: 12)).foregroundStyle(BanbeTheme.alert) }
         }
         .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).padding(.vertical, 14)
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -388,7 +388,7 @@ struct RewardsView: View {
         let title = RewardsLogic.familyTitle(g.family, T: app.T) ?? (app.isEN ? head.titleEn : head.titleVi)
         return VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(title).font(.system(size: 13.5, weight: .semibold))
+                Text(title).font(.app(size: 13.5, weight: .semibold))
                 Spacer()
                 HStack(spacing: 4) {
                     ForEach(g.badges) { b in
@@ -403,16 +403,16 @@ struct RewardsView: View {
             }
             if let top = g.top {
                 Text("✓ " + (app.isEN ? top.titleEn : top.titleVi) + (top.earnedAt.map { " ▪︎ " + RewardsView.dateText($0, en: app.isEN) } ?? ""))
-                    .font(.system(size: 12))
+                    .font(.app(size: 12))
             }
             if let next = g.next {
                 let shown = min(next.progress, next.target)
                 Text(app.T("Tiếp theo", "Next") + ": " + (app.isEN ? next.titleEn : next.titleVi) + " ▪︎ " + (app.isEN ? next.descEn : next.descVi))
-                    .font(.system(size: 12)).opacity(0.75)
+                    .font(.app(size: 12)).opacity(0.75)
                 ProgressView(value: Double(shown), total: Double(max(next.target, 1))).tint(app.palette.ink)
-                Text("\(shown) / \(next.target)").font(.system(size: 11)).opacity(0.7)
+                Text("\(shown) / \(next.target)").font(.app(size: 11)).opacity(0.7)
             } else {
-                Text(app.T("Đã đạt mọi cấp ✓", "Every tier earned ✓")).font(.system(size: 12)).opacity(0.75)
+                Text(app.T("Đã đạt mọi cấp ✓", "Every tier earned ✓")).font(.app(size: 12)).opacity(0.75)
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 12)
@@ -425,13 +425,13 @@ struct RewardsView: View {
         let shown = min(b.progress, b.target)
         return VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text((b.earned ? "✓ " : "") + (app.isEN ? b.titleEn : b.titleVi)).font(.system(size: 13.5, weight: .semibold))
+                Text((b.earned ? "✓ " : "") + (app.isEN ? b.titleEn : b.titleVi)).font(.app(size: 13.5, weight: .semibold))
                 Spacer()
-                Text(b.earned ? app.T("Đã đạt", "Earned") : app.T("Chưa đạt", "Locked")).font(.system(size: 11, weight: .semibold)).opacity(0.8)
+                Text(b.earned ? app.T("Đã đạt", "Earned") : app.T("Chưa đạt", "Locked")).font(.app(size: 11, weight: .semibold)).opacity(0.8)
             }
-            Text(app.isEN ? b.descEn : b.descVi).font(.system(size: 12)).opacity(0.75)
+            Text(app.isEN ? b.descEn : b.descVi).font(.app(size: 12)).opacity(0.75)
             ProgressView(value: Double(shown), total: Double(max(b.target, 1))).tint(app.palette.ink)
-            Text("\(shown) / \(b.target)").font(.system(size: 11)).opacity(0.7)
+            Text("\(shown) / \(b.target)").font(.app(size: 11)).opacity(0.7)
         }
         .padding(.horizontal, 14).padding(.vertical, 12)
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -444,9 +444,9 @@ struct RewardsView: View {
         let title = (app.lang == "en" ? o.titleEn : o.titleVi) ?? o.titleVi ?? o.titleEn ?? o.code
         let desc = (app.lang == "en" ? o.descEn : o.descVi) ?? o.descVi ?? o.descEn ?? ""
         return VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.system(size: 13.5, weight: .semibold))
-            if !desc.isEmpty { Text(desc).font(.system(size: 12)).opacity(0.75) }
-            Text(app.T("Chưa khả dụng", "Not available yet")).font(.system(size: 11.5)).opacity(0.7)
+            Text(title).font(.app(size: 13.5, weight: .semibold))
+            if !desc.isEmpty { Text(desc).font(.app(size: 12)).opacity(0.75) }
+            Text(app.T("Chưa khả dụng", "Not available yet")).font(.app(size: 11.5)).opacity(0.7)
         }
         .frame(maxWidth: .infinity, alignment: .leading).padding(14)
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -463,22 +463,22 @@ struct RewardsView: View {
                 if let d = design, let ui = KeychainArtwork.bundledImage(d) { Image(uiImage: ui).resizable().scaledToFit() } else { Color.clear }
             }.frame(width: 40, height: 60)
             VStack(alignment: .leading, spacing: 2) {
-                Text(name(c.designId)).font(.system(size: 13.5, weight: .semibold))
+                Text(name(c.designId)).font(.app(size: 13.5, weight: .semibold))
                 Text(c.unlocked ? app.T("Đã mở khoá", "Unlocked")
                      : need > 0 ? app.T("\(c.price) xu ▪︎ cần thêm \(need)", "\(c.price) coins ▪︎ \(need) more needed")
                      : app.T("\(c.price) xu", "\(c.price) coins"))
-                    .font(.system(size: 11.5)).opacity(0.75)
+                    .font(.app(size: 11.5)).opacity(0.75)
             }
             Spacer(minLength: 0)
             if c.unlocked {
                 Button { KeychainStore.shared.focusKeychainOnEdit = true; app.openEditProfile() } label: {
-                    Text(app.T("Dùng", "Use")).font(.system(size: 12, weight: .semibold))
+                    Text(app.T("Dùng", "Use")).font(.app(size: 12, weight: .semibold))
                         .padding(.horizontal, 14).padding(.vertical, 10).overlay(Capsule().stroke(app.palette.rule))
                 }
                 .buttonStyle(.plain).accessibilityIdentifier("rewards.use.\(c.code)")
             } else {
                 Button { confirmItem = c } label: {
-                    Text(busy ? app.T("Đang xử lý…", "Working…") : app.T("Đổi", "Redeem")).font(.system(size: 12, weight: .semibold))
+                    Text(busy ? app.T("Đang xử lý…", "Working…") : app.T("Đổi", "Redeem")).font(.app(size: 12, weight: .semibold))
                         .padding(.horizontal, 14).padding(.vertical, 10)
                         .background(need > 0 ? Color.clear : app.palette.ink, in: Capsule())
                         .foregroundStyle(need > 0 ? app.palette.ink : app.palette.paper)
@@ -501,11 +501,11 @@ struct RewardsView: View {
             : RewardsLogic.historyLabel(reason: h.reason, eventName: h.eventName, T: app.T)
         return HStack(alignment: .top, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(label).font(.system(size: 12.5))
-                Text(RewardsView.dateText(h.createdAt, en: app.isEN)).font(.system(size: 11)).opacity(0.6)
+                Text(label).font(.app(size: 12.5))
+                Text(RewardsView.dateText(h.createdAt, en: app.isEN)).font(.app(size: 11)).opacity(0.6)
             }
             Spacer(minLength: 0)
-            Text(h.amount > 0 ? "+\(h.amount)" : "\(h.amount)").font(.system(size: 13, weight: .bold))
+            Text(h.amount > 0 ? "+\(h.amount)" : "\(h.amount)").font(.app(size: 13, weight: .bold))
                 .accessibilityLabel(app.T("\(h.amount) xu", "\(h.amount) coins"))
         }
         .padding(.horizontal, 14).padding(.vertical, 11)

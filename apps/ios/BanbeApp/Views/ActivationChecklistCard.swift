@@ -33,17 +33,17 @@ struct ActivationChecklistCard: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text(allDone ? app.T("Bạn đã sẵn sàng! 🎉", "You're all set! 🎉")
                                  : app.T("Bắt đầu với banbe", "Get started with banbe"))
-                        .font(.system(.headline, design: .rounded))
+                        .font(.app(.headline, design: .rounded))
                         .accessibilityAddTraits(.isHeader)
                         .accessibilityIdentifier("activation.card")
                     Spacer()
                     Text("\(doneCount)/\(items.count)")
-                        .font(.footnote.weight(.semibold))
+                        .font(.app(.footnote).weight(.semibold))
                         .foregroundStyle(app.palette.ink.opacity(0.65))
                         .accessibilityLabel(app.T("Đã xong \(doneCount) trên \(items.count)",
                                                   "\(doneCount) of \(items.count) done"))
                     Button { app.dismissActivationChecklist() } label: {
-                        Image(systemName: "xmark").font(.footnote.weight(.semibold))
+                        Image(systemName: "xmark").font(.app(.footnote).weight(.semibold))
                             .frame(width: 44, height: 44).contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -52,7 +52,7 @@ struct ActivationChecklistCard: View {
                 }
                 ForEach(items, id: \.self) { item in row(item) }
                 if !faceIDMessage.isEmpty {
-                    Text(faceIDMessage).font(.footnote).foregroundStyle(BanbeTheme.alert)
+                    Text(faceIDMessage).font(.app(.footnote)).foregroundStyle(BanbeTheme.alert)
                 }
             }
             .foregroundStyle(app.palette.ink)
@@ -79,10 +79,10 @@ struct ActivationChecklistCard: View {
         let isDone = done(item)
         return HStack(spacing: 10) {
             Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
-                .font(.body)
+                .font(.app(.body))
                 .accessibilityHidden(true)
             Text(title(item))
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .strikethrough(isDone, color: app.palette.ink.opacity(0.4))
                 .opacity(isDone ? 0.6 : 1)
                 .accessibilityValue(isDone ? app.T("Đã xong", "Done") : app.T("Chưa xong", "Not done"))
@@ -92,7 +92,7 @@ struct ActivationChecklistCard: View {
                 Button(faceIDBusy ? app.T("Đang bật…", "Turning on…") : app.T("Bật", "Turn on")) {
                     Task { await enableFaceID() }
                 }
-                .font(.footnote.weight(.semibold))
+                .font(.app(.footnote).weight(.semibold))
                 .frame(minWidth: 44, minHeight: 44)
                 .disabled(faceIDBusy)
                 .accessibilityIdentifier("activation.faceID")

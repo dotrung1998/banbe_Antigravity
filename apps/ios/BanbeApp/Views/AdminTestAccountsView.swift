@@ -105,7 +105,7 @@ struct AdminTestAccountsView: View {
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
             .keyboardType(keyboard)
-            .font(.system(size: 14))
+            .font(.app(size: 14))
             .padding(14)
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .accessibilityIdentifier(id)
@@ -224,16 +224,16 @@ struct AdminTestAccountsView: View {
                     .accessibilityIdentifier("adminTest.title")
                 Text(app.T("Miễn bước SMS cho tài khoản thử nghiệm. Số điện thoại KHÔNG được đánh dấu đã xác minh, không gửi SMS, và vẫn phải nhập/xác nhận ngày sinh.",
                            "Waive the SMS step for a test account. The phone is NOT marked verified, no SMS is sent, and the date-of-birth steps still apply."))
-                    .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75)).padding(.top, 8)
+                    .font(.app(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75)).padding(.top, 8)
 
                 HStack(spacing: 14) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(app.T("Bỏ qua SMS cho tất cả", "Bypass SMS for everyone"))
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.app(size: 14, weight: .semibold))
                         Text(bypassAll == nil ? app.T("Đang tải…", "Loading…")
                              : bypassAll == true ? app.T("ĐANG BẬT. Không ai phải xác minh SMS.", "ON. Nobody has to verify by SMS.")
                              : app.T("Đang tắt. Người dùng phải xác minh SMS.", "Off. Users must verify by SMS."))
-                            .font(.system(size: 11.5)).opacity(0.7)
+                            .font(.app(size: 11.5)).opacity(0.7)
                     }
                     Spacer(minLength: 0)
                     bypassSwitch
@@ -259,7 +259,7 @@ struct AdminTestAccountsView: View {
                                 Task { await lookup(m.email) }
                             } label: {
                                 Text("\(m.displayName ?? "—") · \(m.email) · \(m.role ?? "")")
-                                    .font(.system(size: 13)).multilineTextAlignment(.leading)
+                                    .font(.app(size: 13)).multilineTextAlignment(.leading)
                                     .frame(maxWidth: .infinity, alignment: .leading).padding(10)
                             }
                             .buttonStyle(.plain)
@@ -273,14 +273,14 @@ struct AdminTestAccountsView: View {
                 if let f = found {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(f.displayName?.isEmpty == false ? (f.displayName ?? "") : (f.email ?? ""))
-                            .font(.system(size: 14, weight: .semibold))
-                        Text("\(f.email ?? "") · \(f.role ?? "")").font(.system(size: 12)).opacity(0.75)
+                            .font(.app(size: 14, weight: .semibold))
+                        Text("\(f.email ?? "") · \(f.role ?? "")").font(.app(size: 12)).opacity(0.75)
                         Text("\(app.T("Xác minh SMS", "SMS verified")): \(yesNo(f.phoneVerified))\n\(app.T("Miễn SMS thử nghiệm", "SMS test exemption")): \(yesNo(f.testExempt))\n\(app.T("Nhóm người dùng cũ (đã miễn)", "Legacy grandfathered")): \(yesNo(f.grandfathered))\n\(app.T("Đã có ngày sinh", "Has date of birth")): \(yesNo(f.hasDob))")
-                            .font(.system(size: 12)).lineSpacing(3)
+                            .font(.app(size: 12)).lineSpacing(3)
                         field("+4917656035288", text: $phone, id: "adminTest.phone", keyboard: .phonePad)
                         if f.hasDob != true {
                             Toggle(app.T("Đặt ngày sinh (chỉ ghi, không bao giờ ghi đè)", "Set date of birth (write-only, never overwritten)"), isOn: $setDOB)
-                                .font(.system(size: 13)).accessibilityIdentifier("adminTest.setDob")
+                                .font(.app(size: 13)).accessibilityIdentifier("adminTest.setDob")
                             if setDOB {
                                 DatePicker("", selection: $dob, in: ...Date(), displayedComponents: .date)
                                     .datePickerStyle(.compact).labelsHidden()
@@ -289,17 +289,17 @@ struct AdminTestAccountsView: View {
                         }
                         if f.grandfathered != true {
                             Toggle(app.T("Miễn SMS OTP (tài khoản thử nghiệm)", "Waive SMS OTP (test account)"), isOn: $grant)
-                                .font(.system(size: 13)).accessibilityIdentifier("adminTest.grant")
+                                .font(.app(size: 13)).accessibilityIdentifier("adminTest.grant")
                         }
                         InkButton(title: busy ? app.T("Đang lưu…", "Saving…") : app.T("Lưu", "Save")) { Task { await save() } }
                             .disabled(busy).accessibilityIdentifier("adminTest.save")
                         Text(app.T("Số chỉ lưu trong hồ sơ, không có trong Auth nên không dùng được cho tin nhắn quảng bá.",
                                    "The number is stored on the profile only (not in Auth), so it does not enable promo texting."))
-                            .font(.system(size: 11.5)).opacity(0.65)
+                            .font(.app(size: 11.5)).opacity(0.65)
                         if f.role != "admin" {
                             Button { confirmDelete = true } label: {
                                 Text(deleting ? app.T("Đang xoá…", "Deleting…") : app.T("Xoá tài khoản", "Delete account"))
-                                    .font(.system(size: 14, weight: .semibold))
+                                    .font(.app(size: 14, weight: .semibold))
                                     .foregroundStyle(BanbeTheme.alert)
                                     .frame(maxWidth: .infinity, minHeight: 46)
                                     .overlay(Capsule().stroke(BanbeTheme.alert, lineWidth: 1.2))
@@ -324,7 +324,7 @@ struct AdminTestAccountsView: View {
                 }
 
                 if !message.isEmpty {
-                    Text(message).font(.system(size: 12.5))
+                    Text(message).font(.app(size: 12.5))
                         .foregroundStyle(messageIsError ? BanbeTheme.alert : app.palette.ink)
                         .padding(.top, 14).accessibilityIdentifier("adminTest.message")
                 }

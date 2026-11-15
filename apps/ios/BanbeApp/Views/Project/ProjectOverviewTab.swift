@@ -28,7 +28,7 @@ struct ProjectOverviewTab: View {
             ProjectSectionHeader(title: app.T("Hạn sắp tới", "Coming up"), actionTitle: app.T("Tất cả", "All"),
                                  actionID: "project.overview.allTasks") { app.projectTab = "tasks" }
             if coming.isEmpty {
-                Text(app.T("Không còn việc nào đang mở.", "No open tasks left.")).font(.subheadline).foregroundStyle(app.palette.ink2).projectCard()
+                Text(app.T("Không còn việc nào đang mở.", "No open tasks left.")).font(.app(.subheadline)).foregroundStyle(app.palette.ink2).projectCard()
             } else {
                 ProjectRowsCard(items: coming) { t in ProjectTaskRow(task: t) { openSheet(.task(t.id)) } }
                     .accessibilityElement(children: .contain)
@@ -46,13 +46,13 @@ struct ProjectOverviewTab: View {
 
     private func proposalsBanner(_ n: Int) -> some View {
         let text = Text(app.T("\(n) đề xuất hạng mục chờ duyệt", n == 1 ? "1 lane proposal to review" : "\(n) lane proposals to review"))
-            .font(.body.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+            .font(.app(.body).weight(.semibold)).fixedSize(horizontal: false, vertical: true)
         let review = Button(app.T("Xem", "Review")) { app.projectTab = "tasks" }
-            .font(.body.weight(.bold))
+            .font(.app(.body).weight(.bold))
             .padding(.horizontal, 18).frame(minHeight: 44)
             .foregroundStyle(app.palette.paper).background(app.palette.ink, in: Capsule())
             .accessibilityIdentifier("project.overview.review")
-        let flag = Image(systemName: "flag").font(.system(size: 16, weight: .semibold)).foregroundStyle(app.palette.clay)
+        let flag = Image(systemName: "flag").font(.app(size: 16, weight: .semibold)).foregroundStyle(app.palette.clay)
             .frame(width: 40, height: 40).background(app.palette.clayBg, in: Circle()).accessibilityHidden(true)
         // Large text: stacked, so the words never break letter by letter beside the button.
         return Group {
@@ -80,11 +80,11 @@ struct ProjectOverviewTab: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(app.T("Mức sẵn sàng", "Readiness")).font(BanbeTheme.display(18))
                     Text(app.T("\(r.done) trên \(r.total) việc xong", "\(r.done) of \(r.total) tasks done"))
-                        .font(.subheadline).foregroundStyle(app.palette.ink2)
+                        .font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
                     if let days, days >= 0 {
                         Text(days == 0 ? app.T("Hôm nay là ngày diễn ra", "The event is today")
                                        : app.T("Còn \(days) ngày", days == 1 ? "1 day to go" : "\(days) days to go"))
-                            .font(.footnote.weight(.semibold)).foregroundStyle(app.palette.clay)
+                            .font(.app(.footnote).weight(.semibold)).foregroundStyle(app.palette.clay)
                     }
                 }
             }
@@ -92,9 +92,9 @@ struct ProjectOverviewTab: View {
             ForEach(lanes) { l in
                 VStack(alignment: .leading, spacing: 5) {
                     HStack {
-                        Text(l.name).font(.subheadline)
+                        Text(l.name).font(.app(.subheadline))
                         Spacer()
-                        Text("\(l.done)/\(l.total)").font(.footnote.monospacedDigit()).foregroundStyle(app.palette.ink2)
+                        Text("\(l.done)/\(l.total)").font(.app(.footnote).monospacedDigit()).foregroundStyle(app.palette.ink2)
                     }
                     GeometryReader { g in
                         ZStack(alignment: .leading) {
@@ -116,12 +116,12 @@ struct ProjectOverviewTab: View {
 
     private func decisionRow(_ p: ProjectPost) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: "lock.fill").font(.system(size: 14, weight: .semibold)).foregroundStyle(app.palette.ink2)
+            Image(systemName: "lock.fill").font(.app(size: 14, weight: .semibold)).foregroundStyle(app.palette.ink2)
                 .frame(width: 36, height: 36).background(app.palette.blockInset, in: Circle()).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(p.title).font(.body.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+                Text(p.title).font(.app(.body).weight(.semibold)).fixedSize(horizontal: false, vertical: true)
                 Text([snap.lanes?.first { $0.id == p.laneId }?.name, app.projectPersonName(p.authorId)].compactMap { $0 }.joined(separator: " · "))
-                    .font(.footnote).foregroundStyle(app.palette.ink2)
+                    .font(.app(.footnote)).foregroundStyle(app.palette.ink2)
             }
             Spacer(minLength: 0)
         }
@@ -143,7 +143,7 @@ struct ProjectRing: View {
                 .stroke(app.palette.clay, style: StrokeStyle(lineWidth: 7, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.4), value: percent)
-            Text("\(percent)%").font(.subheadline.weight(.bold).monospacedDigit())
+            Text("\(percent)%").font(.app(.subheadline).weight(.bold).monospacedDigit())
         }
         .frame(width: 64, height: 64)
         .accessibilityElement(children: .ignore)

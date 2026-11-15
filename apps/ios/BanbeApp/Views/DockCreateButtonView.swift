@@ -85,7 +85,7 @@ struct DockCreateButtonView: View {
             // submenu is flattened into two rows.
             Button { menuOpen = true } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.app(size: 18, weight: .semibold))
                     .foregroundStyle(app.palette.ink)
                     .frame(width: BottomTabBar.createButtonSize, height: BottomTabBar.createButtonSize)
                     // Native glass like the dock beside it (note 45).
@@ -127,12 +127,12 @@ struct DockCreateButtonView: View {
             // Web twin (note 80): a 26pt ink disc with a small "+" and a "Create" label under it, like the other slots.
             VStack(spacing: 3) {
                 Image(systemName: "plus")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.app(size: 14, weight: .bold))
                     .foregroundStyle(app.palette.paper)
                     .frame(width: Self.discSize, height: Self.discSize)
                     .background(app.palette.ink, in: Circle())
                 Text(app.T("Tạo", "Create"))
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.app(size: 11, weight: .medium))
                     .foregroundStyle(app.palette.ink)
                     .opacity(0.75)
                     .lineLimit(1)
@@ -184,7 +184,7 @@ struct DockCreateSheet: View {
                 Spacer(minLength: 8)
                 Button { app.dockCreateOpen = false } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.app(size: 14, weight: .semibold))
                         .foregroundStyle(app.palette.ink)
                         .frame(width: 36, height: 36)
                         .background(app.palette.ink.opacity(0.08), in: Circle())
@@ -251,18 +251,18 @@ struct DockCreateSheet: View {
         } label: {
             HStack(spacing: 14) {
                 Image(systemName: icon)
-                    .font(.system(size: 18, weight: .medium))
+                    .font(.app(size: 18, weight: .medium))
                     .frame(width: 40, height: 40)
                     .background(primary ? app.palette.paper.opacity(0.16) : app.palette.ink.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 16, weight: .semibold))
-                    Text(desc).font(.system(size: 13)).opacity(primary ? 0.8 : 1)
+                    Text(title).font(.app(size: 16, weight: .semibold))
+                    Text(desc).font(.app(size: 13)).opacity(primary ? 0.8 : 1)
                         .foregroundStyle(primary ? app.palette.paper : app.palette.ink.opacity(0.62))
                 }
                 Spacer(minLength: 0)
                 if let expanded {
-                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold))
+                    Image(systemName: "chevron.right").font(.app(size: 13, weight: .semibold))
                         .rotationEffect(.degrees(expanded ? 90 : 0)).accessibilityHidden(true)
                 }
             }
@@ -279,8 +279,8 @@ struct DockCreateSheet: View {
     private func subRow(_ id: String, _ icon: String, _ title: String, action: @escaping () -> Void) -> some View {
         Button { run(action) } label: {
             HStack(spacing: 10) {
-                Image(systemName: icon).font(.system(size: 15)).frame(width: 22).accessibilityHidden(true)
-                Text(title).font(.system(size: 14.5))
+                Image(systemName: icon).font(.app(size: 15)).frame(width: 22).accessibilityHidden(true)
+                Text(title).font(.app(size: 14.5))
                 Spacer(minLength: 0)
             }
             .foregroundStyle(app.palette.ink)

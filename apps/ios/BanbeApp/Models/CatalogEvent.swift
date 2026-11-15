@@ -99,6 +99,10 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
     /// the Home card line reads ("Table for 8").
     var details: EventDetails = [:]
     var capacity: Int? = nil
+    /// Note 82 (migration 220, not in `CodingKeys`): "HH:mm" on the venue's clock (past midnight = the next day), or
+    /// open-ended. Both nil/false = not set (an older row).
+    var endTime: String? = nil
+    var endOpen = false
 
     enum CodingKeys: String, CodingKey {
         case key, catKey, cat, cat2Key, catDisplay, name, img, lat, lng, meta
@@ -185,6 +189,8 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
         if let where_ = d.where_ { copy.where = where_ }
         if let details = live?.details { copy.details = details.values }
         if let capacity = live?.capacity { copy.capacity = capacity }
+        if let end = live?.endTime, !end.isEmpty { copy.endTime = String(end.prefix(5)) }
+        if let open = live?.endOpen { copy.endOpen = open }
         return copy
     }
 }
@@ -262,6 +268,9 @@ struct RealEventSummary: Decodable {
     var currency: String? = nil
     /// Migration 203: event type facts. Absent (nil) on a server without it.
     var details: EventDetailsPayload? = nil
+    /// Migration 220 (note 82).
+    var endTime: String? = nil
+    var endOpen: Bool? = nil
     var organizerName: String = ""
     /// events.chat_greeting (migration 156). Not part of the shared select
     /// list (that would break every query before the migration is applied);
@@ -311,6 +320,8 @@ struct RealEventSummary: Decodable {
         case includedItems = "included_items"
         case intro
         case tz, currency, details
+        case endTime = "end_time"
+        case endOpen = "end_open"
     }
 
     var soldOut: Bool { (seatsRemaining ?? 1) <= 0 }
@@ -422,6 +433,8 @@ extension CatalogEvent {
         event.priceAmount = real.priceVnd ?? 0
         event.details = real.details?.values ?? [:]
         event.capacity = real.capacity
+        event.endTime = real.endTime.flatMap { $0.isEmpty ? nil : String($0.prefix(5)) }
+        event.endOpen = real.endOpen ?? false
         return event
     }
 

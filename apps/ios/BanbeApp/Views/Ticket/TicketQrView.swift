@@ -36,14 +36,14 @@ struct TicketQrView: View {
             }
             if mode == .in {
                 Image(systemName: "checkmark")
-                    .font(.system(size: small ? 14 : 28, weight: .bold))
+                    .font(.app(size: small ? 14 : 28, weight: .bold))
                     .foregroundStyle(app.palette.paper)
                     .frame(width: small ? 30 : 56, height: small ? 30 : 56)
                     .background(app.palette.update, in: Circle())
             } else if !real, !small, !label.isEmpty {
                 // Fixed colours: the box behind is always the white QR card, in both themes.
                 Text(label)
-                    .font(.footnote.weight(.semibold))
+                    .font(.app(.footnote).weight(.semibold))
                     .multilineTextAlignment(.center)
                     .foregroundStyle(Color(red: 27 / 255, green: 25 / 255, blue: 22 / 255))
                     .padding(.horizontal, 12).padding(.vertical, 8)

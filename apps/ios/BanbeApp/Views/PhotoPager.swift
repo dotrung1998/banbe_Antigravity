@@ -44,7 +44,7 @@ struct PhotoPager: View {
         } else {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(placeholder ?? app.palette.field)
-                .overlay { Text(app.T("Chưa có ảnh", "No photo yet")).font(.system(size: 12)).opacity(0.55) }
+                .overlay { Text(app.T("Chưa có ảnh", "No photo yet")).font(.app(size: 12)).opacity(0.55) }
                 .foregroundStyle(app.palette.ink)
                 .accessibilityLabel(app.T("Chưa có ảnh", "No photo yet"))
                 .accessibilityIdentifier(photoIdentifier ?? "photoPager.photo.\(eventID)")
@@ -96,7 +96,7 @@ struct PhotoPager: View {
         }
         .overlay(alignment: .bottomTrailing) {
             Text("\(current + 1)/\(n)")
-                .font(.system(size: 11, weight: .semibold)).monospacedDigit()
+                .font(.app(size: 11, weight: .semibold)).monospacedDigit()
                 .foregroundStyle(.white)
                 .padding(.horizontal, 7).padding(.vertical, 3)
                 .background(Color.black.opacity(0.45), in: Capsule())

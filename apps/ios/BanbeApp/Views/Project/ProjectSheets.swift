@@ -93,14 +93,14 @@ struct ProjectTextField: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(label.uppercased()).font(.caption.weight(.bold)).tracking(0.6)
+                Text(label.uppercased()).font(.app(.caption).weight(.bold)).tracking(0.6)
                 Spacer()
-                Text("\(text.count)/\(limit)").font(.caption.monospacedDigit())
+                Text("\(text.count)/\(limit)").font(.app(.caption).monospacedDigit())
             }
             .foregroundStyle(app.palette.ink3)
             .accessibilityHidden(true)
             TextField(placeholder, text: $text, axis: axis)
-                .font(.body)
+                .font(.app(.body))
                 .lineLimit(axis == .vertical ? 2...4 : 1...1)
                 .padding(.horizontal, 14).padding(.vertical, 13)
                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -116,7 +116,7 @@ struct ProjectFieldLabel: View {
     @EnvironmentObject private var app: AppState
     let text: String
     var body: some View {
-        Text(text.uppercased()).font(.caption.weight(.bold)).tracking(0.6).foregroundStyle(app.palette.ink3)
+        Text(text.uppercased()).font(.app(.caption).weight(.bold)).tracking(0.6).foregroundStyle(app.palette.ink3)
             .accessibilityAddTraits(.isHeader)
     }
 }
@@ -208,7 +208,7 @@ struct ProjectTaskSheet: View {
     private var form: some View {
         if task == nil, let g = app.projectTaskGuidance(laneID: laneID.isEmpty ? nil : laneID) { ProjectGuidance(text: g.text, firm: g.firm) }
         if task == nil, let full = app.projectTaskLimitText(laneID: laneID.isEmpty ? nil : laneID) {
-            Text(full).font(.subheadline).padding(12).frame(maxWidth: .infinity, alignment: .leading)
+            Text(full).font(.app(.subheadline)).padding(12).frame(maxWidth: .infinity, alignment: .leading)
                 .foregroundStyle(BanbeTheme.alert)
                 .background(BanbeTheme.alert.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
@@ -223,7 +223,7 @@ struct ProjectTaskSheet: View {
                 // The limits, always visible while adding (they only used to show once reached).
                 let usage = app.projectTaskUsage(laneID: laneID)
                 Label(usage.text, systemImage: "gauge.with.dots.needle.33percent")
-                    .font(.footnote.weight(.semibold).monospacedDigit())
+                    .font(.app(.footnote).weight(.semibold).monospacedDigit())
                     .foregroundStyle(usage.near ? app.palette.honey : app.palette.ink3)
                     .accessibilityIdentifier("project.task.usage")
             }
@@ -239,7 +239,7 @@ struct ProjectTaskSheet: View {
             }
         }
         VStack(alignment: .leading, spacing: 8) {
-            Toggle(app.T("Có hạn", "Due date"), isOn: $hasDue).font(.body.weight(.semibold)).accessibilityIdentifier("project.task.hasDue")
+            Toggle(app.T("Có hạn", "Due date"), isOn: $hasDue).font(.app(.body).weight(.semibold)).accessibilityIdentifier("project.task.hasDue")
             if hasDue {
                 DatePicker(app.T("Hạn", "Due"), selection: $due, displayedComponents: .date)
                     .environment(\.timeZone, tz)
@@ -256,7 +256,7 @@ struct ProjectTaskSheet: View {
                 }
                 if status == "blocked" {
                     Text(app.T("Việc bị chặn báo ngay cho Chủ sự kiện.", "A blocked task alerts the Host straight away."))
-                        .font(.footnote).foregroundStyle(BanbeTheme.alert)
+                        .font(.app(.footnote)).foregroundStyle(BanbeTheme.alert)
                 }
             }
         }
@@ -273,7 +273,7 @@ struct ProjectTaskSheet: View {
         .accessibilityIdentifier("project.task.save")
         if taskID != nil {
             Button(role: .destructive) { deleting = true } label: {
-                Label(app.T("Xoá việc", "Delete task"), systemImage: "trash").font(.body.weight(.semibold))
+                Label(app.T("Xoá việc", "Delete task"), systemImage: "trash").font(.app(.body).weight(.semibold))
                     .frame(maxWidth: .infinity, minHeight: 50)
                     .foregroundStyle(BanbeTheme.alert)
                     .background(BanbeTheme.alert.opacity(0.12), in: Capsule())
@@ -282,7 +282,7 @@ struct ProjectTaskSheet: View {
             .accessibilityIdentifier("project.task.delete")
             Text(app.T("Việc bị xoá vào thùng rác 7 ngày. Chủ sự kiện và Quản lý khôi phục được.",
                        "Deleted tasks stay in the trash for 7 days. The Host and Managers can restore them."))
-                .font(.footnote).foregroundStyle(app.palette.ink3)
+                .font(.app(.footnote)).foregroundStyle(app.palette.ink3)
         }
     }
 
@@ -294,7 +294,7 @@ struct ProjectTaskSheet: View {
         Button(role: .destructive) {
             Task { if let taskID, await app.deleteProjectTask(taskID, reason: reason.trimmingCharacters(in: .whitespacesAndNewlines)) { close() } }
         } label: {
-            Text(app.T("Xoá việc", "Delete task")).font(.body.weight(.bold))
+            Text(app.T("Xoá việc", "Delete task")).font(.app(.body).weight(.bold))
                 .frame(maxWidth: .infinity, minHeight: 50)
                 .foregroundStyle(BanbeTheme.alert).background(BanbeTheme.alert.opacity(0.12), in: Capsule())
         }
@@ -311,7 +311,7 @@ struct ProjectTaskSheet: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(task.title).font(BanbeTheme.display(20)).fixedSize(horizontal: false, vertical: true)
             Text([lane, app.projectPersonName(task.assigneeId), app.projectDueText(task.dueDate)].compactMap { $0 }.joined(separator: " · "))
-                .font(.subheadline).foregroundStyle(app.palette.ink2)
+                .font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
         }
         let canStatus = app.projectCan("task.status", .init(laneId: task.laneId, assigneeId: task.assigneeId))
         VStack(alignment: .leading, spacing: 8) {
@@ -329,7 +329,7 @@ struct ProjectTaskSheet: View {
              ? app.T("Bạn đổi được trạng thái. Sửa tên, hạn hoặc xoá việc do Chủ sự kiện, Quản lý hoặc Trưởng hạng mục làm.",
                      "You can change the status. Editing or deleting is for the Host, a Manager or the lane lead.")
              : app.T("Bạn không phụ trách việc này nên chỉ xem được.", "You're not on this task, so it's view only."))
-            .font(.footnote).foregroundStyle(app.palette.ink3)
+            .font(.app(.footnote)).foregroundStyle(app.palette.ink3)
     }
 }
 
@@ -383,7 +383,7 @@ struct ProjectNewLaneSheet: View {
                     if !direct {
                         Text(app.T("Chủ sự kiện sẽ duyệt và trả lời kèm lý do. Hạng mục chỉ hiện cho cả đội sau khi được duyệt.",
                                    "The Host reviews it and replies with a reason. The lane appears for the team once approved."))
-                            .font(.subheadline).padding(14)
+                            .font(.app(.subheadline)).padding(14)
                             .background(app.palette.clayBg, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                             .foregroundStyle(app.palette.clay)
                     }
@@ -393,7 +393,7 @@ struct ProjectNewLaneSheet: View {
                     if count >= ProjectLimits.shared.lanesMax {
                         Text(app.T("Dự án đã đủ \(ProjectLimits.shared.lanesMax) hạng mục. Hãy lưu trữ một hạng mục trước khi thêm.",
                                    "This project has \(ProjectLimits.shared.lanesMax) lanes, the most allowed. Archive one before adding another."))
-                            .font(.subheadline).padding(14)
+                            .font(.app(.subheadline)).padding(14)
                             .background(BanbeTheme.alert.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                             .foregroundStyle(BanbeTheme.alert)
                     }
@@ -405,23 +405,23 @@ struct ProjectNewLaneSheet: View {
                             option(app.T(p.vi, p.en), icon: p.icon, sub: nil, id: "project.lane.preset.\(p.id)")
                         }
                         if presets.isEmpty && custom == nil {
-                            Text(app.T("Không có hạng mục nào khớp.", "No lane matches.")).font(.subheadline).foregroundStyle(app.palette.ink2)
+                            Text(app.T("Không có hạng mục nào khớp.", "No lane matches.")).font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
                                 .frame(maxWidth: .infinity, minHeight: 52)
                         }
                     }
                     .background(app.palette.block, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     if !existing.isEmpty {
                         Text(app.T("Đã có trong dự án", "Already in this project").uppercased())
-                            .font(.caption.weight(.bold)).tracking(0.8).foregroundStyle(app.palette.ink3)
+                            .font(.app(.caption).weight(.bold)).tracking(0.8).foregroundStyle(app.palette.ink3)
                         VStack(spacing: 0) {
                             ForEach(existing) { l in
                                 HStack(spacing: 12) {
-                                    Image(systemName: ProjectLanePresets.icon(for: l.name)).font(.system(size: 16, weight: .semibold))
+                                    Image(systemName: ProjectLanePresets.icon(for: l.name)).font(.app(size: 16, weight: .semibold))
                                         .frame(width: 36, height: 36).foregroundStyle(app.palette.ink3)
                                         .background(app.palette.blockInset, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                    Text(l.name).font(.body.weight(.semibold)).foregroundStyle(app.palette.ink2)
+                                    Text(l.name).font(.app(.body).weight(.semibold)).foregroundStyle(app.palette.ink2)
                                     Spacer(minLength: 0)
-                                    Text(app.T("Đã có", "Added")).font(.footnote.weight(.semibold)).foregroundStyle(app.palette.ink3)
+                                    Text(app.T("Đã có", "Added")).font(.app(.footnote).weight(.semibold)).foregroundStyle(app.palette.ink3)
                                 }
                                 .padding(.horizontal, 12).frame(minHeight: 52)
                                 .accessibilityElement(children: .combine)
@@ -434,7 +434,7 @@ struct ProjectNewLaneSheet: View {
                                          placeholder: app.T("Một hai câu cho Chủ sự kiện", "A line or two for the Host"), axis: .vertical,
                                          id: "project.lane.why")
                     }
-                    Text(app.T("\(count)/10 hạng mục.", "\(count)/10 lanes.")).font(.footnote).foregroundStyle(app.palette.ink3)
+                    Text(app.T("\(count)/10 hạng mục.", "\(count)/10 lanes.")).font(.app(.footnote)).foregroundStyle(app.palette.ink3)
                     InkButton(title: name.isEmpty ? app.T("Chọn một hạng mục", "Pick a lane")
                                      : direct ? app.T("Thêm \(name)", "Add \(name)") : app.T("Gửi đề xuất", "Send proposal"),
                               enabled: ok && !app.projectBusy, cornerRadius: 999) {
@@ -458,16 +458,16 @@ struct ProjectNewLaneSheet: View {
             name = title
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: icon).font(.system(size: 16, weight: .semibold))
+                Image(systemName: icon).font(.app(size: 16, weight: .semibold))
                     .frame(width: 36, height: 36)
                     .foregroundStyle(on ? app.palette.paper : app.palette.clay)
                     .background(on ? app.palette.ink : app.palette.clayBg, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(title).font(.body.weight(.semibold)).foregroundStyle(app.palette.ink)
-                    if let sub { Text(sub).font(.footnote).foregroundStyle(app.palette.ink3) }
+                    Text(title).font(.app(.body).weight(.semibold)).foregroundStyle(app.palette.ink)
+                    if let sub { Text(sub).font(.app(.footnote)).foregroundStyle(app.palette.ink3) }
                 }
                 Spacer(minLength: 0)
-                if on { Image(systemName: "checkmark").font(.body.weight(.bold)).foregroundStyle(app.palette.ink) }
+                if on { Image(systemName: "checkmark").font(.app(.body).weight(.bold)).foregroundStyle(app.palette.ink) }
             }
             .padding(.horizontal, 12).frame(minHeight: 56)
             .contentShape(Rectangle())
@@ -500,19 +500,19 @@ struct ProjectManageLaneSheet: View {
                         Task { if await app.renameProjectLane(laneID, n) { close() } }
                     }
                     VStack(alignment: .leading, spacing: 10) {
-                        Text(app.T("Lưu trữ hạng mục", "Archive lane")).font(.body.weight(.bold))
+                        Text(app.T("Lưu trữ hạng mục", "Archive lane")).font(.app(.body).weight(.bold))
                         Text(openTasks > 0
                              ? app.T("Còn \(openTasks) việc chưa xong. Hãy xong hoặc chuyển sang hạng mục khác trước.",
                                      "\(openTasks) open task(s) left. Finish them or move them to another lane first.")
                              : app.T("Lưu trữ sẽ ẩn hạng mục. Bạn khôi phục được từ thùng rác.", "Archiving hides the lane. You can restore it from the trash."))
-                            .font(.subheadline).foregroundStyle(app.palette.ink2)
+                            .font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
                         if openTasks == 0 {
                             ProjectReasonField(reason: $reason, picks: [app.T("Gộp vào hạng mục khác", "Merged into another lane"),
                                                                         app.T("Không cần nữa", "No longer needed")])
                             Button(role: .destructive) {
                                 Task { if await app.archiveProjectLane(laneID, reason: reason.trimmingCharacters(in: .whitespacesAndNewlines)) { close() } }
                             } label: {
-                                Label(app.T("Lưu trữ", "Archive"), systemImage: "archivebox").font(.body.weight(.bold))
+                                Label(app.T("Lưu trữ", "Archive"), systemImage: "archivebox").font(.app(.body).weight(.bold))
                                     .frame(maxWidth: .infinity, minHeight: 50)
                                     .foregroundStyle(BanbeTheme.alert).background(BanbeTheme.alert.opacity(0.12), in: Capsule())
                             }
@@ -552,7 +552,7 @@ struct ProjectDeclineSheet: View {
                             if await app.reviewProjectChange(requestID, approve: false, reason: reason.trimmingCharacters(in: .whitespacesAndNewlines)) { close() }
                         }
                     } label: {
-                        Text(app.T("Từ chối", "Decline")).font(.body.weight(.bold))
+                        Text(app.T("Từ chối", "Decline")).font(.app(.body).weight(.bold))
                             .frame(maxWidth: .infinity, minHeight: 50)
                             .foregroundStyle(BanbeTheme.alert).background(BanbeTheme.alert.opacity(0.12), in: Capsule())
                     }
@@ -560,7 +560,7 @@ struct ProjectDeclineSheet: View {
                     .disabled(!ProjectReasonField.valid(reason) || app.projectBusy)
                     .opacity(ProjectReasonField.valid(reason) ? 1 : 0.4)
                     .accessibilityIdentifier("project.decline.confirm")
-                    Text(app.T("Người đề xuất sẽ thấy lý do.", "The proposer will see the reason.")).font(.footnote).foregroundStyle(app.palette.ink3)
+                    Text(app.T("Người đề xuất sẽ thấy lý do.", "The proposer will see the reason.")).font(.app(.footnote)).foregroundStyle(app.palette.ink3)
                 }
             }
         }
@@ -576,9 +576,9 @@ struct ProjectLeaveSheet: View {
             VStack(alignment: .leading, spacing: 16) {
                 Text(app.T("Việc đang giao cho bạn sẽ thành chưa giao. Bạn cần lời mời mới để vào lại.",
                            "Tasks given to you become unassigned. You'll need a new invite to come back."))
-                    .font(.body)
+                    .font(.app(.body))
                 Button(role: .destructive) { Task { close(); await app.leaveProject() } } label: {
-                    Text(app.T("Rời dự án", "Leave project")).font(.body.weight(.bold))
+                    Text(app.T("Rời dự án", "Leave project")).font(.app(.body).weight(.bold))
                         .frame(maxWidth: .infinity, minHeight: 50)
                         .foregroundStyle(BanbeTheme.alert).background(BanbeTheme.alert.opacity(0.12), in: Capsule())
                 }

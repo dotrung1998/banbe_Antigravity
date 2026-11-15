@@ -35,21 +35,21 @@ struct EventDetailsSheet: View {
                             .accessibilityIdentifier("eventDetails.cover")
                     }
                     Text(app.T("Chi tiết sự kiện", "Event details"))
-                        .font(.footnote.weight(.semibold)).foregroundStyle(app.palette.clay)
+                        .font(.app(.footnote).weight(.semibold)).foregroundStyle(app.palette.clay)
                     Text(event.name).font(BanbeTheme.display(27)).padding(.top, 4)
                         .accessibilityAddTraits(.isHeader)
                     if !shownTiles.isEmpty { tileRow.padding(.top, 14) }
 
                     if about.visible {
                         sectionLabel(app.T("Giới thiệu", "About"))
-                        Text(about.body).font(.body).fixedSize(horizontal: false, vertical: true)
+                        Text(about.body).font(.app(.body)).fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("eventDetails.about")
                     }
                     if included.visible {
                         sectionLabel(app.T("Bao gồm", "Included"))
                         FlowLayout(spacing: 8, lineSpacing: 8) {
                             ForEach(included.items, id: \.self) { item in
-                                Text(item).font(.footnote.weight(.medium))
+                                Text(item).font(.app(.footnote).weight(.medium))
                                     .padding(.horizontal, 13).padding(.vertical, 7)
                                     .background(app.palette.block, in: Capsule())
                             }
@@ -61,7 +61,7 @@ struct EventDetailsSheet: View {
                     location
                     if !policyNote.isEmpty {
                         sectionLabel(app.T("Hoàn tiền", "Refunds"))
-                        Text(policyNote).font(.subheadline).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
+                        Text(policyNote).font(.app(.subheadline)).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("eventDetails.policy")
                     }
                 }
@@ -72,8 +72,8 @@ struct EventDetailsSheet: View {
             Button { onOpenEvent(); dismiss() } label: {
                 HStack(spacing: 8) {
                     Text(over ? app.T("Xem trang sự kiện", "View event page") : app.T("Mở trang sự kiện đầy đủ", "Open full event page"))
-                        .font(.body.weight(.semibold))
-                    Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold))
+                        .font(.app(.body).weight(.semibold))
+                    Image(systemName: "chevron.right").font(.app(size: 12, weight: .bold))
                 }
                 .foregroundStyle(app.palette.paper)
                 .frame(maxWidth: .infinity, minHeight: 52)
@@ -87,7 +87,7 @@ struct EventDetailsSheet: View {
         .background(app.palette.paper.ignoresSafeArea())
         .overlay(alignment: .topTrailing) {
             Button { dismiss() } label: {
-                Image(systemName: "xmark").font(.system(size: 13, weight: .bold)).foregroundStyle(app.palette.ink)
+                Image(systemName: "xmark").font(.app(size: 13, weight: .bold)).foregroundStyle(app.palette.ink)
                     .frame(width: 32, height: 32).background(app.palette.block, in: Circle())
                     .frame(width: 44, height: 44).contentShape(Rectangle())
             }
@@ -103,7 +103,7 @@ struct EventDetailsSheet: View {
     }
 
     private func sectionLabel(_ text: String) -> some View {
-        Text(text.uppercased()).font(.caption2.weight(.semibold)).tracking(0.8)
+        Text(text.uppercased()).font(.app(.caption2).weight(.semibold)).tracking(0.8)
             .foregroundStyle(app.palette.ink3).padding(.top, 22).padding(.bottom, 8)
             .accessibilityAddTraits(.isHeader)
     }
@@ -111,8 +111,8 @@ struct EventDetailsSheet: View {
     @ViewBuilder private var tileRow: some View {
         let cells = ForEach(shownTiles) { t in
             VStack(alignment: .leading, spacing: 2) {
-                Text(t.label.uppercased()).font(.caption2.weight(.semibold)).tracking(0.6).foregroundStyle(app.palette.ink3)
-                Text(t.value).font(.subheadline.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+                Text(t.label.uppercased()).font(.app(.caption2).weight(.semibold)).tracking(0.6).foregroundStyle(app.palette.ink3)
+                Text(t.value).font(.app(.subheadline).weight(.semibold)).fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 12).padding(.vertical, 9)
@@ -128,16 +128,16 @@ struct EventDetailsSheet: View {
             sectionLabel(app.T("Chủ nhà", "Host"))
             HStack(spacing: 12) {
                 Text(String(event.orgName.trimmingCharacters(in: .whitespaces).prefix(1)).uppercased())
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.app(size: 15, weight: .semibold))
                     .frame(width: 40, height: 40).background(app.palette.surface2, in: Circle())
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(event.orgName).font(BanbeTheme.display(17))
-                    Text(app.T("Nhắn host nếu cần biết thêm", "Message the host with questions")).font(.footnote).foregroundStyle(app.palette.ink2)
+                    Text(app.T("Nhắn host nếu cần biết thêm", "Message the host with questions")).font(.app(.footnote)).foregroundStyle(app.palette.ink2)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 Button { onMessage(); dismiss() } label: {
-                    Image(systemName: "message").font(.system(size: 16, weight: .semibold))
+                    Image(systemName: "message").font(.app(size: 16, weight: .semibold))
                         .frame(width: 44, height: 44).background(app.palette.blockInset, in: Circle())
                         .contentShape(Circle())
                 }
@@ -157,32 +157,32 @@ struct EventDetailsSheet: View {
             sectionLabel(app.T("Địa điểm", "Location"))
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: "mappin.and.ellipse").font(.system(size: 14, weight: .semibold))
+                    Image(systemName: "mappin.and.ellipse").font(.app(size: 14, weight: .semibold))
                         .foregroundStyle(app.palette.clay)
                         .frame(width: 34, height: 34).background(app.palette.clayBg, in: Circle())
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         if !place.isEmpty {
-                            Text(place).font(.subheadline.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+                            Text(place).font(.app(.subheadline).weight(.semibold)).fixedSize(horizontal: false, vertical: true)
                                 .accessibilityIdentifier("eventDetails.place")
                         }
                         if let distance {
-                            Text(distance).font(.footnote).foregroundStyle(app.palette.ink2)
+                            Text(distance).font(.app(.footnote)).foregroundStyle(app.palette.ink2)
                                 .accessibilityIdentifier("eventDetails.distance")
                         }
                     }
                 }
                 if !hostNote.isEmpty {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(app.T("Lời nhắn từ host", "Note from the host")).font(.caption.weight(.semibold)).foregroundStyle(app.palette.ink2)
-                        Text(hostNote).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                        Text(app.T("Lời nhắn từ host", "Note from the host")).font(.app(.caption).weight(.semibold)).foregroundStyle(app.palette.ink2)
+                        Text(hostNote).font(.app(.subheadline)).fixedSize(horizontal: false, vertical: true)
                     }
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("eventDetails.hostNote")
                 }
                 if let url = event.mapsURL {
                     Link(destination: url) {
-                        Text(app.T("Chỉ đường", "Directions") + " ↗").font(.subheadline.weight(.semibold)).underline()
+                        Text(app.T("Chỉ đường", "Directions") + " ↗").font(.app(.subheadline).weight(.semibold)).underline()
                             .frame(minHeight: 44, alignment: .leading)
                     }
                     .accessibilityIdentifier("eventDetails.directions")

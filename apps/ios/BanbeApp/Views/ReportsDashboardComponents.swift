@@ -69,7 +69,7 @@ struct ReportGlyph: View {
 
     var body: some View {
         Image(systemName: symbol)
-            .font(.system(size: size * 0.48, weight: .semibold))
+            .font(.app(size: size * 0.48, weight: .semibold))
             .foregroundStyle(app.palette.ink.opacity(0.8))
             .frame(width: size, height: size)
             .background(reportsAccent.opacity(app.isDark ? 0.28 : 0.5), in: Circle())
@@ -85,11 +85,11 @@ struct ReportSectionTitle: View {
     var body: some View {
         HStack(spacing: 8) {
             Text(text)
-                .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                .font(.app(.subheadline, design: .rounded).weight(.semibold))
                 .foregroundStyle(app.palette.ink.opacity(0.75))
             if let count {
                 Text("\(count)")
-                    .font(.caption.weight(.bold)).monospacedDigit()
+                    .font(.app(.caption).weight(.bold)).monospacedDigit()
                     .padding(.horizontal, 7).padding(.vertical, 1)
                     .background(app.palette.ink.opacity(0.08), in: Capsule())
                     .foregroundStyle(app.palette.ink.opacity(0.7))
@@ -177,8 +177,8 @@ struct ReportChartView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(metric.title).font(.system(size: 15, weight: .semibold))
-            Text("\(metric.valueText) · \(rangeLabel)").font(.system(size: 11)).opacity(0.65)
+            Text(metric.title).font(.app(size: 15, weight: .semibold))
+            Text("\(metric.valueText) · \(rangeLabel)").font(.app(size: 11)).opacity(0.65)
             ReportTrendChart(metric: metric, height: 180).padding(.top, 8)
         }
         .foregroundStyle(Palette.light.ink)
@@ -219,7 +219,7 @@ struct ReportDailyBars: View {
                     .annotation(position: .top, spacing: 3) {
                         if p.dayKey == peak?.dayKey {
                             Text(ReportsPresentation.compact(p.value, kind: metric.kind, T: app.T))
-                                .font(.caption2.weight(.bold)).monospacedDigit()
+                                .font(.app(.caption2).weight(.bold)).monospacedDigit()
                                 .foregroundStyle(app.palette.ink)
                                 .fixedSize()
                         }
@@ -237,7 +237,7 @@ struct ReportDailyBars: View {
                     Spacer(minLength: 8)
                     Text(ReportsPresentation.formatDay(last.date, T: app.T))
                 }
-                .font(.caption2).monospacedDigit()
+                .font(.app(.caption2)).monospacedDigit()
                 .foregroundStyle(app.palette.ink.opacity(0.55))
             }
         }
@@ -286,15 +286,15 @@ struct ReportSeriesStats: View {
     private func stat(_ label: String, _ value: String, _ detail: String?, divided: Bool) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(.caption)
+                .font(.app(.caption))
                 .foregroundStyle(app.palette.ink.opacity(0.6))
                 .lineLimit(1)
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(value)
-                    .font(.system(.subheadline, design: .rounded).weight(.semibold)).monospacedDigit()
+                    .font(.app(.subheadline, design: .rounded).weight(.semibold)).monospacedDigit()
                     .lineLimit(1)
                 if let detail {
-                    Text(detail).font(.caption).foregroundStyle(app.palette.ink.opacity(0.6)).lineLimit(1)
+                    Text(detail).font(.app(.caption)).foregroundStyle(app.palette.ink.opacity(0.6)).lineLimit(1)
                 }
             }
         }
@@ -321,19 +321,19 @@ struct ReportPrimaryCard: View {
                 HStack(spacing: 10) {
                     ReportGlyph(symbol: ReportsPresentation.symbol(for: metric.key), size: 30)
                     Text(metric.title)
-                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                        .font(.app(.subheadline, design: .rounded).weight(.semibold))
                         .multilineTextAlignment(.leading)
                     Spacer(minLength: 8)
-                    Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).opacity(0.45)
+                    Image(systemName: "chevron.right").font(.app(.footnote).weight(.semibold)).opacity(0.45)
                         .accessibilityHidden(true)
                 }
                 Text(metric.valueText)
-                    .font(.system(size: valueSize, weight: .bold, design: .rounded)).monospacedDigit()
+                    .font(.app(size: valueSize, weight: .bold, design: .rounded)).monospacedDigit()
                     .minimumScaleFactor(0.5)
                     .lineLimit(1)
                     .padding(.top, 14)
                 Text(ReportsPresentation.meaning(metric, role: role, T: app.T))
-                    .font(.footnote)
+                    .font(.app(.footnote))
                     .foregroundStyle(app.palette.ink.opacity(0.7))
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
@@ -344,7 +344,7 @@ struct ReportPrimaryCard: View {
                         if summary.hasActivity && dynamicTypeSize.isAccessibilitySize {
                             // Large text: a readable sentence instead of a squeezed chart.
                             Text(ReportsPresentation.seriesSentence(metric, T: app.T))
-                                .font(.footnote).fixedSize(horizontal: false, vertical: true)
+                                .font(.app(.footnote)).fixedSize(horizontal: false, vertical: true)
                         } else if summary.hasActivity {
                             VStack(alignment: .leading, spacing: 14) {
                                 ReportDailyBars(metric: metric, height: 104)
@@ -354,7 +354,7 @@ struct ReportPrimaryCard: View {
                         } else {
                             Label(app.T("Không có hoạt động trong khoảng này.", "No activity in this range."),
                                   systemImage: "minus.circle")
-                                .font(.footnote)
+                                .font(.app(.footnote))
                                 .foregroundStyle(app.palette.ink.opacity(0.65))
                         }
                     }
@@ -387,7 +387,7 @@ struct ReportKpiTile: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .top, spacing: 8) {
                     Text(metric.title)
-                        .font(.footnote.weight(.semibold))
+                        .font(.app(.footnote).weight(.semibold))
                         .foregroundStyle(app.palette.ink.opacity(0.78))
                         .lineLimit(3)
                         .multilineTextAlignment(.leading)
@@ -398,12 +398,12 @@ struct ReportKpiTile: View {
                     }
                 }
                 Text(metric.valueText)
-                    .font(.system(.title, design: .rounded).weight(.bold)).monospacedDigit()
+                    .font(.app(.title, design: .rounded).weight(.bold)).monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
                     .padding(.top, 8)
                 Text(ReportsPresentation.meaning(metric, role: role, T: app.T))
-                    .font(.caption)
+                    .font(.app(.caption))
                     .foregroundStyle(app.palette.ink.opacity(0.6))
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                     .multilineTextAlignment(.leading)
@@ -452,7 +452,7 @@ struct ReportAttentionCard: View {
         Button(action: onOpen) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: item.symbol)
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.app(size: 17, weight: .semibold))
                     .foregroundStyle(tint)
                     .frame(width: 36, height: 36)
                     .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -460,26 +460,26 @@ struct ReportAttentionCard: View {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .center, spacing: 8) {
                         Text(badge)
-                            .font(.caption.weight(.bold))
+                            .font(.app(.caption).weight(.bold))
                             .foregroundStyle(tint)
                             .padding(.horizontal, 8).padding(.vertical, 3)
                             .background(tint.opacity(0.14), in: Capsule())
                         Spacer(minLength: 8)
                         Text(item.valueText)
-                            .font(.system(.title3, design: .rounded).weight(.bold)).monospacedDigit()
+                            .font(.app(.title3, design: .rounded).weight(.bold)).monospacedDigit()
                             .lineLimit(1).minimumScaleFactor(0.6)
                     }
-                    Text(item.title).font(.subheadline.weight(.semibold))
+                    Text(item.title).font(.app(.subheadline).weight(.semibold))
                         .padding(.top, 2)
                     Text(item.message)
-                        .font(.footnote)
+                        .font(.app(.footnote))
                         .foregroundStyle(app.palette.ink.opacity(0.75))
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 4) {
                         Text(ReportsPresentation.attentionAction(item, T: app.T))
                         Image(systemName: "arrow.right").accessibilityHidden(true)
                     }
-                    .font(.footnote.weight(.semibold))
+                    .font(.app(.footnote).weight(.semibold))
                     .padding(.top, 6)
                 }
             }
@@ -521,28 +521,28 @@ struct ReportTrendCard: View {
                 HStack(alignment: .center, spacing: 10) {
                     ReportGlyph(symbol: ReportsPresentation.symbol(for: metric.key), size: 26)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(metric.title).font(.subheadline.weight(.semibold))
+                        Text(metric.title).font(.app(.subheadline).weight(.semibold))
                             .multilineTextAlignment(.leading)
                         Text(ReportsPresentation.meaning(metric, role: role, T: app.T))
-                            .font(.caption).foregroundStyle(app.palette.ink.opacity(0.6))
+                            .font(.app(.caption)).foregroundStyle(app.palette.ink.opacity(0.6))
                             .multilineTextAlignment(.leading)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 8)
                     Text(metric.valueText)
-                        .font(.system(.title3, design: .rounded).weight(.bold)).monospacedDigit()
+                        .font(.app(.title3, design: .rounded).weight(.bold)).monospacedDigit()
                         .lineLimit(1).minimumScaleFactor(0.6)
                 }
                 if let s = metric.summary, s.hasActivity, dynamicTypeSize.isAccessibilitySize {
                     Text(ReportsPresentation.seriesSentence(metric, T: app.T))
-                        .font(.footnote).fixedSize(horizontal: false, vertical: true)
+                        .font(.app(.footnote)).fixedSize(horizontal: false, vertical: true)
                 } else if let s = metric.summary, s.hasActivity {
                     ReportDailyBars(metric: metric, height: 84).padding(.top, 4)
                     ReportSeriesStats(metric: metric, summary: s).padding(.top, 2)
                 } else {
                     Label(app.T("Không có hoạt động trong khoảng này.", "No activity in this range."),
                           systemImage: "minus.circle")
-                        .font(.footnote)
+                        .font(.app(.footnote))
                         .foregroundStyle(app.palette.ink.opacity(0.65))
                 }
             }
@@ -573,14 +573,14 @@ struct ReportInsightCard: View {
         Button(action: onOpen) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(title).font(.subheadline.weight(.semibold))
+                    Text(title).font(.app(.subheadline).weight(.semibold))
                     Spacer(minLength: 8)
-                    Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).opacity(0.45)
+                    Image(systemName: "chevron.right").font(.app(.footnote).weight(.semibold)).opacity(0.45)
                         .accessibilityHidden(true)
                 }
                 if dynamicTypeSize.isAccessibilitySize {
                     Text(ReportsPresentation.insightSentence(insight, T: app.T))
-                        .font(.footnote).fixedSize(horizontal: false, vertical: true)
+                        .font(.app(.footnote)).fixedSize(horizontal: false, vertical: true)
                 } else {
                     switch insight {
                     case .share(let s): share(s)
@@ -615,10 +615,10 @@ struct ReportInsightCard: View {
                     .stroke(app.palette.ink, style: StrokeStyle(lineWidth: 7, lineCap: .butt))
                     .rotationEffect(.degrees(-90))
                 Text("\(s.numerator)/\(s.denominator)")
-                    .font(.system(.footnote, design: .rounded).weight(.bold)).monospacedDigit()
+                    .font(.app(.footnote, design: .rounded).weight(.bold)).monospacedDigit()
             }
             .frame(width: 58, height: 58)
-            Text(s.caption).font(.footnote).foregroundStyle(app.palette.ink.opacity(0.8))
+            Text(s.caption).font(.app(.footnote)).foregroundStyle(app.palette.ink.opacity(0.8))
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -642,9 +642,9 @@ struct ReportInsightCard: View {
                 HStack(spacing: 8) {
                     RoundedRectangle(cornerRadius: 2).fill(app.palette.ink.opacity(shades[i % shades.count]))
                         .frame(width: 10, height: 10)
-                    Text(seg.label).font(.footnote)
+                    Text(seg.label).font(.app(.footnote))
                     Spacer(minLength: 8)
-                    Text("\(seg.count)").font(.footnote.weight(.semibold)).monospacedDigit()
+                    Text("\(seg.count)").font(.app(.footnote).weight(.semibold)).monospacedDigit()
                 }
             }
         }
@@ -704,39 +704,39 @@ struct ReportMetricDetailSheet: View {
                     VStack(alignment: .leading, spacing: 14) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(metric.valueText)
-                                .font(.system(.largeTitle, design: .rounded).weight(.bold))
+                                .font(.app(.largeTitle, design: .rounded).weight(.bold))
                                 .accessibilityLabel(metric.accessibilityValue)
                             Text(metric.isTimeSeries ? rangeLabel : app.T("Số liệu hiện tại, không theo thời gian.", "A current total, not a time series."))
-                                .font(.footnote).foregroundStyle(app.palette.ink.opacity(0.65))
+                                .font(.app(.footnote)).foregroundStyle(app.palette.ink.opacity(0.65))
                         }
 
                         if metric.isTimeSeries {
                             ReportTrendChart(metric: metric, height: 200)
                             Text(ReportsPresentation.seriesSentence(metric, T: app.T))
-                                .font(.footnote).foregroundStyle(app.palette.ink.opacity(0.75))
+                                .font(.app(.footnote)).foregroundStyle(app.palette.ink.opacity(0.75))
                             Button {
                                 Task { await saveImage(metric) }
                             } label: {
                                 Label(savingImage ? app.T("Đang lưu…", "Saving…") : app.T("Lưu ảnh biểu đồ", "Save chart image"),
                                       systemImage: "square.and.arrow.down")
-                                    .font(.subheadline.weight(.semibold))
+                                    .font(.app(.subheadline).weight(.semibold))
                             }
                             .disabled(savingImage)
                             .accessibilityIdentifier("reports.detail.saveImage")
                             if let saveMessage {
-                                Text(saveMessage).font(.footnote).foregroundStyle(app.palette.ink.opacity(0.7))
+                                Text(saveMessage).font(.app(.footnote)).foregroundStyle(app.palette.ink.opacity(0.7))
                             }
                         }
 
                         HStack {
-                            Text(app.T("Dữ liệu chi tiết", "Underlying data")).font(.headline)
+                            Text(app.T("Dữ liệu chi tiết", "Underlying data")).font(.app(.headline))
                                 .accessibilityAddTraits(.isHeader)
                             Spacer()
                             Button {
                                 app.exportReportCardCsv(metricKey)
                             } label: {
                                 Label(app.T("Xuất CSV", "Export CSV"), systemImage: "tablecells")
-                                    .font(.subheadline.weight(.semibold))
+                                    .font(.app(.subheadline).weight(.semibold))
                             }
                             .accessibilityIdentifier("reports.detail.csv")
                         }
@@ -744,7 +744,7 @@ struct ReportMetricDetailSheet: View {
 
                         if rows.isEmpty {
                             Text(app.T("Không có bản ghi nào để hiển thị.", "No records to show."))
-                                .font(.footnote).foregroundStyle(app.palette.ink.opacity(0.65))
+                                .font(.app(.footnote)).foregroundStyle(app.palette.ink.opacity(0.65))
                         } else {
                             LazyVStack(alignment: .leading, spacing: 10) {
                                 ForEach(rows.prefix(100)) { row in rowCard(row) }
@@ -752,7 +752,7 @@ struct ReportMetricDetailSheet: View {
                             if rows.count > 100 {
                                 Text(app.T("Hiển thị 100/\(rows.count) bản ghi. Xuất CSV để xem tất cả.",
                                            "Showing 100 of \(rows.count) records. Export CSV for all of them."))
-                                    .font(.footnote).foregroundStyle(app.palette.ink.opacity(0.65))
+                                    .font(.app(.footnote)).foregroundStyle(app.palette.ink.opacity(0.65))
                             }
                         }
                     }
@@ -760,7 +760,7 @@ struct ReportMetricDetailSheet: View {
                 }
             } else {
                 Text(app.T("Số liệu này không còn trong báo cáo.", "This metric is no longer in the report."))
-                    .font(.footnote)
+                    .font(.app(.footnote))
             }
         }
     }
@@ -770,19 +770,19 @@ struct ReportMetricDetailSheet: View {
     private func rowCard(_ row: ReportRowPresentation) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
-                Text(row.title).font(.subheadline.weight(.semibold))
+                Text(row.title).font(.app(.subheadline).weight(.semibold))
                 if row.flagged {
                     Spacer(minLength: 6)
                     Label(app.T("Quá hạn", "Overdue"), systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption.weight(.semibold))
+                        .font(.app(.caption).weight(.semibold))
                         .foregroundStyle(BanbeTheme.alert)
                 }
             }
             ForEach(Array(row.fields.enumerated()), id: \.offset) { _, f in
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(f.label).font(.footnote).foregroundStyle(app.palette.ink.opacity(0.65))
+                    Text(f.label).font(.app(.footnote)).foregroundStyle(app.palette.ink.opacity(0.65))
                     Spacer(minLength: 8)
-                    Text(f.value).font(.footnote.weight(.medium)).multilineTextAlignment(.trailing)
+                    Text(f.value).font(.app(.footnote).weight(.medium)).multilineTextAlignment(.trailing)
                 }
                 .accessibilityElement(children: .combine)
             }

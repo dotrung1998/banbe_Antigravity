@@ -180,6 +180,15 @@ targets:
         # L7 day-of card: the app may start Live Activities (only ever locally, only while the `live_activity`
         # switch is on; see BanbeApp/Lib/LiveActivityController.swift).
         NSSupportsLiveActivities: true
+        # Note 83: Be Vietnam Pro (SIL Open Font License, Resources/Fonts/BeVietnamPro-OFL.txt), one of the app's font
+        # choices (Account › Settings › Font & more display). Files are found by name in the app bundle.
+        UIAppFonts:
+          - BeVietnamPro-Light.ttf
+          - BeVietnamPro-Regular.ttf
+          - BeVietnamPro-Medium.ttf
+          - BeVietnamPro-SemiBold.ttf
+          - BeVietnamPro-Bold.ttf
+          - BeVietnamPro-ExtraBold.ttf
 
   # L7 day-of card (docs/impl/phase3-extras.md; switch `live_activity`): WidgetKit extension that draws the event-day
   # Live Activity (Lock Screen + Dynamic Island). No capabilities and no entitlements at all (no App Group, no push:

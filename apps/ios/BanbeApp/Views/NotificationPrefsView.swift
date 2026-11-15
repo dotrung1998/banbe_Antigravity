@@ -46,11 +46,11 @@ struct NotificationPrefsView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack {
                         Text(title)
-                            .font(.system(size: 24, weight: .light))
+                            .font(.app(size: 24, weight: .light))
                             .accessibilityAddTraits(.isHeader)
                         Spacer(minLength: 8)
                         Button(app.T("Xong", "Done")) { dismiss() }
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.app(size: 15, weight: .semibold))
                             .frame(minWidth: 44, minHeight: 44)
                             .accessibilityIdentifier("notifPrefs.done")
                     }
@@ -114,10 +114,10 @@ struct NotificationPrefsView: View {
             .padding(.top, 12)
 
             Text(app.T("Thông báo về tranh chấp luôn được gửi.", "Dispute updates always reach you."))
-                .font(.system(size: 12.5)).foregroundStyle(app.palette.ink3)
+                .font(.app(size: 12.5)).foregroundStyle(app.palette.ink3)
                 .padding(.top, 12)
             if !error.isEmpty {
-                Text(error).font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert).padding(.top, 8)
+                Text(error).font(.app(size: 12.5)).foregroundStyle(BanbeTheme.alert).padding(.top, 8)
                     .accessibilityIdentifier("notifPrefs.error")
             }
         }
@@ -131,8 +131,8 @@ struct NotificationPrefsView: View {
                            action: @escaping () -> Void) -> some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 15))
-                Text(sub).font(.system(size: 12.5)).foregroundStyle(app.palette.ink3)
+                Text(title).font(.app(size: 15))
+                Text(sub).font(.app(size: 12.5)).foregroundStyle(app.palette.ink3)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)

@@ -247,15 +247,15 @@ struct RefundDisputeFlows: ViewModifier {
         }()
         return VStack(spacing: 14) {
             Text(app.T("Đang chuẩn bị bản tải về", "Preparing your download"))
-                .font(.system(size: 16, weight: .bold))
+                .font(.app(size: 16, weight: .bold))
             ProgressView(value: p?.fraction ?? 0)
                 .accessibilityIdentifier("disputeFlow.progress")
             Text(phaseText)
-                .font(.system(size: 13))
+                .font(.app(size: 13))
                 .foregroundStyle(app.palette.ink.opacity(0.7))
             Text(app.T("Ảnh và tệp được tải về máy trước khi tạo PDF và ZIP.",
                        "Photos and files are downloaded to your phone before the PDF and ZIP are made."))
-                .font(.system(size: 11.5))
+                .font(.app(size: 11.5))
                 .foregroundStyle(app.palette.ink.opacity(0.55))
                 .multilineTextAlignment(.center)
             Button(app.T("Huỷ", "Cancel")) {
@@ -327,7 +327,7 @@ struct DisputeSettlementBlock: View {
                     request = .confirmReceived
                 } label: {
                     Text(app.T("Tôi đã nhận được tiền hoàn", "Mark refund received"))
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.app(size: 13, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 11)
                         .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -344,12 +344,12 @@ struct DisputeSettlementBlock: View {
                              "Confirm that you received the refund. This also closes the dispute.")
                      : app.T("Bạn có thể đóng tranh chấp này sau khi khách xác nhận đã nhận được tiền hoàn.",
                              "You can close this dispute after the guest confirms the refund was received."))
-                    .font(.system(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                    .font(.app(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.6))
                     .accessibilityIdentifier("disputeSettlement.lockedHint")
             }
             if let autoCloseNote {
                 Text(autoCloseNote)
-                    .font(.system(size: 10.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    .font(.app(size: 10.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
                     .accessibilityIdentifier("disputeSettlement.autoClose")
             }
         }
@@ -379,9 +379,9 @@ struct PreviousDisputeRounds: View {
                     } label: {
                         HStack(spacing: 8) {
                             Text(label(round, number: rounds.count - index))
-                                .font(.system(size: 11.5, weight: .semibold))
+                                .font(.app(size: 11.5, weight: .semibold))
                             Spacer(minLength: 0)
-                            Image(systemName: isOpen ? "chevron.up" : "chevron.down").font(.system(size: 10))
+                            Image(systemName: isOpen ? "chevron.up" : "chevron.down").font(.app(size: 10))
                         }
                         .foregroundStyle(app.palette.ink.opacity(0.75))
                         .padding(.vertical, 6)
@@ -398,11 +398,11 @@ struct PreviousDisputeRounds: View {
                                 ForEach(messages ?? []) { m in
                                     VStack(alignment: .leading, spacing: 1) {
                                         Text(who(m) + " ▪︎ " + m.createdAt.formatted())
-                                            .font(.system(size: 9.5)).foregroundStyle(app.palette.ink.opacity(0.5))
+                                            .font(.app(size: 9.5)).foregroundStyle(app.palette.ink.opacity(0.5))
                                         Text(m.hasAttachment
                                              ? (m.isImageAttachment ? app.T("Đã gửi một ảnh", "Sent a photo") : app.T("Đã gửi một tệp", "Sent a file"))
                                              : m.body)
-                                            .font(.system(size: 12)).foregroundStyle(app.palette.ink)
+                                            .font(.app(size: 12)).foregroundStyle(app.palette.ink)
                                             .fixedSize(horizontal: false, vertical: true)
                                     }
                                 }

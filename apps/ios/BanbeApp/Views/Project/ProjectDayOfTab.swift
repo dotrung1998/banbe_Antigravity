@@ -31,7 +31,7 @@ struct ProjectDayOfTab: View {
                             Label(app.T("Thêm mốc", "Add item"), systemImage: "plus").padding(.horizontal, 14)
                             Image(systemName: "plus").frame(width: 44)
                         }
-                        .font(.subheadline.weight(.bold)).lineLimit(1).frame(minHeight: 44)
+                        .font(.app(.subheadline).weight(.bold)).lineLimit(1).frame(minHeight: 44)
                         .foregroundStyle(app.palette.clay).background(app.palette.clayBg, in: Capsule())
                     }
                     .buttonStyle(PressableButtonStyle())
@@ -49,7 +49,7 @@ struct ProjectDayOfTab: View {
                                 "You can add, edit or delete items. Everyone else just ticks them off.")
                         : app.T("Chỉ Chủ sự kiện và Quản lý sửa được mốc. Bạn tick khi xong.",
                                 "Only the Host and Managers can edit items. Tick yours when it's done."))
-                .font(.footnote).foregroundStyle(app.palette.ink3).padding(.top, 10)
+                .font(.app(.footnote)).foregroundStyle(app.palette.ink3).padding(.top, 10)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project.dayofTab")
@@ -70,11 +70,11 @@ struct ProjectDayOfTab: View {
         let toGo = ProjectPresentation.daysToGo(snap.event, now: app.projectNow) ?? 0
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(app.T("Tuần diễn ra", "Event week")).font(.body.weight(.bold))
+                Text(app.T("Tuần diễn ra", "Event week")).font(.app(.body).weight(.bold))
                 Spacer()
                 Text(toGo > 0 ? app.T("Còn \(toGo) ngày", toGo == 1 ? "In 1 day" : "In \(toGo) days")
                               : toGo == 0 ? app.T("Hôm nay", "Today") : app.T("Đã qua", "Over"))
-                    .font(.caption.weight(.bold)).padding(.horizontal, 9).padding(.vertical, 4)
+                    .font(.app(.caption).weight(.bold)).padding(.horizontal, 9).padding(.vertical, 4)
                     .foregroundStyle(app.palette.clay).background(app.palette.clayBg, in: Capsule())
             }
             .padding(.horizontal, 4)
@@ -108,9 +108,9 @@ struct ProjectDayOfTab: View {
             selectedDay = on ? nil : d
         } label: {
             VStack(spacing: 3) {
-                Text(weekday).font(.caption2.weight(.bold)).opacity(0.8)
-                Text(dayNum).font(.system(size: 17, weight: .bold).monospacedDigit())
-                Text(due > 0 ? app.T("\(due) việc", "\(due) due") : isEvent ? "★" : " ").font(.caption2.weight(.bold))
+                Text(weekday).font(.app(.caption2).weight(.bold)).opacity(0.8)
+                Text(dayNum).font(.app(size: 17, weight: .bold).monospacedDigit())
+                Text(due > 0 ? app.T("\(due) việc", "\(due) due") : isEvent ? "★" : " ").font(.app(.caption2).weight(.bold))
                     .lineLimit(1).minimumScaleFactor(0.7)
             }
             .frame(maxWidth: .infinity, minHeight: 64)
@@ -134,12 +134,12 @@ struct ProjectDayOfTab: View {
             Text(app.T("Việc đến hạn ", "Tasks due ") + (app.projectDueText(day) ?? day)).font(BanbeTheme.display(18)).accessibilityAddTraits(.isHeader)
             Spacer()
             Button(app.T("Bỏ chọn", "Clear")) { selectedDay = nil }
-                .font(.subheadline.weight(.semibold)).foregroundStyle(app.palette.clay).frame(minHeight: 44)
+                .font(.app(.subheadline).weight(.semibold)).foregroundStyle(app.palette.clay).frame(minHeight: 44)
                 .accessibilityIdentifier("project.dayof.clearDay")
         }
         .padding(.top, 16).padding(.bottom, 6)
         if tasks.isEmpty {
-            Text(app.T("Không có việc nào đến hạn ngày này.", "Nothing is due that day.")).font(.subheadline).foregroundStyle(app.palette.ink2)
+            Text(app.T("Không có việc nào đến hạn ngày này.", "Nothing is due that day.")).font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
                 .padding(.vertical, 12).frame(maxWidth: .infinity, alignment: .leading)
                 .projectCard()
                 .accessibilityIdentifier("project.dayof.dueEmpty")
@@ -160,19 +160,19 @@ struct ProjectDayOfTab: View {
                 Image(systemName: live ? "dot.radiowaves.left.and.right" : "clock").foregroundStyle(app.palette.honey).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(live ? app.T("Đang đồng bộ trực tiếp", "Live now") : app.T("Chế độ ngày diễn ra", "Event-day mode"))
-                        .font(.body.weight(.bold))
+                        .font(.app(.body).weight(.bold))
                     Text(live ? app.T("Cập nhật mỗi \(ProjectLimits.shared.pollSeconds) giây khi bạn mở thẻ này.",
                                       "Updates every \(ProjectLimits.shared.pollSeconds) seconds while this tab is open.")
                               : app.T("Chỉ ngày \(eventDayText) mới đồng bộ trực tiếp để cả đội tick cùng lúc. Các ngày khác đồng bộ khi mở hoặc kéo xuống.",
                                       "Only on \(eventDayText) does it sync live, so the team can tick together. Other days it syncs on open or when you pull down."))
-                        .font(.subheadline).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
+                        .font(.app(.subheadline)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
                 }
             }
             if let call, let url = URL(string: call.url) {
                 Link(destination: url) {
                     Label(app.T("Vào cuộc gọi · ", "Join call · ") + (call.label.isEmpty ? (ProjectChannels.names[call.platform] ?? call.platform) : call.label),
                           systemImage: "phone.arrow.up.right")
-                        .font(.subheadline.weight(.semibold)).lineLimit(1)
+                        .font(.app(.subheadline).weight(.semibold)).lineLimit(1)
                         .padding(.horizontal, 14).frame(minHeight: 44)
                         .background(app.palette.paper.opacity(0.6), in: Capsule())
                 }
@@ -202,7 +202,7 @@ struct ProjectDayOfTab: View {
         let items = snap.ros ?? []
         let placed = ProjectRosGrid.placed(items, now: app.projectNow)
         if items.isEmpty {
-            Text(app.T("Chưa có mốc nào.", "No items yet.")).font(.subheadline).foregroundStyle(app.palette.ink2)
+            Text(app.T("Chưa có mốc nào.", "No items yet.")).font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
                 .padding(.vertical, 18).frame(maxWidth: .infinity).projectCard()
                 .accessibilityIdentifier("project.dayof.empty")
         } else {
@@ -218,16 +218,16 @@ struct ProjectDayOfTab: View {
         let done = r.doneAt != nil
         return HStack(spacing: 10) {
             // Never wraps ("16:0 / 0" at large text): grows to fit, at least 54 pt so rows line up.
-            Text(app.projectClock(start)).font(.body.weight(.bold).monospacedDigit())
+            Text(app.projectClock(start)).font(.app(.body).weight(.bold).monospacedDigit())
                 .lineLimit(1).fixedSize(horizontal: true, vertical: false).frame(minWidth: 54, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
-                Text(r.title).font(.body.weight(.semibold))
+                Text(r.title).font(.app(.body).weight(.semibold))
                     .strikethrough(done, color: app.palette.ink3)
                     .foregroundStyle(done ? app.palette.ink2 : app.palette.ink)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 6) {
                     Text("\(app.projectClock(start))–\(app.projectClock(end)) · \(app.projectPersonName(r.ownerId))")
-                        .font(.footnote).foregroundStyle(app.palette.ink2)
+                        .font(.app(.footnote)).foregroundStyle(app.palette.ink2)
                     if let p, p.overrun { ProjectRosBadge(text: "+\(p.overrunMin)′", tone: .alert) }
                 }
             }
@@ -235,7 +235,7 @@ struct ProjectDayOfTab: View {
             .accessibilityElement(children: .combine)
             if editor {
                 Button { openSheet(.rosItem(r.id)) } label: {
-                    Image(systemName: "pencil").font(.system(size: 15, weight: .semibold)).frame(width: 44, height: 44)
+                    Image(systemName: "pencil").font(.app(size: 15, weight: .semibold)).frame(width: 44, height: 44)
                         .background(app.palette.blockInset, in: Circle())
                 }
                 .buttonStyle(.plain)
@@ -282,7 +282,7 @@ struct ProjectRosBadge: View {
     var wraps = false
 
     var body: some View {
-        Text(text).font(.caption.weight(.bold)).lineLimit(wraps ? nil : 1)
+        Text(text).font(.app(.caption).weight(.bold)).lineLimit(wraps ? nil : 1)
             .fixedSize(horizontal: false, vertical: wraps)
             .padding(.horizontal, 7).padding(.vertical, 2)
             .foregroundStyle(tone == .alert ? BanbeTheme.alert : app.palette.honey)

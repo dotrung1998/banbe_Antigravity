@@ -23,12 +23,12 @@ struct LongIntroPreview: View {
             let isLong = text.count > previewLength
             let shown = expanded || !isLong ? text : String(text.prefix(previewLength)) + "…"
             VStack(alignment: .leading, spacing: 4) {
-                Text(shown).font(.system(size: 12.5)).multilineTextAlignment(.leading)
+                Text(shown).font(.app(size: 12.5)).multilineTextAlignment(.leading)
                 if isLong {
                     Button(expanded ? app.T("Thu gọn", "Show less") : app.T("Đọc thêm", "Read more")) {
                         expanded.toggle()
                     }
-                    .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    .font(.app(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
                     .accessibilityIdentifier("longIntro.toggle")
                 }
             }
@@ -51,7 +51,7 @@ struct SocialLinksRow: View {
                     if let url = URL(string: link.url) {
                         Link(destination: url) {
                             Text(socialLinkPlatformLabels[link.platform] ?? link.platform)
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.app(size: 11, weight: .semibold))
                                 .padding(.horizontal, 12).padding(.vertical, 7)
                                 .overlay(Capsule().stroke(app.palette.rule))
                                 .foregroundStyle(app.palette.ink)
@@ -79,7 +79,7 @@ struct SocialLinksEditorView: View {
                 open.toggle()
             } label: {
                 Text("\(app.T("Thêm liên kết", "Add links")) \(open ? "▾" : "▸")")
-                    .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                    .font(.app(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
             }
             .accessibilityIdentifier("\(testPrefix).toggle")
 
@@ -97,14 +97,14 @@ struct SocialLinksEditorView: View {
                             get: { links[index].url },
                             set: { links[index].url = $0 }
                         ))
-                        .font(.system(size: 12.5))
+                        .font(.app(size: 12.5))
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .accessibilityIdentifier("\(testPrefix).url.\(index)")
                         Button {
                             links.remove(at: index)
                         } label: {
-                            Image(systemName: "xmark").font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.6))
+                            Image(systemName: "xmark").font(.app(size: 11)).foregroundStyle(app.palette.ink.opacity(0.6))
                         }
                         .accessibilityIdentifier("\(testPrefix).remove.\(index)")
                     }
@@ -113,7 +113,7 @@ struct SocialLinksEditorView: View {
                     links.append(SocialLink(platform: "website", url: ""))
                 } label: {
                     Text("+ \(app.T("Thêm một liên kết", "Add another link"))")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.app(size: 12, weight: .semibold))
                         .frame(maxWidth: .infinity).padding(.vertical, 10)
                         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4])).foregroundStyle(app.palette.rule))
                 }

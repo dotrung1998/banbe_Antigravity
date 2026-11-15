@@ -41,7 +41,7 @@ struct SecurityView: View {
                     .padding(.top, 16)
                 Text(app.T("Khoá ứng dụng và mật khẩu tài khoản của bạn.",
                            "Your app lock and account password."))
-                    .font(.system(size: 13.5))
+                    .font(.app(size: 13.5))
                     .lineSpacing(3)
                     .padding(.top, 10)
 
@@ -56,7 +56,7 @@ struct SecurityView: View {
                 } else {
                     Text(app.T("Đăng nhập để đặt mật khẩu cho tài khoản.",
                                "Sign in to set a password for your account."))
-                        .font(.system(size: 12.5))
+                        .font(.app(size: 12.5))
                         .foregroundStyle(app.palette.ink.opacity(0.7))
                         .padding(.top, 28)
                 }
@@ -95,7 +95,7 @@ struct SecurityView: View {
                             .font(BanbeTheme.display(17))
                         Text(app.T("Hỏi \(biometryName) mỗi lần bạn mở lại ứng dụng.",
                                    "Ask for \(biometryName) each time you return to the app."))
-                            .font(.system(size: 11.5))
+                            .font(.app(size: 11.5))
                             .multilineTextAlignment(.leading)
                     }
                     Spacer(minLength: 0)
@@ -115,7 +115,7 @@ struct SecurityView: View {
 
             if !faceIDError.isEmpty {
                 Text(faceIDError)
-                    .font(.system(size: 12))
+                    .font(.app(size: 12))
                     .foregroundStyle(BanbeTheme.alert)
             }
         }
@@ -152,7 +152,7 @@ struct SecurityView: View {
                             .font(BanbeTheme.display(17))
                         Text(app.T("Mặc định tắt. Chỉ các host mà bạn đã đặt chỗ, theo dõi hoặc lưu sự kiện mới được soạn tin quảng bá ngắn cho bạn qua SMS, và chỉ khi bạn bật mục này.",
                                    "Off by default. Only hosts you've booked with, follow or saved an event from can compose a short promo text to you, and only while this is on."))
-                            .font(.system(size: 11.5))
+                            .font(.app(size: 11.5))
                             .multilineTextAlignment(.leading)
                     }
                     Spacer(minLength: 0)
@@ -167,10 +167,10 @@ struct SecurityView: View {
             .accessibilityIdentifier("security.hostPromoConsent")
             Text(app.T("Host tự soạn và tự bấm gửi từng tin trong ứng dụng Tin nhắn của chính host (trên máy của host). banbe không gửi hàng loạt hay tự động, và không đảm bảo tin được nhận. Tắt mục này sẽ chặn các tin quảng bá do banbe hỗ trợ trong tương lai, nhưng không ảnh hưởng tới tin nhắn mà host gửi độc lập sau khi đã có số của bạn.",
                        "Hosts write and send each text themselves from the host's own Messages app (on the host's phone). Banbe never sends in bulk or automatically and can't guarantee delivery. Turning this off blocks future banbe-assisted promos, but doesn't affect messages a host sends independently after already having your number."))
-                .font(.system(size: 11.5))
+                .font(.app(size: 11.5))
                 .foregroundStyle(app.palette.ink.opacity(0.7))
             if !app.hostPromoConsentError.isEmpty {
-                Text(app.hostPromoConsentError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                Text(app.hostPromoConsentError).font(.app(size: 12)).foregroundStyle(BanbeTheme.alert)
             }
         }
         .task { await app.loadHostPromoConsent() }
@@ -202,7 +202,7 @@ struct SecurityView: View {
                 "Đặt mật khẩu để đăng nhập bằng email và mật khẩu, thay vì chờ mã gửi qua email mỗi lần.",
                 "Set a password so you can sign in with your email and password instead of waiting for a code every time."
             ))
-            .font(.system(size: 12.5))
+            .font(.app(size: 12.5))
             .lineSpacing(3)
             .foregroundStyle(app.palette.ink.opacity(0.75))
 
@@ -215,14 +215,14 @@ struct SecurityView: View {
 
             if !passwordError.isEmpty {
                 Text(passwordError)
-                    .font(.system(size: 12))
+                    .font(.app(size: 12))
                     .foregroundStyle(BanbeTheme.alert)
             } else if passwordSaved {
                 Text(app.T("Đã lưu mật khẩu mới.", "New password saved."))
-                    .font(.system(size: 12))
+                    .font(.app(size: 12))
             } else if !password.isEmpty && password.count < 8 {
                 Text(app.T("Mật khẩu cần ít nhất 8 ký tự.", "Passwords need at least 8 characters."))
-                    .font(.system(size: 12))
+                    .font(.app(size: 12))
                     .foregroundStyle(app.palette.ink.opacity(0.7))
             }
 
@@ -244,7 +244,7 @@ struct SecurityView: View {
                     "Đã gửi email đặt lại mật khẩu. Mở link trong email để chọn mật khẩu mới, rồi quay lại đây.",
                     "Password reset email sent. Open the link in it to choose a new password, then come back here."
                 ))
-                .font(.system(size: 12))
+                .font(.app(size: 12))
                 .lineSpacing(3)
             } else {
                 Button {
@@ -253,7 +253,7 @@ struct SecurityView: View {
                     Text(resetBusy
                          ? app.T("Đang gửi…", "Sending…")
                          : app.T("Quên mật khẩu hiện tại?", "Forgotten your current password?"))
-                        .font(.system(size: 12.5, weight: .semibold))
+                        .font(.app(size: 12.5, weight: .semibold))
                         .underline()
                         .foregroundStyle(app.palette.ink)
                 }
@@ -265,7 +265,7 @@ struct SecurityView: View {
                     "Chúng tôi sẽ gửi link đặt lại mật khẩu tới email của bạn.",
                     "We'll email you a link to reset it."
                 ))
-                .font(.system(size: 11.5))
+                .font(.app(size: 11.5))
                 .foregroundStyle(app.palette.ink.opacity(0.65))
             }
         }
@@ -309,7 +309,7 @@ struct SecurityView: View {
 
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(.system(size: 11.5, weight: .semibold))
+            Text(title).font(.app(size: 11.5, weight: .semibold))
             content()
         }
         .padding(.top, 28)

@@ -61,8 +61,8 @@ struct MapTimeBar: View {
             }
         } label: {
             HStack(spacing: 7) {
-                Text(dayLabel).font(.system(size: 13.5, weight: .semibold)).lineLimit(1)
-                Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)).accessibilityHidden(true)
+                Text(dayLabel).font(.app(size: 13.5, weight: .semibold)).lineLimit(1)
+                Image(systemName: "chevron.down").font(.app(size: 10, weight: .bold)).accessibilityHidden(true)
             }
             .padding(.leading, 15).padding(.trailing, 12)
             .frame(height: 42)
@@ -85,7 +85,7 @@ struct MapTimeBar: View {
             let inner = max(geo.size.width - RangeSlider.thumb, 1)
             ForEach(marks, id: \.self) { h in
                 Text(MapTimeWindow.hourLabel(h))
-                    .font(.system(size: 10)).monospacedDigit()
+                    .font(.app(size: 10)).monospacedDigit()
                     .foregroundStyle(app.palette.ink3)
                     .fixedSize()
                     .position(x: RangeSlider.thumb / 2 + CGFloat(h - MapTimeWindow.rangeMin) / CGFloat(MapTimeWindow.rangeMax - MapTimeWindow.rangeMin) * inner,

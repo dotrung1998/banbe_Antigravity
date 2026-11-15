@@ -24,7 +24,7 @@ struct ChoiceChip: View {
             action()
         } label: {
             Text(title)
-                .font(.system(size: compact ? 11.5 : 13, weight: selected ? .semibold : .regular))
+                .font(.app(size: compact ? 11.5 : 13, weight: selected ? .semibold : .regular))
                 .multilineTextAlignment(.leading)
                 .padding(.horizontal, compact ? 10 : 14).padding(.vertical, compact ? 6 : 9)
                 .foregroundStyle(selected ? app.palette.paper : app.palette.ink)
@@ -97,7 +97,7 @@ struct CountStepper: View {
     private func button(_ symbol: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: { if enabled { Haptics.selection(); action() } }) {
             Text(symbol)
-                .font(.system(size: 18))
+                .font(.app(size: 18))
                 .frame(width: 36, height: 36)
                 .foregroundStyle(enabled ? app.palette.ink : app.palette.ink.opacity(0.3))
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule, lineWidth: 1))
@@ -159,7 +159,7 @@ struct StepProgress: View {
                 HStack(alignment: .center, spacing: 10) {
                     if let message {
                         Text(message)
-                            .font(.footnote.weight(.semibold))
+                            .font(.app(.footnote).weight(.semibold))
                             .foregroundStyle(app.palette.ink)
                             .lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
@@ -200,7 +200,7 @@ struct StepProgress: View {
                 .stroke(app.palette.ink, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 .rotationEffect(.degrees(-90))
             Text("\(percent)%")
-                .font(.footnote.weight(.semibold))
+                .font(.app(.footnote).weight(.semibold))
                 .monospacedDigit()
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
@@ -239,11 +239,11 @@ struct StepProgress: View {
                         .stroke(done || active ? Color.clear : app.palette.ink.opacity(0.25), lineWidth: 1.5)
                     if done && !active {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.app(size: 12, weight: .bold))
                             .foregroundStyle(app.palette.paper)
                     } else {
                         Text("\(index + 1)")
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .font(.app(size: 13, weight: .semibold, design: .rounded))
                             .foregroundStyle(done || active ? app.palette.paper : app.palette.ink.opacity(0.6))
                     }
                 }
@@ -254,14 +254,14 @@ struct StepProgress: View {
                 .overlay(alignment: .topTrailing) {
                     if done && active {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.app(size: 12, weight: .bold))
                             .foregroundStyle(app.palette.ink, app.palette.paper)
                             .offset(x: 5, y: -5)
                     }
                 }
             }
             Text(title)
-                .font(.system(size: 11, weight: active ? .semibold : .regular))
+                .font(.app(size: 11, weight: active ? .semibold : .regular))
                 .foregroundStyle(app.palette.ink.opacity(active || done ? 1 : 0.55))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -340,8 +340,8 @@ struct OptionChipsEditor: View {
                             options.removeAll { $0 == option }
                         } label: {
                             HStack(spacing: 4) {
-                                Text(option).font(.system(size: 12.5))
-                                Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).accessibilityHidden(true)
+                                Text(option).font(.app(size: 12.5))
+                                Image(systemName: "xmark").font(.app(size: 9, weight: .bold)).accessibilityHidden(true)
                             }
                             .padding(.horizontal, 12).padding(.vertical, 7)
                             .foregroundStyle(app.palette.ink)
@@ -356,14 +356,14 @@ struct OptionChipsEditor: View {
             }
             HStack(spacing: 8) {
                 TextField(placeholder, text: $draft)
-                    .font(.system(size: 13))
+                    .font(.app(size: 13))
                     .submitLabel(.done)
                     .onSubmit(add)
                     .padding(10)
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(app.palette.rule))
                     .accessibilityIdentifier("\(identifier).field")
                 Button(app.T("Thêm", "Add"), action: add)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.app(size: 13, weight: .semibold))
                     .buttonStyle(.plain)
                     .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
                     .accessibilityIdentifier("\(identifier).add")
@@ -393,7 +393,7 @@ struct ExpandFieldButton: View {
     var body: some View {
         Button { Haptics.light(); action() } label: {
             Image(systemName: "arrow.up.left.and.arrow.down.right")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.app(size: 14, weight: .semibold))
                 .foregroundStyle(app.palette.ink2)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
@@ -415,7 +415,7 @@ struct LongTextSheet: View {
     var limit: Int? = nil
     var placeholder: String = ""
     /// The introduction's chosen look, so the sheet shows the text the way guests will.
-    var font: Font = .system(size: 17)
+    var font: Font = .app(size: 17)
     var color: Color? = nil
     @State private var confirmClear = false
     @FocusState private var focused: Bool
@@ -459,7 +459,7 @@ struct LongTextSheet: View {
             .safeAreaInset(edge: .bottom) {
                 HStack {
                     Spacer()
-                    Text(limit.map { "\(text.count)/\($0)" } ?? "\(text.count)").font(.footnote).monospacedDigit()
+                    Text(limit.map { "\(text.count)/\($0)" } ?? "\(text.count)").font(.app(.footnote)).monospacedDigit()
                         .foregroundStyle(limit.map { text.count >= $0 } == true ? BanbeTheme.alert : app.palette.ink2)
                         .accessibilityLabel(limit.map { app.T("\(text.count) trên \($0) ký tự", "\(text.count) of \($0) characters") }
                                             ?? app.T("\(text.count) ký tự", "\(text.count) characters"))
@@ -529,7 +529,7 @@ struct IntroStylePicker: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(app.T("Kiểu chữ", "Text style")).font(.system(size: 13, weight: .semibold))
+            Text(app.T("Kiểu chữ", "Text style")).font(.app(size: 13, weight: .semibold))
             HStack(spacing: 8) {
                 ForEach(EventTypes.introFonts, id: \.self) { key in
                     let on = font == key
@@ -601,8 +601,8 @@ struct SubStepBar: View {
             }
             HStack(spacing: 6) {
                 Text(app.T("Phần \(current + 1)/\(titles.count)", "Part \(current + 1) of \(titles.count)"))
-                    .font(.caption.weight(.semibold)).foregroundStyle(app.palette.ink2)
-                Text(titles.indices.contains(current) ? titles[current] : "").font(.subheadline.weight(.semibold))
+                    .font(.app(.caption).weight(.semibold)).foregroundStyle(app.palette.ink2)
+                Text(titles.indices.contains(current) ? titles[current] : "").font(.app(.subheadline).weight(.semibold))
             }
             .accessibilityHidden(true)
         }
@@ -622,9 +622,9 @@ struct SubStepBar: View {
                     .fill(isCurrent ? app.palette.clay : (isDone ? app.palette.ink : Color.clear))
                     .overlay(Circle().stroke(isCurrent || isDone ? Color.clear : app.palette.ink3, lineWidth: 1.5))
                 if isDone && !isCurrent {
-                    Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(app.palette.paper)
+                    Image(systemName: "checkmark").font(.app(size: 11, weight: .bold)).foregroundStyle(app.palette.paper)
                 } else {
-                    Text("\(i + 1)").font(.system(size: 12, weight: .bold)).monospacedDigit()
+                    Text("\(i + 1)").font(.app(size: 12, weight: .bold)).monospacedDigit()
                         .foregroundStyle(isCurrent ? app.palette.paper : app.palette.ink2)
                 }
             }

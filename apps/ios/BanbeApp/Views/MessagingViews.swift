@@ -104,7 +104,7 @@ struct InboxView: View {
                     }
                     if effectiveInboxView == .archived {
                         Button("‹ " + app.T("Quay lại Tin nhắn", "Back to Messages")) { app.inboxView = .active }
-                            .font(.system(size: 12.5)).buttonStyle(.plain)
+                            .font(.app(size: 12.5)).buttonStyle(.plain)
                             .foregroundStyle(app.palette.ink.opacity(0.7))
                             .padding(.horizontal, 24).padding(.bottom, 6)
                     }
@@ -133,7 +133,7 @@ struct InboxView: View {
                         Text(!query.trimmingCharacters(in: .whitespaces).isEmpty
                              ? app.T("Không có cuộc trò chuyện nào khớp.", "No conversations match.")
                              : app.T("Chưa có cuộc trò chuyện nào được lưu trữ.", "No archived conversations yet."))
-                            .font(.system(size: 14))
+                            .font(.app(size: 14))
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: .infinity)
                             .padding(.horizontal, 20)
@@ -267,7 +267,7 @@ struct InboxView: View {
             // (HomeView.swift). Hidden while the search field is showing.
             if searchOpen {
                 TextField(app.T("Tìm cuộc trò chuyện…", "Search conversations…"), text: $query)
-                    .font(.system(size: 13.5))
+                    .font(.app(size: 13.5))
                     .padding(.horizontal, 14).padding(.vertical, 10)
                     .background(app.palette.field, in: Capsule())
                     // Note 53: same focus ring as every other field (clay border + soft halo) while typing.
@@ -320,7 +320,7 @@ struct InboxView: View {
                         .accessibilityIdentifier("inbox.settings.feedback")
                     } label: {
                         Image(systemName: "gearshape")
-                            .font(.system(size: 19, weight: .light))
+                            .font(.app(size: 19, weight: .light))
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                             .accessibilityLabel(app.T("Cài đặt", "Settings"))
@@ -341,7 +341,7 @@ struct InboxView: View {
     private func iconButton(_ systemImage: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 19, weight: .light))
+                .font(.app(size: 19, weight: .light))
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
                 .accessibilityLabel(label)
@@ -435,7 +435,7 @@ private struct InboxRow: View {
                                 Circle().fill(app.palette.ink)
                                     .overlay(
                                         Text(String(thread.name.trimmingCharacters(in: .whitespaces).prefix(1)).uppercased())
-                                            .font(.system(size: 11, weight: .bold))
+                                            .font(.app(size: 11, weight: .bold))
                                             .foregroundStyle(app.palette.paper)
                                     )
                                     .frame(width: 24, height: 24)
@@ -457,7 +457,7 @@ private struct InboxRow: View {
                                 .foregroundStyle(app.palette.ink.opacity(unread ? 1 : 0.6))
                         }
                         Text(thread.snippet)
-                            .font(.system(size: 13, weight: unread ? .semibold : .regular))
+                            .font(.app(size: 13, weight: unread ? .semibold : .regular))
                             .foregroundStyle(app.palette.ink.opacity(unread ? 1 : 0.72))
                             .lineLimit(1)
                         // A live dispute on THIS conversation, in the same red
@@ -467,7 +467,7 @@ private struct InboxRow: View {
                         // in the list.
                         if hasActiveDispute {
                             Text(app.T("Tranh chấp đang diễn ra", "Dispute in progress"))
-                                .font(.system(size: 10.5, weight: .bold))
+                                .font(.app(size: 10.5, weight: .bold))
                                 .foregroundStyle(BanbeTheme.alert)
                                 .accessibilityIdentifier("inbox.thread.disputeInProgress")
                         }
@@ -478,7 +478,7 @@ private struct InboxRow: View {
                     // row's own far trailing edge instead.
                     if starred {
                         Image(systemName: "star.fill")
-                            .font(.system(size: 13))
+                            .font(.app(size: 13))
                             .foregroundStyle(BanbeTheme.alert)
                     }
                 }
@@ -515,7 +515,7 @@ private struct InboxRow: View {
                 .accessibilityIdentifier("inbox.thread.delete")
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.app(size: 15, weight: .semibold))
                     .foregroundStyle(app.palette.ink.opacity(0.55))
                     .frame(width: 32, height: 44)
                     .contentShape(Rectangle())
@@ -570,7 +570,7 @@ private struct FeedbackFlowView: View {
                 Button {
                     if step == 1 { step = 0 } else { dismiss() }
                 } label: {
-                    Image(systemName: "chevron.left").font(.system(size: 18))
+                    Image(systemName: "chevron.left").font(.app(size: 18))
                 }
                 .buttonStyle(.plain)
                 .padding(.top, 8)
@@ -582,10 +582,10 @@ private struct FeedbackFlowView: View {
                         "Hãy cho chúng tôi biết phản hồi của bạn là về điều gì. Chúng tôi đọc mọi phản hồi nhưng không thể trả lời từng người.",
                         "Please let us know what your feedback is about. We review all feedback but are unable to respond individually."
                     ))
-                    .font(.system(size: 13)).foregroundStyle(app.palette.ink.opacity(0.75)).padding(.top, 10)
+                    .font(.app(size: 13)).foregroundStyle(app.palette.ink.opacity(0.75)).padding(.top, 10)
 
                     HStack {
-                        Text(app.T("Phản hồi chung về hộp thư", "General feedback about the inbox")).font(.system(size: 14))
+                        Text(app.T("Phản hồi chung về hộp thư", "General feedback about the inbox")).font(.app(size: 14))
                         Spacer()
                         ZStack {
                             Circle().stroke(app.palette.ink, lineWidth: 2).frame(width: 20, height: 20)
@@ -599,7 +599,7 @@ private struct FeedbackFlowView: View {
 
                     Spacer()
                     Button(app.T("Tiếp", "Next")) { step = 1 }
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.app(size: 14, weight: .semibold))
                         .foregroundStyle(app.palette.paper)
                         .padding(.horizontal, 26).padding(.vertical, 13)
                         .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -608,10 +608,10 @@ private struct FeedbackFlowView: View {
                 } else {
                     Text(app.T("Kể cho chúng tôi nghe", "Tell us about it")).font(BanbeTheme.display(24)).padding(.top, 16)
                     Text(app.T("Chia sẻ trải nghiệm của bạn. Điều gì tốt? Điều gì có thể tốt hơn?", "Share your experience with us. What went well? What could have gone better?"))
-                        .font(.system(size: 13)).foregroundStyle(app.palette.ink.opacity(0.75)).padding(.top, 10)
+                        .font(.app(size: 13)).foregroundStyle(app.palette.ink.opacity(0.75)).padding(.top, 10)
 
                     TextEditor(text: $text)
-                        .font(.system(size: 13.5))
+                        .font(.app(size: 13.5))
                         .frame(minHeight: 160)
                         .padding(8)
                         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -619,7 +619,7 @@ private struct FeedbackFlowView: View {
                         .padding(.top, 14)
 
                     HStack {
-                        Text(app.T("Tôi đang báo lỗi", "I'm reporting a bug")).font(.system(size: 14))
+                        Text(app.T("Tôi đang báo lỗi", "I'm reporting a bug")).font(.app(size: 14))
                         Spacer()
                         Toggle("", isOn: $isBug).labelsHidden().toggleStyle(BanbeLiquidToggleStyle())
                     }
@@ -628,7 +628,7 @@ private struct FeedbackFlowView: View {
                     Spacer()
                     HStack {
                         Button(app.T("Quay lại", "Back")) { step = 0 }
-                            .font(.system(size: 13.5)).buttonStyle(.plain)
+                            .font(.app(size: 13.5)).buttonStyle(.plain)
                         Spacer()
                         Button {
                             Task {
@@ -640,7 +640,7 @@ private struct FeedbackFlowView: View {
                         } label: {
                             Text(sending ? app.T("Đang gửi…", "Sending…") : app.T("Gửi", "Send"))
                         }
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.app(size: 14, weight: .semibold))
                         .foregroundStyle(app.palette.paper)
                         .padding(.horizontal, 26).padding(.vertical, 13)
                         .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -756,18 +756,18 @@ struct ChatView: View {
                 Button("‹ " + (app.chatBack == .inbox ? app.T("Tin nhắn", "Messages") : app.chatBack == .notifications ? app.T("Thông báo", "Notifications") : app.chatBack == .confirmed ? app.T("Vé", "Ticket") : event.orgName)) {
                     app.chatBackAction()
                 }
-                .font(.system(size: 11))
+                .font(.app(size: 11))
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("chat.back")
                 Text(headerTitle).font(BanbeTheme.display(18))
                 // Task 3b — event date + name subtitle directly under the title.
                 Text("\(event.when) · \(event.name)")
-                    .font(.system(size: 11.5))
+                    .font(.app(size: 11.5))
                     .foregroundStyle(app.palette.ink.opacity(0.65))
             }
             Spacer()
             Button(app.T("Chi tiết", "Details")) { app.goEvent(event.key) }
-                .font(.system(size: 11.5, weight: .semibold))
+                .font(.app(size: 11.5, weight: .semibold))
                 .buttonStyle(.plain)
                 .padding(.horizontal, 12).padding(.vertical, 6)
                 .background(app.palette.field, in: Capsule())
@@ -788,7 +788,7 @@ struct ChatView: View {
         HStack(spacing: 8) {
             Text("📣")
             Text(app.T("Host vừa gửi thông báo cho sự kiện này", "The host sent an announcement for this event"))
-                .font(.system(size: 12, weight: .semibold))
+                .font(.app(size: 12, weight: .semibold))
         }
         .foregroundStyle(BanbeTheme.onAlert)
         .padding(.horizontal, 22).padding(.vertical, 9)
@@ -880,7 +880,7 @@ struct ChatView: View {
         HStack(spacing: 10) {
             Rectangle().fill(app.palette.rule).frame(height: 1)
             Text("(\(app.T("Chưa đọc", "Unread")))")
-                .font(.system(size: 10.5, weight: .semibold))
+                .font(.app(size: 10.5, weight: .semibold))
                 .foregroundStyle(BanbeTheme.alert)
             Rectangle().fill(app.palette.rule).frame(height: 1)
         }
@@ -927,26 +927,26 @@ struct ChatView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center, spacing: 8) {
                 Text(card.label)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.app(size: 11, weight: .bold))
                     .foregroundStyle(card.status == "confirmed" ? app.palette.ink : BanbeTheme.alert)
                 Spacer(minLength: 0)
                 if attached?.isActive == true {
                     Text(app.T("Tranh chấp đang diễn ra", "Dispute in progress"))
-                        .font(.system(size: 10.5, weight: .bold))
+                        .font(.app(size: 10.5, weight: .bold))
                         .foregroundStyle(BanbeTheme.alert)
                         .accessibilityIdentifier("chat.dispute.inProgress")
                 } else if attached?.isCompleted == true {
                     Text(app.T("Tranh chấp đã hoàn tất", "Dispute completed"))
-                        .font(.system(size: 10.5, weight: .semibold))
+                        .font(.app(size: 10.5, weight: .semibold))
                         .foregroundStyle(app.palette.ink.opacity(0.55))
                         .accessibilityIdentifier("chat.dispute.completed")
                 }
             }
             Text(SystemMessageLocale.localize(message.body, isEN: app.isEN))
-                .font(.system(size: 12.5))
+                .font(.app(size: 12.5))
                 .foregroundStyle(app.palette.ink.opacity(0.75))
             Button(app.T("Xem chi tiết", "Show details")) { app.goEvent(event.key) }
-                .font(.system(size: 11.5, weight: .semibold))
+                .font(.app(size: 11.5, weight: .semibold))
                 .underline()
                 .buttonStyle(.plain)
 
@@ -961,7 +961,7 @@ struct ChatView: View {
                         transcriptExpanded = true
                     } label: {
                         Text(app.T("Xem lại bản ghi tranh chấp ›", "Read the dispute transcript ›"))
-                            .font(.system(size: 11.5, weight: .semibold))
+                            .font(.app(size: 11.5, weight: .semibold))
                             .underline()
                     }
                     .buttonStyle(.plain)
@@ -1089,7 +1089,7 @@ struct ChatView: View {
                 Spacer(minLength: 0)
                 if let status = claim.claimStatus {
                     Text(app.T("Trạng thái: \(status)", "Status: \(status)"))
-                        .font(.system(size: 10.5, weight: .semibold))
+                        .font(.app(size: 10.5, weight: .semibold))
                         .foregroundStyle(app.palette.ink.opacity(0.6))
                         .accessibilityIdentifier("chat.dispute.claimStatus")
                 }
@@ -1118,7 +1118,7 @@ struct ChatView: View {
         VStack(alignment: mine ? .trailing : .leading, spacing: 3) {
             if let createdAt {
                 Text("\(senderLabel) · \(formattedTime(createdAt))")
-                    .font(.system(size: 10))
+                    .font(.app(size: 10))
                     .foregroundStyle(app.palette.ink.opacity(0.5))
                     .padding(.horizontal, 4)
             }
@@ -1136,7 +1136,7 @@ struct ChatView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                     }
                     Text(app.T("Trả lời ảnh", "Replying to a photo"))
-                        .font(.system(size: 10.5))
+                        .font(.app(size: 10.5))
                         .foregroundStyle(app.palette.ink)
                 }
                 .opacity(0.7)
@@ -1154,7 +1154,7 @@ struct ChatView: View {
                         Task { await app.deleteMessage(messageID) }
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.app(size: 10, weight: .semibold))
                             .foregroundStyle(app.palette.ink.opacity(0.35))
                     }
                     .buttonStyle(.plain)
@@ -1192,7 +1192,7 @@ struct ChatView: View {
                                 Image(systemName: "paperclip")
                                 Text(text)
                             }
-                            .font(.system(size: 12.5))
+                            .font(.app(size: 12.5))
                             .foregroundStyle(app.palette.ink)
                             .padding(.horizontal, 14).padding(.vertical, 10)
                             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -1203,11 +1203,11 @@ struct ChatView: View {
                     VStack(alignment: .leading, spacing: 5) {
                         if announcement {
                             Text("📣 " + app.T("Thông báo từ host", "Host announcement"))
-                                .font(.system(size: 10.5, weight: .bold)).kerning(0.4).textCase(.uppercase)
+                                .font(.app(size: 10.5, weight: .bold)).kerning(0.4).textCase(.uppercase)
                                 .foregroundStyle(BanbeTheme.alert)
                         }
                         Text(text)
-                            .font(.system(size: 13.5))
+                            .font(.app(size: 13.5))
                             .lineSpacing(3)
                     }
                         .foregroundStyle(announcement ? app.palette.ink : mine ? app.palette.paper : app.palette.ink)
@@ -1235,7 +1235,7 @@ struct ChatView: View {
             if app.normalMessagingPaused {
                 Text(app.T("Tin nhắn thông thường sẽ tiếp tục khi tranh chấp này được đóng.",
                            "Normal messaging will resume once this dispute is closed."))
-                    .font(.system(size: 12.5))
+                    .font(.app(size: 12.5))
                     .foregroundStyle(app.palette.ink.opacity(0.65))
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
@@ -1266,7 +1266,7 @@ struct ChatView: View {
                         : app.T("Đang mở cuộc trò chuyện…", "Opening conversation…"),
                     text: $app.chatDraft
                 )
-                .font(.system(size: 13.5))
+                .font(.app(size: 13.5))
                 .foregroundStyle(app.palette.ink)
                 .padding(.horizontal, 14).padding(.vertical, 12)
                 .background(app.palette.field, in: Capsule())
@@ -1275,7 +1275,7 @@ struct ChatView: View {
                 .onSubmit { Task { await app.chatSend() } }
 
                 Button(app.T("Gửi", "Send")) { Task { await app.chatSend() } }
-                    .font(.system(size: 13.5, weight: .semibold))
+                    .font(.app(size: 13.5, weight: .semibold))
                     .foregroundStyle(app.palette.paper)
                     .padding(.horizontal, 20).padding(.vertical, 12)
                     .background(app.palette.ink, in: Capsule())
@@ -1361,7 +1361,7 @@ struct NotificationKindIcon: View {
     }
     var body: some View {
         Image(systemName: symbolName)
-            .font(.system(size: 11, weight: .medium))
+            .font(.app(size: 11, weight: .medium))
             .foregroundStyle(.secondary)
             .frame(width: 22, height: 22)
             .background((notificationCategoryAccent[category] ?? ROW_ACCENT_COLORS["preferences"]!).opacity(0.33), in: Circle())
@@ -1454,10 +1454,10 @@ struct NotificationsView: View {
         Button(action: action) {
             VStack(spacing: 2) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 14))
+                    .font(.app(size: 14))
                     .frame(width: 34, height: 34)
                     .background(app.palette.field, in: Circle())
-                Text(label).font(.system(size: 9.5)).opacity(0.7)
+                Text(label).font(.app(size: 9.5)).opacity(0.7)
             }
         }
         .buttonStyle(.plain)
@@ -1539,7 +1539,7 @@ struct NotificationsView: View {
             // search-open state.
             if searchOpen {
                 TextField(app.T("Tìm thông báo…", "Search notifications…"), text: $query)
-                    .font(.system(size: 13.5))
+                    .font(.app(size: 13.5))
                     .padding(.horizontal, 14).padding(.vertical, 10)
                     .background(app.palette.field, in: Capsule())
                     // Note 53: same focus ring as every other field (clay border + soft halo) while typing.
@@ -1720,7 +1720,7 @@ struct NotificationsView: View {
                                     await app.deleteNotifications(ids)
                                 }
                             }
-                            .font(.system(size: 12.5, weight: .semibold))
+                            .font(.app(size: 12.5, weight: .semibold))
                             .foregroundStyle(BanbeTheme.alert)
                             .buttonStyle(.plain)
                             .accessibilityIdentifier("notifications.deleteSelected")
@@ -1731,7 +1731,7 @@ struct NotificationsView: View {
                     let allSections = sections
                     if allSections.isEmpty {
                         Text(app.T("Chưa có thông báo nào.", "No notifications yet."))
-                            .font(.system(size: 14))
+                            .font(.app(size: 14))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 80)
                     } else {
@@ -1759,7 +1759,7 @@ struct NotificationsView: View {
         let expanded = expandedSections.contains(sec.id)
         return VStack(alignment: .leading, spacing: 6) {
             Text(sec.title.uppercased())
-                .font(.system(size: 11, weight: .semibold))
+                .font(.app(size: 11, weight: .semibold))
                 .kerning(0.5)
                 .foregroundStyle(app.palette.ink.opacity(0.6))
             if !sec.dayGrouped {
@@ -1785,7 +1785,7 @@ struct NotificationsView: View {
                 ForEach(visibleDays) { day in
                     VStack(alignment: .leading, spacing: 4) {
                         Text(day.label)
-                            .font(.system(size: 10.5, weight: .semibold))
+                            .font(.app(size: 10.5, weight: .semibold))
                             .foregroundStyle(app.palette.ink.opacity(0.5))
                             .accessibilityIdentifier("notification.dayHeader")
                         ForEach(day.items) { item in
@@ -1807,7 +1807,7 @@ struct NotificationsView: View {
             Button(app.T("Xem thêm (\(hiddenCount))", "View more (\(hiddenCount))")) {
                 expandedSections.insert(sectionID)
             }
-            .font(.system(size: 12.5, weight: .semibold))
+            .font(.app(size: 12.5, weight: .semibold))
             .foregroundStyle(app.palette.ink.opacity(0.65))
             .buttonStyle(.plain)
             .padding(.vertical, 12)
@@ -1842,7 +1842,7 @@ struct NotificationsView: View {
                 HStack(alignment: .top, spacing: 10) {
                     if selectionMode {
                         Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                            .font(.system(size: 20))
+                            .font(.app(size: 20))
                             .foregroundStyle(selected ? BanbeTheme.alert : app.palette.rule)
                             .accessibilityIdentifier("notification.row.checkbox")
                     }
@@ -1862,13 +1862,13 @@ struct NotificationsView: View {
                             NotificationKindIcon(category: notificationCategory(item.kind))
                             Spacer(minLength: 12)
                             Text(app.trStatus(EventLabels.ago(hoursAgo(item.createdAt))))
-                                .font(.system(size: 11))
+                                .font(.app(size: 11))
                         }
                         // Instagram's own "bold actor/action + secondary
                         // preview" shape — one truncated line, not the old
                         // full-body wrap.
                         Text(item.body)
-                            .font(.system(size: 13))
+                            .font(.app(size: 13))
                             .foregroundStyle(app.palette.ink.opacity(0.75))
                             .lineLimit(1)
                     }
@@ -1916,7 +1916,7 @@ struct NotificationsView: View {
                     .accessibilityIdentifier("notification.menu.delete")
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.app(size: 15, weight: .semibold))
                         .foregroundStyle(app.palette.ink.opacity(0.4))
                         .frame(width: 32, height: 44)
                         .contentShape(Rectangle())
@@ -1963,7 +1963,7 @@ struct NotificationsView: View {
         Circle()
             .fill(app.palette.ink.opacity(0.08))
             .frame(width: 40, height: 40)
-            .overlay(Text("🔔").font(.system(size: 16)))
+            .overlay(Text("🔔").font(.app(size: 16)))
     }
 
     // iPhone fix pass (2026-09-27), Issue 1 — same circle, a people glyph
@@ -1974,7 +1974,7 @@ struct NotificationsView: View {
         Circle()
             .fill(app.palette.ink.opacity(0.08))
             .frame(width: 40, height: 40)
-            .overlay(Image(systemName: "person.2.fill").font(.system(size: 15)).foregroundStyle(app.palette.ink.opacity(0.55)))
+            .overlay(Image(systemName: "person.2.fill").font(.app(size: 15)).foregroundStyle(app.palette.ink.opacity(0.55)))
     }
 
     private func hoursAgo(_ date: Date) -> Int {

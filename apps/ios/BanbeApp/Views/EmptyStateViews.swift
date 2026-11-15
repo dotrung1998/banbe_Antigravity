@@ -104,18 +104,18 @@ struct MotivatingEmptyState: View {
         VStack(spacing: 12) {
             CharmSceneView(scene: scene)
             Text(title)
-                .font(.system(.title3, design: .rounded).weight(.semibold))
+                .font(.app(.title3, design: .rounded).weight(.semibold))
                 .multilineTextAlignment(.center)
                 .accessibilityAddTraits(.isHeader)
             Text(message)
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .foregroundStyle(app.palette.ink.opacity(0.75))
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier(identifier ?? "")
             Button(action: action) {
                 Label(actionTitle, systemImage: actionIcon)
-                    .font(.headline)
+                    .font(.app(.headline))
                     .padding(.horizontal, 22)
                     .frame(minHeight: 48)
                     .foregroundStyle(app.palette.paper)
@@ -128,7 +128,7 @@ struct MotivatingEmptyState: View {
             if let secondaryTitle, let secondaryAction {
                 Button(action: secondaryAction) {
                     Text(secondaryTitle)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.app(.subheadline).weight(.semibold))
                         .underline()
                         .frame(minHeight: 44)
                         .contentShape(Rectangle())
@@ -159,10 +159,10 @@ struct InlineEmptyState<Action: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.subheadline.weight(.semibold))
+                .font(.app(.subheadline).weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
             Text(message)
-                .font(.footnote)
+                .font(.app(.footnote))
                 .foregroundStyle(app.palette.ink2)
                 .fixedSize(horizontal: false, vertical: true)
             action().padding(.top, 8)
@@ -180,7 +180,7 @@ struct InlineEmptyState<Action: View>: View {
     /// The shared look of the one action: a `block` capsule, 44pt tall, ink text.
     static func actionLabel(_ title: String, systemImage: String, palette: Palette) -> some View {
         Label(title, systemImage: systemImage)
-            .font(.subheadline.weight(.semibold))
+            .font(.app(.subheadline).weight(.semibold))
             .padding(.horizontal, 16)
             .frame(minHeight: 44)
             .foregroundStyle(palette.ink)

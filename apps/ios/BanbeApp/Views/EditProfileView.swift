@@ -36,19 +36,19 @@ struct EditProfileView: View {
                                 .frame(width: 84, height: 84).clipShape(Circle())
                         } else {
                             Circle().fill(app.palette.ink).frame(width: 84, height: 84)
-                                .overlay(Text(monogram).font(.system(size: 30, weight: .bold)).foregroundStyle(app.palette.paper))
+                                .overlay(Text(monogram).font(.app(size: 30, weight: .bold)).foregroundStyle(app.palette.paper))
                         }
                     }
                     HStack(spacing: 14) {
                         let changePhotoTitle = app.T("Đổi ảnh", "Change photo")
                         let inkColor = app.palette.ink
                         PhotosPicker(selection: $avatarPickerItem, matching: .images) {
-                            Text(changePhotoTitle).font(.system(size: 12, weight: .semibold)).foregroundStyle(inkColor)
+                            Text(changePhotoTitle).font(.app(size: 12, weight: .semibold)).foregroundStyle(inkColor)
                         }
                         .accessibilityIdentifier("editProfile.avatarPick")
                         if app.user?.avatarURL != nil {
                             Button(app.T("Xoá ảnh", "Remove photo")) { Task { await app.removeAvatar() } }
-                                .font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                                .font(.app(size: 12)).foregroundStyle(BanbeTheme.alert)
                         }
                     }
                 }
@@ -76,17 +76,17 @@ struct EditProfileView: View {
                     // untouched.
                     VStack(alignment: .leading, spacing: 6) {
                         Text(app.T("Giới thiệu chi tiết (không bắt buộc)", "Long-form intro (optional)"))
-                            .font(.system(size: 11.5)).foregroundStyle(app.palette.ink)
+                            .font(.app(size: 11.5)).foregroundStyle(app.palette.ink)
                         TextEditor(text: $app.editProfileIntroLong)
-                            .font(.system(size: 13.5)).frame(height: 120)
+                            .font(.app(size: 13.5)).frame(height: 120)
                             .accessibilityIdentifier("editProfile.introLong")
-                        Text("\(app.editProfileIntroLong.count)/4000").font(.system(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.55))
+                        Text("\(app.editProfileIntroLong.count)/4000").font(.app(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.55))
                     }
 
                     SocialLinksEditorView(links: $app.editProfileLinks, open: $app.editProfileLinksOpen, testPrefix: "editProfile.link")
 
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(app.T("Bảng màu hồ sơ", "Profile palette")).font(.system(size: 11.5)).foregroundStyle(app.palette.ink)
+                        Text(app.T("Bảng màu hồ sơ", "Profile palette")).font(.app(size: 11.5)).foregroundStyle(app.palette.ink)
                         HStack(spacing: 10) {
                             ForEach(ProfilePalette.all, id: \.key) { p in
                                 Circle().fill(p.color).frame(width: 34, height: 34)
@@ -101,7 +101,7 @@ struct EditProfileView: View {
                     KeychainSettingsSection().id("editProfile.keychain")
 
                     if !app.editProfileError.isEmpty {
-                        Text(app.editProfileError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                        Text(app.editProfileError).font(.app(size: 12)).foregroundStyle(BanbeTheme.alert)
                     }
 
                     // Note 64: navigate class. ✓ only after save_profile accepted it, then back to Account.
@@ -115,7 +115,7 @@ struct EditProfileView: View {
                         Button(app.T("Xem hồ sơ công khai của bạn", "View your public profile")) {
                             app.openPublicProfile(handle: handle, back: .editProfile)
                         }
-                        .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                        .font(.app(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
                         .frame(maxWidth: .infinity).padding(.top, 10).padding(.bottom, 30)
                         .accessibilityIdentifier("editProfile.preview")
                     }
@@ -139,10 +139,10 @@ struct EditProfileView: View {
     @ViewBuilder
     private func field(_ label: String, prefix: String? = nil, text: Binding<String>, id: String) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(label).font(.system(size: 11.5)).foregroundStyle(app.palette.ink)
+            Text(label).font(.app(size: 11.5)).foregroundStyle(app.palette.ink)
             HStack {
-                if let prefix { Text(prefix).font(.system(size: 13)).foregroundStyle(app.palette.ink.opacity(0.6)) }
-                TextField("", text: text).font(.system(size: 13)).accessibilityIdentifier(id)
+                if let prefix { Text(prefix).font(.app(size: 13)).foregroundStyle(app.palette.ink.opacity(0.6)) }
+                TextField("", text: text).font(.app(size: 13)).accessibilityIdentifier(id)
             }
             .padding(11)
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))

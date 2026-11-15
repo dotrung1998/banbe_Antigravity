@@ -41,7 +41,7 @@ struct ProjectTopicsTab: View {
                 emptyLane
             } else if rest.isEmpty {
                 Text(app.T("Mọi bài đều ở mục Chờ bạn.", "Every post is in Waiting on you."))
-                    .font(.subheadline).foregroundStyle(app.palette.ink2)
+                    .font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
                     .frame(maxWidth: .infinity).padding(.vertical, 20)
             } else {
                 VStack(spacing: 10) { ForEach(rest) { ProjectPostCard(post: $0) } }
@@ -53,7 +53,7 @@ struct ProjectTopicsTab: View {
                 } label: {
                     HStack(spacing: 8) {
                         if loadingOlder { ProgressView() }
-                        Text(app.T("Xem bài cũ hơn", "Show older posts")).font(.subheadline.weight(.semibold))
+                        Text(app.T("Xem bài cũ hơn", "Show older posts")).font(.app(.subheadline).weight(.semibold))
                     }
                     .frame(maxWidth: .infinity, minHeight: 44)
                 }
@@ -72,12 +72,12 @@ struct ProjectTopicsTab: View {
                 withAnimation(.snappy(duration: 0.22)) { rulesOpen.toggle() }
             } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: "info.circle").font(.system(size: 19, weight: .semibold)).foregroundStyle(app.palette.clay)
+                    Image(systemName: "info.circle").font(.app(size: 19, weight: .semibold)).foregroundStyle(app.palette.clay)
                         .accessibilityHidden(true)
                     Text(app.T("Kênh có cấu trúc, không chat tự do", "Structured channel, no free chat"))
-                        .font(.body.weight(.semibold)).multilineTextAlignment(.leading)
+                        .font(.app(.body).weight(.semibold)).multilineTextAlignment(.leading)
                     Spacer(minLength: 6)
-                    Image(systemName: rulesOpen ? "minus" : "plus").font(.footnote.weight(.bold)).foregroundStyle(app.palette.ink2)
+                    Image(systemName: rulesOpen ? "minus" : "plus").font(.app(.footnote).weight(.bold)).foregroundStyle(app.palette.ink2)
                         .accessibilityHidden(true)
                 }
                 .frame(minHeight: 44)
@@ -113,19 +113,19 @@ struct ProjectTopicsTab: View {
         let lane = lanes.first { $0.id == laneFilter }
         return VStack(spacing: 10) {
             Image(systemName: lane.map { ProjectLanePresets.icon(for: $0.name) } ?? "text.bubble")
-                .font(.system(size: 26, weight: .semibold)).foregroundStyle(app.palette.clay)
+                .font(.app(size: 26, weight: .semibold)).foregroundStyle(app.palette.clay)
                 .frame(width: 56, height: 56).background(app.palette.clayBg, in: Circle())
                 .accessibilityHidden(true)
             Text(lane.map { app.T("Chưa có bài trong \($0.name)", "No posts in \($0.name) yet") } ?? app.T("Chưa có bài nào", "No posts yet"))
                 .font(BanbeTheme.display(19)).multilineTextAlignment(.center)
             Text(app.T("Hỏi một người, đề xuất để cả đội bỏ phiếu, hoặc báo một tin. Bài đầu tiên giúp cả đội bắt đầu.",
                        "Ask someone, put options to a vote, or share an update. The first post gets the team going."))
-                .font(.subheadline).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
+                .font(.app(.subheadline)).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
             if app.projectCan("post.question") {
                 Button { openSheet(.compose(laneID: laneFilter)) } label: {
                     Label(app.T("Viết bài đầu tiên", "Write the first post"), systemImage: "square.and.pencil")
-                        .font(.body.weight(.bold)).padding(.horizontal, 18).frame(minHeight: 44)
+                        .font(.app(.body).weight(.bold)).padding(.horizontal, 18).frame(minHeight: 44)
                         .foregroundStyle(app.palette.paper).background(app.palette.ink, in: Capsule())
                 }
                 .buttonStyle(PressableButtonStyle())
@@ -142,8 +142,8 @@ struct ProjectTopicsTab: View {
 
     private func rule(_ text: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(app.palette.clay).accessibilityHidden(true)
-            Text(text).font(.subheadline).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
+            Image(systemName: "checkmark").font(.app(.caption).weight(.bold)).foregroundStyle(app.palette.clay).accessibilityHidden(true)
+            Text(text).font(.app(.subheadline)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -186,9 +186,9 @@ struct ProjectCountHeader: View {
 
     var body: some View {
         HStack {
-            Text(title.uppercased()).font(.caption.weight(.bold)).tracking(0.6).accessibilityAddTraits(.isHeader)
+            Text(title.uppercased()).font(.app(.caption).weight(.bold)).tracking(0.6).accessibilityAddTraits(.isHeader)
             Spacer()
-            Text("\(count)").font(.caption.weight(.bold).monospacedDigit())
+            Text("\(count)").font(.app(.caption).weight(.bold).monospacedDigit())
         }
         .foregroundStyle(app.palette.ink3)
         .padding(.top, 20).padding(.bottom, 8)
@@ -210,11 +210,11 @@ struct ProjectPostCard: View {
                     Spacer(minLength: 4)
                     if post.state != "open" { ProjectStateTag(state: post.state) }
                 }
-                Text(post.title).font(.body.weight(.semibold)).multilineTextAlignment(.leading)
+                Text(post.title).font(.app(.body).weight(.semibold)).multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                 Text([laneName, app.projectPersonName(post.authorId)].compactMap { $0 }.joined(separator: " · "))
-                    .font(.footnote).foregroundStyle(app.palette.ink2)
-                Text(app.projectPostMeta(post)).font(.footnote.weight(.semibold)).foregroundStyle(app.palette.ink3)
+                    .font(.app(.footnote)).foregroundStyle(app.palette.ink2)
+                Text(app.projectPostMeta(post)).font(.app(.footnote).weight(.semibold)).foregroundStyle(app.palette.ink3)
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -238,8 +238,8 @@ struct ProjectTypeTag: View {
     var body: some View {
         let tint = app.projectPostTint(type)
         HStack(spacing: 5) {
-            Image(systemName: app.projectPostIcon(type, filled: true)).font(.system(size: 12, weight: .bold)).accessibilityHidden(true)
-            Text(app.projectPostTypeName(type).uppercased()).font(.caption2.weight(.heavy)).tracking(0.6)
+            Image(systemName: app.projectPostIcon(type, filled: true)).font(.app(size: 12, weight: .bold)).accessibilityHidden(true)
+            Text(app.projectPostTypeName(type).uppercased()).font(.app(.caption2).weight(.heavy)).tracking(0.6)
         }
         .lineLimit(1)
         .padding(.horizontal, 10).padding(.vertical, 5)
@@ -265,7 +265,7 @@ struct ProjectStateTag: View {
     let state: String
     var body: some View {
         Label(state == "locked" ? app.T("Đã khoá", "Locked") : app.T("Đã giải quyết", "Resolved"), systemImage: "lock.fill")
-            .font(.caption.weight(.bold)).lineLimit(1)
+            .font(.app(.caption).weight(.bold)).lineLimit(1)
             .padding(.horizontal, 9).padding(.vertical, 4)
             .foregroundStyle(app.palette.ink2)
             .background(app.palette.blockInset, in: Capsule())

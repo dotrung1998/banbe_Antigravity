@@ -153,7 +153,7 @@ struct MapListOverlay<Content: View>: View {
                 if isOpen {
                     Button(action: close) {
                         Label(closeTitle, systemImage: "map")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.app(size: 14, weight: .semibold))
                             .padding(.horizontal, 16).frame(height: 40)
                             .background(Capsule().fill(.ultraThinMaterial))
                     }

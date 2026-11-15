@@ -395,9 +395,9 @@ struct KeychainSettingsSection: View {
 
     private func content(_ m: KeychainManifest) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(app.T("Móc khoá hồ sơ", "Profile keychain")).font(.system(size: 11.5)).foregroundStyle(app.palette.ink)
+            Text(app.T("Móc khoá hồ sơ", "Profile keychain")).font(.app(size: 11.5)).foregroundStyle(app.palette.ink)
             Toggle(app.T("Hiện móc khoá trên hồ sơ", "Show a keychain on my profile"), isOn: $draft.enabled)
-                .font(.system(size: 13)).accessibilityIdentifier("keychain.enabled")
+                .font(.app(size: 13)).accessibilityIdentifier("keychain.enabled")
 
             if draft.enabled {
                 preview(m)
@@ -408,16 +408,16 @@ struct KeychainSettingsSection: View {
                 }
                 .pickerStyle(.segmented).accessibilityIdentifier("keychain.size")
                 Toggle(app.T("Cho phép chuyển động", "Allow motion"), isOn: $draft.motionEnabled)
-                    .font(.system(size: 13)).accessibilityIdentifier("keychain.motion")
+                    .font(.app(size: 13)).accessibilityIdentifier("keychain.motion")
                 artControls(m)
             }
 
-            if !error.isEmpty { Text(error).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert) }
+            if !error.isEmpty { Text(error).font(.app(size: 12)).foregroundStyle(BanbeTheme.alert) }
 
             if dirty {
                 HStack(spacing: 10) {
                     Button(app.T("Huỷ", "Cancel")) { cancel() }
-                        .font(.system(size: 13, weight: .semibold)).frame(maxWidth: .infinity).padding(.vertical, 12)
+                        .font(.app(size: 13, weight: .semibold)).frame(maxWidth: .infinity).padding(.vertical, 12)
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
                         .disabled(busy).accessibilityIdentifier("keychain.cancel")
                     InkButton(title: busy ? app.T("Đang lưu…", "Saving…") : app.T("Lưu móc khoá", "Save keychain"), enabled: !busy) { save() }
@@ -458,7 +458,7 @@ struct KeychainSettingsSection: View {
             .accessibilityIdentifier("keychain.preview")
             Button { swingTick += 1 } label: {
                 Label(app.T("Lắc thử", "Swing"), systemImage: "waveform.path")
-                    .font(.system(size: 12.5, weight: .semibold))
+                    .font(.app(size: 12.5, weight: .semibold))
             }
             .buttonStyle(.bordered).tint(app.palette.ink)
             .accessibilityIdentifier("keychain.swing")
@@ -469,13 +469,13 @@ struct KeychainSettingsSection: View {
         VStack(alignment: .leading, spacing: 10) {
             // Reward designs are only offered once rewards are live for this account (and not hidden by an admin).
             ForEach(m.groups.filter { $0.id != "rewards" || (app.rewardsEnabled && app.rewardsSummaryStatus == .loaded) }) { g in
-                Text(app.isEN ? g.en : g.vi).font(.system(size: 11, weight: .semibold)).opacity(0.7)
+                Text(app.isEN ? g.en : g.vi).font(.app(size: 11, weight: .semibold)).opacity(0.7)
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 52), spacing: 8)], alignment: .leading, spacing: 8) {
                     ForEach(m.designs(in: g.id)) { d in tile(d) }
                 }
             }
             if pendingImage != nil || (hasServerArt && !removeArt) {
-                Text(app.T("Ảnh của tôi", "My art")).font(.system(size: 11, weight: .semibold)).opacity(0.7)
+                Text(app.T("Ảnh của tôi", "My art")).font(.app(size: 11, weight: .semibold)).opacity(0.7)
                 let selected = draft.designId == KeychainConfig.customDesignID
                 Button { draft.designId = KeychainConfig.customDesignID } label: {
                     Group {
@@ -512,7 +512,7 @@ struct KeychainSettingsSection: View {
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(app.palette.ink, lineWidth: selected ? 2 : 0))
             .overlay(alignment: .bottomTrailing) {
-                if locked { Image(systemName: "lock.fill").font(.system(size: 11)).padding(4).accessibilityHidden(true) }
+                if locked { Image(systemName: "lock.fill").font(.app(size: 11)).padding(4).accessibilityHidden(true) }
             }
         }
         .buttonStyle(.plain)
@@ -526,11 +526,11 @@ struct KeychainSettingsSection: View {
 
     private var anchorPicker: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(app.T("Vị trí", "Position")).font(.system(size: 11, weight: .semibold)).opacity(0.7)
+            Text(app.T("Vị trí", "Position")).font(.app(size: 11, weight: .semibold)).opacity(0.7)
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                 ForEach(KeychainAnchor.allCases) { a in
                     Button { draft.anchor = a } label: {
-                        Text(a.label(app.T)).font(.system(size: 12.5)).frame(maxWidth: .infinity).padding(.vertical, 10)
+                        Text(a.label(app.T)).font(.app(size: 12.5)).frame(maxWidth: .infinity).padding(.vertical, 10)
                             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(app.palette.ink, lineWidth: draft.anchor == a ? 2 : 0))
                     }
@@ -545,10 +545,10 @@ struct KeychainSettingsSection: View {
     @ViewBuilder
     private func artControls(_ m: KeychainManifest) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(app.T("Dùng ảnh của riêng bạn", "Use my own art")).font(.system(size: 11, weight: .semibold)).opacity(0.7)
+            Text(app.T("Dùng ảnh của riêng bạn", "Use my own art")).font(.app(size: 11, weight: .semibold)).opacity(0.7)
             Text(app.T("PNG hoặc WebP, nền trong suốt, tối đa 512 px và 256 KB. Ảnh được thu nhỏ trên máy và xoá siêu dữ liệu trước khi tải lên.",
                        "PNG or WebP with transparency, up to 512 px and 256 KB. Resized on device with metadata removed before upload."))
-                .font(.system(size: 11)).opacity(0.6)
+                .font(.app(size: 11)).opacity(0.6)
             HStack(spacing: 10) {
                 Button(app.T("Chọn tệp", "Choose file")) { importing = true }
                     .accessibilityIdentifier("keychain.art.file")
@@ -559,12 +559,12 @@ struct KeychainSettingsSection: View {
                         .foregroundStyle(BanbeTheme.alert).accessibilityIdentifier("keychain.art.remove")
                 }
             }
-            .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+            .font(.app(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
 
             if let d = m.design(draft.designId), let url = KeychainArtwork.bundledURL(for: d), let ui = KeychainArtwork.bundledImage(d) {
                 ShareLink(item: url, preview: SharePreview(app.isEN ? d.en : d.vi, image: Image(uiImage: ui))) {
                     Label(app.T("Xuất ảnh mẫu (PNG)", "Export this artwork (PNG)"), systemImage: "square.and.arrow.up")
-                        .font(.system(size: 12.5))
+                        .font(.app(size: 12.5))
                 }
                 .foregroundStyle(app.palette.ink).accessibilityIdentifier("keychain.export")
             }

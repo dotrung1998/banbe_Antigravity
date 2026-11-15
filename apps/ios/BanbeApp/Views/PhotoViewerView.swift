@@ -178,7 +178,7 @@ struct PhotoViewerView: View {
                 }
             } else if total > 8 {
                 Text("\(item.index + 1) / \(total)")
-                    .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(Color.white.opacity(0.9))
+                    .font(.app(size: 11.5, weight: .semibold)).foregroundStyle(Color.white.opacity(0.9))
             } else {
                 Color.clear
             }
@@ -457,7 +457,7 @@ struct PhotoViewerView: View {
     /// nesting both would compound the fade).
     private func countLabel(_ n: Int) -> some View {
         Text("\(n)")
-            .font(.system(size: 10.5))
+            .font(.app(size: 10.5))
             .kerning(0.4)
             .foregroundStyle(.white.opacity(0.72))
             .shadow(color: .black.opacity(0.55), radius: 3, y: 1)
@@ -501,7 +501,7 @@ struct PhotoViewerView: View {
                         label: String, perform: @escaping () -> Void) -> some View {
         Button(action: perform) {
             Image(systemName: filled ? "\(symbol).fill" : symbol)
-                .font(.system(size: 17, weight: .regular))
+                .font(.app(size: 17, weight: .regular))
                 .foregroundStyle(.white.opacity(on ? 1 : 0.72))
                 .shadow(color: .black.opacity(0.55), radius: 3, y: 1)
                 // "square.and.arrow.up"'s own artwork sits a couple of
@@ -538,7 +538,7 @@ struct PhotoViewerView: View {
     /// names.
     private func caption(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 10.5))
+            .font(.app(size: 10.5))
             .kerning(0.4)
             .lineLimit(1)
             .foregroundStyle(.white.opacity(0.72))

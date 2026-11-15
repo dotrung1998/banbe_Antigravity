@@ -22,14 +22,14 @@ struct DeleteAccountStayView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("🥺").font(.system(size: 40)).accessibilityHidden(true)
+                        Text("🥺").font(.app(size: 40)).accessibilityHidden(true)
                         Text(app.T("Trước khi bạn đi…", "Before you go…"))
                             .font(BanbeTheme.display(26))
                             .accessibilityAddTraits(.isHeader)
                             .accessibilityIdentifier("deleteStay.title")
                         Text(app.T("Xoá tài khoản là vĩnh viễn và không thể khôi phục.",
                                    "Deleting your account is permanent and can't be undone."))
-                            .font(.subheadline).foregroundStyle(app.palette.ink.opacity(0.75))
+                            .font(.app(.subheadline)).foregroundStyle(app.palette.ink.opacity(0.75))
                     }
 
                     if !lossRows.isEmpty { lossSection }
@@ -48,7 +48,7 @@ struct DeleteAccountStayView: View {
                             app.deleteAccountStayOpen = false
                         } label: {
                             Text(app.T("Tiếp tục xoá tài khoản", "Continue deleting my account"))
-                                .font(.subheadline.weight(.semibold))
+                                .font(.app(.subheadline).weight(.semibold))
                                 .foregroundStyle(BanbeTheme.alert)
                                 .frame(maxWidth: .infinity, minHeight: 44)
                                 .contentShape(Rectangle())
@@ -76,21 +76,21 @@ struct DeleteAccountStayView: View {
 
     private var lossSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(app.T("Bạn sẽ mất", "You'd lose")).font(.footnote.weight(.semibold))
+            Text(app.T("Bạn sẽ mất", "You'd lose")).font(.app(.footnote).weight(.semibold))
                 .foregroundStyle(app.palette.ink.opacity(0.7))
             ForEach(lossRows, id: \.kind) { row in
                 HStack(spacing: 12) {
                     Image(systemName: icon(row.kind))
-                        .font(.body.weight(.semibold))
+                        .font(.app(.body).weight(.semibold))
                         .frame(width: 28)
                         .foregroundStyle(app.palette.clay)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(label(row)).font(.subheadline.weight(.semibold))
+                        Text(label(row)).font(.app(.subheadline).weight(.semibold))
                         if row.kind == .hostedEvents {
                             Text(app.T("Sự kiện đang mở cần được huỷ hoặc kết thúc trước khi xoá.",
                                        "Open events must be cancelled or ended before you can delete."))
-                                .font(.caption).foregroundStyle(app.palette.ink.opacity(0.7))
+                                .font(.app(.caption)).foregroundStyle(app.palette.ink.opacity(0.7))
                         }
                     }
                 }
@@ -105,9 +105,9 @@ struct DeleteAccountStayView: View {
 
     private var reasonSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(app.T("Vì sao bạn muốn rời đi?", "Why are you leaving?")).font(.headline)
+            Text(app.T("Vì sao bạn muốn rời đi?", "Why are you leaving?")).font(.app(.headline))
             Text(app.T("Không bắt buộc. Giúp chúng tôi gợi ý cách khắc phục.", "Optional. Helps us suggest a fix."))
-                .font(.caption).foregroundStyle(app.palette.ink.opacity(0.7))
+                .font(.app(.caption)).foregroundStyle(app.palette.ink.opacity(0.7))
             FlowChips(items: AccountRetention.reasons.map { ($0.code, app.T($0.vi, $0.en)) },
                       selected: reasonCode) { code in
                 withAnimation(.easeOut(duration: 0.2)) { reasonCode = reasonCode == code ? "" : code }
@@ -118,14 +118,14 @@ struct DeleteAccountStayView: View {
 
     private func offerCard(_ offer: RetentionOffer) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(offerTitle(offer)).font(.subheadline.weight(.semibold))
-            Text(offerBody(offer)).font(.footnote).foregroundStyle(app.palette.ink.opacity(0.75))
+            Text(offerTitle(offer)).font(.app(.subheadline).weight(.semibold))
+            Text(offerBody(offer)).font(.app(.footnote)).foregroundStyle(app.palette.ink.opacity(0.75))
                 .fixedSize(horizontal: false, vertical: true)
             if offer == .quieterNotifications && quieted {
                 Label(app.T("Đã tắt. Bạn vẫn nhận thông báo về vé, thanh toán và hoàn tiền.",
                             "Done. You'll still get ticket, payment and refund alerts."),
                       systemImage: "checkmark.circle.fill")
-                    .font(.footnote.weight(.semibold))
+                    .font(.app(.footnote).weight(.semibold))
                     .accessibilityIdentifier("deleteStay.quieted")
             } else {
                 SecondaryButton(title: offerButton(offer)) { Task { await run(offer) } }
@@ -235,7 +235,7 @@ private struct FlowChips: View {
                 let on = item.code == selected
                 Button { onTap(item.code) } label: {
                     Text(item.label)
-                        .font(.footnote.weight(on ? .semibold : .regular))
+                        .font(.app(.footnote).weight(on ? .semibold : .regular))
                         .padding(.horizontal, 14).frame(minHeight: 40)
                         .foregroundStyle(on ? app.palette.paper : app.palette.ink)
                         .background(on ? app.palette.ink : app.palette.field, in: Capsule())

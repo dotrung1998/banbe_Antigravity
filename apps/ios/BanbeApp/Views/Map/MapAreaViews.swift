@@ -92,7 +92,7 @@ struct MapAreaBubble: View {
         let dim = windowOn && group.hit == 0
         VStack(spacing: 2) {
             Text("\(n)")
-                .font(.system(size: 22, weight: .semibold))
+                .font(.app(size: 22, weight: .semibold))
                 .monospacedDigit()
                 .padding(.horizontal, 10)
                 .frame(minWidth: 52, minHeight: 52)
@@ -100,7 +100,7 @@ struct MapAreaBubble: View {
                 .background(dim ? app.palette.surface2 : app.palette.ink, in: Capsule())
                 .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
             Text(name)
-                .font(.system(size: 12, weight: .bold))
+                .font(.app(size: 12, weight: .bold))
                 .lineLimit(1)
                 .padding(.horizontal, 8).padding(.vertical, 2)
                 .frame(maxWidth: 132)
@@ -151,14 +151,14 @@ struct MapAreaChip: View {
         let other = count - (hit ?? count)
         Button(action: action) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(name).font(.system(size: 15, weight: .bold)).lineLimit(1)
+                Text(name).font(.app(size: 15, weight: .bold)).lineLimit(1)
                 Text(hit.map { h in
                         app.T("\(h) trong khung giờ" + (other > 0 ? " · \(other) khác" : ""), "\(h) in the window" + (other > 0 ? " · \(other) other" : ""))
                      } ?? app.T("\(count) sự kiện", count == 1 ? "1 event" : "\(count) events"))
-                    .font(.system(size: 12)).foregroundStyle(inHit ? app.palette.paper.opacity(0.85) : app.palette.ink2).lineLimit(1)
+                    .font(.app(size: 12)).foregroundStyle(inHit ? app.palette.paper.opacity(0.85) : app.palette.ink2).lineLimit(1)
                 HStack(spacing: 4) {
                     ForEach(Array(cats.prefix(5)), id: \.self) { c in
-                        Image(systemName: CategoryGlyph.symbol(c)).font(.system(size: 12, weight: .medium))
+                        Image(systemName: CategoryGlyph.symbol(c)).font(.app(size: 12, weight: .medium))
                     }
                 }
                 .foregroundStyle(inHit ? app.palette.paper.opacity(0.85) : app.palette.ink2)
@@ -212,8 +212,8 @@ struct MapAreaPanelView<Rows: View>: View {
                     .accessibilityIdentifier("map.areaPanel.title")
                 Button(action: onBack) {
                     HStack(spacing: 6) {
-                        Image(systemName: "arrow.left").font(.system(size: 13, weight: .semibold)).accessibilityHidden(true)
-                        Text(backTitle).font(.subheadline.weight(.medium)).lineLimit(1)
+                        Image(systemName: "arrow.left").font(.app(size: 13, weight: .semibold)).accessibilityHidden(true)
+                        Text(backTitle).font(.app(.subheadline).weight(.medium)).lineLimit(1)
                     }
                     .padding(.horizontal, 12).frame(minHeight: 36)
                     .background(app.palette.surface2, in: Capsule())
@@ -230,7 +230,7 @@ struct MapAreaPanelView<Rows: View>: View {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         if count == 0 {
                             Text(emptyText)
-                                .font(.subheadline).foregroundStyle(app.palette.ink2)
+                                .font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
                                 .multilineTextAlignment(.center)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 20)

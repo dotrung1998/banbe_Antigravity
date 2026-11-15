@@ -400,13 +400,13 @@ struct StoryViewerView: View {
             .padding(.top, 54)
 
             Text(group.orgName)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.app(size: 11, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.85))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding(.top, 62).padding(.leading, 16)
 
             Button { dismiss() } label: {
-                Image(systemName: "xmark").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
+                Image(systemName: "xmark").font(.app(size: 18, weight: .semibold)).foregroundStyle(.white)
             }
             .accessibilityIdentifier("story.viewer.close")
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
@@ -421,7 +421,7 @@ struct StoryViewerView: View {
             }
 
             Text("banbe ▪︎ \(app.T("story", "story"))")
-                .font(.system(size: 10.5))
+                .font(.app(size: 10.5))
                 .foregroundStyle(.white.opacity(0.75))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                 .padding(.leading, 18).padding(.bottom, 40)
@@ -719,13 +719,13 @@ private struct EventShareCard: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(snap.name).font(BanbeTheme.display(18)).foregroundStyle(app.palette.ink)
                     Text(snap.when + (distanceText.map { " ▪︎ \($0)" } ?? ""))
-                        .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
+                        .font(.app(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
                         .accessibilityIdentifier("story.eventCard.distance")
                     Button {
                         app.goEventFromStory(snap.eventKey)
                     } label: {
                         Text(app.T("Xem sự kiện", "View event"))
-                            .font(.system(size: 13.5, weight: .bold))
+                            .font(.app(size: 13.5, weight: .bold))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
                             .foregroundStyle(app.palette.paper)
@@ -745,7 +745,7 @@ private struct EventShareCard: View {
             .onTapGesture { app.goEventFromStory(snap.eventKey) }
         } else {
             Text(app.T("Sự kiện này không còn khả dụng.", "This event is no longer available."))
-                .font(.system(size: 13))
+                .font(.app(size: 13))
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
                 .padding(24)
@@ -783,7 +783,7 @@ private struct SurveyShareCard: View {
             .onTapGesture { Task { await app.openSurveyStoryModal(publicID: publicId) } }
         } else {
             Text(app.T("Khảo sát này không còn khả dụng.", "This survey is no longer available."))
-                .font(.system(size: 13))
+                .font(.app(size: 13))
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
                 .padding(24)

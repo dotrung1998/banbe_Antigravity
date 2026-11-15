@@ -52,12 +52,12 @@ struct EventRecapView: View {
                     .accessibilityIdentifier("eventRecap.back")
                 if !app.eventRecapEnabled {
                     Text(app.T("Tính năng này đang tạm tắt.", "This is turned off for now."))
-                        .font(.system(size: 13.5)).opacity(0.7).padding(.top, 18)
+                        .font(.app(size: 13.5)).opacity(0.7).padding(.top, 18)
                         .accessibilityIdentifier("eventRecap.off")
                 } else if let event, let eventID {
                     content(event, eventID: eventID)
                 } else {
-                    Text(app.T("Đang tải…", "Loading…")).font(.system(size: 13.5)).opacity(0.7).padding(.top, 18)
+                    Text(app.T("Đang tải…", "Loading…")).font(.app(size: 13.5)).opacity(0.7).padding(.top, 18)
                 }
             }
             .foregroundStyle(app.palette.ink)
@@ -88,7 +88,7 @@ struct EventRecapView: View {
     @ViewBuilder
     private func content(_ event: CatalogEvent, eventID: String) -> some View {
         Text(app.T("Sự kiện đã kết thúc", "This event has ended"))
-            .font(.system(size: 11.5, weight: .semibold)).opacity(0.7).padding(.top, 14)
+            .font(.app(size: 11.5, weight: .semibold)).opacity(0.7).padding(.top, 14)
         Button { app.goEvent(eventID) } label: {
             Text(event.name).font(BanbeTheme.display(26)).multilineTextAlignment(.leading)
         }
@@ -98,7 +98,7 @@ struct EventRecapView: View {
         .accessibilityIdentifier("eventRecap.title")
         if let start = event.startDate {
             Text(app.discoveryWhenLabel(start, timeZone: event.timeZoneID.map { EventMarket.timeZone($0) }))
-                .font(.system(size: 13)).opacity(0.7).padding(.top, 6)
+                .font(.app(size: 13)).opacity(0.7).padding(.top, 6)
         }
 
         photosSection(organizer: event.orgName).padding(.top, 24)
@@ -114,13 +114,13 @@ struct EventRecapView: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(app.T("Hình ảnh", "Photos")).font(BanbeTheme.display(20))
                 Spacer()
-                if !photos.isEmpty { Text("\(photos.count)").font(.system(size: 13)).opacity(0.6) }
+                if !photos.isEmpty { Text("\(photos.count)").font(.app(size: 13)).opacity(0.6) }
             }
             if app.eventPhotosLoading {
-                Text(app.T("Đang tải…", "Loading…")).font(.system(size: 13)).opacity(0.6).padding(.top, 10)
+                Text(app.T("Đang tải…", "Loading…")).font(.app(size: 13)).opacity(0.6).padding(.top, 10)
             } else if photos.isEmpty {
                 Text(app.T("Host chưa đăng ảnh nào.", "The host hasn't posted photos yet."))
-                    .font(.system(size: 13)).opacity(0.6).padding(.top, 10)
+                    .font(.app(size: 13)).opacity(0.6).padding(.top, 10)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 8) {
@@ -153,7 +153,7 @@ struct EventRecapView: View {
             rating = value
             justSaved = false
         } label: {
-            Text(emoji).font(.system(size: 22))
+            Text(emoji).font(.app(size: 22))
                 .frame(maxWidth: .infinity, minHeight: 48)
                 .background(on ? app.palette.clay.opacity(0.12) : .clear, in: Capsule())
                 .overlay(Capsule().stroke(on ? app.palette.clay : app.palette.rule, lineWidth: 1))
@@ -171,11 +171,11 @@ struct EventRecapView: View {
         VStack(alignment: .leading, spacing: 0) {
             Text(app.T("Buổi này thế nào?", "How was it?")).font(BanbeTheme.display(20))
             Text(app.T(CoreLoops.privacyLine.vi, CoreLoops.privacyLine.en))
-                .font(.system(size: 12.5)).opacity(0.75).padding(.top, 6)
+                .font(.app(size: 12.5)).opacity(0.75).padding(.top, 6)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("eventRecap.privacy")
             if !loaded {
-                Text(app.T("Đang tải…", "Loading…")).font(.system(size: 13)).opacity(0.6).padding(.top, 12)
+                Text(app.T("Đang tải…", "Loading…")).font(.app(size: 13)).opacity(0.6).padding(.top, 12)
             } else {
                 HStack(spacing: 10) {
                     ratingButton(1, emoji: "👍", label: app.T("Thích", "Liked it"), id: "eventRecap.up")
@@ -187,7 +187,7 @@ struct EventRecapView: View {
                               text: Binding(get: { note }, set: { note = CoreLoops.clampNote($0); justSaved = false }),
                               axis: .vertical)
                         .lineLimit(3...8)
-                        .font(.system(size: 14))
+                        .font(.app(size: 14))
                         .focused($noteFocused)
                         .padding(.horizontal, 12).padding(.vertical, 10)
                         .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -195,7 +195,7 @@ struct EventRecapView: View {
                         .padding(.top, 12)
                         .accessibilityIdentifier("eventRecap.note")
                     Text("\(CoreLoops.noteLength(note))/\(CoreLoops.noteMax)")
-                        .font(.system(size: 11.5)).opacity(0.6)
+                        .font(.app(size: 11.5)).opacity(0.6)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                         .padding(.top, 4)
                         .accessibilityIdentifier("eventRecap.counter")
@@ -206,19 +206,19 @@ struct EventRecapView: View {
                     .accessibilityIdentifier("eventRecap.save")
                     if justSaved && !dirty {
                         Text(app.T("Đã lưu. Bạn có thể sửa trong 14 ngày sau sự kiện.", "Saved. You can change it for 14 days after the event."))
-                            .font(.system(size: 12.5)).opacity(0.75).padding(.top, 8)
+                            .font(.app(size: 12.5)).opacity(0.75).padding(.top, 8)
                             .accessibilityIdentifier("eventRecap.saved")
                     }
                 } else {
                     if let savedNote = saved?.note, !savedNote.isEmpty {
-                        Text(savedNote).font(.system(size: 13.5)).padding(.top, 12)
+                        Text(savedNote).font(.app(size: 13.5)).padding(.top, 12)
                     }
                     Text(app.T("Đã đóng phần cảm nhận cho sự kiện này.", "Feedback for this event is closed."))
-                        .font(.system(size: 12.5)).opacity(0.75).padding(.top, 10)
+                        .font(.app(size: 12.5)).opacity(0.75).padding(.top, 10)
                         .accessibilityIdentifier("eventRecap.closed")
                 }
                 if !error.isEmpty && !closed {
-                    Text(error).font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert).padding(.top, 8)
+                    Text(error).font(.app(size: 12.5)).foregroundStyle(BanbeTheme.alert).padding(.top, 8)
                         .accessibilityIdentifier("eventRecap.error")
                 }
             }
@@ -256,7 +256,7 @@ struct EventRecapView: View {
             Button { Task { await app.toggleFollowOrganizer(organizerID) } } label: {
                 Label(following ? app.T("Đang theo dõi host ✓", "Following this host ✓") : app.T("Theo dõi host", "Follow host"),
                       systemImage: "person")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.app(size: 14, weight: .semibold))
                     .foregroundStyle(app.palette.clay)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 11)
@@ -278,10 +278,10 @@ struct EventRecapView: View {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(e.name).font(BanbeTheme.display(15)).lineLimit(1)
                                     Text(app.discoveryWhenLabel(e.startsAt, timeZone: EventMarket.timeZone(e.timeZoneID)))
-                                        .font(.system(size: 12.5)).opacity(0.65)
+                                        .font(.app(size: 12.5)).opacity(0.65)
                                 }
                                 Spacer(minLength: 0)
-                                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold))
+                                Image(systemName: "chevron.right").font(.app(size: 12, weight: .semibold))
                                     .foregroundStyle(app.palette.clay).accessibilityHidden(true)
                             }
                             .padding(.vertical, 11)

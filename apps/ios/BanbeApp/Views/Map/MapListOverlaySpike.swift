@@ -35,8 +35,8 @@ struct MapListOverlaySpike: View {
                             HStack {
                                 RoundedRectangle(cornerRadius: 12).fill(p.field).frame(width: 68, height: 68)
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text("Sự kiện số \(n)").font(.system(size: 15, weight: .bold)).foregroundStyle(p.ink)
-                                    Text("Hôm nay 19:00 · Quận 1").font(.system(size: 12.5)).foregroundStyle(p.ink2)
+                                    Text("Sự kiện số \(n)").font(.app(size: 15, weight: .bold)).foregroundStyle(p.ink)
+                                    Text("Hôm nay 19:00 · Quận 1").font(.app(size: 12.5)).foregroundStyle(p.ink2)
                                 }
                                 Spacer()
                             }
@@ -62,10 +62,10 @@ struct MapListOverlaySpike: View {
                 }
                 .padding(.horizontal, 16)
                 Text("dy readout below")
-                    .font(.system(size: 11)).foregroundStyle(p.ink3)
+                    .font(.app(size: 11)).foregroundStyle(p.ink3)
                     .accessibilityHidden(true)
                 Text("opens \(opens) · closes \(closes) · taps \(taps) · \(open ? "list open" : "map")")
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced)).foregroundStyle(p.ink)
+                    .font(.app(size: 12, weight: .semibold, design: .monospaced)).foregroundStyle(p.ink)
                     .accessibilityIdentifier("spike.readout")
             }
             .padding(.top, 62)
@@ -73,7 +73,7 @@ struct MapListOverlaySpike: View {
             if !open {
                 Button { open = true; opens += 1 } label: {
                     Label(app.T("Danh sách · 40", "List · 40"), systemImage: "list.bullet")
-                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(p.paper)
+                        .font(.app(size: 14, weight: .semibold)).foregroundStyle(p.paper)
                         .padding(.horizontal, 16).frame(height: 40)
                         .background(Capsule().fill(p.ink))
                 }

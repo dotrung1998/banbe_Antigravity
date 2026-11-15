@@ -74,7 +74,7 @@ struct QRScannerView: View {
             .overlay(alignment: .topTrailing) {
                 Button { close() } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.app(size: 14, weight: .semibold))
                         .foregroundStyle(app.palette.ink)
                         .frame(width: 44, height: 44)
                         .background(.regularMaterial, in: Circle())
@@ -102,7 +102,7 @@ struct QRScannerView: View {
             HStack(spacing: 10) {
                 Button { confirm() } label: {
                     Text(confirming ? app.T("Đang xác nhận…", "Confirming…") : app.T("Xác nhận", "Confirm"))
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.app(size: 14, weight: .semibold))
                         .foregroundStyle(app.palette.paper)
                         .frame(maxWidth: .infinity).padding(.vertical, 13)
                         .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -114,7 +114,7 @@ struct QRScannerView: View {
 
                 Button { notNow() } label: {
                     Text(app.T("Để sau", "Not now"))
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.app(size: 14, weight: .semibold))
                         .foregroundStyle(app.palette.ink)
                         .frame(maxWidth: .infinity).padding(.vertical, 13)
                         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(app.palette.rule))
@@ -133,7 +133,7 @@ struct QRScannerView: View {
     private var messageArea: some View {
         if let greenMessage {
             Text(greenMessage)
-                .font(.system(size: 14.5, weight: .semibold))
+                .font(.app(size: 14.5, weight: .semibold))
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity).padding(.vertical, 12).padding(.horizontal, 12)
@@ -141,19 +141,19 @@ struct QRScannerView: View {
                 .accessibilityIdentifier("scanner.success")
         } else if let errorMessage {
             Text(errorMessage)
-                .font(.system(size: 13.5, weight: .semibold))
+                .font(.app(size: 13.5, weight: .semibold))
                 .foregroundStyle(BanbeTheme.alert)
                 .multilineTextAlignment(.center)
                 .accessibilityIdentifier("scanner.error")
         } else if let guest {
             VStack(spacing: 4) {
                 Text(guest.name.isEmpty ? app.T("Khách", "Guest") : guest.name)
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.app(size: 17, weight: .bold))
                 Text(dobLine(guest))
-                    .font(.system(size: 14))
+                    .font(.app(size: 14))
                 if guest.alreadyCheckedIn {
                     Text(app.T("Khách này đã được điểm danh.", "This guest is already checked in."))
-                        .font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert)
+                        .font(.app(size: 12.5)).foregroundStyle(BanbeTheme.alert)
                 }
             }
             .foregroundStyle(app.palette.ink)
@@ -161,10 +161,10 @@ struct QRScannerView: View {
             .accessibilityIdentifier("scanner.guest")
         } else if lookingUp {
             Text(app.T("Đang kiểm tra vé…", "Checking ticket…"))
-                .font(.system(size: 14)).foregroundStyle(app.palette.ink)
+                .font(.app(size: 14)).foregroundStyle(app.palette.ink)
         } else {
             Text(app.T("Đưa mã QR của khách lên để quét", "Hold up and scan the goer's QR code"))
-                .font(.system(size: 14.5, weight: .medium))
+                .font(.app(size: 14.5, weight: .medium))
                 .foregroundStyle(app.palette.ink)
                 .multilineTextAlignment(.center)
                 .accessibilityIdentifier("scanner.instruction")

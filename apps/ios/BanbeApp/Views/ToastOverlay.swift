@@ -27,11 +27,11 @@ struct ToastOverlay: View {
                 HStack(alignment: .top, spacing: 8) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(toast.notification.kind == "event_announcement" ? "📣 " + app.T("Thông báo từ host", "Host announcement") : toast.notification.title)
-                            .font(.system(size: 12.5, weight: .semibold))
+                            .font(.app(size: 12.5, weight: .semibold))
                             .foregroundStyle(toast.notification.kind == "event_announcement" ? BanbeTheme.alert : app.palette.ink)
                         if !toast.notification.body.isEmpty {
                             Text(toast.notification.body)
-                                .font(.system(size: 12))
+                                .font(.app(size: 12))
                                 .foregroundStyle(app.palette.ink.opacity(0.75))
                                 .lineLimit(2)
                         }
@@ -41,7 +41,7 @@ struct ToastOverlay: View {
                         app.dismissToast(toast.id)
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.app(size: 10, weight: .semibold))
                             .foregroundStyle(app.palette.ink.opacity(0.55))
                             .frame(width: 20, height: 20)
                     }
@@ -87,7 +87,7 @@ struct ToastOverlay: View {
                 HStack(spacing: 8) {
                     if !expanded && hiddenCount > 0 {
                         Button("Xem thêm (\(hiddenCount))") { expanded = true }
-                            .font(.system(size: 11.5, weight: .semibold))
+                            .font(.app(size: 11.5, weight: .semibold))
                             .foregroundStyle(app.palette.ink)
                             .padding(.horizontal, 12).padding(.vertical, 6)
                             .background(app.palette.field, in: Capsule())
@@ -99,7 +99,7 @@ struct ToastOverlay: View {
                             app.dismissAllToasts()
                             expanded = false
                         }
-                        .font(.system(size: 11.5, weight: .semibold))
+                        .font(.app(size: 11.5, weight: .semibold))
                         .foregroundStyle(app.palette.ink.opacity(0.75))
                         .padding(.horizontal, 12).padding(.vertical, 6)
                         .background(app.palette.field, in: Capsule())

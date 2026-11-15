@@ -27,7 +27,7 @@ struct WalletPassDesignView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     preview
 
-                    Text(app.T("Màu nền có sẵn", "Colour presets")).font(.system(size: 11.5, weight: .semibold))
+                    Text(app.T("Màu nền có sẵn", "Colour presets")).font(.app(size: 11.5, weight: .semibold))
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) {
                             ForEach(WalletPassStyle.presets, id: \.nameEN) { preset in
@@ -41,7 +41,7 @@ struct WalletPassDesignView: View {
                                             .overlay(Circle().stroke(app.palette.rule))
                                             .overlay(Circle().stroke(app.palette.ink, lineWidth: 2.5).padding(-3)
                                                 .opacity(style.backgroundHex == preset.style.backgroundHex ? 1 : 0))
-                                        Text(app.T(preset.name, preset.nameEN)).font(.system(size: 10.5))
+                                        Text(app.T(preset.name, preset.nameEN)).font(.app(size: 10.5))
                                     }
                                 }
                                 .buttonStyle(.plain)
@@ -54,41 +54,41 @@ struct WalletPassDesignView: View {
                     ColorPicker(app.T("Màu nền tự chọn", "Custom background"),
                                 selection: Binding(get: { bg }, set: { style.backgroundHex = $0.hexString }),
                                 supportsOpacity: false)
-                        .font(.system(size: 13))
+                        .font(.app(size: 13))
                     ColorPicker(app.T("Màu chữ", "Text colour"),
                                 selection: Binding(get: { fg }, set: { style.foregroundHex = $0.hexString }),
                                 supportsOpacity: false)
-                        .font(.system(size: 13))
+                        .font(.app(size: 13))
 
-                    Text(app.T("Ảnh banner", "Banner image")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 4)
+                    Text(app.T("Ảnh banner", "Banner image")).font(.app(size: 11.5, weight: .semibold)).padding(.top, 4)
                     HStack(spacing: 10) {
                         let bannerTitle = style.bannerPNG == nil ? app.T("Chọn ảnh", "Choose a photo") : app.T("Đổi ảnh", "Change photo")
                         let ruleColor = app.palette.rule
                         PhotosPicker(selection: $bannerItem, matching: .images) {
                             Label(bannerTitle, systemImage: "photo")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.app(size: 13, weight: .semibold))
                                 .padding(.horizontal, 14).padding(.vertical, 10)
                                 .overlay(Capsule().stroke(ruleColor))
                         }
                         .accessibilityIdentifier("wallet.pickBanner")
                         if style.bannerPNG != nil {
                             Button(app.T("Bỏ ảnh", "Remove")) { style.bannerPNG = nil; bannerItem = nil }
-                                .font(.system(size: 13))
+                                .font(.app(size: 13))
                         }
                     }
                     Text(app.T("Ảnh được cắt giữa theo khung ngang của thẻ. Mã QR luôn hiển thị rõ ở dưới.",
                                "The photo is centre-cropped to the card's wide banner. The QR code always stays plain and scannable below it."))
-                        .font(.system(size: 10.5)).opacity(0.65)
+                        .font(.app(size: 10.5)).opacity(0.65)
 
                     if !error.isEmpty {
-                        Text(error).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                        Text(error).font(.app(size: 12)).foregroundStyle(BanbeTheme.alert)
                     }
 
                     Button { Task { await add() } } label: {
                         HStack {
                             if busy { ProgressView().tint(app.palette.paper) }
                             Text(app.T("Thêm vào Apple Wallet", "Add to Apple Wallet"))
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.app(size: 15, weight: .semibold))
                         }
                         .frame(maxWidth: .infinity).padding(.vertical, 15)
                         .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -126,7 +126,7 @@ struct WalletPassDesignView: View {
                     Image(uiImage: mark).renderingMode(.template).resizable().scaledToFit()
                         .frame(height: 26).accessibilityLabel("banbe")
                 } else {
-                    Text("banbe").font(.system(size: 14, weight: .bold))
+                    Text("banbe").font(.app(size: 14, weight: .bold))
                 }
                 Spacer()
             }
@@ -136,15 +136,15 @@ struct WalletPassDesignView: View {
                     .frame(height: 96).clipped().padding(.top, 10)
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text(app.T("SỰ KIỆN", "EVENT")).font(.system(size: 9, weight: .semibold)).opacity(0.7)
-                Text(eventName).font(.system(size: 20, weight: .semibold)).lineLimit(2)
+                Text(app.T("SỰ KIỆN", "EVENT")).font(.app(size: 9, weight: .semibold)).opacity(0.7)
+                Text(eventName).font(.app(size: 20, weight: .semibold)).lineLimit(2)
                 if !venue.isEmpty {
-                    Text(venue).font(.system(size: 12)).opacity(0.85).padding(.top, 2)
+                    Text(venue).font(.app(size: 12)).opacity(0.85).padding(.top, 2)
                 }
             }
             .padding(16)
             HStack { Spacer()
-                Image(systemName: "qrcode").font(.system(size: 54))
+                Image(systemName: "qrcode").font(.app(size: 54))
                     .padding(8).background(.white, in: RoundedRectangle(cornerRadius: 8)).foregroundStyle(.black)
                 Spacer()
             }

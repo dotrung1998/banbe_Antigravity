@@ -59,7 +59,7 @@ struct ProjectMoneyTab: View {
         Label(app.T("Tài khoản nhận tiền và huỷ sự kiện luôn do bạn làm, không giao cho đội.",
                     "The payout account and cancelling the event stay with you. They're never handed to the team."),
               systemImage: "lock")
-            .font(.footnote).foregroundStyle(app.palette.ink2)
+            .font(.app(.footnote)).foregroundStyle(app.palette.ink2)
             .padding(.top, 14)
             .accessibilityIdentifier("project.money.hostOnly")
     }
@@ -89,9 +89,9 @@ struct ProjectMoneyTab: View {
 
     private func stat(_ value: String, _ label: String, hot: Bool, id: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(value).font(.title2.weight(.bold).monospacedDigit()).lineLimit(1).minimumScaleFactor(0.6)
+            Text(value).font(.app(.title2).weight(.bold).monospacedDigit()).lineLimit(1).minimumScaleFactor(0.6)
                 .foregroundStyle(hot ? BanbeTheme.alert : app.palette.ink)
-            Text(label).font(.footnote.weight(.semibold)).foregroundStyle(app.palette.ink2)
+            Text(label).font(.app(.footnote).weight(.semibold)).foregroundStyle(app.palette.ink2)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -105,16 +105,16 @@ struct ProjectMoneyTab: View {
         return Button(action: run) {
             // Large text: the icon goes above and the chevron away, so the words get the whole width.
             (big ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6)) : AnyLayout(HStackLayout(spacing: 12))) {
-                Image(systemName: icon).font(.system(size: 20, weight: .semibold)).foregroundStyle(app.palette.clay)
+                Image(systemName: icon).font(.app(size: 20, weight: .semibold)).foregroundStyle(app.palette.clay)
                     .frame(width: 28, alignment: .leading).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.body.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
-                    Text(detail).font(.footnote).foregroundStyle(hot ? BanbeTheme.alert : app.palette.ink2)
+                    Text(title).font(.app(.body).weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+                    Text(detail).font(.app(.footnote)).foregroundStyle(hot ? BanbeTheme.alert : app.palette.ink2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 if !big {
-                    Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(app.palette.ink3).accessibilityHidden(true)
+                    Image(systemName: "chevron.right").font(.app(.footnote).weight(.semibold)).foregroundStyle(app.palette.ink3).accessibilityHidden(true)
                 }
             }
             .padding(.vertical, 12)
@@ -135,12 +135,12 @@ struct ProjectMoneyTab: View {
             if holders.isEmpty {
                 Text(app.T("Chưa ai trong đội có quyền tiền hoặc check-in. Cấp ở thẻ Đội.",
                            "Nobody on the team has money or check-in access. Grant it on the Team tab."))
-                    .font(.subheadline).foregroundStyle(app.palette.ink2)
+                    .font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
             } else {
                 ForEach(holders) { m in
                     HStack(spacing: 10) {
                         ProjectAvatar(name: app.projectPersonName(m.userId), size: 32)
-                        Text(app.projectPersonName(m.userId)).font(.subheadline.weight(.semibold))
+                        Text(app.projectPersonName(m.userId)).font(.app(.subheadline).weight(.semibold))
                         Spacer(minLength: 4)
                         if m.capMoney { ProjectCapTag(icon: "wallet.pass", text: app.T("Tiền", "Money")) }
                         if m.capCheckin { ProjectCapTag(icon: "qrcode", text: "Check-in") }
@@ -148,7 +148,7 @@ struct ProjectMoneyTab: View {
                     .accessibilityElement(children: .combine)
                 }
             }
-            Text(delegationLine).font(.footnote).foregroundStyle(app.palette.ink3).fixedSize(horizontal: false, vertical: true)
+            Text(delegationLine).font(.app(.footnote)).foregroundStyle(app.palette.ink3).fixedSize(horizontal: false, vertical: true)
         }
         .projectCard()
         .accessibilityElement(children: .contain)
@@ -168,7 +168,7 @@ struct ProjectMoneyTab: View {
         let granted = me.map { $0.capMoney || $0.capCheckin } ?? false
         let holders = (snap.hosts ?? []).map(\.userId) + (snap.members ?? []).filter { $0.capMoney || $0.capCheckin }.map(\.userId)
         VStack(spacing: 12) {
-            Image(systemName: "lock.fill").font(.system(size: 28)).foregroundStyle(app.palette.clay).accessibilityHidden(true)
+            Image(systemName: "lock.fill").font(.app(size: 28)).foregroundStyle(app.palette.clay).accessibilityHidden(true)
             Text(granted ? app.T("Quyền của bạn chưa bật", "Your access isn't on yet") : app.T("Bạn chưa có quyền ở mục này", "You don't have access here"))
                 .font(BanbeTheme.display(19)).multilineTextAlignment(.center)
                 .accessibilityAddTraits(.isHeader)
@@ -179,7 +179,7 @@ struct ProjectMoneyTab: View {
                          "The Host gave you \(grantedList(me!)) access. It starts working once banbe turns on team access.")
                  : app.T("Tiền, hoàn tiền và check-in chỉ dành cho người được Chủ sự kiện cấp quyền.",
                          "Money, refunds and check-in are for people the Host has given access."))
-                .font(.subheadline).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
+                .font(.app(.subheadline)).foregroundStyle(app.palette.ink2).multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: -8) {
                 ForEach(Array(holders.prefix(6).enumerated()), id: \.offset) { _, uid in
@@ -188,7 +188,7 @@ struct ProjectMoneyTab: View {
             }
             .accessibilityHidden(true)
             Text(holders.map { app.projectPersonName($0) }.joined(separator: ", "))
-                .font(.footnote).foregroundStyle(app.palette.ink3).multilineTextAlignment(.center)
+                .font(.app(.footnote)).foregroundStyle(app.palette.ink3).multilineTextAlignment(.center)
                 .accessibilityLabel(app.T("Người có quyền: ", "People with access: ") + holders.map { app.projectPersonName($0) }.joined(separator: ", "))
         }
         .padding(.vertical, 28).padding(.horizontal, 16)
@@ -221,12 +221,12 @@ struct ProjectDoorList: View {
                 Text(app.T("Check-in ở cửa", "Door check-in")).font(BanbeTheme.display(20)).accessibilityAddTraits(.isHeader)
                     // On the title: the list is the tab's only child, so an id on it merges into the tab's own.
                     .accessibilityIdentifier("project.door")
-                Text(app.T("\(inside)/\(total) người đã vào", "\(inside) of \(total) people in")).font(.subheadline.weight(.semibold))
+                Text(app.T("\(inside)/\(total) người đã vào", "\(inside) of \(total) people in")).font(.app(.subheadline).weight(.semibold))
                     .foregroundStyle(app.palette.ink2)
                     .accessibilityIdentifier("project.door.count")
                 Text(app.T("Chỉ có tên khách. Tiền và hoàn tiền vẫn do Chủ sự kiện làm. Mỗi lần check-in đều được ghi lại cho Chủ sự kiện.",
                            "Names only. Money and refunds stay with the Host. Every check-in is recorded for the Host."))
-                    .font(.footnote).foregroundStyle(app.palette.ink3).fixedSize(horizontal: false, vertical: true)
+                    .font(.app(.footnote)).foregroundStyle(app.palette.ink3).fixedSize(horizontal: false, vertical: true)
             }
             TextField(app.T("Tìm tên khách", "Search guests"), text: $query)
                 .textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -237,7 +237,7 @@ struct ProjectDoorList: View {
                 ProgressView().frame(maxWidth: .infinity)
             } else if shown.isEmpty {
                 Text(guests.isEmpty ? app.T("Chưa có khách đã xác nhận.", "No confirmed guests yet.") : app.T("Không có tên nào khớp.", "No names match."))
-                    .font(.subheadline).foregroundStyle(app.palette.ink2).frame(maxWidth: .infinity).padding(.vertical, 16)
+                    .font(.app(.subheadline)).foregroundStyle(app.palette.ink2).frame(maxWidth: .infinity).padding(.vertical, 16)
             } else {
                 ProjectRowsCard(items: shown) { g in row(g) }
                     .accessibilityElement(children: .contain)
@@ -250,20 +250,20 @@ struct ProjectDoorList: View {
     private func row(_ g: ProjectDoorGuest) -> some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(g.names.joined(separator: ", ")).font(.body.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+                Text(g.names.joined(separator: ", ")).font(.app(.body).weight(.semibold)).fixedSize(horizontal: false, vertical: true)
                 Text(app.T("\(g.party) người · \(min(g.inside, g.party)) đã vào", g.party == 1 ? "1 person · \(min(g.inside, 1)) in" : "\(g.party) people · \(min(g.inside, g.party)) in"))
-                    .font(.footnote).foregroundStyle(app.palette.ink2)
+                    .font(.app(.footnote)).foregroundStyle(app.palette.ink2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
             if g.allIn {
-                Label(app.T("Đã vào", "In"), systemImage: "checkmark.circle.fill").font(.subheadline.weight(.semibold))
+                Label(app.T("Đã vào", "In"), systemImage: "checkmark.circle.fill").font(.app(.subheadline).weight(.semibold))
                     .foregroundStyle(app.palette.ink2)
                     .frame(minHeight: 44)
                     .accessibilityIdentifier("project.door.in.\(g.bookingId)")
             } else {
                 Button { Task { await app.checkInProjectGuest(g.bookingId) } } label: {
-                    Text(app.T("Check-in", "Check in")).font(.subheadline.weight(.bold))
+                    Text(app.T("Check-in", "Check in")).font(.app(.subheadline).weight(.bold))
                         .padding(.horizontal, 14).frame(minHeight: 44)
                         .foregroundStyle(app.palette.paper).background(app.palette.ink, in: Capsule())
                 }
@@ -296,17 +296,17 @@ struct ProjectPaymentsList: View {
                 if let view {
                     Text(app.T("Đã xác nhận: ", "Confirmed: ") + EventMarket.formatMoney(view.confirmedAmount ?? 0, currency: "VND")
                          + app.T(" · \(view.confirmedSeats ?? 0) chỗ", " · \(view.confirmedSeats ?? 0) seats"))
-                        .font(.subheadline.weight(.semibold)).foregroundStyle(app.palette.ink2)
+                        .font(.app(.subheadline).weight(.semibold)).foregroundStyle(app.palette.ink2)
                         .accessibilityIdentifier("project.payments.confirmed")
                 }
                 Text(app.T("Kiểm tra tài khoản nhận tiền trước khi bấm. “Không thấy tiền” và từ chối vẫn do Chủ sự kiện làm. Mỗi lần xác nhận và mở ảnh đều được ghi lại.",
                            "Check the receiving account before you tap. “Can't find it” and rejecting stay with the Host. Every confirmation and every proof you open is recorded."))
-                    .font(.footnote).foregroundStyle(app.palette.ink3).fixedSize(horizontal: false, vertical: true)
+                    .font(.app(.footnote)).foregroundStyle(app.palette.ink3).fixedSize(horizontal: false, vertical: true)
             }
             if view == nil {
                 ProgressView().frame(maxWidth: .infinity)
             } else if rows.isEmpty {
-                Text(app.T("Không có khoản nào đang chờ.", "Nothing is waiting for a check.")).font(.subheadline).foregroundStyle(app.palette.ink2)
+                Text(app.T("Không có khoản nào đang chờ.", "Nothing is waiting for a check.")).font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
                     .frame(maxWidth: .infinity).padding(.vertical, 16)
                     .accessibilityIdentifier("project.payments.empty")
             } else {
@@ -321,20 +321,20 @@ struct ProjectPaymentsList: View {
     private func row(_ r: ProjectAwaitingPayment) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text(r.name).font(.body.weight(.semibold))
+                Text(r.name).font(.app(.body).weight(.semibold))
                 Spacer(minLength: 6)
-                Text(EventMarket.formatMoney(r.amount, currency: "VND")).font(.body.weight(.bold).monospacedDigit())
+                Text(EventMarket.formatMoney(r.amount, currency: "VND")).font(.app(.body).weight(.bold).monospacedDigit())
             }
             Text([app.T("\(r.qty) chỗ", r.qty == 1 ? "1 seat" : "\(r.qty) seats"), r.paymentRef.map { app.T("Mã \($0)", "Ref \($0)") }]
                     .compactMap { $0 }.joined(separator: " · "))
-                .font(.footnote).foregroundStyle(app.palette.ink2)
+                .font(.app(.footnote)).foregroundStyle(app.palette.ink2)
             HStack(spacing: 8) {
                 if r.hasProof {
                     Button {
                         Task { let url = await app.openProjectProof(r.bookingId); proof = ProofItem(id: r.bookingId, name: r.name, url: url) }
                     } label: {
                         Label(app.T("Xem ảnh chuyển khoản", "View transfer proof"), systemImage: "doc.text.magnifyingglass")
-                            .font(.subheadline.weight(.semibold)).padding(.horizontal, 12).frame(minHeight: 44)
+                            .font(.app(.subheadline).weight(.semibold)).padding(.horizontal, 12).frame(minHeight: 44)
                             .background(app.palette.blockInset, in: Capsule())
                     }
                     .buttonStyle(PressableButtonStyle())
@@ -342,7 +342,7 @@ struct ProjectPaymentsList: View {
                 }
                 Spacer(minLength: 0)
                 Button { Task { await app.confirmProjectPayment(r.bookingId) } } label: {
-                    Text(app.T("Đã nhận tiền", "Money received")).font(.subheadline.weight(.bold))
+                    Text(app.T("Đã nhận tiền", "Money received")).font(.app(.subheadline).weight(.bold))
                         .padding(.horizontal, 14).frame(minHeight: 44)
                         .foregroundStyle(app.palette.paper).background(app.palette.ink, in: Capsule())
                 }
@@ -366,7 +366,7 @@ struct ProjectProofSheet: View {
     var body: some View {
         CardSheet(title: app.T("Ảnh chuyển khoản", "Transfer proof"), closeID: "project.proof.close", fullHeight: true, onClose: close) {
             VStack(alignment: .leading, spacing: 12) {
-                Text(name).font(.headline)
+                Text(name).font(.app(.headline))
                 Group {
                     if let url {
                         AsyncImage(url: url) { phase in
@@ -386,7 +386,7 @@ struct ProjectProofSheet: View {
                 .accessibilityIdentifier("project.proof.image")
                 Text(app.T("Chỉ xem. Lần mở này đã được ghi lại cho Chủ sự kiện, và liên kết đóng sau \(ProjectLimits.shared.proofUrlSeconds) giây.",
                            "View only. This open was recorded for the Host, and the link closes after \(ProjectLimits.shared.proofUrlSeconds) seconds."))
-                    .font(.footnote).foregroundStyle(app.palette.ink3)
+                    .font(.app(.footnote)).foregroundStyle(app.palette.ink3)
             }
         }
         .accessibilityElement(children: .contain)

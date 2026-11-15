@@ -121,11 +121,11 @@ struct DashboardView: View {
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(app.T("Sự kiện của bạn đã được đăng", "Your event is live") + " 🎉").font(BanbeTheme.display(19))
-                    Text(e.name).font(.system(size: 12.5)).opacity(0.75).lineLimit(2)
+                    Text(e.name).font(.app(size: 12.5)).opacity(0.75).lineLimit(2)
                 }
                 Spacer(minLength: 0)
                 Button { withAnimation { liveEventID = nil } } label: {
-                    Image(systemName: "xmark").font(.system(size: 12, weight: .semibold))
+                    Image(systemName: "xmark").font(.app(size: 12, weight: .semibold))
                         .frame(width: 30, height: 30).background(app.palette.paper.opacity(0.6), in: Circle())
                 }
                 .buttonStyle(.plain)
@@ -141,7 +141,7 @@ struct DashboardView: View {
                     .buttonStyle(.plain).accessibilityIdentifier("dashboard.live.schedule")
             }
             if !liveMessage.isEmpty {
-                Text(liveMessage).font(.system(size: 12)).opacity(0.75)
+                Text(liveMessage).font(.app(size: 12)).opacity(0.75)
             }
         }
         .foregroundStyle(app.palette.ink)
@@ -154,7 +154,7 @@ struct DashboardView: View {
 
     private func livePill(_ title: String, filled: Bool) -> some View {
         Text(title)
-            .font(.system(size: 12.5, weight: .semibold))
+            .font(.app(size: 12.5, weight: .semibold))
             .lineLimit(1).minimumScaleFactor(0.85)
             .foregroundStyle(filled ? app.palette.paper : app.palette.ink)
             .padding(.horizontal, 14).padding(.vertical, 9)
@@ -226,8 +226,8 @@ struct DashboardView: View {
                         HStack {
                             Button { app.backFromDashboard() } label: {
                                 HStack(spacing: 6) {
-                                    Text("‹").font(.system(size: 14))
-                                    Text(backLabel).font(.system(size: 12))
+                                    Text("‹").font(.app(size: 14))
+                                    Text(backLabel).font(.app(size: 12))
                                         .accessibilityIdentifier("dashboard.backLabel")
                                 }
                             }
@@ -272,11 +272,11 @@ struct DashboardView: View {
                                 // name itself ("Team" is display-only text).
                                 if app.myOrganizerID != nil {
                                     Text(app.T("Bởi \(app.displayName) Team", "By \(app.displayName) Team"))
-                                        .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                                        .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
                                         .accessibilityIdentifier("dashboard.ownerLine")
                                 }
                                 Text(verifyLabel)
-                                    .font(.system(size: 10, weight: .semibold))
+                                    .font(.app(size: 10, weight: .semibold))
                                     .padding(.horizontal, 11).padding(.vertical, 5)
                                     .overlay(Capsule().stroke(
                                         event.orgTrusted || app.orgVerifyRequested ? app.palette.ink : app.palette.rule,
@@ -292,7 +292,7 @@ struct DashboardView: View {
                             Text(stats.sinceYear.map { year in
                                 app.T("Tổ chức từ \(year) ▪︎ \(stats.count) sự kiện", "Hosting since \(year) ▪︎ \(stats.count) events")
                             } ?? app.T("\(stats.count) sự kiện", "\(stats.count) events"))
-                            .font(.system(size: 12.5))
+                            .font(.app(size: 12.5))
                             .padding(.top, 14)
                         }
 
@@ -310,7 +310,7 @@ struct DashboardView: View {
                             Button(app.T("Hồ sơ công khai của tổ chức", "Organizer's public profile")) {
                                 app.openOrganizerProfile(organizerID: organizerID, back: .dashboard)
                             }
-                            .font(.system(size: 12.5, weight: .semibold))
+                            .font(.app(size: 12.5, weight: .semibold))
                             .frame(maxWidth: .infinity).padding(.vertical, 12)
                             .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
                             .foregroundStyle(app.palette.ink)
@@ -324,11 +324,11 @@ struct DashboardView: View {
                             HStack(spacing: 12) {
                                 Text(app.T("Xác minh hồ sơ để khách tin tưởng hơn.",
                                            "Get verified so guests trust you faster."))
-                                    .font(.system(size: 12.5))
+                                    .font(.app(size: 12.5))
                                     .lineSpacing(3)
                                 Spacer(minLength: 0)
                                 Button(app.T("Yêu cầu xác minh", "Request")) { app.requestVerify() }
-                                    .font(.system(size: 12.5, weight: .semibold))
+                                    .font(.app(size: 12.5, weight: .semibold))
                                     .foregroundStyle(app.palette.paper)
                                     .padding(.horizontal, 16).padding(.vertical, 9)
                                     .background(app.palette.ink, in: Capsule())
@@ -363,17 +363,17 @@ struct DashboardView: View {
                         if !app.myRemovedEvents.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(app.T("Đã bị banbe gỡ", "Removed by banbe"))
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.app(size: 13, weight: .semibold))
                                 ForEach(app.myRemovedEvents, id: \.id) { e in
                                     HStack(spacing: 8) {
-                                        Image(systemName: "eye.slash").font(.system(size: 13)).accessibilityHidden(true)
-                                        Text(e.name).font(.system(size: 14, weight: .medium)).lineLimit(1)
+                                        Image(systemName: "eye.slash").font(.app(size: 13)).accessibilityHidden(true)
+                                        Text(e.name).font(.app(size: 14, weight: .medium)).lineLimit(1)
                                     }
                                     .foregroundStyle(BanbeTheme.alert)
                                 }
                                 Text(app.T("Không còn hiển thị với khách. Lý do có trong Thông báo. Liên hệ banbe nếu bạn nghĩ đây là nhầm lẫn.",
                                            "No longer visible to guests. The reason is in your Notifications. Contact banbe if you think this is a mistake."))
-                                    .font(.system(size: 12)).opacity(0.7).fixedSize(horizontal: false, vertical: true)
+                                    .font(.app(size: 12)).opacity(0.7).fixedSize(horizontal: false, vertical: true)
                             }
                             .padding(14)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -394,11 +394,11 @@ struct DashboardView: View {
                                             Text(row.name).font(BanbeTheme.display(15))
                                             Spacer()
                                             Text(app.T("Cần chỉnh sửa", "Needs fixing"))
-                                                .font(.system(size: 10.5, weight: .semibold))
+                                                .font(.app(size: 10.5, weight: .semibold))
                                                 .foregroundStyle(BanbeTheme.alert)
                                         }
                                         Text(row.rejectionReason ?? "")
-                                            .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.8))
+                                            .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.8))
                                         // Remaining-resubmission-attempts
                                         // surfacing (migration 107) — a
                                         // banbe PRODUCT POLICY limit (2 per
@@ -409,11 +409,11 @@ struct DashboardView: View {
                                                  ? app.T("Còn \(resubmissionStatus.remaining) lần gửi lại trong 24 giờ.", "\(resubmissionStatus.remaining) resubmission(s) left in the next 24h.")
                                                  : app.T("Đã hết lượt gửi lại. Thử lại sau \(DashboardView.nextEligibleFormatter.string(from: resubmissionStatus.nextEligibleAt ?? Date())).",
                                                          "Resubmission limit reached. Try again after \(DashboardView.nextEligibleFormatter.string(from: resubmissionStatus.nextEligibleAt ?? Date()))."))
-                                                .font(.system(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                                                .font(.app(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.6))
                                                 .accessibilityIdentifier("dashboard.resubmitRemaining.\(row.id)")
                                         }
                                         Button(app.T("Sửa & gửi lại", "Fix & resubmit")) { app.goEditEvent(row) }
-                                            .font(.system(size: 11, weight: .semibold))
+                                            .font(.app(size: 11, weight: .semibold))
                                             .padding(.horizontal, 10).padding(.vertical, 6)
                                             .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule, lineWidth: 1))
                                             .buttonStyle(.plain)
@@ -439,10 +439,10 @@ struct DashboardView: View {
 
                         HStack(alignment: .firstTextBaseline) {
                             Text(app.T("Sự kiện sắp tới", "Upcoming events"))
-                                .font(.system(size: 11.5, weight: .semibold))
+                                .font(.app(size: 11.5, weight: .semibold))
                             Spacer()
                             Text("\(upcoming.count)" + app.T(" sự kiện", upcoming.count == 1 ? " event" : " events"))
-                                .font(.system(size: 10.5))
+                                .font(.app(size: 10.5))
                         }
                         .padding(.top, 24)
 
@@ -450,7 +450,7 @@ struct DashboardView: View {
                             if upcoming.isEmpty {
                                 Text(app.T("Bạn chưa có sự kiện nào sắp tới. Tạo bên dưới.",
                                            "No upcoming events yet. Create one below."))
-                                    .font(.system(size: 12.5))
+                                    .font(.app(size: 12.5))
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(16)
                             }
@@ -468,15 +468,15 @@ struct DashboardView: View {
                                             VStack(alignment: .leading, spacing: 2) {
                                                 if let phase = reminder(item) {
                                                     HStack(spacing: 3) {
-                                                        Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Color(hex: 0xE0A526))
+                                                        Image(systemName: "star.fill").font(.app(size: 9)).foregroundStyle(Color(hex: 0xE0A526))
                                                         Text(phase == .live ? app.T("Đang diễn ra", "Happening now") : app.T("Sắp diễn ra", "Starting soon"))
-                                                            .font(.system(size: 10, weight: .bold)).kerning(0.4).textCase(.uppercase)
+                                                            .font(.app(size: 10, weight: .bold)).kerning(0.4).textCase(.uppercase)
                                                     }
                                                     .foregroundStyle(Color(hex: 0x7A5200))
                                                 }
                                                 Text(item.name).font(BanbeTheme.display(15)).lineLimit(1)
                                                 Text(app.trStatus(app.stripKm(item.meta, event: item)))
-                                                    .font(.system(size: 11.5)).lineLimit(1)
+                                                    .font(.app(size: 11.5)).lineLimit(1)
                                             }
                                             Spacer(minLength: 0)
                                         }
@@ -485,7 +485,7 @@ struct DashboardView: View {
                                     .buttonStyle(.plain)
                                     addPhotoButton(for: item.key)
                                     Button(app.T("Điểm danh", "Check-in")) { app.openAttendance(item.key) }
-                                        .font(.system(size: 11, weight: reminder(item) != nil ? .bold : .semibold))
+                                        .font(.app(size: 11, weight: reminder(item) != nil ? .bold : .semibold))
                                         .foregroundStyle(reminder(item) != nil ? app.palette.paper : app.palette.ink)
                                         .padding(.horizontal, 10).padding(.vertical, reminder(item) != nil ? 7 : 6)
                                         .background(reminder(item) != nil ? app.palette.ink : .clear, in: RoundedRectangle(cornerRadius: 12))
@@ -507,7 +507,7 @@ struct DashboardView: View {
                         VStack(spacing: 0) {
                             if past.isEmpty {
                                 Text(app.T("Chưa có sự kiện nào đã qua.", "No past events yet."))
-                                    .font(.system(size: 12.5))
+                                    .font(.app(size: 12.5))
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(16)
                             }
@@ -521,7 +521,7 @@ struct DashboardView: View {
                                                 Text(item.name).font(BanbeTheme.display(15)).lineLimit(1)
                                                 Text(app.trStatus(app.stripKm(item.meta, event: item))
                                                      + " ▪︎ " + app.trStatus(EventLabels.ago(item.endedHoursAgo ?? 0)))
-                                                    .font(.system(size: 11.5)).lineLimit(1)
+                                                    .font(.app(size: 11.5)).lineLimit(1)
                                             }
                                             Spacer(minLength: 0)
                                         }
@@ -532,7 +532,7 @@ struct DashboardView: View {
                                     if app.hostRecapEnabled, app.myOrgEventSummaries.contains(where: { $0.id == item.key }) {
                                         Button { app.openHostRecap(item.key, back: .dashboard) } label: {
                                             Text(app.T("Tổng kết", "Recap"))
-                                                .font(.system(size: 11, weight: .semibold))
+                                                .font(.app(size: 11, weight: .semibold))
                                                 .padding(.horizontal, 10).padding(.vertical, 6)
                                                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule, lineWidth: 1))
                                                 .contentShape(Rectangle())
@@ -556,7 +556,7 @@ struct DashboardView: View {
 
                         if !app.eventPhotoUploadError.isEmpty {
                             Text(app.eventPhotoUploadError)
-                                .font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                                .font(.app(size: 12)).foregroundStyle(BanbeTheme.alert)
                                 .padding(.top, 10)
                         }
 
@@ -650,10 +650,10 @@ struct DashboardView: View {
             withAnimation(.easeInOut(duration: 0.2)) { open.wrappedValue.toggle() }
         } label: {
             HStack {
-                Text(title).font(.system(size: 11.5, weight: .semibold))
-                if count > 0 { Text("▪︎ \(count)").font(.system(size: 11.5)).opacity(0.65) }
+                Text(title).font(.app(size: 11.5, weight: .semibold))
+                if count > 0 { Text("▪︎ \(count)").font(.app(size: 11.5)).opacity(0.65) }
                 Spacer()
-                Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
+                Image(systemName: "chevron.right").font(.app(size: 11, weight: .semibold))
                     .rotationEffect(.degrees(open.wrappedValue ? 90 : 0))
             }
             .padding(.vertical, 4)
@@ -673,10 +673,10 @@ struct DashboardView: View {
             } label: {
                 HStack {
                     let n = app.orgTeamRoster.filter { $0.status != "removed" }.count
-                    Text(app.T("Đội ngũ", "Team")).font(.system(size: 11.5, weight: .semibold))
-                    if n > 0 { Text("▪︎ \(n)").font(.system(size: 11.5)).opacity(0.65) }
+                    Text(app.T("Đội ngũ", "Team")).font(.app(size: 11.5, weight: .semibold))
+                    if n > 0 { Text("▪︎ \(n)").font(.app(size: 11.5)).opacity(0.65) }
                     Spacer()
-                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
+                    Image(systemName: "chevron.right").font(.app(size: 11, weight: .semibold))
                         .rotationEffect(.degrees(teamOpen ? 90 : 0))
                 }
                 .padding(.vertical, 4)
@@ -694,11 +694,11 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 8) {
                 TextField(app.T("Tên người dùng (@handle)", "Handle (@handle)"), text: $app.orgTeamInviteHandle)
-                    .font(.system(size: 13)).accessibilityIdentifier("dashboard.team.inviteHandle")
+                    .font(.app(size: 13)).accessibilityIdentifier("dashboard.team.inviteHandle")
                 TextField(app.T("Vai trò công khai (VD: Điều phối)", "Public role (e.g. Coordinator)"), text: $app.orgTeamInviteRole)
-                    .font(.system(size: 13)).accessibilityIdentifier("dashboard.team.inviteRole")
+                    .font(.app(size: 13)).accessibilityIdentifier("dashboard.team.inviteRole")
                 if !app.orgTeamInviteError.isEmpty {
-                    Text(app.orgTeamInviteError).font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                    Text(app.orgTeamInviteError).font(.app(size: 11.5)).foregroundStyle(BanbeTheme.alert)
                 }
                 InkButton(title: app.orgTeamInviteBusy ? app.T("Đang gửi…", "Sending…") : app.T("Mời thành viên", "Invite member")) {
                     Task { await app.inviteOrganizerMember(organizerID: organizerID) }
@@ -712,16 +712,16 @@ struct DashboardView: View {
             ForEach(app.orgTeamRoster.filter { $0.status != "removed" }) { member in
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(member.profiles?.displayName ?? member.profiles?.handle ?? "").font(.system(size: 13))
+                        Text(member.profiles?.displayName ?? member.profiles?.handle ?? "").font(.app(size: 13))
                         let statusLabel = Self.statusLabelKeys[member.status].map { app.T($0.0, $0.1) } ?? member.status
                         Text("\(member.publicRole) ▪︎ \(statusLabel)" + (member.status == "accepted" && !member.publicVisible ? " ▪︎ \(app.T("đã ẩn công khai", "hidden from public"))" : ""))
-                            .font(.system(size: 11)).opacity(0.65)
+                            .font(.app(size: 11)).opacity(0.65)
                     }
                     Spacer()
                     Button(app.T("Xoá", "Remove")) {
                         Task { await app.removeOrganizerMember(membershipID: member.id, organizerID: organizerID) }
                     }
-                    .font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                    .font(.app(size: 12)).foregroundStyle(BanbeTheme.alert)
                     .accessibilityIdentifier("dashboard.team.remove.\(member.id)")
                 }
                 .foregroundStyle(app.palette.ink)
@@ -735,7 +735,7 @@ struct DashboardView: View {
             let acceptedMembers = app.orgTeamRoster.filter { $0.status == "accepted" }
             if !app.myOrgEventSummaries.isEmpty, !acceptedMembers.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(app.T("Ghi nhận đóng góp sự kiện", "Credit an event contribution")).font(.system(size: 11.5, weight: .semibold))
+                    Text(app.T("Ghi nhận đóng góp sự kiện", "Credit an event contribution")).font(.app(size: 11.5, weight: .semibold))
                     Picker(app.T("Sự kiện", "Event"), selection: $creditEventID) {
                         Text(app.T("Chọn sự kiện…", "Choose an event…")).tag("")
                         ForEach(app.myOrgEventSummaries, id: \.id) { e in Text(e.name).tag(e.id) }
@@ -772,7 +772,7 @@ struct DashboardView: View {
         let ruleColor = app.palette.rule
         PhotosPicker(selection: $photoPickerItem, matching: .images) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.app(size: 11, weight: .semibold))
                 .padding(.horizontal, 10).padding(.vertical, 6)
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(ruleColor, lineWidth: 1))
                 .opacity(busy ? 0.5 : 1)
@@ -803,18 +803,18 @@ struct PendingEventRow: View {
                 Text(row.name).font(BanbeTheme.display(15))
                 Spacer()
                 Text(app.T("Đang chờ Banbe duyệt", "Waiting for Banbe to review"))
-                    .font(.system(size: 10.5, weight: .semibold))
+                    .font(.app(size: 10.5, weight: .semibold))
                     .foregroundStyle(app.palette.ink.opacity(0.65))
             }
             if withdrawing {
                 VStack(alignment: .leading, spacing: 6) {
                     TextField(app.T("Lý do rút lại sự kiện…", "Reason for withdrawing…"), text: $reasonDraft)
-                        .font(.system(size: 12))
+                        .font(.app(size: 12))
                         .padding(8)
                         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .accessibilityIdentifier("dashboard.withdrawReason.\(row.id)")
                     if !app.withdrawEventError.isEmpty {
-                        Text(app.withdrawEventError).font(.system(size: 10.5)).foregroundStyle(BanbeTheme.alert)
+                        Text(app.withdrawEventError).font(.app(size: 10.5)).foregroundStyle(BanbeTheme.alert)
                     }
                     HStack(spacing: 8) {
                         Button(app.T("Xác nhận rút lại", "Confirm withdrawal")) {
@@ -823,7 +823,7 @@ struct PendingEventRow: View {
                                 if ok { withdrawing = false; reasonDraft = "" }
                             }
                         }
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.app(size: 11, weight: .semibold))
                         .foregroundStyle(app.palette.paper)
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(BanbeTheme.alert, in: RoundedRectangle(cornerRadius: 12))
@@ -833,7 +833,7 @@ struct PendingEventRow: View {
                         .accessibilityIdentifier("dashboard.withdrawConfirm.\(row.id)")
 
                         Button(app.T("Huỷ", "Cancel")) { withdrawing = false; reasonDraft = ""; app.withdrawEventError = "" }
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.app(size: 11, weight: .semibold))
                             .foregroundStyle(app.palette.ink.opacity(0.6))
                             .buttonStyle(.plain)
                             .accessibilityIdentifier("dashboard.withdrawCancel.\(row.id)")
@@ -843,7 +843,7 @@ struct PendingEventRow: View {
                 HStack(spacing: 14) {
                     Button { viewing = true } label: {
                         Text(app.T("Xem", "View"))
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.app(size: 12, weight: .semibold))
                             .padding(.horizontal, 16).frame(minHeight: 34)
                             .overlay(Capsule().stroke(app.palette.ink.opacity(0.5), lineWidth: 1))
                             .contentShape(Capsule())
@@ -853,7 +853,7 @@ struct PendingEventRow: View {
                     // Underlined: it's a tappable action, not a label.
                     Button { withdrawing = true } label: {
                         Text(app.T("Rút lại sự kiện", "Withdraw event"))
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.app(size: 12, weight: .semibold))
                             .underline()
                             .foregroundStyle(BanbeTheme.alert)
                             .frame(minHeight: 34)
@@ -897,7 +897,7 @@ struct PendingEventDetailSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(app.T("Banbe sẽ có quyết định trong vòng 7 ngày. Bạn có thể nhắc quản trị viên tối đa 2 lần cho mỗi sự kiện.",
                        "A decision will be made within 7 days. You can remind the admin up to twice per event."))
-                .font(.system(size: 12.5)).opacity(0.85)
+                .font(.app(size: 12.5)).opacity(0.85)
             if let used = remindCount {
                 let left = max(0, 2 - used)
                 Button {
@@ -918,7 +918,7 @@ struct PendingEventDetailSheet: View {
                         if remindBusy { ProgressView() }
                         Text(left > 0 ? app.T("Nhắc quản trị viên (còn \(left) lần)", "Remind admin (\(left) left)")
                                       : app.T("Đã nhắc tối đa 2 lần", "Reminded the maximum 2 times"))
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.app(size: 13, weight: .semibold))
                     }
                     .frame(maxWidth: .infinity).padding(.vertical, 12)
                     .background(left > 0 ? app.palette.ink : app.palette.ink.opacity(0.15), in: RoundedRectangle(cornerRadius: 12))
@@ -929,7 +929,7 @@ struct PendingEventDetailSheet: View {
                 .accessibilityIdentifier("dashboard.remindAdmin.\(row.id)")
             }
             if !remindMessage.isEmpty {
-                Text(remindMessage).font(.system(size: 11.5)).opacity(0.75)
+                Text(remindMessage).font(.app(size: 11.5)).opacity(0.75)
             }
         }
         .padding(14)
@@ -953,7 +953,7 @@ struct PendingEventDetailSheet: View {
                 .frame(height: 220)
                 if urls.count > 1 {
                     Text(app.T("\(urls.count) ảnh, vuốt để xem", "\(urls.count) photos, swipe to see"))
-                        .font(.system(size: 11)).opacity(0.6)
+                        .font(.app(size: 11)).opacity(0.6)
                 }
             }
         }
@@ -974,8 +974,8 @@ struct PendingEventDetailSheet: View {
         Group {
             if let value, !value.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(label).font(.system(size: 11)).opacity(0.6)
-                    Text(value).font(.system(size: 14))
+                    Text(label).font(.app(size: 11)).opacity(0.6)
+                    Text(value).font(.app(size: 14))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -989,7 +989,7 @@ struct PendingEventDetailSheet: View {
                     photoStrip
                     Text(row.name).font(BanbeTheme.display(24))
                     Label(app.T("Đang chờ Banbe duyệt", "Waiting for Banbe to review"), systemImage: "hourglass")
-                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.honey)
+                        .font(.app(size: 12, weight: .semibold)).foregroundStyle(app.palette.honey)
                     remindBlock
                     line(app.T("Thời gian", "When"), whenText)
                     line(app.T("Khu vực", "Area"), row.area)
@@ -1047,7 +1047,7 @@ struct HostIntroView: View {
                         BackLink(label: app.T("Tài khoản", "Account")) { app.goProfile() }
 
                         Text(app.T("Dành cho người tổ chức", "For organizers"))
-                            .font(.system(size: 11.5))
+                            .font(.app(size: 11.5))
                             .padding(.top, 16)
                         Text(app.T("Trang tổ chức của bạn, trước khi bạn đăng gì",
                                    "Your organizer page, before you post anything"))
@@ -1057,32 +1057,32 @@ struct HostIntroView: View {
                             "Đây là trang khách sẽ thấy khi họ bấm vào tên bạn. Sự kiện, ảnh và số liệu sẽ tự điền vào sau mỗi lần bạn tổ chức.",
                             "This is what guests see when they tap your name. Events, photos and numbers fill in as you host."
                         ))
-                        .font(.system(size: 13.5))
+                        .font(.app(size: 13.5))
                         .lineSpacing(3)
                         .padding(.top, 10)
 
                         VStack(alignment: .leading, spacing: 0) {
                             HStack(alignment: .firstTextBaseline) {
-                                Text(app.T("Khách sẽ thấy", "Guests will see")).font(.system(size: 10.5))
+                                Text(app.T("Khách sẽ thấy", "Guests will see")).font(.app(size: 10.5))
                                 Spacer()
-                                Text("banbe").font(.system(size: 10.5))
+                                Text("banbe").font(.app(size: 10.5))
                             }
                             HStack(alignment: .firstTextBaseline, spacing: 9) {
                                 Text(app.orgRegName.isEmpty ? "Bếp Nhỏ" : app.orgRegName)
                                     .font(BanbeTheme.display(24))
                                 Text(app.T("Mới", "New"))
-                                    .font(.system(size: 11))
+                                    .font(.app(size: 11))
                                     .padding(.horizontal, 10).padding(.vertical, 3)
                                     .background(app.palette.ink.opacity(0.1), in: Capsule())
                             }
                             .padding(.top, 12)
                             Text(app.orgRegIg.isEmpty ? "@bepnho.saigon" : app.orgRegIg)
-                                .font(.system(size: 12.5))
+                                .font(.app(size: 12.5))
                                 .padding(.top, 5)
                             Text(app.orgRegDesc.isEmpty
                                  ? app.T("Mình nấu cho người lạ từ 2021…", "I cook for strangers since 2021…")
                                  : app.orgRegDesc)
-                                .font(.system(size: 13))
+                                .font(.app(size: 13))
                                 .lineSpacing(3)
                                 .padding(.top, 12)
                             HStack(spacing: 14) {
@@ -1090,9 +1090,9 @@ struct HostIntroView: View {
                                     .opacity(0.75)
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(app.T("Chưa có sự kiện nào", "No events yet"))
-                                        .font(.system(size: 13.5, weight: .semibold))
+                                        .font(.app(size: 13.5, weight: .semibold))
                                     Text(app.T("Sự kiện đầu tiên của bạn sẽ nằm ở đây.", "Your first event will sit here."))
-                                        .font(.system(size: 11.5))
+                                        .font(.app(size: 11.5))
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1107,9 +1107,9 @@ struct HostIntroView: View {
                         VStack(spacing: 0) {
                             ForEach(Array(points.enumerated()), id: \.offset) { index, point in
                                 HStack(alignment: .firstTextBaseline, spacing: 16) {
-                                    Text(point.0).font(.system(size: 13.5, weight: .semibold))
+                                    Text(point.0).font(.app(size: 13.5, weight: .semibold))
                                     Spacer(minLength: 0)
-                                    Text(point.1).font(.system(size: 12.5)).multilineTextAlignment(.trailing)
+                                    Text(point.1).font(.app(size: 12.5)).multilineTextAlignment(.trailing)
                                 }
                                 .padding(.vertical, 13)
                                 if index < points.count - 1 { Divider().overlay(app.palette.rule) }
@@ -1119,7 +1119,7 @@ struct HostIntroView: View {
 
                         Text(app.T("banbe duyệt sự kiện đầu tiên trong 48 giờ. Sau đó bạn đăng trực tiếp.",
                                    "banbe reviews your first event within 48 hours. After that you post directly."))
-                            .font(.system(size: 11.5))
+                            .font(.app(size: 11.5))
                             .lineSpacing(3)
                             .padding(.top, 16)
                     }

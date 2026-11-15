@@ -122,7 +122,7 @@ struct LoginView: View {
                         } label: {
                             VStack(spacing: 6) {
                                 Text(option == .login ? app.T("Đăng nhập", "Log in") : app.T("Đăng ký", "Sign up"))
-                                    .font(.system(size: 11.5, weight: mode == option ? .semibold : .regular))
+                                    .font(.app(size: 11.5, weight: mode == option ? .semibold : .regular))
                                 Rectangle()
                                     .fill(mode == option ? app.palette.ink : .clear)
                                     .frame(height: 2)
@@ -153,7 +153,7 @@ struct LoginView: View {
                     "Một tài khoản cho tất cả. Muốn tổ chức sự kiện, bạn chỉ cần bật chế độ tổ chức trong Tài khoản.",
                     "One account for everything. To host events, just switch on organizer mode from your Account."
                 ))
-                .font(.system(size: 13.5))
+                .font(.app(size: 13.5))
                 .lineSpacing(3)
                 .padding(.top, 12)
 
@@ -186,7 +186,7 @@ struct LoginView: View {
                         .opacity(0.4)
                         .accessibilityIdentifier("login.facebook")
                     Text(app.T("Đăng nhập Facebook đang được phát triển.", "Facebook login is under development."))
-                        .font(.system(size: 11.5))
+                        .font(.app(size: 11.5))
                         .foregroundStyle(app.palette.ink.opacity(0.7))
                         .frame(maxWidth: .infinity)
                         .accessibilityIdentifier("login.facebookNote")
@@ -221,7 +221,7 @@ struct LoginView: View {
                         if showEmailFormatError {
                             Text(app.T("Email chưa đúng định dạng (ví dụ: ban@email.com)",
                                        "That doesn't look like an email address (e.g. ban@email.com)"))
-                                .font(.system(size: 12))
+                                .font(.app(size: 12))
                                 .foregroundStyle(BanbeTheme.alert)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .accessibilityIdentifier("login.emailError")
@@ -245,7 +245,7 @@ struct LoginView: View {
                         Button(app.T("Quên mật khẩu?", "Forgot password?")) {
                             Task { await sendReset() }
                         }
-                        .font(.system(size: 12))
+                        .font(.app(size: 12))
                         .foregroundStyle(app.palette.ink.opacity(0.75))
                         .frame(maxWidth: .infinity, alignment: .trailing)
                         .padding(.top, 8)
@@ -278,7 +278,7 @@ struct LoginView: View {
                                 .fontWeight(.semibold)
                                 .underline()
                         )
-                        .font(.system(size: 12))
+                        .font(.app(size: 12))
                         .onTapGesture { app.openPolicy() }
                     }
                     .padding(.top, 14)
@@ -309,7 +309,7 @@ struct LoginView: View {
                     // account — the endpoint won't say, on purpose.
                     Text(app.T("Nếu email đó có tài khoản, chúng tôi đã gửi link đặt lại mật khẩu.",
                                "If that email has an account, we've sent it a reset link."))
-                        .font(.system(size: 12))
+                        .font(.app(size: 12))
                         .frame(maxWidth: .infinity)
                         .multilineTextAlignment(.center)
                         .padding(.top, 12)
@@ -318,14 +318,14 @@ struct LoginView: View {
                 if auth.codeSent {
                     Text(app.T("Đã gửi mã tới email của bạn. Nhập mã để tiếp tục.",
                                "A code was sent to your email. Enter it to continue."))
-                        .font(.system(size: 12))
+                        .font(.app(size: 12))
                         .frame(maxWidth: .infinity)
                         .multilineTextAlignment(.center)
                         .padding(.top, 12)
                     Button(app.T("Dùng email khác", "Use a different email")) {
                         resetFormState()
                     }
-                    .font(.system(size: 12))
+                    .font(.app(size: 12))
                     .frame(maxWidth: .infinity)
                     .padding(.top, 6)
                     .buttonStyle(.plain)
@@ -333,7 +333,7 @@ struct LoginView: View {
 
                 if let error = localError.isEmpty ? (emailIssue == nil ? auth.errorMessage : nil) : localError {
                     Text(error)
-                        .font(.system(size: 12))
+                        .font(.app(size: 12))
                         .foregroundStyle(BanbeTheme.alert)
                         .frame(maxWidth: .infinity)
                         .multilineTextAlignment(.center)
@@ -362,7 +362,7 @@ struct LoginView: View {
             resetFormState()
         } label: {
             Text(label)
-                .font(.system(size: 12, weight: method == option ? .semibold : .regular))
+                .font(.app(size: 12, weight: method == option ? .semibold : .regular))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 9)
                 .background(method == option ? app.palette.ink.opacity(0.1) : .clear, in: Capsule())
@@ -378,7 +378,7 @@ struct LoginView: View {
             action()
         } label: {
             Text(title)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.app(size: 13, weight: .semibold))
                 .padding(.horizontal, 12).frame(minHeight: 34)
                 .background(app.palette.field, in: Capsule())
                 .overlay(Capsule().stroke(app.palette.rule))
@@ -458,7 +458,7 @@ struct LoginView: View {
     private func oauthButton(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.app(size: 14, weight: .semibold))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 13)
                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))

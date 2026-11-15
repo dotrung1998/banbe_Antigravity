@@ -81,7 +81,9 @@ struct EventDetailView: View {
 
     // Airbnb-style layout: the photo is a fixed backdrop that fades out while the rounded info sheet scrolls up over it.
     /// 320 (was 400, note 68): with the sheet's overlap, Date / Time / Place, the Host row and the CTA fit a 6.1" phone.
-    private let heroHeight: CGFloat = 320
+    private var heroHeight: CGFloat { isV23 ? 330 : 320 }
+    /// v2.3 (note 81, switch home_v23 on top of simple_shell): the prototype's layout, same data and gestures.
+    private var isV23: Bool { app.homeV23Enabled }
     private let sheetOverlap: CGFloat = 40
     // Matches the iPhone's own screen-corner curvature (~47-55pt on current models).
     private let sheetRadius: CGFloat = 46
@@ -93,7 +95,7 @@ struct EventDetailView: View {
     /// Only the part of the offset the photo parallax/fade and the title hand-off read (clamped past the hero), so a
     /// scroll frame below the hero no longer re-renders this whole page; the raw offset (tab spy) is kept apart.
     @State private var scrollOffset: CGFloat = 0
-    private final class RawOffset { var y: CGFloat = 0 }
+    private final class RawOffset { var y: CGFloat = 0; var vh: CGFloat = 0 }
     @State private var raw = RawOffset()
     /// V8 tabs (note 75): how far the content can scroll, the sections' tops, the lit tab, a tapped tab held until the
     /// reader scrolls themselves, and the probe's one-off scroll request.
@@ -122,6 +124,18 @@ struct EventDetailView: View {
     @State private var entered = false
     /// Status line from the stub's calendar tiles ("Added to your banbe Schedule…"), shown under the stub.
     @State private var planMessage: String?
+    // v2.3 (note 81): the bar's two sizes, the reading progress (its own observable so a scroll frame only redraws the
+    // line), the sections revealed so far, the extra tickets being added after a hold, the stamp's slam counter, a
+    // clock for the held stamp's countdown, and when this page appeared (a stamp that arrives with the first load
+    // is not a change).
+    @State private var barCompact = true
+    @State private var v23Progress = V23ProgressModel()
+    @State private var revealed: Set<String> = []
+    @State private var revealAll = false
+    @State private var addQty: Int?
+    @State private var stampPlay = 0
+    @State private var nowTick = Date()
+    @State private var appearedAt = Date()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Where the cover photo actually was on screen the moment a close began (drag pose included). The close then
     /// runs from here straight into the card — the same path as the Back button — instead of unwinding the drag
@@ -168,7 +182,8 @@ struct EventDetailView: View {
     private var heroScreenFrame: CGRect {
         let f = heroFrame
         guard closeStart == nil else { return f }
-        let parallax = min(max(scrollOffset, 0), heroHeight) * 0.3 * zoomT
+        // v2.3: the hero scrolls with the page (the art inside it drifts, see `v23HeroBackdrop`).
+        let parallax = isV23 ? max(scrollOffset, 0) * zoomT : min(max(scrollOffset, 0), heroHeight) * 0.3 * zoomT
         return dragPosed(f.offsetBy(dx: 0, dy: -parallax))
     }
     private func closeAnimated() {
@@ -270,6 +285,56 @@ struct EventDetailView: View {
     }
 
     var body: some View {
+        Group {
+            if isV23 { v23Stack } else { classicStack }
+        }
+        // No card to come from (Map): the whole screen grows from / shrinks toward the middle of the screen.
+        .scaleEffect(centerPose ? 0.84 + 0.16 * zoomT : 1)
+        .onAppear {
+            // Coming BACK (host page, chat, Reserve…), not a fresh open: everything is simply already there, at the
+            // same scroll position — no grow-in, no fade, no pop.
+            appearedAt = Date()
+            revealAll = !app.eventOpening || isPreview || reduceMotion
+            noteStamp()
+            guard app.eventOpening, !isPreview else {
+                var t = Transaction(); t.disablesAnimations = true
+                withTransaction(t) { presented = true; contentShown = true; entered = true }
+                return
+            }
+            DispatchQueue.main.async {
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.9)) { presented = true }
+                withAnimation(.easeOut(duration: 0.36).delay(zoomOrigin == nil ? 0 : 0.2)) { contentShown = true }
+                entered = true
+            }
+        }
+        .onDisappear { if app.eventDismissProgress != 0 { app.eventDismissProgress = 0 } }
+        .sheet(isPresented: $shareConfirmOpen) { shareConfirmSheet }
+        .sheet(isPresented: $introIncludedSheetOpen) {
+            CardSheet(title: app.T("Giới thiệu & Bao gồm", "About & Included"),
+                      closeID: "event.includedSheet.close",
+                      onClose: { introIncludedSheetOpen = false }) { introIncludedSheetContent }
+        }
+        // STAGE D (2026-09-25) — re-fetched whenever the viewed event
+        // changes (this view can be reached repeatedly for different
+        // events without ever being torn down, e.g. via `goEvent`).
+        .task(id: event.key) { if !isPreview { await app.loadEventPhotos(eventID: event.key) } }
+        .task(id: event.key) { if !isPreview { await app.loadEventOrgStats(forEventKey: event.key) } }
+        // This event's own live seat fill, however the screen was reached (note 70).
+        .task(id: event.key) { if !isPreview { await app.loadPublicEventFill(ids: [event.key]) } }
+        // Reservation criteria (migration 162): small per-event read; only a
+        // restricted event triggers the eligibility pre-check (Everyone = no
+        // extra calls/UI). Re-runs when the guest saves new preferences.
+        .task(id: "\(event.key)|\(app.eventPrefsVersion)|\(app.isSignedIn)") {
+            guard !isPreview else { return }
+            app.reserveEligibilityBlock = nil
+            await app.loadEventCriteria(eventKey: event.key)
+            if app.isSignedIn, let c = app.eventCriteriaByKey[event.key], !c.isEveryone {
+                await app.recheckReservationEligibility(eventKey: event.key)
+            }
+        }
+    }
+
+    private var classicStack: some View {
         ZStack(alignment: .top) {
             // The page background and everything on it fade in AFTER the photo has started growing out of the card
             // (and fade out first when closing), so it reads as the card's photo expanding, not a screen on top.
@@ -319,18 +384,7 @@ struct EventDetailView: View {
                     // Remembers the offset per event and, when coming back (not a fresh open), puts it straight back.
                     // Note 75: also the live offset on every iOS version (KVO keeps reporting during a drag, note 06) and
                     // the tabs' scroll-to.
-                    .background(ScaffoldScrollProbe(restoreOffsetY: app.eventOpening || isPreview ? nil : app.eventScrollOffsets[event.key],
-                                                    onOffset: { [key = event.key, isPreview] y in if !isPreview { app.eventScrollOffsets[key] = y } },
-                                                    onChange: { _, userDriven in if userDriven && tabLock != nil { tabLock = nil } },
-                                                    onScrollMetrics: { y, content, viewport in
-                                                        raw.y = y
-                                                        let capped = min(y, topInset + heroHeight + 2)
-                                                        if scrollOffset != capped { scrollOffset = capped }
-                                                        let m = max(0, content - viewport)
-                                                        if maxScroll != m { maxScroll = m }
-                                                        spyTabs()
-                                                    },
-                                                    scrollRequest: scrollRequest))
+                    .background(scrollProbe)
                 }
                 .coordinateSpace(name: "eventScroll")
                 .scrollDisabled(isDismissDragging)
@@ -388,47 +442,6 @@ struct EventDetailView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .ignoresSafeArea(edges: .bottom)
                 .accessibilityHidden(true)
-        }
-        // No card to come from (Map): the whole screen grows from / shrinks toward the middle of the screen.
-        .scaleEffect(centerPose ? 0.84 + 0.16 * zoomT : 1)
-        .onAppear {
-            // Coming BACK (host page, chat, Reserve…), not a fresh open: everything is simply already there, at the
-            // same scroll position — no grow-in, no fade, no pop.
-            guard app.eventOpening, !isPreview else {
-                var t = Transaction(); t.disablesAnimations = true
-                withTransaction(t) { presented = true; contentShown = true; entered = true }
-                return
-            }
-            DispatchQueue.main.async {
-                withAnimation(.spring(response: 0.6, dampingFraction: 0.9)) { presented = true }
-                withAnimation(.easeOut(duration: 0.36).delay(zoomOrigin == nil ? 0 : 0.2)) { contentShown = true }
-                entered = true
-            }
-        }
-        .onDisappear { if app.eventDismissProgress != 0 { app.eventDismissProgress = 0 } }
-        .sheet(isPresented: $shareConfirmOpen) { shareConfirmSheet }
-        .sheet(isPresented: $introIncludedSheetOpen) {
-            CardSheet(title: app.T("Giới thiệu & Bao gồm", "About & Included"),
-                      closeID: "event.includedSheet.close",
-                      onClose: { introIncludedSheetOpen = false }) { introIncludedSheetContent }
-        }
-        // STAGE D (2026-09-25) — re-fetched whenever the viewed event
-        // changes (this view can be reached repeatedly for different
-        // events without ever being torn down, e.g. via `goEvent`).
-        .task(id: event.key) { if !isPreview { await app.loadEventPhotos(eventID: event.key) } }
-        .task(id: event.key) { if !isPreview { await app.loadEventOrgStats(forEventKey: event.key) } }
-        // This event's own live seat fill, however the screen was reached (note 70).
-        .task(id: event.key) { if !isPreview { await app.loadPublicEventFill(ids: [event.key]) } }
-        // Reservation criteria (migration 162): small per-event read; only a
-        // restricted event triggers the eligibility pre-check (Everyone = no
-        // extra calls/UI). Re-runs when the guest saves new preferences.
-        .task(id: "\(event.key)|\(app.eventPrefsVersion)|\(app.isSignedIn)") {
-            guard !isPreview else { return }
-            app.reserveEligibilityBlock = nil
-            await app.loadEventCriteria(eventKey: event.key)
-            if app.isSignedIn, let c = app.eventCriteriaByKey[event.key], !c.isEveryone {
-                await app.recheckReservationEligibility(eventKey: event.key)
-            }
         }
     }
 
@@ -510,7 +523,7 @@ struct EventDetailView: View {
             VStack(alignment: .leading, spacing: BanbeTheme.Space.m) {
                 // Plain words + this viewer's result (note 70); an unmet result is the card below, with its action.
                 criteriaLine(c.plain(vi: !app.isEN) ?? "")
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("event.criteria.summary")
                 if let block = app.reserveEligibilityBlock {
@@ -538,11 +551,11 @@ struct EventDetailView: View {
                 CatalogPhoto(path: event.img, height: 64, width: 64, cornerRadius: 12)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(event.name).font(BanbeTheme.display(15))
-                    Text(event.when).font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    Text(event.when).font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
                 }
             }
             Text(app.T("Sẽ hiển thị dưới dạng story trong 24 giờ.", "This will be visible as a story for 24 hours."))
-                .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
+                .font(.app(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
             HStack(spacing: 8) {
                 Button(app.T("Hủy", "Cancel")) { shareConfirmOpen = false }
                     .frame(maxWidth: .infinity).padding(.vertical, 13)
@@ -592,9 +605,9 @@ struct EventDetailView: View {
         HStack(spacing: collapsed ? 0 : 8) {
             Button { if let preview { preview.onBack() } else { closeAnimated() } } label: {
                 HStack(spacing: 3) {
-                    Image(systemName: "chevron.left").font(.system(size: 15, weight: .semibold))
+                    Image(systemName: "chevron.left").font(.app(size: 15, weight: .semibold))
                     if !collapsed {
-                        Text(preview?.backLabel ?? backLabel).font(.system(size: 15, weight: .semibold)).lineLimit(1).frame(maxWidth: 124, alignment: .leading)
+                        Text(preview?.backLabel ?? backLabel).font(.app(size: 15, weight: .semibold)).lineLimit(1).frame(maxWidth: 124, alignment: .leading)
                             .fixedSize(horizontal: true, vertical: false)
                     }
                 }
@@ -631,7 +644,7 @@ struct EventDetailView: View {
         .overlay(alignment: .topTrailing) {
             if app.sharedFlash || linkCopied || zaloCopied {
                 Text(zaloCopied ? app.T(CoreLoops.zaloCopied.vi, CoreLoops.zaloCopied.en) : app.T("Đã sao chép link", "Link copied"))
-                    .font(.system(size: 12))
+                    .font(.app(size: 12))
                     .foregroundStyle(app.palette.ink)
                     .padding(.horizontal, 12).padding(.vertical, 6)
                     .background(app.palette.paper.opacity(0.94), in: Capsule())
@@ -648,7 +661,7 @@ struct EventDetailView: View {
 
     private func discLabel(_ symbol: String) -> some View {
         Image(systemName: symbol)
-            .font(.system(size: 17, weight: .semibold))
+            .font(.app(size: 17, weight: .semibold))
             .frame(width: collapsed ? 44 : 40, height: collapsed ? 44 : 40)
             .modifier(ControlChrome(collapsed: collapsed, clay: app.palette.clay, shape: AnyShape(Circle())))
             .contentShape(Circle())
@@ -774,7 +787,11 @@ struct EventDetailView: View {
         }
     }
     /// The offset at which each visible section sits right under the tab row.
-    private var tabTops: [Double] { tabIDs.map { Double((sectionTops[$0] ?? 0) - tabRowHeight - BanbeTheme.Space.m) } }
+    private var tabTops: [Double] {
+        // v2.3: the glass nav (48 + the 40 pt tab row) ends 86 pt under the safe area.
+        let lead = isV23 ? 98 : tabRowHeight + BanbeTheme.Space.m
+        return tabIDs.map { Double((sectionTops[$0] ?? 0) - lead) }
+    }
 
     private func spyTabs() {
         if let lock = tabLock { if activeTab != lock { activeTab = lock }; return }
@@ -803,7 +820,7 @@ struct EventDetailView: View {
                         let on = activeTab == id
                         Button { goTab(id) } label: {
                             Text(tabLabel(id))
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.app(size: 14, weight: .semibold))
                                 .foregroundStyle(on ? app.palette.paper : app.palette.ink)
                                 .padding(.horizontal, 14)
                                 .frame(minHeight: 40)
@@ -1003,7 +1020,7 @@ struct EventDetailView: View {
     /// V8 section headings: small caps over each section.
     private func sectionLabel(_ text: String) -> some View {
         Text(text.uppercased())
-            .font(.system(size: 12, weight: .bold)).tracking(0.96)
+            .font(.app(size: 12, weight: .bold)).tracking(0.96)
             .foregroundStyle(app.palette.ink3)
             .accessibilityAddTraits(.isHeader)
     }
@@ -1013,13 +1030,13 @@ struct EventDetailView: View {
         VStack(alignment: .leading, spacing: BanbeTheme.Space.s) {
             ticketStub
             if let planMessage {
-                Text(planMessage).font(.footnote).foregroundStyle(app.palette.ink2)
+                Text(planMessage).font(.app(.footnote)).foregroundStyle(app.palette.ink2)
                     .padding(.horizontal, 6)
                     .transition(.opacity)
                     .accessibilityIdentifier("event.plan.message")
             }
             if let note = venueTimeNote {
-                Text(note).font(.footnote).foregroundStyle(app.palette.ink3)
+                Text(note).font(.app(.footnote)).foregroundStyle(app.palette.ink3)
                     .padding(.horizontal, 6)
                     .accessibilityIdentifier("event.fact.venueTime")
             }
@@ -1045,9 +1062,9 @@ struct EventDetailView: View {
                         if let b = stubBlock {
                             // Note 77: a bigger block so the row has no empty right half.
                             VStack(spacing: 4) {
-                                Text(b.month).font(.system(size: 13, weight: .bold)).tracking(1.04)
+                                Text(b.month).font(.app(size: 13, weight: .bold)).tracking(1.04)
                                 Text(b.day).font(BanbeTheme.display(46).weight(.heavy))
-                                Text(b.weekday).font(.system(size: 12.5, weight: .bold)).tracking(0.8).lineLimit(1).minimumScaleFactor(0.8)
+                                Text(b.weekday).font(.app(size: 12.5, weight: .bold)).tracking(0.8).lineLimit(1).minimumScaleFactor(0.8)
                             }
                             .foregroundStyle(.white)
                             .padding(.horizontal, 16).padding(.vertical, 14)
@@ -1068,7 +1085,7 @@ struct EventDetailView: View {
                             }
                             if let cd = stubCountdown {
                                 Label(cd, systemImage: "clock")
-                                    .font(.system(size: 12.5, weight: .bold))
+                                    .font(.app(size: 12.5, weight: .bold))
                                     .foregroundStyle(app.palette.clay)
                                     .padding(.horizontal, 12).padding(.vertical, 7)
                                     .background(app.palette.clayBg, in: Capsule())
@@ -1084,12 +1101,12 @@ struct EventDetailView: View {
                     .padding(.horizontal, 18).padding(.top, 18).padding(.bottom, 14)
                 }
                 HStack(spacing: 11) {
-                    Image(systemName: "mappin").font(.system(size: 19, weight: .semibold)).foregroundStyle(app.palette.clay)
+                    Image(systemName: "mappin").font(.app(size: 19, weight: .semibold)).foregroundStyle(app.palette.clay)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(placeLine.isEmpty ? app.T("Địa điểm", "Place") : placeLine)
-                            .font(.system(size: 16, weight: .bold)).lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
-                        Text(placeSub).font(.system(size: 12.5)).foregroundStyle(app.palette.ink2)
+                            .font(.app(size: 16, weight: .bold)).lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                        Text(placeSub).font(.app(size: 12.5)).foregroundStyle(app.palette.ink2)
                             .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                     }
                     .accessibilityElement(children: .combine)
@@ -1102,7 +1119,7 @@ struct EventDetailView: View {
                             openURL(mapsURL)
                         } label: {
                             Label(app.T("Chỉ đường", "Directions"), systemImage: "location")
-                                .font(.system(size: 13.5, weight: .bold))
+                                .font(.app(size: 13.5, weight: .bold))
                                 .foregroundStyle(app.palette.paper)
                                 .padding(.horizontal, 14)
                                 .frame(minHeight: 44)
@@ -1128,7 +1145,7 @@ struct EventDetailView: View {
                         if !event.price.isEmpty {
                             HStack(alignment: .firstTextBaseline, spacing: 6) {
                                 Text(app.trStatus(event.price)).font(BanbeTheme.display(27).weight(.heavy))
-                                if !event.isFree { Text(app.T("/ vé", "/ ticket")).font(.system(size: 14)).foregroundStyle(app.palette.ink2) }
+                                if !event.isFree { Text(app.T("/ vé", "/ ticket")).font(.app(size: 14)).foregroundStyle(app.palette.ink2) }
                             }
                             .accessibilityElement(children: .combine)
                             .accessibilityIdentifier("event.price")
@@ -1136,7 +1153,7 @@ struct EventDetailView: View {
                         Spacer(minLength: 0)
                         if let pill = seatPill {
                             Text(pill.text)
-                                .font(.system(size: 14, weight: .bold))
+                                .font(.app(size: 14, weight: .bold))
                                 .foregroundStyle(pill.fg)
                                 .padding(.horizontal, 14).padding(.vertical, 9)
                                 .background(pill.bg, in: Capsule())
@@ -1170,7 +1187,7 @@ struct EventDetailView: View {
             FlowRow(spacing: BanbeTheme.Space.s) {
                 if !app.trStatus(event.cat).isEmpty {
                     Text(app.trStatus(event.cat).uppercased())
-                        .font(.footnote.weight(.semibold)).tracking(0.5)
+                        .font(.app(.footnote).weight(.semibold)).tracking(0.5)
                         .foregroundStyle(Color(red: 0.106, green: 0.098, blue: 0.086))
                         .padding(.horizontal, 12).padding(.vertical, 4)
                         .background(Color.white.opacity(0.92), in: Capsule())
@@ -1178,7 +1195,7 @@ struct EventDetailView: View {
                 }
                 if let age = facts.minAge {
                     Text(age.value)
-                        .font(.footnote.weight(.semibold))
+                        .font(.app(.footnote).weight(.semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 11).padding(.vertical, 3)
                         .overlay(Capsule().stroke(Color.white.opacity(0.85), lineWidth: 1))
@@ -1187,7 +1204,7 @@ struct EventDetailView: View {
                 }
                 if event.inviteOnly {
                     Text(app.T("Riêng tư · theo lời mời", "Private · invite only"))
-                        .font(.footnote.weight(.semibold))
+                        .font(.app(.footnote).weight(.semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 12).padding(.vertical, 4)
                         .background(app.palette.clay.opacity(0.85), in: Capsule())
@@ -1217,7 +1234,7 @@ struct EventDetailView: View {
         VStack(alignment: .leading, spacing: BanbeTheme.Space.xl) {
             if let shareStoryMessage {
                 Text(shareStoryMessage)
-                    .font(.footnote)
+                    .font(.app(.footnote))
                     .foregroundStyle(app.palette.ink3)
             }
 
@@ -1259,16 +1276,16 @@ struct EventDetailView: View {
                 if let preview {
                     if preview.photos.isEmpty {
                         Text(app.T("Chưa có ảnh nào cho sự kiện này.", "No photos for this event yet."))
-                            .font(.footnote).foregroundStyle(app.palette.ink3)
+                            .font(.app(.footnote)).foregroundStyle(app.palette.ink3)
                     } else {
                         previewPhotoStrip(preview.photos)
                     }
                 } else if app.eventPhotosLoading {
                     Text(app.T("Đang tải…", "Loading…"))
-                        .font(.footnote).foregroundStyle(app.palette.ink3)
+                        .font(.app(.footnote)).foregroundStyle(app.palette.ink3)
                 } else if stripList.isEmpty {
                     Text(app.T("Chưa có ảnh nào cho sự kiện này.", "No photos for this event yet."))
-                        .font(.footnote).foregroundStyle(app.palette.ink3)
+                        .font(.app(.footnote)).foregroundStyle(app.palette.ink3)
                 } else {
                     photoStrip
                 }
@@ -1290,11 +1307,11 @@ struct EventDetailView: View {
     /// Simple Shell surface2 fill (= the light block), no hairline.
     private func tile<Content: View>(_ symbol: String, _ label: String, @ViewBuilder _ content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: BanbeTheme.Space.xs) {
-            Image(systemName: symbol).font(.system(size: 15)).foregroundStyle(app.palette.clay)
+            Image(systemName: symbol).font(.app(size: 15)).foregroundStyle(app.palette.clay)
                 .padding(.bottom, BanbeTheme.Space.xs)
                 .accessibilityHidden(true)
-            content().font(.subheadline.weight(.semibold)).lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
-            Text(label).font(.footnote).foregroundStyle(app.palette.ink3).lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+            content().font(.app(.subheadline).weight(.semibold)).lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+            Text(label).font(.app(.footnote)).foregroundStyle(app.palette.ink3).lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -1336,7 +1353,7 @@ struct EventDetailView: View {
                         openURL(mapsURL)
                     } label: {
                         Image(systemName: "arrow.up.right")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.app(size: 12, weight: .bold))
                             .foregroundStyle(app.palette.clay)
                             .frame(width: 28, height: 28)
                             .background(app.palette.clayBg, in: Circle())
@@ -1361,7 +1378,7 @@ struct EventDetailView: View {
                     Text(app.T("Giới thiệu", "About")).font(BanbeTheme.display(17))
                     Spacer()
                     if about.hasSheet {
-                        Text(app.T("Xem thêm", "More") + " ›").font(.footnote.weight(.semibold)).foregroundStyle(app.palette.clay)
+                        Text(app.T("Xem thêm", "More") + " ›").font(.app(.footnote).weight(.semibold)).foregroundStyle(app.palette.clay)
                     }
                 }
                 .frame(minHeight: 44)
@@ -1373,7 +1390,7 @@ struct EventDetailView: View {
             .accessibilityLabel(about.hasSheet ? app.T("Giới thiệu và bao gồm, xem thêm", "Introduction and included, view more") : app.T("Giới thiệu", "About"))
             if !about.body.isEmpty {
                 Text(about.body)
-                    .font(.system(size: 15))
+                    .font(.app(size: 15))
                     .lineSpacing(4)
                     .opacity(0.85)
                     .lineLimit(about.clampable && !aboutExpanded ? EventDetailPresentation.aboutLines : nil)
@@ -1381,7 +1398,7 @@ struct EventDetailView: View {
                     .accessibilityIdentifier("event.description")
                 if about.clampable && !aboutExpanded {
                     Button { aboutExpanded = true } label: {
-                        Text(app.T("Xem thêm", "Read more")).font(.footnote.weight(.semibold))
+                        Text(app.T("Xem thêm", "Read more")).font(.app(.footnote).weight(.semibold))
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("event.readMore")
@@ -1402,7 +1419,7 @@ struct EventDetailView: View {
                     sectionLabel(menuTitle)
                     Spacer()
                     if opensSheet {
-                        Text(app.T("Xem thêm", "More") + " ›").font(.footnote.weight(.semibold)).foregroundStyle(app.palette.clay)
+                        Text(app.T("Xem thêm", "More") + " ›").font(.app(.footnote).weight(.semibold)).foregroundStyle(app.palette.clay)
                     }
                 }
                 .frame(minHeight: opensSheet ? 44 : nil)
@@ -1414,10 +1431,10 @@ struct EventDetailView: View {
             HStack(alignment: .top, spacing: 9) {
                 ForEach(Array(cards.enumerated()), id: \.offset) { i, c in
                     VStack(spacing: 5) {
-                        Text(c.label).font(.system(size: 16, weight: .bold)).multilineTextAlignment(.center)
+                        Text(c.label).font(.app(size: 16, weight: .bold)).multilineTextAlignment(.center)
                             .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                         if !c.detail.isEmpty {
-                            Text(c.detail).font(.system(size: 12)).foregroundStyle(app.palette.ink2)
+                            Text(c.detail).font(.app(size: 12)).foregroundStyle(app.palette.ink2)
                                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                         }
                     }
@@ -1447,19 +1464,19 @@ struct EventDetailView: View {
                         ZStack {
                             Circle().fill(app.palette.clayBg)
                             switch r.icon {
-                            case .alcohol: Image(systemName: "wineglass").font(.system(size: 16))
-                            case .dietary: Image(systemName: "leaf").font(.system(size: 16))
-                            case .age: Text(r.badge ?? "").font(.system(size: 13, weight: .bold))
-                            case .fact: Image(systemName: "info.circle").font(.system(size: 16))
+                            case .alcohol: Image(systemName: "wineglass").font(.app(size: 16))
+                            case .dietary: Image(systemName: "leaf").font(.app(size: 16))
+                            case .age: Text(r.badge ?? "").font(.app(size: 13, weight: .bold))
+                            case .fact: Image(systemName: "info.circle").font(.app(size: 16))
                             }
                         }
                         .foregroundStyle(app.palette.clay)
                         .frame(width: 40, height: 40)
                         .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(r.title).font(.system(size: 15.5, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
+                            Text(r.title).font(.app(size: 15.5, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
                             if let sub = r.sub {
-                                Text(sub).font(.system(size: 13)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
+                                Text(sub).font(.app(size: 13)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
                             }
                         }
                         Spacer(minLength: 0)
@@ -1482,14 +1499,14 @@ struct EventDetailView: View {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(protectionSteps.enumerated()), id: \.offset) { i, step in
                     HStack(alignment: .top, spacing: 13) {
-                        Text("\(i + 1)").font(.system(size: 15, weight: .bold))
+                        Text("\(i + 1)").font(.app(size: 15, weight: .bold))
                             .foregroundStyle(app.palette.paper)
                             .frame(width: 33, height: 33)
                             .background(app.palette.ink, in: Circle())
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(step.0).font(.system(size: 15.5, weight: .bold)).fixedSize(horizontal: false, vertical: true)
-                            Text(step.1).font(.system(size: 13)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
+                            Text(step.0).font(.app(size: 15.5, weight: .bold)).fixedSize(horizontal: false, vertical: true)
+                            Text(step.1).font(.app(size: 13)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
                         }
                         .padding(.top, 5)
                         Spacer(minLength: 0)
@@ -1539,7 +1556,7 @@ struct EventDetailView: View {
             Button { Task { await app.toggleFollowOrganizer(organizerID) } } label: {
                 Label(following ? app.T("Đang theo dõi host ✓", "Following this host ✓") : app.T("Theo dõi host", "Follow host"),
                       systemImage: "person")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.app(size: 14, weight: .semibold))
                     .foregroundStyle(app.palette.clay)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 11)
@@ -1561,10 +1578,10 @@ struct EventDetailView: View {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(e.name).font(BanbeTheme.display(15)).lineLimit(1)
                                     Text(app.discoveryWhenLabel(e.startsAt, timeZone: EventMarket.timeZone(e.timeZoneID)))
-                                        .font(.system(size: 12.5)).opacity(0.65)
+                                        .font(.app(size: 12.5)).opacity(0.65)
                                 }
                                 Spacer(minLength: 0)
-                                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold))
+                                Image(systemName: "chevron.right").font(.app(size: 12, weight: .semibold))
                                     .foregroundStyle(app.palette.clay).accessibilityHidden(true)
                             }
                             .padding(.vertical, 11)
@@ -1604,12 +1621,12 @@ struct EventDetailView: View {
                                 .font(BanbeTheme.display(17)).lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
                             if app.isFollowing(app.eventOrganizerID[event.key]) {
-                                Text("✓ " + app.T("Đang theo dõi", "Following")).font(.caption.weight(.semibold))
+                                Text("✓ " + app.T("Đang theo dõi", "Following")).font(.app(.caption).weight(.semibold))
                                     .foregroundStyle(app.palette.clay)
                             }
                         }
                         Text(hostSubline.isEmpty ? app.T("Người tổ chức", "Host") : hostSubline)
-                            .font(.footnote).foregroundStyle(app.palette.ink3)
+                            .font(.app(.footnote)).foregroundStyle(app.palette.ink3)
                             .accessibilityIdentifier("event.organizerStats")
                     }
                     Spacer(minLength: 0)
@@ -1626,7 +1643,7 @@ struct EventDetailView: View {
             // Moved here from the retired standalone organizer page: message the host straight from the event.
             Button { app.goChat() } label: {
                 Label(app.T("Nhắn tin", "Message"), systemImage: "bubble.left")
-                    .font(.system(size: 13.5, weight: .semibold))
+                    .font(.app(size: 13.5, weight: .semibold))
                     .foregroundStyle(app.palette.clay)
                     .padding(.horizontal, 14)
                     .frame(minHeight: 44)
@@ -1653,7 +1670,7 @@ struct EventDetailView: View {
                 RemoteImage(path: url.absoluteString, maxPixel: 144)
             } else {
                 Text(String(hostName.trimmingCharacters(in: .whitespaces).prefix(1)).uppercased())
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.app(size: 16, weight: .semibold))
             }
         }
         .frame(width: 40, height: 40)
@@ -1676,7 +1693,7 @@ struct EventDetailView: View {
                                 // full-screen viewer's like button is the discoverable way, matching web).
                                 if app.photoEngagement[photo.id]?.likedByMe == true {
                                     Image(systemName: "heart.fill")
-                                        .font(.system(size: 13))
+                                        .font(.app(size: 13))
                                         .foregroundStyle(.white)
                                         .shadow(color: .black.opacity(0.55), radius: 2, y: 1)
                                         .padding(8)
@@ -1703,7 +1720,7 @@ struct EventDetailView: View {
                     if let intro = event.intro {
                         VStack(alignment: .leading, spacing: 8) {
                             Text(app.T("Giới thiệu sự kiện", "About this event"))
-                                .font(.system(size: 11.5, weight: .semibold))
+                                .font(.app(size: 11.5, weight: .semibold))
                             // Paragraph breaks on blank lines, same
                             // convention web's own `introParagraphs`
                             // (EventDetail.jsx) uses for the same field.
@@ -1721,12 +1738,12 @@ struct EventDetailView: View {
                     if !items.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
                             Text(app.T("Bao gồm", "Included"))
-                                .font(.system(size: 11.5, weight: .semibold))
+                                .font(.app(size: 11.5, weight: .semibold))
                             ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(item.label).font(.system(size: 13.5, weight: .medium))
+                                    Text(item.label).font(.app(size: 13.5, weight: .medium))
                                     if !item.detail.isEmpty {
-                                        Text(item.detail).font(.system(size: 12.5)).opacity(0.7)
+                                        Text(item.detail).font(.app(size: 12.5)).opacity(0.7)
                                     }
                                 }
                             }
@@ -1779,10 +1796,10 @@ struct EventDetailView: View {
                     Text(event.isOpen && !event.isFree
                          ? app.T("Hoàn tiền tự động 100% nếu sự kiện bị hủy", "Automatic full refund if the event is cancelled")
                          : app.T("Chỗ được giữ 30 phút để bạn xác nhận", "Seats are held for 30 minutes while you confirm"))
-                        .font(.footnote)
+                        .font(.app(.footnote))
                         .foregroundStyle(app.palette.ink.opacity(0.8))
                 } icon: {
-                    Image(systemName: "checkmark.shield").font(.system(size: 12)).foregroundStyle(app.palette.clay)
+                    Image(systemName: "checkmark.shield").font(.app(size: 12)).foregroundStyle(app.palette.clay)
                 }
                 .frame(maxWidth: .infinity)
                 .accessibilityIdentifier("event.trustLine")
@@ -1811,10 +1828,10 @@ struct EventDetailView: View {
                 let enabled = ReserveBar.presetEnabled(n, max: qtyMax)
                 Button { app.qty = ReserveBar.clampQty(n, max: qtyMax); Haptics.light() } label: {
                     VStack(spacing: 3) {
-                        Text(app.T("\(n) vé", n == 1 ? "1 ticket" : "\(n) tickets")).font(.system(size: 15, weight: .bold))
+                        Text(app.T("\(n) vé", n == 1 ? "1 ticket" : "\(n) tickets")).font(.app(size: 15, weight: .bold))
                         if !event.isFree {
                             Text(app.trStatus(ReserveBar.totalPrice(amount: event.priceVnd, currency: event.currency, qty: n)))
-                                .font(.system(size: 12)).foregroundStyle(app.palette.ink2)
+                                .font(.app(size: 12)).foregroundStyle(app.palette.ink2)
                         }
                     }
                     .lineLimit(1).minimumScaleFactor(0.8)
@@ -1839,16 +1856,16 @@ struct EventDetailView: View {
     private func qtyStepper(_ qty: Int) -> some View {
         HStack(spacing: 0) {
             Button { app.qty = ReserveBar.clampQty(qty - 1, max: qtyMax); Haptics.light() } label: {
-                Image(systemName: "minus").font(.system(size: 14, weight: .semibold)).frame(width: 44, height: 48).contentShape(Rectangle())
+                Image(systemName: "minus").font(.app(size: 14, weight: .semibold)).frame(width: 44, height: 48).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .disabled(qty <= 1)
             .opacity(qty <= 1 ? 0.35 : 1)
             .accessibilityIdentifier("event.qty.minus")
-            Text("\(qty)").font(.system(size: 16, weight: .semibold)).frame(minWidth: 18)
+            Text("\(qty)").font(.app(size: 16, weight: .semibold)).frame(minWidth: 18)
                 .accessibilityIdentifier("event.qty.value")
             Button { app.qty = ReserveBar.clampQty(qty + 1, max: qtyMax); Haptics.light() } label: {
-                Image(systemName: "plus").font(.system(size: 14, weight: .semibold)).frame(width: 44, height: 48).contentShape(Rectangle())
+                Image(systemName: "plus").font(.app(size: 14, weight: .semibold)).frame(width: 44, height: 48).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .disabled(qty >= qtyMax)
@@ -1921,7 +1938,7 @@ struct EventDetailView: View {
 
     private func fieldLabel(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 15, weight: .semibold))
+            .font(.app(size: 15, weight: .semibold))
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 15)
@@ -2048,5 +2065,815 @@ struct EntranceRise: ViewModifier {
             .offset(x: shown ? 0 : x, y: shown ? 0 : y)
             .scaleEffect(shown ? 1 : scale, anchor: .top)
             .animation(animated ? .spring(response: 0.5, dampingFraction: 0.86).delay(0.16 + Double(step) * 0.07) : nil, value: shown)
+    }
+}
+
+// MARK: - v2.3 Event Detail (note 81, switch home_v23)
+
+/// The last stamp each event showed this session, so the stamp slams in only on a change (web `stampSeen`).
+@MainActor private enum V23StampMemory { static var seen: [String: String] = [:] }
+
+/// The reading progress under the glass nav: its own observable, so a scroll frame redraws only the line.
+final class V23ProgressModel: ObservableObject {
+    @Published var value: CGFloat = 0
+    func set(_ v: CGFloat) {
+        let q = (min(1, max(0, v)) * 200).rounded() / 200
+        if q != value { value = q }
+    }
+}
+
+private struct V23ProgressLine: View {
+    @ObservedObject var model: V23ProgressModel
+    let color: Color
+    var body: some View {
+        GeometryReader { g in
+            Rectangle().fill(color).frame(width: g.size.width * model.value, height: 2)
+                .animation(.linear(duration: 0.09), value: model.value)
+        }
+        .frame(height: 2)
+        .accessibilityHidden(true)
+        .accessibilityIdentifier("event.readProgress")
+    }
+}
+
+extension EventDetailView {
+    /// The KVO probe both layouts share: the remembered offset per event, the live offset (tab spy, v2.3 motion), and
+    /// the tabs' scroll-to.
+    fileprivate var scrollProbe: some View {
+        ScaffoldScrollProbe(restoreOffsetY: app.eventOpening || isPreview ? nil : app.eventScrollOffsets[event.key],
+                            onOffset: { [key = event.key, isPreview] y in if !isPreview { app.eventScrollOffsets[key] = y } },
+                            onChange: { _, userDriven in if userDriven && tabLock != nil { tabLock = nil } },
+                            onScrollMetrics: { y, content, viewport in
+                                raw.y = y
+                                raw.vh = viewport
+                                let capped = min(y, topInset + heroHeight + 2)
+                                if scrollOffset != capped { scrollOffset = capped }
+                                let m = max(0, content - viewport)
+                                if maxScroll != m { maxScroll = m }
+                                if isV23 {
+                                    v23Progress.set(m > 0 ? y / m : 0)
+                                    let bc = ReserveBarV23.nextCompact(y, barCompact)
+                                    if bc != barCompact { withAnimation(reduceMotion ? nil : V23Style.spring) { barCompact = bc } }
+                                    revealSections()
+                                }
+                                spyTabs()
+                            },
+                            scrollRequest: scrollRequest)
+    }
+
+    // MARK: layout
+
+    fileprivate var v23Stack: some View {
+        ZStack(alignment: .top) {
+            app.palette.paper.ignoresSafeArea().opacity(contentShown ? 1 : 0)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(GeometryReader { g in
+                    Color.clear
+                        .onAppear { poseAnchor = CGPoint(x: g.frame(in: .global).midX, y: g.frame(in: .global).midY) }
+                        .onChange(of: g.frame(in: .global)) { _, f in poseAnchor = CGPoint(x: f.midX, y: f.midY) }
+                })
+                .modifier(dragPose)
+            // The hero is a layer of the screen (the shared element of the zoom) that scrolls with the page.
+            v23HeroBackdrop
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .ignoresSafeArea(edges: .top)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        v23TitleBand
+                            .frame(minHeight: heroHeight, alignment: .bottomLeading)
+                        v23Stub
+                            .padding(.horizontal, 14)
+                            .padding(.top, -22)
+                            .modifier(EntranceRise(shown: entered, step: 4, y: 22, scale: 0.985, animated: !reduceMotion))
+                        v23AfterStub
+                        v23Details
+                    }
+                    .padding(.bottom, isPreview ? 300 : 230)
+                    .coordinateSpace(name: "eventContent")
+                    .onPreferenceChange(EventSectionTopsKey.self) { sectionTops = $0; revealSections() }
+                    .background(scrollProbe)
+                }
+                .scrollClipDisabled()
+                .ignoresSafeArea(edges: .bottom)
+                .coordinateSpace(name: "eventScroll")
+                .scrollDisabled(isDismissDragging)
+                .simultaneousGesture(dismissGesture, including: isPreview ? .subviews : .all)
+                .onChange(of: criteriaScrollRequest) { _, _ in
+                    withAnimation(.easeInOut(duration: 0.35)) { proxy.scrollTo("event.criteria", anchor: .center) }
+                }
+            }
+            .opacity(contentShown ? 1 : 0)
+            .modifier(dragPose)
+            v23BackButton
+                .opacity(contentShown ? 1 : 0)
+                .modifier(dragPose)
+            v23Nav
+                .opacity(contentShown ? 1 : 0)
+                .modifier(dragPose)
+            v23Toast
+            v23BottomArea
+                .opacity(contentShown ? 1 : 0)
+                .modifier(dragPose)
+            Color.clear
+                .frame(width: isPreview ? 0 : 22)
+                .contentShape(Rectangle())
+                .gesture(edgeSwipeGesture, including: isPreview ? .none : .all)
+                .padding(.top, topInset + 64)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .ignoresSafeArea(edges: .bottom)
+                .accessibilityHidden(true)
+        }
+        .onChange(of: v23Stamp?.kind) { _, _ in noteStamp() }
+        .onChange(of: v23Booked) { _, _ in addQty = nil }
+        .onChange(of: event.key) { _, _ in addQty = nil; revealed = [] }
+        // The held stamp counts down ("Held · 25 min"): refresh twice a minute while it shows.
+        .task(id: v23Stamp?.kind == .held) {
+            while !Task.isCancelled, v23Stamp?.kind == .held {
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                nowTick = Date()
+            }
+        }
+    }
+
+    fileprivate var v23Collapsed: Bool { EventDetailV23.navOn(scrollOffset) }
+
+    /// The cover (140 % tall art for the parallax), a vignette and the shade; a monogram plate when there is no photo.
+    fileprivate var v23HeroBackdrop: some View {
+        let f = heroScreenFrame
+        let radius = max(14 * (1 - zoomT), closeStart == nil ? min(sheetRadius, dismissProgress * 120) * dragScale : 0)
+        let m = EventDetailV23.heroMotion(reduceMotion ? 0 : scrollOffset)
+        let art = 1 + 0.4 * zoomT
+        let shade = Color(red: 6 / 255, green: 5 / 255, blue: 4 / 255)
+        let hasPhoto = preview?.photos.first != nil || !event.img.isEmpty
+        return ZStack {
+            RadialGradient(colors: [Color(hex: 0x4A3A2A), Color(hex: 0x241E17), Color(hex: 0x14110D)],
+                           center: UnitPoint(x: 0.28, y: 0.06), startRadius: 0, endRadius: max(f.height, 1) * 1.1)
+            Text(String((event.name.trimmingCharacters(in: .whitespaces).first ?? "B")).uppercased())
+                .font(.app(size: 190, weight: .light))
+                .foregroundStyle(Color(red: 0.97, green: 0.96, blue: 0.93).opacity(0.08))
+                .offset(y: 10)
+            if hasPhoto {
+                heroImage
+                    .frame(width: f.width, height: f.height * art)
+                    .scaleEffect(m.scale, anchor: UnitPoint(x: 0.5, y: 0.3))
+                    .offset(y: m.offset * zoomT)
+                    .frame(width: f.width, height: f.height)
+                    .clipped()
+            }
+            RadialGradient(stops: [.init(color: .clear, location: 0.32), .init(color: .black.opacity(0.42), location: 1)],
+                           center: .top, startRadius: 0, endRadius: max(f.width, f.height) * 1.05)
+                .opacity(zoomT)
+            // The prototype's shade, the lower band held at >= 0.7 so the white title keeps 4.5:1 on a white photo.
+            LinearGradient(stops: [.init(color: shade.opacity(0.68), location: 0), .init(color: shade.opacity(0.1), location: 0.30),
+                                   .init(color: shade.opacity(0.7), location: 0.56), .init(color: shade.opacity(0.92), location: 1)],
+                           startPoint: .top, endPoint: .bottom)
+                .opacity(zoomT)
+        }
+        .frame(width: f.width, height: f.height)
+        .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+        .opacity(centerPose ? (contentShown ? 1 : 0) : 1)
+        .offset(x: f.minX, y: f.minY)
+        .accessibilityHidden(true)
+    }
+
+    /// Category / age / invite pills and the serif title, sinking and fading as the hero leaves.
+    fileprivate var v23TitleBand: some View {
+        let dp = reduceMotion ? 0 : EventDetailV23.heroMotion(scrollOffset).dp
+        return VStack(alignment: .leading, spacing: 13) {
+            FlowRow(spacing: 7) {
+                if !app.trStatus(event.cat).isEmpty {
+                    v23Pill(app.trStatus(event.cat), filled: true).accessibilityIdentifier("event.category")
+                }
+                if let age = facts.minAge {
+                    v23Pill(age.value, filled: false)
+                        .accessibilityLabel("\(age.label) \(age.value)")
+                        .accessibilityIdentifier("event.typeFact.\(age.id)")
+                }
+                if event.inviteOnly {
+                    v23Pill(app.T("Riêng tư · theo lời mời", "Private · invite only"), filled: false).accessibilityIdentifier("event.inviteChip")
+                }
+            }
+            .modifier(EntranceRise(shown: entered, step: 0, y: 12, animated: !reduceMotion))
+            Text(event.name)
+                .font(V23Style.serif(40)).tracking(-1)
+                .lineSpacing(-4)
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("event.title")
+                .modifier(EntranceRise(shown: entered, step: 1, y: 14, animated: !reduceMotion))
+        }
+        .offset(y: -24 * dp)
+        .opacity(1 - 0.8 * dp)
+        .padding(.horizontal, 22)
+        .padding(.bottom, 26)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("event.heroTitle")
+    }
+
+    private func v23Pill(_ text: String, filled: Bool) -> some View {
+        Text(text)
+            .font(.app(size: 11, weight: .bold)).tracking(0.33)
+            .foregroundStyle(filled ? Color(red: 0.106, green: 0.098, blue: 0.086) : .white)
+            .padding(.horizontal, 10).frame(height: 26)
+            .background(filled ? Color(red: 0.97, green: 0.96, blue: 0.93).opacity(0.92) : Color.black.opacity(0.28), in: Capsule())
+            .overlay(Capsule().stroke(filled ? .clear : Color.white.opacity(0.5), lineWidth: 1))
+    }
+
+    // MARK: stub
+
+    private var v23PlaceLine: String {
+        let place = placeLine.isEmpty ? app.T("Địa điểm", "Place") : placeLine
+        if let d = placeDistance { return place + " · " + d }
+        let loc = event.location
+        let id = MapDiscovery.cityFor(.init(city: loc?.city, stateProvince: loc?.stateProvince, countryCode: loc?.countryCode,
+                                            lat: event.lat ?? loc?.lat, lng: event.lng ?? loc?.lng), cities: MapDiscovery.cities)
+        if let c = MapDiscovery.city(id) { return place + " · " + app.T(c.short.vi, c.short.en) }
+        return place
+    }
+
+    private func v23Total(_ n: Int) -> String {
+        app.trStatus(ReserveBar.totalPrice(amount: event.isFree ? 0 : event.priceVnd, currency: event.currency, qty: n))
+    }
+
+    fileprivate var v23Stub: some View {
+        let booked = v23Booked
+        let stampText = ReserveBarV23.stampText(v23Stamp, now: nowTick)
+        let seatKind = seat.kind
+        let seatModel = seatPill.map { TicketStubV23.Seat(text: $0.text, kind: seatKind) }
+        let calendar: AnyView? = isPreview
+            ? AnyView(PlanChipsPreview())
+            : AnyView(EventPlanButtons(event: event, day: stubBlock?.day ?? "", month: stubBlock?.weekday ?? "", chips: true,
+                                       onMessage: { m in withAnimation(.easeOut(duration: 0.2)) { planMessage = m } }))
+        return TicketStubV23(
+            block: stubBlock,
+            // Note 82: "21:00 – 00:00 (next day)" / "16:00 · open-ended", else the start alone.
+            time: EventEnd.timeRange(whenParts.time, endTime: event.endTime, endOpen: event.endOpen)?.t(app.isEN) ?? whenParts.time,
+            countdown: stubCountdown,
+            placeLine: v23PlaceLine,
+            mapsURL: event.mapsURL,
+            onDirections: { if app.located == nil { app.askLocation() } },
+            price: event.price.isEmpty ? nil : (booked > 0 && !event.isFree ? v23Total(booked) : app.trStatus(event.price)),
+            perTicket: booked > 0 ? app.T("· \(booked) vé", "· \(booked) \(booked == 1 ? "ticket" : "tickets")")
+                                  : event.isFree ? nil : app.T("/ vé", "/ ticket"),
+            seat: seatModel,
+            stamp: v23Stamp.map { TicketStubV23.StampModel(confirmed: $0.kind == .confirmed, text: stampText?.t(app.isEN) ?? "") },
+            stampPlay: stampPlay,
+            calendar: calendar,
+            inert: isPreview)
+    }
+
+    @ViewBuilder fileprivate var v23AfterStub: some View {
+        if planMessage != nil || venueTimeNote != nil {
+            VStack(alignment: .leading, spacing: 6) {
+                if let planMessage {
+                    Text(planMessage).font(.app(size: 13)).foregroundStyle(app.palette.ink2)
+                        .accessibilityIdentifier("event.plan.message")
+                }
+                if let note = venueTimeNote {
+                    Text(note).font(.app(size: 13)).foregroundStyle(app.palette.ink3)
+                        .accessibilityIdentifier("event.fact.venueTime")
+                }
+            }
+            .padding(.horizontal, 26).padding(.top, 10)
+        }
+    }
+
+    // MARK: body
+
+    private var v23SectionIDs: [String] {
+        ["overview"] + (cards.isEmpty ? [] : ["menu"]) + ["host", "photos"] + (hasProtection ? ["safe"] : [])
+    }
+    private func isRevealed(_ id: String) -> Bool { revealAll || revealed.contains(id) }
+
+    fileprivate func revealSections() {
+        guard isV23, !revealAll else { return }
+        let vh = raw.vh > 0 ? raw.vh : screenSize.height
+        let bottom = raw.y + vh * 0.9
+        for id in v23SectionIDs where !revealed.contains(id) {
+            guard let top = sectionTops[id], top < bottom else { continue }
+            withAnimation(V23Style.out.delay(0.04)) { _ = revealed.insert(id) }
+        }
+    }
+
+    private var v23KnowRows: [EventDetailV23.KnowRow] {
+        let refund = event.isOpen && !event.isFree
+            ? app.T("Hoàn tiền tự động 100% nếu sự kiện bị hủy", "Automatic full refund if the event is cancelled") : nil
+        return EventDetailV23.knowRows(needRows.map { EventDetailV23.NeedRow(id: $0.id, key: $0.key, icon: $0.icon.rawValue, title: $0.title, sub: $0.sub) },
+                                       refund: refund)
+    }
+
+    /// The host's longer introduction under Read more (their own font and colour, note 69): the About & Included sheet
+    /// is not needed on this page.
+    private var v23IntroExtra: [String] {
+        guard let intro = event.intro else { return [] }
+        let body = about.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        return intro.components(separatedBy: "\n\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && $0 != body }
+    }
+
+    fileprivate var v23Details: some View {
+        let last = v23SectionIDs.last
+        let know = v23KnowRows
+        let hasCriteria = app.eventCriteriaByKey[event.key].map { !$0.isEveryone } ?? false
+        return VStack(alignment: .leading, spacing: 0) {
+            if let shareStoryMessage {
+                Text(shareStoryMessage).font(.app(.footnote)).foregroundStyle(app.palette.ink3).padding(.bottom, 16)
+            }
+            V23Section(shown: isRevealed("overview"), last: last == "overview") {
+                if hasCriteria { criteriaSection.id("event.criteria").padding(.bottom, 28) }
+                if !know.isEmpty { v23KnowList(know).padding(.bottom, about.visible ? 28 : 0) }
+                if about.visible { v23About }
+            }
+            .eventSectionTop("overview")
+            .id("sec.overview")
+            if !cards.isEmpty {
+                V23Section(shown: isRevealed("menu"), last: last == "menu") { v23Menu }
+                    .eventSectionTop("menu").id("sec.menu")
+            }
+            V23Section(shown: isRevealed("host"), last: last == "host") { v23Host }
+                .eventSectionTop("host").id("sec.host")
+            V23Section(shown: isRevealed("photos"), last: last == "photos") { v23Photos }
+                .eventSectionTop("photos").id("sec.photos")
+            if hasProtection {
+                V23Section(shown: isRevealed("safe"), last: true) { v23Protection }
+                    .eventSectionTop("safe").id("sec.safe")
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(.horizontal, 22)
+        .padding(.top, 26)
+    }
+
+    private func v23KnowList(_ rows: [EventDetailV23.KnowRow]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            V23SectionHeading(text: app.T("Cần biết", "Good to know"))
+            Grid(alignment: .topLeading, horizontalSpacing: 18, verticalSpacing: 15) {
+                ForEach(rows, id: \.key) { r in
+                    GridRow {
+                        Text(r.label.t(app.isEN).uppercased())
+                            .font(.app(size: 10.5, weight: .bold)).tracking(1.37)
+                            .foregroundStyle(app.palette.clay)
+                            .frame(width: 104, alignment: .leading)
+                            .padding(.top, 3)
+                        Text(r.text).font(.app(size: 14)).lineSpacing(4).foregroundStyle(app.palette.ink2)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("event.typeFact.\(r.key)")
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("event.typeFacts")
+    }
+
+    private var v23About: some View {
+        let extra = v23IntroExtra
+        let clamp = (about.clampable || !extra.isEmpty) && !aboutExpanded
+        let style = EventTypes.introStyle(event.details)
+        return VStack(alignment: .leading, spacing: 0) {
+            V23SectionHeading(text: app.T("Giới thiệu", "About"))
+            if !about.body.isEmpty {
+                Text(about.body).font(.app(size: 15)).lineSpacing(5).foregroundStyle(app.palette.ink2)
+                    .lineLimit(clamp ? 3 : nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("event.description")
+            }
+            if aboutExpanded && !extra.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(Array(extra.enumerated()), id: \.offset) { _, p in
+                        Text(p).font(IntroStyle.font(style.font, size: 15)).lineSpacing(5)
+                            .foregroundStyle(IntroStyle.color(style.color, app.palette))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.top, 12)
+                .transition(.opacity)
+                .accessibilityIdentifier("event.introSection")
+            }
+            if about.clampable || !extra.isEmpty {
+                Button { withAnimation(reduceMotion ? nil : V23Style.spring) { aboutExpanded.toggle() } } label: {
+                    HStack(spacing: 5) {
+                        Text(aboutExpanded ? app.T("Thu gọn", "Read less") : app.T("Xem thêm", "Read more"))
+                            .font(.app(size: 13, weight: .semibold))
+                        Image(systemName: "chevron.down").font(.app(size: 11, weight: .semibold))
+                            .rotationEffect(.degrees(aboutExpanded ? 180 : 0))
+                    }
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
+                .accessibilityValue(aboutExpanded ? app.T("Đang mở", "Expanded") : app.T("Đang thu gọn", "Collapsed"))
+                .accessibilityIdentifier("event.readMore")
+            }
+        }
+    }
+
+    private var v23Menu: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            V23SectionHeading(text: menuTitle)
+            VStack(alignment: .leading, spacing: 19) {
+                ForEach(Array(cards.enumerated()), id: \.offset) { i, c in
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Text(EventDetailV23.listNo(i)).font(V23Style.serif(17)).tracking(0.34).foregroundStyle(app.palette.clay)
+                            .frame(width: 32, alignment: .leading)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(c.label).font(.app(size: 14.5, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
+                            if !c.detail.isEmpty {
+                                Text(c.detail).font(.app(size: 13)).lineSpacing(3).foregroundStyle(app.palette.ink2)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("event.includedItem.\(i)")
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("event.includedItems")
+    }
+
+    private var v23Host: some View {
+        let stats = app.eventOrganizerID[event.key].flatMap { app.organizerStats[$0] }
+        let avatar = MediaURLs.organizerAvatar(path: stats?.avatarPath, r2Ref: stats?.avatarR2Ref, variant: .thumb)
+        return VStack(alignment: .leading, spacing: 0) {
+            V23SectionHeading(text: app.T("Chủ nhà", "Hosted by"))
+            HStack(spacing: 12) {
+                Button { app.openEventOrganizer(eventKey: app.eventKey) } label: {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle().fill(app.palette.clay)
+                            if let avatar {
+                                RemoteImage(path: avatar.absoluteString, maxPixel: 144)
+                            } else {
+                                Text(String(hostName.trimmingCharacters(in: .whitespaces).prefix(1)).uppercased())
+                                    .font(.app(size: 16, weight: .bold)).foregroundStyle(.white)
+                            }
+                        }
+                        .frame(width: 46, height: 46)
+                        .clipShape(Circle())
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 8) {
+                                Text(hostName.isEmpty ? app.T("Người tổ chức", "Host") : hostName)
+                                    .font(.app(size: 16, weight: .semibold)).lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                if app.isFollowing(app.eventOrganizerID[event.key]) {
+                                    Text("✓ " + app.T("Đang theo dõi", "Following")).font(.app(.caption).weight(.semibold))
+                                        .foregroundStyle(app.palette.clay)
+                                }
+                            }
+                            Text(hostSubline.isEmpty ? app.T("Người tổ chức", "Host") : hostSubline)
+                                .font(.app(size: 12.5)).foregroundStyle(app.palette.ink3)
+                                .accessibilityIdentifier("event.organizerStats")
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .frame(minHeight: 46)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PressableButtonStyle())
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel([app.T("Người tổ chức", "Host"), hostName, hostSubline].filter { !$0.isEmpty }.joined(separator: ", "))
+                .accessibilityHint(app.T("Mở trang", "Opens profile"))
+                .accessibilityAddTraits(.isButton)
+                .accessibilityIdentifier("event.organizer")
+                Button { app.goChat() } label: {
+                    Label(app.T("Nhắn tin", "Message"), systemImage: "bubble.left")
+                        .font(.app(size: 13, weight: .semibold))
+                        .foregroundStyle(app.palette.clay)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(app.T("Nhắn cho ", "Message ") + hostName)
+                .accessibilityIdentifier("event.messageHost")
+            }
+            .allowsHitTesting(!isPreview)
+            if barState == .endedAttended, !isPreview, app.eventRecapEnabled, (app.realEventsByID[event.key] ?? nil) != nil {
+                InkButton(title: app.T("Xem tổng kết và gửi cảm nhận", "See the recap and share feedback")) {
+                    app.openEventRecap(event.key, back: .event)
+                }
+                .padding(.top, 18)
+                .accessibilityIdentifier("event.openRecap")
+            }
+            if isOver, !isPreview, let orgID = endedOrganizerID {
+                endedNextSection(orgID).padding(.top, 18)
+            }
+        }
+    }
+
+    private var v23Photos: some View {
+        let count = preview?.photos.count ?? stripList.count
+        return VStack(alignment: .leading, spacing: 0) {
+            V23SectionHeading(text: app.T("Hình ảnh", "Photos") + (count > 0 ? " · \(count)" : ""))
+            if let preview {
+                if preview.photos.isEmpty {
+                    Text(app.T("Chưa có ảnh nào cho sự kiện này.", "No photos for this event yet.")).font(.app(size: 13)).foregroundStyle(app.palette.ink3)
+                } else {
+                    previewPhotoStrip(preview.photos)
+                }
+            } else if app.eventPhotosLoading {
+                Text(app.T("Đang tải…", "Loading…")).font(.app(size: 13)).foregroundStyle(app.palette.ink3)
+            } else if stripList.isEmpty {
+                Text(app.T("Chưa có ảnh nào cho sự kiện này.", "No photos for this event yet.")).font(.app(size: 13)).foregroundStyle(app.palette.ink3)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 9) {
+                        ForEach(Array(stripList.enumerated()), id: \.element.id) { index, photo in
+                            GeometryReader { geo in
+                                Button {
+                                    app.openPhoto(gallery: realPhotos, index: realPhotos.firstIndex { $0.id == photo.id } ?? 0,
+                                                  organizer: event.orgName, originRect: geo.frame(in: .global))
+                                } label: {
+                                    ZStack(alignment: .topTrailing) {
+                                        CatalogPhoto(path: photo.url, height: 142, width: 196, cornerRadius: 12)
+                                        if app.photoEngagement[photo.id]?.likedByMe == true {
+                                            Image(systemName: "heart.fill").font(.app(size: 13)).foregroundStyle(.white)
+                                                .shadow(color: .black.opacity(0.55), radius: 2, y: 1)
+                                                .padding(8)
+                                                .allowsHitTesting(false)
+                                        }
+                                    }
+                                }
+                                .buttonStyle(PressableButtonStyle())
+                                .onAppear { app.photoThumbFrames[photo.id] = geo.frame(in: .global) }
+                                .onChange(of: geo.frame(in: .global)) { _, f in app.photoThumbFrames[photo.id] = f }
+                                .onDisappear { app.photoThumbFrames[photo.id] = nil }
+                            }
+                            .frame(width: 196, height: 142)
+                            .accessibilityLabel(app.T("Ảnh \(index + 1)", "Photo \(index + 1)"))
+                            .accessibilityIdentifier("event.photo.\(index)")
+                        }
+                    }
+                    .padding(.horizontal, 22)
+                }
+                .padding(.horizontal, -22)
+                .frame(height: 144)
+            }
+        }
+    }
+
+    private var v23Protection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            V23SectionHeading(text: app.T("Đặt chỗ được bảo vệ", "Protected booking"))
+            VStack(alignment: .leading, spacing: 14) {
+                ForEach(Array(protectionSteps.enumerated()), id: \.offset) { i, step in
+                    HStack(alignment: .top, spacing: 12) {
+                        Text("\(i + 1)").font(.app(size: 10.5, weight: .bold))
+                            .frame(width: 23, height: 23)
+                            .background(app.palette.surface2, in: Circle())
+                            .padding(.top, 1)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(step.0).font(.app(size: 13.5, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
+                            Text(step.1).font(.app(size: 12.5)).lineSpacing(3).foregroundStyle(app.palette.ink2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .background(alignment: .topLeading) {
+                        if i < protectionSteps.count - 1 {
+                            Rectangle().fill(app.palette.rule).frame(width: 1).padding(.top, 26).padding(.bottom, -14).padding(.leading, 11)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
+            .padding(.leading, 2)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("event.protection")
+    }
+
+    // MARK: overlays
+
+    /// Over the photo: one glass Back (hidden once the glass nav takes over).
+    fileprivate var v23BackButton: some View {
+        Button { if let preview { preview.onBack() } else { closeAnimated() } } label: {
+            Image(systemName: "chevron.left").font(.app(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .modifier(ControlChrome(collapsed: false, clay: app.palette.clay, shape: AnyShape(Circle())))
+                .contentShape(Circle())
+        }
+        .buttonStyle(PressableButtonStyle())
+        .opacity(v23Collapsed ? 0 : 1)
+        .allowsHitTesting(!v23Collapsed)
+        .animation(.easeOut(duration: 0.18), value: v23Collapsed)
+        .accessibilityLabel(preview?.backLabel ?? (app.eventBackScreen == .mapExplore ? app.T("Quay lại bản đồ", "Back to map") : backLabel))
+        .accessibilityHidden(v23Collapsed)
+        .accessibilityIdentifier("event.back")
+        .padding(.leading, 16).padding(.top, 6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    /// Past 140 pt: the glass nav with the title, Save, Share, ⋯, the section tabs and the reading progress.
+    fileprivate var v23Nav: some View {
+        let on = v23Collapsed
+        return VStack(spacing: 0) {
+            HStack(spacing: 2) {
+                Button { if let preview { preview.onBack() } else { closeAnimated() } } label: { v23NavIcon("chevron.left") }
+                    .buttonStyle(PressableButtonStyle())
+                    .accessibilityLabel(preview?.backLabel ?? backLabel)
+                    .accessibilityIdentifier("event.navBack")
+                Text(event.name).font(.app(size: 14.5, weight: .semibold)).lineLimit(1)
+                    .frame(maxWidth: .infinity)
+                Group {
+                    Button { app.toggleFavorite(event.key) } label: {
+                        v23NavIcon(app.isSaved(event.key) ? "heart.fill" : "heart")
+                            .foregroundStyle(app.isSaved(event.key) ? app.palette.clay : app.palette.ink)
+                    }
+                    .buttonStyle(PressableButtonStyle())
+                    .accessibilityLabel(app.isSaved(event.key) ? app.T("Đã lưu", "Saved") : app.T("Lưu", "Save"))
+                    .accessibilityAddTraits(app.isSaved(event.key) ? .isSelected : [])
+                    .accessibilityIdentifier("event.save")
+                    Button { share() } label: { v23NavIcon("square.and.arrow.up") }
+                        .buttonStyle(PressableButtonStyle())
+                        .accessibilityLabel(app.T("Chia sẻ", "Share"))
+                        .accessibilityIdentifier("event.share")
+                    Menu { moreMenuItems } label: { v23NavIcon("ellipsis") }
+                        .accessibilityLabel(app.T("Thêm", "More"))
+                        .accessibilityIdentifier("event.more")
+                }
+                .allowsHitTesting(!isPreview)
+            }
+            .frame(height: 48)
+            .padding(.horizontal, 8)
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 20) {
+                        ForEach(tabIDs, id: \.self) { id in
+                            let active = activeTab == id
+                            Button { goTab(id) } label: {
+                                Text(tabLabel(id))
+                                    .font(.app(size: 13, weight: active ? .bold : .medium))
+                                    .foregroundStyle(active ? app.palette.ink : app.palette.ink3)
+                                    .frame(minHeight: 36)
+                                    .overlay(alignment: .bottom) {
+                                        if active { Capsule().fill(app.palette.ink).frame(height: 2) }
+                                    }
+                                    .padding(.bottom, 4)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .id(id)
+                            .accessibilityAddTraits(active ? .isSelected : [])
+                            .accessibilityIdentifier("event.tab.\(id)")
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .animation(.easeOut(duration: 0.18), value: activeTab)
+                }
+                .onChange(of: activeTab) { _, id in withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .center) } }
+            }
+            .frame(height: 40)
+            .offset(y: on ? 0 : 8)
+            .opacity(on ? 1 : 0)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("event.tabs")
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(.top, topInset - 2)
+        .background { Rectangle().fill(.clear).modifier(V23Glass(shape: Rectangle(), shadow: false)).shadow(color: .black.opacity(0.06), radius: 15, y: 10) }
+        .overlay(alignment: .bottom) { V23ProgressLine(model: v23Progress, color: app.palette.clay) }
+        .offset(y: on ? 0 : -(topInset + 100))
+        .opacity(on ? 1 : 0)
+        .animation(reduceMotion ? nil : .timingCurve(0.32, 0.72, 0, 1, duration: 0.28), value: on)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .ignoresSafeArea(edges: .top)
+        .allowsHitTesting(on)
+        .accessibilityHidden(!on)
+        .accessibilityIdentifier("event.navBar")
+    }
+
+    private func v23NavIcon(_ symbol: String) -> some View {
+        Image(systemName: symbol).font(.app(size: 17, weight: .regular))
+            .frame(width: 44, height: 44)
+            .contentShape(Circle())
+    }
+
+    @ViewBuilder fileprivate var v23Toast: some View {
+        if app.sharedFlash || linkCopied || zaloCopied {
+            Text(zaloCopied ? app.T(CoreLoops.zaloCopied.vi, CoreLoops.zaloCopied.en) : app.T("Đã sao chép link", "Link copied"))
+                .font(.app(size: 12.5, weight: .semibold))
+                .foregroundStyle(app.palette.paper)
+                .lineLimit(1)
+                .padding(.horizontal, 16).padding(.vertical, 9)
+                .background(app.palette.ink, in: Capsule())
+                .shadow(color: .black.opacity(0.28), radius: 15, y: 14)
+                .padding(.top, 58)
+                .transition(.opacity)
+                .allowsHitTesting(false)
+        }
+    }
+
+    // MARK: reserve bar + stamps (phase e)
+
+    /// Every booking of the viewer on this event (`app.booking` is the freshest copy of the newest).
+    private var seatBookings: [ReserveBarV23.SeatBooking] {
+        guard !isPreview else { return [] }
+        var list = app.eventBookings.filter { $0.eventId == event.key }
+        if let b = app.booking, b.eventId == event.key {
+            if let i = list.firstIndex(where: { $0.id == b.id }) { list[i] = b } else { list.insert(b, at: 0) }
+        }
+        return list.map {
+            ReserveBarV23.SeatBooking(id: $0.id.uuidString.lowercased(), qty: $0.qty, status: $0.status, paymentState: $0.paymentState.rawValue,
+                                      holdExpiresAt: $0.holdExpiresAt, verifyDueAt: $0.verifyDueAt, createdAt: $0.createdAt)
+        }
+    }
+    fileprivate var v23Booked: Int { isV23 ? ReserveBarV23.bookedQty(seatBookings, now: nowTick) : 0 }
+    fileprivate var v23Stamp: ReserveBarV23.Stamp? { isV23 ? ReserveBarV23.stampState(seatBookings, now: nowTick) : nil }
+    private var heldBar: Bool { isV23 && !isPreview && v23Booked > 0 && !event.cancelled && !ended }
+    private var v23BarActive: Bool { isV23 && !isPreview && (heldBar || (barState == .reserve && v23Booked == 0)) }
+
+    /// The stamp slams in once per change (none → held → confirmed, also on the return from Reserve). From further
+    /// down, the stub is brought back first so the stamp lands where it can be seen.
+    fileprivate func noteStamp() {
+        guard isV23, !isPreview else { return }
+        let kind = v23Stamp?.kind.rawValue ?? ""
+        let prev = V23StampMemory.seen[event.key]
+        V23StampMemory.seen[event.key] = kind
+        // The first load after opening is not a change.
+        guard let prev, prev != kind, !kind.isEmpty, !(prev.isEmpty && Date().timeIntervalSince(appearedAt) < 1.5) else { return }
+        if raw.y > 40 {
+            scrollRequest = ScaffoldScrollRequest(token: (scrollRequest?.token ?? 0) + 1, y: 0, animated: !reduceMotion)
+            DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 0 : 0.46)) { stampPlay += 1 }
+        } else {
+            stampPlay += 1
+        }
+    }
+
+    /// With two bookings (a hold plus added tickets) the button opens the one that still needs something, else the
+    /// newest ticket.
+    private func openHeldBooking() {
+        let seat = seatBookings.filter { ReserveBarV23.holdsSeat($0, now: nowTick) }
+        let open = seat.filter { !ReserveBarV23.isTicket($0) }
+        guard let target = (open.first ?? seat.first)?.id, target != app.booking?.id.uuidString.lowercased(),
+              let uuid = UUID(uuidString: target) else { return app.openHeld() }
+        Task { await app.openBookingConfirmed(bookingID: uuid, eventKey: event.key, back: .event) }
+    }
+
+    fileprivate var v23BottomArea: some View {
+        let previewBar = isPreview && barState == .reserve
+        let compactShape = v23BarActive ? barCompact : true
+        let qty = isPreview ? 1 : ReserveBar.clampQty(app.qty, max: qtyMax)
+        let booked = v23Booked
+        let heldQty = max(booked, addQty ?? booked)
+        let trust: String? = barState != .reserve ? nil : event.isOpen && !event.isFree
+            ? app.T("Hoàn tiền tự động 100% nếu sự kiện bị hủy", "Automatic full refund if the event is cancelled")
+            : app.T("Chỗ được giữ 30 phút để bạn xác nhận", "Seats are held for 30 minutes while you confirm")
+        let bar = Group {
+            if v23BarActive || previewBar {
+                ReserveBarV23View(
+                    compact: isPreview ? true : barCompact,
+                    qty: heldBar ? heldQty : qty,
+                    remaining: isPreview ? preview?.capacity : seatCounts.remaining,
+                    setQty: { n in if heldBar { addQty = n } else { app.qty = ReserveBar.clampQty(n, max: ReserveBar.maxQty) } },
+                    totalFor: { v23Total($0) },
+                    unitText: v23Total(1),
+                    free: event.isFree,
+                    onReserve: { app.goReserve() },
+                    trustLine: trust,
+                    booked: heldBar ? booked : 0,
+                    confirmed: v23Stamp?.kind == .confirmed,
+                    phase: v23Stamp?.phase,
+                    onHeld: { openHeldBooking() },
+                    onAdd: { extra in app.goReserveAdd(already: booked, extra: extra) })
+            } else {
+                ctaButton(barState, qty: qty)
+            }
+        }
+        .padding(compactShape ? 10 : 14)
+        .padding(.bottom, compactShape ? 0 : 2)
+        .modifier(V23Glass(shape: RoundedRectangle(cornerRadius: compactShape ? 33 : 30, style: .continuous)))
+        // The content fades under the bar instead of stopping at a hard edge.
+        .background(alignment: .top) {
+            LinearGradient(colors: [app.palette.paper.opacity(0), app.palette.paper], startPoint: .top, endPoint: .bottom)
+                .frame(height: compactShape ? 30 : 44)
+                .padding(.horizontal, -12)
+                .offset(y: compactShape ? -30 : -44)
+                .allowsHitTesting(false)
+        }
+        .padding(.horizontal, compactShape ? 12 : 10)
+        .animation(reduceMotion ? nil : V23Style.spring, value: compactShape)
+        return VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            if let preview {
+                // What guests will see, inert, then the host's own Confirm & submit.
+                bar.allowsHitTesting(false).accessibilityHidden(true).padding(.bottom, 10)
+                preview.footer
+            } else {
+                bar.padding(.bottom, compactShape ? 12 : 10)
+                    .modifier(EntranceRise(shown: entered, step: 2, y: 130, animated: !reduceMotion))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
     }
 }

@@ -50,10 +50,10 @@ struct MiniCalendarPage: View {
         // Monochrome Calendar icon (iOS 27 style) in the Directions button's colours: ink tile, paper text.
         VStack(spacing: size * 0.02) {
             Text(month.isEmpty ? " " : month.uppercased())
-                .font(.system(size: size * 0.17, weight: .semibold)).tracking(0.3)
+                .font(.app(size: size * 0.17, weight: .semibold)).tracking(0.3)
                 .foregroundStyle(fixedLight ? Color.black.opacity(0.62) : app.palette.paper.opacity(0.62))
             Text(day.isEmpty ? "+" : day)
-                .font(.system(size: size * 0.46, weight: .regular))
+                .font(.app(size: size * 0.46, weight: .regular))
                 .foregroundStyle(fixedLight ? Color.black : app.palette.paper)
         }
         .lineLimit(1).minimumScaleFactor(0.6)
@@ -77,6 +77,8 @@ struct EventPlanButtons: View {
     var day: String = ""
     var month: String = ""
     var axis: Axis = .vertical
+    /// v2.3 (note 81): the same two choices as slim pills for the ticket stub's "Save the date" row.
+    var chips = false
     var onMessage: ((String?) -> Void)?
     @State private var exportRequest: CalendarExportRequest?
     @State private var message: String?
@@ -93,13 +95,17 @@ struct EventPlanButtons: View {
     var body: some View {
         if available {
             VStack(alignment: .trailing, spacing: 6) {
+                if chips {
+                    HStack(spacing: 6) { scheduleButton; if !info.ended { appleButton } }
+                } else {
                 let layout = axis == .vertical ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 12))
                 layout {
                     tile(caption: "banbe") { scheduleButton }
                     tile(caption: app.T("Lịch", "Calendar")) { appleButton }
                 }
+                }
                 if onMessage == nil, let message {
-                    Text(message).font(.footnote).foregroundStyle(app.palette.ink.opacity(0.8))
+                    Text(message).font(.app(.footnote)).foregroundStyle(app.palette.ink.opacity(0.8))
                         .accessibilityIdentifier("event.plan.message")
                 }
             }
@@ -123,7 +129,7 @@ struct EventPlanButtons: View {
     private func tile<C: View>(caption: String, @ViewBuilder _ content: () -> C) -> some View {
         VStack(spacing: 3) {
             content()
-            Text(caption).font(.system(size: 10, weight: .semibold)).foregroundStyle(app.palette.ink2)
+            Text(caption).font(.app(size: 10, weight: .semibold)).foregroundStyle(app.palette.ink2)
                 .lineLimit(1).fixedSize()
                 .accessibilityHidden(true)
         }
@@ -135,20 +141,24 @@ struct EventPlanButtons: View {
         Button {
             if source != nil { scheduleOpen = true } else { addToSchedule() }
         } label: {
+            if chips {
+                PlanChipFace(label: "banbe", systemImage: source != nil ? "checkmark" : "bell", added: source != nil)
+            } else {
             ZStack(alignment: .topTrailing) {
                 Image(systemName: source != nil ? "calendar.badge.checkmark" : "calendar.badge.plus")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.app(size: 18, weight: .semibold))
                     .foregroundStyle(app.palette.paper)
                     .frame(width: 44, height: 44)
                     // The Directions button's colours (ink fill, paper glyph), like the calendar page beside it.
                     .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
                 Image(systemName: "sparkle")
-                    .font(.system(size: 10, weight: .heavy))
+                    .font(.app(size: 10, weight: .heavy))
                     .foregroundStyle(Color(red: 1, green: 0.85, blue: 0.45))
                     .offset(x: 4, y: -4)
                     .accessibilityHidden(true)
             }
             .contentShape(Rectangle())
+            }
         }
         .buttonStyle(PressableButtonStyle())
         .popover(isPresented: $scheduleOpen, arrowEdge: .top) {
@@ -190,16 +200,20 @@ struct EventPlanButtons: View {
         Button {
             if appleMarked { appleOpen = true } else { open() }
         } label: {
+            if chips {
+                PlanChipFace(label: app.T("Lịch", "Calendar"), systemImage: appleMarked ? "checkmark" : "calendar", added: appleMarked)
+            } else {
             MiniCalendarPage(day: day, month: month)
             .overlay(alignment: .bottomTrailing) {
                 if appleMarked {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.app(size: 14, weight: .bold))
                         .foregroundStyle(.white, Color(red: 0.2, green: 0.62, blue: 0.36))
                         .offset(x: 5, y: 5)
                 }
             }
             .contentShape(Rectangle())
+            }
         }
         .buttonStyle(PressableButtonStyle())
         .popover(isPresented: $appleOpen, arrowEdge: .top) {
@@ -255,7 +269,30 @@ struct EventPlanButtons: View {
 extension AppState {
     /// The pre-filled system-editor draft for one event (nil = no start time).
     func calendarDraft(for e: CatalogEvent) -> CalendarEventDraft? {
-        CalendarExport.draft(title: e.name, start: e.startDate, end: nil, location: e.locationLabel ?? "",
+        // Note 82: the real end when the event has one (the export's own default otherwise).
+        CalendarExport.draft(title: e.name, start: e.startDate, end: eventEndDate(e), location: e.locationLabel ?? "",
                              eventKey: e.key, origin: AppConfig.publicWebOrigin, T: T)
+    }
+}
+
+/// v2.3 "Save the date" pill (note 81): 30pt face inside a 44pt hit area; moss with a check once added.
+struct PlanChipFace: View {
+    @EnvironmentObject private var app: AppState
+    let label: String
+    let systemImage: String
+    let added: Bool
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: systemImage).font(.app(size: 11, weight: .semibold))
+            Text(label).font(.app(size: 12, weight: .semibold)).lineLimit(1)
+        }
+        .foregroundStyle(added ? app.palette.update : app.palette.ink)
+        .padding(.horizontal, 11)
+        .frame(height: 30)
+        .background(added ? app.palette.update.opacity(0.16) : .clear, in: Capsule())
+        .overlay(Capsule().stroke(added ? .clear : app.palette.rule, lineWidth: 1))
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+        .animation(.easeOut(duration: 0.28), value: added)
     }
 }

@@ -61,14 +61,14 @@ struct AdminManageEventsView: View {
                     .accessibilityIdentifier("adminManage.title")
                 Text(app.T("Gỡ một hay nhiều sự kiện khỏi ứng dụng. Đặt chỗ, thanh toán, hoàn tiền và lịch sử luôn được giữ lại.",
                            "Take one or more events off the app. Bookings, payments, refunds and history are always kept."))
-                    .font(.system(size: 13.5)).foregroundStyle(app.palette.ink.opacity(0.75)).padding(.top, 8)
+                    .font(.app(size: 13.5)).foregroundStyle(app.palette.ink.opacity(0.75)).padding(.top, 8)
 
                 searchField.padding(.top, 18)
                 filterChips.padding(.top, 12)
 
                 if let banner {
                     Text(banner)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.app(size: 13, weight: .semibold))
                         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
                         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .padding(.top, 12)
@@ -115,9 +115,9 @@ struct AdminManageEventsView: View {
 
     private var searchField: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass").font(.system(size: 14)).opacity(0.55).accessibilityHidden(true)
+            Image(systemName: "magnifyingglass").font(.app(size: 14)).opacity(0.55).accessibilityHidden(true)
             TextField(app.T("Tìm theo tên sự kiện", "Search by event name"), text: $search)
-                .font(.system(size: 15))
+                .font(.app(size: 15))
                 .focused($searchFocused)
                 .submitLabel(.search)
                 .autocorrectionDisabled()
@@ -151,26 +151,26 @@ struct AdminManageEventsView: View {
         if loading && rows.isEmpty {
             ProgressView().frame(maxWidth: .infinity).padding(.top, 30)
         } else if !loadError.isEmpty {
-            Text(loadError).font(.system(size: 13)).foregroundStyle(BanbeTheme.alert)
+            Text(loadError).font(.app(size: 13)).foregroundStyle(BanbeTheme.alert)
                 .accessibilityIdentifier("adminManage.error")
         } else if rows.isEmpty {
             Text(app.T("Không có sự kiện nào.", "No events here."))
-                .font(.system(size: 14)).opacity(0.7).padding(.top, 20)
+                .font(.app(size: 14)).opacity(0.7).padding(.top, 20)
         } else {
             HStack(spacing: 14) {
-                Text(app.T("\(rows.count) sự kiện", Self.en(rows.count, "event"))).font(.system(size: 12.5, weight: .semibold)).opacity(0.7)
+                Text(app.T("\(rows.count) sự kiện", Self.en(rows.count, "event"))).font(.app(size: 12.5, weight: .semibold)).opacity(0.7)
                 Spacer()
                 let allOpen = rows.allSatisfy { expanded.contains($0.id) }
                 Button(allOpen ? app.T("Thu gọn tất cả", "Collapse all") : app.T("Mở rộng tất cả", "Expand all")) {
                     withAnimation(.easeInOut(duration: 0.2)) { expanded = allOpen ? [] : Set(rows.map(\.id)) }
                 }
-                .font(.system(size: 13, weight: .semibold)).opacity(0.75)
+                .font(.app(size: 13, weight: .semibold)).opacity(0.75)
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("adminManage.expandAll")
                 Button(selected.count == rows.count ? app.T("Bỏ chọn tất cả", "Deselect all") : app.T("Chọn tất cả", "Select all")) {
                     selected = selected.count == rows.count ? [] : Set(rows.map(\.id))
                 }
-                .font(.system(size: 13, weight: .semibold))
+                .font(.app(size: 13, weight: .semibold))
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("adminManage.selectAll")
             }
@@ -196,7 +196,7 @@ struct AdminManageEventsView: View {
                 if isOn { selected.remove(row.id) } else { selected.insert(row.id) }
             } label: {
                 Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 20))
+                    .font(.app(size: 20))
                     .foregroundStyle(isOn ? app.palette.ink : app.palette.ink.opacity(0.3))
                     .frame(width: 32, height: 32)
                     .contentShape(Rectangle())
@@ -214,28 +214,28 @@ struct AdminManageEventsView: View {
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(alignment: .firstTextBaseline) {
-                            Text(row.name).font(.system(size: 15, weight: .semibold)).multilineTextAlignment(.leading)
+                            Text(row.name).font(.app(size: 15, weight: .semibold)).multilineTextAlignment(.leading)
                             Spacer(minLength: 6)
                             Image(systemName: "chevron.right")
-                                .font(.system(size: 12, weight: .semibold)).opacity(0.45)
+                                .font(.app(size: 12, weight: .semibold)).opacity(0.45)
                                 .rotationEffect(.degrees(isOpen ? 90 : 0))
                         }
                         FlowRow(spacing: 6) {
                             Text(statusLabel(row.status))
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.app(size: 11, weight: .bold))
                                 .padding(.horizontal, 7).padding(.vertical, 2)
                                 .background(row.status == "removed" ? BanbeTheme.alert.opacity(0.14) : app.palette.ink.opacity(0.08), in: Capsule())
                                 .foregroundStyle(row.status == "removed" ? BanbeTheme.alert : app.palette.ink)
                             if orphan {
                                 Text(app.T("Host đã xoá tài khoản", "Host account deleted"))
-                                    .font(.system(size: 11, weight: .bold))
+                                    .font(.app(size: 11, weight: .bold))
                                     .padding(.horizontal, 7).padding(.vertical, 2)
                                     .background(BanbeTheme.alert.opacity(0.12), in: Capsule())
                                     .foregroundStyle(BanbeTheme.alert)
                                     .accessibilityIdentifier("adminManage.orphan.\(row.id)")
                             }
                             Text([row.startsAt.map { Self.dateLabel($0, timeZone: row.timeZone) }, orphan ? nil : row.organizerName].compactMap { $0 }.joined(separator: " · "))
-                                .font(.system(size: 12)).opacity(0.7).lineLimit(1)
+                                .font(.app(size: 12)).opacity(0.7).lineLimit(1)
                         }
                     }
                     .contentShape(Rectangle())
@@ -246,14 +246,14 @@ struct AdminManageEventsView: View {
                 .accessibilityIdentifier("adminManage.expand.\(row.id)")
                 if row.status == "removed" {
                     Text(app.T("Lý do: ", "Reason: ") + (row.removalReason ?? ""))
-                        .font(.system(size: 12)).opacity(0.75).lineLimit(2)
+                        .font(.app(size: 12)).opacity(0.75).lineLimit(2)
                     if check?.purgeable == true {
                         Text(app.T("Chưa từng có đặt chỗ, có thể xoá vĩnh viễn.", "Never booked, can be deleted permanently."))
-                            .font(.system(size: 11.5, weight: .semibold)).opacity(0.7)
+                            .font(.app(size: 11.5, weight: .semibold)).opacity(0.7)
                     }
                 } else if let check, check.isBlocked {
                     Text(blockerLine(check, orphan: orphan))
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.app(size: 12, weight: .semibold))
                         .foregroundStyle(app.palette.honey)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("adminManage.blocked.\(row.id)")
@@ -271,7 +271,7 @@ struct AdminManageEventsView: View {
                 Spacer(minLength: 8)
                 Text(value).fontWeight(.semibold).multilineTextAlignment(.trailing)
             }
-            .font(.system(size: 12.5))
+            .font(.app(size: 12.5))
             .padding(.vertical, 5)
             .overlay(alignment: .top) { Divider().overlay(app.palette.rule) }
         }
@@ -321,7 +321,7 @@ struct AdminManageEventsView: View {
     private func detailAction(_ title: String, id: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.app(size: 13, weight: .semibold))
                 .foregroundStyle(app.palette.clay)
                 .frame(maxWidth: .infinity, minHeight: 38)
                 .overlay(Capsule().stroke(app.palette.clay, lineWidth: 1))
@@ -335,7 +335,7 @@ struct AdminManageEventsView: View {
         VStack(spacing: 8) {
             Text(app.T("Đã chọn \(selected.count)", "\(selected.count) selected") + (blockedSelected > 0
                  ? app.T(" · \(blockedSelected) chưa gỡ được", " · \(blockedSelected) can't be removed yet") : ""))
-                .font(.system(size: 12.5, weight: .semibold)).opacity(0.75)
+                .font(.app(size: 12.5, weight: .semibold)).opacity(0.75)
             HStack(spacing: 8) {
                 if !removeIDs.isEmpty {
                     actionButton(app.T("Gỡ (\(removeIDs.count))", "Remove (\(removeIDs.count))"), id: "remove", destructive: true) {
@@ -356,7 +356,7 @@ struct AdminManageEventsView: View {
                 Button { confirmWipe = true } label: {
                     Label(app.T("Xoá vĩnh viễn, thử nghiệm (\(selected.count))", "Wipe permanently, testing (\(selected.count))"),
                           systemImage: "exclamationmark.triangle.fill")
-                        .font(.system(size: 13.5, weight: .bold))
+                        .font(.app(size: 13.5, weight: .bold))
                         .frame(maxWidth: .infinity, minHeight: 44)
                         .foregroundStyle(BanbeTheme.alert)
                         .overlay(Capsule().stroke(BanbeTheme.alert, lineWidth: 1.2))
@@ -367,7 +367,7 @@ struct AdminManageEventsView: View {
                 .accessibilityIdentifier("adminManage.action.wipe")
             }
             Button(app.T("Bỏ chọn", "Clear selection")) { selected = [] }
-                .font(.system(size: 13, weight: .semibold)).buttonStyle(.plain).frame(minHeight: 32)
+                .font(.app(size: 13, weight: .semibold)).buttonStyle(.plain).frame(minHeight: 32)
         }
         .padding(.horizontal, 18).padding(.top, 12).padding(.bottom, 14)
         .frame(maxWidth: .infinity)
@@ -378,7 +378,7 @@ struct AdminManageEventsView: View {
     private func actionButton(_ title: String, id: String, destructive: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 14.5, weight: .semibold))
+                .font(.app(size: 14.5, weight: .semibold))
                 .frame(maxWidth: .infinity, minHeight: 46)
                 .foregroundStyle(destructive ? BanbeTheme.onAlert : app.palette.paper)
                 .background(destructive ? BanbeTheme.alert : app.palette.ink, in: Capsule())
@@ -405,7 +405,7 @@ struct AdminManageEventsView: View {
                          "Only for removed events that never had a booking. This can't be undone. It's logged.")
                  : app.T("Sự kiện biến mất khỏi Trang chủ, Bản đồ, Tìm kiếm và trang host. Mọi đặt chỗ, thanh toán và lịch sử được giữ. Người tổ chức nhận lý do bên dưới.",
                          "They disappear from Home, Map, Search and host pages. All bookings, payments and history are kept. The host is sent the reason below."))
-                .font(.system(size: 13.5)).opacity(0.8)
+                .font(.app(size: 13.5)).opacity(0.8)
             FlowRow(spacing: 8) {
                 ForEach(quick, id: \.self) { q in
                     ChoiceChip(title: q, selected: reason == q, compact: true) { reason = q }

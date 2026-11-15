@@ -62,7 +62,7 @@ struct HomeCategoryRow: View {
 
     private func tile(_ symbol: String, active: Bool) -> some View {
         Image(systemName: symbol)
-            .font(.system(size: 19, weight: .regular))
+            .font(.app(size: 19, weight: .regular))
             .foregroundStyle(active ? app.palette.paper : app.palette.ink)
             .frame(width: tileSize, height: tileSize)
             .background(active ? app.palette.ink.opacity(0.9) : app.palette.ink.opacity(0.06),
@@ -89,7 +89,7 @@ struct HomeCategoryRow: View {
                             VStack(spacing: 4) {
                                 tile(CategoryGlyph.symbol(c.key), active: active)
                                 Text(app.T(c.vi, c.en))
-                                    .font(.system(size: labelSize, weight: active ? .semibold : .medium))
+                                    .font(.app(size: labelSize, weight: active ? .semibold : .medium))
                                     .lineLimit(1).minimumScaleFactor(0.75)
                                     .opacity(active ? 1 : 0.8)
                             }
@@ -110,7 +110,7 @@ struct HomeCategoryRow: View {
                         VStack(spacing: 4) {
                             tile("ellipsis", active: false)
                             Text(app.T("Xem tất cả", "Show all"))
-                                .font(.system(size: labelSize, weight: .medium))
+                                .font(.app(size: labelSize, weight: .medium))
                                 .lineLimit(2).multilineTextAlignment(.center).minimumScaleFactor(0.85)
                                 .fixedSize(horizontal: false, vertical: true)
                                 .opacity(0.8)
@@ -155,13 +155,13 @@ struct HomeCategorySheet: View {
                         dismiss()
                     } label: {
                         HStack(spacing: 12) {
-                            Image(systemName: CategoryGlyph.symbol(key)).font(.system(size: 18))
+                            Image(systemName: CategoryGlyph.symbol(key)).font(.app(size: 18))
                                 .frame(width: 40, height: 40)
                                 .background(app.palette.ink.opacity(0.06), in: RoundedRectangle(cornerRadius: BanbeTheme.Radius.tile, style: .continuous))
-                            Text(app.T(c.vi, c.en)).font(.body.weight(active ? .semibold : .regular))
+                            Text(app.T(c.vi, c.en)).font(.app(.body).weight(active ? .semibold : .regular))
                             Spacer()
-                            Text("\(n)").font(.subheadline).monospacedDigit().opacity(0.7)
-                            if active { Image(systemName: "checkmark").font(.subheadline.weight(.semibold)) }
+                            Text("\(n)").font(.app(.subheadline)).monospacedDigit().opacity(0.7)
+                            if active { Image(systemName: "checkmark").font(.app(.subheadline).weight(.semibold)) }
                         }
                         .foregroundStyle(app.palette.ink)
                         .opacity(n == 0 ? 0.45 : 1)
@@ -206,10 +206,10 @@ struct HomeSearchBar: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.app(size: 16, weight: .semibold))
                     .opacity(0.7)
                 Text(placeholder ?? app.T("Tìm sự kiện, host, khu vực, vibe…", "Search events, hosts, areas, vibes…"))
-                    .font(.system(size: 14.5))
+                    .font(.app(size: 14.5))
                     .opacity(0.6)
                     .lineLimit(1)
                 Spacer(minLength: 0)
@@ -258,9 +258,9 @@ private struct DiscoveryPhoto: View {
                 .frame(maxWidth: width == nil ? .infinity : nil, maxHeight: height == nil ? .infinity : nil)
                 .overlay {
                     if compact {
-                        Image(systemName: "photo").font(.system(size: 18)).opacity(0.35)
+                        Image(systemName: "photo").font(.app(size: 18)).opacity(0.35)
                     } else {
-                        Text(app.T("Chưa có ảnh", "No photo yet")).font(.system(size: 12)).opacity(0.55)
+                        Text(app.T("Chưa có ảnh", "No photo yet")).font(.app(size: 12)).opacity(0.55)
                     }
                 }
                 .foregroundStyle(app.palette.ink)
@@ -385,7 +385,7 @@ struct DiscoveryCard: View {
                     Text(label == "best" ? "★" : "✦").foregroundStyle(app.palette.honey).accessibilityHidden(true)
                     Text(label == "best" ? app.T("Hợp với bạn nhất", "Best match for you") : app.T("Nổi bật tuần này", "Popular this week"))
                 }
-                .font(.system(size: 11, weight: .bold))
+                .font(.app(size: 11, weight: .bold))
                 .kerning(0.6)
                 .textCase(.uppercase)
                 .padding(.top, 10)
@@ -397,21 +397,21 @@ struct DiscoveryCard: View {
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 Text(model.priceLabel)
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.app(size: 15, weight: .bold))
                     .foregroundStyle(model.isFree ? app.palette.honey : app.palette.ink)
                     .lineLimit(1).fixedSize()
             }
             .padding(.top, model.label == nil ? 10 : 4)
             if !model.metaLine.isEmpty {
                 Text(model.metaLine)
-                    .font(.system(size: 12.5))
+                    .font(.app(size: 12.5))
                     .opacity(0.68)
                     .lineLimit(1)
                     .padding(.top, 3)
             }
             if let typeLine = model.typeLine {
                 Text(typeLine)
-                    .font(.system(size: 12.5))
+                    .font(.app(size: 12.5))
                     .opacity(0.8)
                     .lineLimit(1)
                     .padding(.top, 3)
@@ -419,7 +419,7 @@ struct DiscoveryCard: View {
             }
             if let going = model.fill.going, !model.cancelled {
                 Text(app.T("\(going) người sẽ đến", "\(going) going"))
-                    .font(.system(size: 11.5))
+                    .font(.app(size: 11.5))
                     .opacity(0.6)
                     .padding(.top, 3)
                     .accessibilityIdentifier("home.card.going")
@@ -445,20 +445,20 @@ struct DiscoveryRow: View {
                         Text(model.name).font(BanbeTheme.display(15.5)).lineLimit(1)
                         Spacer(minLength: 0)
                         Text(model.priceLabel)
-                            .font(.system(size: 13.5, weight: .bold))
+                            .font(.app(size: 13.5, weight: .bold))
                             .foregroundStyle(model.isFree ? app.palette.honey : app.palette.ink)
                             .lineLimit(1).fixedSize()
                     }
                     Text([model.dateBadge, model.metaLine].filter { !$0.isEmpty }.joined(separator: " · "))
-                        .font(.system(size: 12)).opacity(0.68).lineLimit(1)
+                        .font(.app(size: 12)).opacity(0.68).lineLimit(1)
                     if let typeLine = model.typeLine {
-                        Text(typeLine).font(.system(size: 12)).opacity(0.8).lineLimit(1)
+                        Text(typeLine).font(.app(size: 12)).opacity(0.8).lineLimit(1)
                     }
                     if model.cancelled || model.fill.soldOut || model.fill.almostFull {
                         Text(model.cancelled ? app.T("Đã hủy", "Cancelled")
                              : model.fill.soldOut ? app.T("Hết chỗ", "Sold out")
                              : app.T("Sắp hết · còn \(model.fill.left ?? 0)", "Almost full · \(model.fill.left ?? 0) left"))
-                            .font(.system(size: 11.5, weight: .semibold))
+                            .font(.app(size: 11.5, weight: .semibold))
                             .foregroundStyle(model.cancelled ? BanbeTheme.alert : app.palette.honey)
                     }
                 }
@@ -484,20 +484,20 @@ struct NextUpBanner: View {
                 DiscoveryPhoto(path: event.img, width: 52, height: 52, radius: BanbeTheme.Radius.thumb, compact: true)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
-                        Image(systemName: "star.fill").font(.system(size: 9)).accessibilityHidden(true)
+                        Image(systemName: "star.fill").font(.app(size: 9)).accessibilityHidden(true)
                         Text(phase == .live ? app.T("Đang diễn ra", "Happening now") : app.T("Sắp diễn ra", "Starting soon"))
                     }
-                    .font(.system(size: 10.5, weight: .bold))
+                    .font(.app(size: 10.5, weight: .bold))
                     .kerning(0.6)
                     .textCase(.uppercase)
                     .foregroundStyle(app.palette.honey)
                     Text(event.name).font(BanbeTheme.display(15.5)).lineLimit(1)
                     let when = app.trStatus(event.when)
-                    if !when.isEmpty { Text(when).font(.system(size: 12)).opacity(0.7).lineLimit(1) }
+                    if !when.isEmpty { Text(when).font(.app(size: 12)).opacity(0.7).lineLimit(1) }
                 }
                 Spacer(minLength: 0)
                 Text(app.T("Xem vé", "Your ticket") + " ›")
-                    .font(.system(size: 12.5, weight: .semibold))
+                    .font(.app(size: 12.5, weight: .semibold))
                     .lineLimit(1).fixedSize()
             }
             .foregroundStyle(app.palette.ink)
@@ -543,13 +543,13 @@ struct WeekendRailCard: View {
                     }
                 Text(event.name).font(BanbeTheme.display(14)).lineLimit(1).padding(.top, 7)
                 Text([app.trStatus(event.when), event.locationLabel ?? ""].filter { !$0.isEmpty }.joined(separator: " ▪︎ "))
-                    .font(.system(size: 11)).lineLimit(1).padding(.top, 2)
+                    .font(.app(size: 11)).lineLimit(1).padding(.top, 2)
                 HStack {
                     Text(event.priceVnd > 0 ? app.trStatus(event.price) : app.T("Miễn phí", "Free"))
                     Spacer(minLength: 4)
                     if let left = fill?.left, !soldOut { Text(app.T("\(left) chỗ trống", "\(left) left")) }
                 }
-                .font(.system(size: 11)).padding(.top, 1)
+                .font(.app(size: 11)).padding(.top, 1)
             }
             .frame(width: 168, alignment: .leading)
             .foregroundStyle(app.palette.ink)

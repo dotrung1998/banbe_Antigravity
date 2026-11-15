@@ -23,12 +23,12 @@ struct PaymentQRPressable<Content: View>: View {
                 .accessibilityHint(app.T("Nhấn giữ để mở app thanh toán", "Press and hold to open your payment app"))
             if let note {
                 Text(note)
-                    .font(.system(size: 11.5)).foregroundStyle(app.palette.ink)
+                    .font(.app(size: 11.5)).foregroundStyle(app.palette.ink)
                     .multilineTextAlignment(.center)
                     .accessibilityIdentifier("paymentQR.note")
             } else if showHint {
                 Text(app.T("Nhấn giữ mã QR để mở app thanh toán", "Press and hold the QR to open your payment app"))
-                    .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.6))
+                    .font(.app(size: 11)).foregroundStyle(app.palette.ink.opacity(0.6))
                     .multilineTextAlignment(.center)
             }
         }
@@ -83,7 +83,7 @@ struct PaymentQRImageView: View {
                 if let image {
                     Image(uiImage: image).resizable().scaledToFit().padding(4)
                 } else if failed {
-                    Image(systemName: "qrcode").font(.system(size: 36)).foregroundStyle(.gray)
+                    Image(systemName: "qrcode").font(.app(size: 36)).foregroundStyle(.gray)
                 } else {
                     ProgressView()
                 }
@@ -144,7 +144,7 @@ struct PaymentQRUploadControl: View {
                         Image(systemName: working || busy ? "hourglass" : "qrcode.viewfinder")
                         Text(uploadTitle)
                     }
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.app(size: 13, weight: .semibold))
                     .padding(.horizontal, 14).padding(.vertical, 9)
                     .background(fieldColor, in: Capsule())
                     .foregroundStyle(inkColor)
@@ -153,7 +153,7 @@ struct PaymentQRUploadControl: View {
                 .accessibilityIdentifier("paymentQR.upload")
                 if hasQR, let onRemove {
                     Button(app.T("Xoá", "Remove")) { onRemove() }
-                        .font(.system(size: 12.5))
+                        .font(.app(size: 12.5))
                         .foregroundStyle(BanbeTheme.alert)
                         .buttonStyle(.plain)
                         .disabled(working || busy)
@@ -161,7 +161,7 @@ struct PaymentQRUploadControl: View {
                 }
             }
             if let error {
-                Text(error).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                Text(error).font(.app(size: 12)).foregroundStyle(BanbeTheme.alert)
             }
         }
         .onChange(of: item) { _, newItem in
@@ -203,7 +203,7 @@ struct RefundRecipientQRView: View {
         if let path = snapshot.qrPath, !path.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 Text(app.T("Mã QR của khách", "Guest's QR code"))
-                    .font(.system(size: 11, weight: .semibold)).opacity(0.75)
+                    .font(.app(size: 11, weight: .semibold)).opacity(0.75)
                 PaymentQRImageView(bucket: "refund-qr", path: path, payload: snapshot.qrPayload, size: size)
                     .accessibilityIdentifier("refund.recipientQR")
             }

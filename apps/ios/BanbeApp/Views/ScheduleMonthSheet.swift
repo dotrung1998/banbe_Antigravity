@@ -55,7 +55,7 @@ struct ScheduleMonthSheet: View {
         HStack(spacing: 4) {
             navButton(-1, symbol: "chevron.left", label: app.T("Tháng trước", "Previous month"), id: "schedule.month.prev")
             Text(SchedulePresentation.monthTitle(month, calendar: calendar, vi: vi))
-                .font(.system(.title3, design: .rounded).weight(.semibold))
+                .font(.app(.title3, design: .rounded).weight(.semibold))
                 .frame(maxWidth: .infinity)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("schedule.month.title")
@@ -68,7 +68,7 @@ struct ScheduleMonthSheet: View {
             Haptics.selection()
             month = SchedulePresentation.addMonths(delta, to: month, calendar: calendar)
         } label: {
-            Image(systemName: symbol).font(.body.weight(.semibold))
+            Image(systemName: symbol).font(.app(.body).weight(.semibold))
                 .frame(width: 44, height: 44).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -100,7 +100,7 @@ struct ScheduleMonthSheet: View {
         return HStack(spacing: 0) {
             ForEach(grid.first ?? [], id: \.date) { d in
                 Text(f.string(from: d.date))
-                    .font(.caption.weight(.bold))
+                    .font(.app(.caption).weight(.bold))
                     .foregroundStyle(app.palette.ink.opacity(0.8))
                     .frame(maxWidth: .infinity)
                     .accessibilityHidden(true)
@@ -127,7 +127,7 @@ struct ScheduleMonthSheet: View {
         return Button { pick(day.date) } label: {
             VStack(spacing: 3) {
                 Text("\(number)")
-                    .font(.system(.callout, design: .rounded).weight(isSelected || isToday ? .bold : .regular))
+                    .font(.app(.callout, design: .rounded).weight(isSelected || isToday ? .bold : .regular))
                     .frame(width: 34, height: 34)
                     .foregroundStyle(isSelected ? app.palette.paper : app.palette.ink)
                     .background(isSelected ? app.palette.ink : .clear, in: Circle())
@@ -166,20 +166,20 @@ struct ScheduleMonthSheet: View {
     private func agendaSection(_ agenda: [(day: Date, events: [ScheduleEventInfo])]) -> some View {
         Text(app.scheduleMode == .mine ? app.T("Kế hoạch trong tháng", "Your plans this month")
                                        : app.T("Sự kiện trong tháng", "Events this month"))
-            .font(.headline)
+            .font(.app(.headline))
             .accessibilityAddTraits(.isHeader)
             .padding(.top, 6)
         if agenda.isEmpty {
             Text(app.scheduleMode == .mine ? app.T("Chưa có kế hoạch nào trong tháng này.", "Nothing planned this month.")
                                            : app.T("Chưa có sự kiện công khai nào trong tháng này.", "No public events this month."))
-                .font(.subheadline).foregroundStyle(app.palette.ink.opacity(0.75))
+                .font(.app(.subheadline)).foregroundStyle(app.palette.ink.opacity(0.75))
                 .accessibilityIdentifier("schedule.month.empty")
         } else {
             VStack(alignment: .leading, spacing: 14) {
                 ForEach(agenda, id: \.day) { entry in
                     VStack(alignment: .leading, spacing: 6) {
                         Text(SchedulePresentation.dayTitle(entry.day, calendar: calendar, vi: vi))
-                            .font(.subheadline.weight(.semibold))
+                            .font(.app(.subheadline).weight(.semibold))
                             .foregroundStyle(app.palette.ink.opacity(0.8))
                         ForEach(entry.events, id: \.key) { e in agendaRow(e, day: entry.day) }
                     }
@@ -192,9 +192,9 @@ struct ScheduleMonthSheet: View {
         Button { pick(day) } label: {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(e.start.map { SchedulePresentation.time($0, timeZone: calendar.timeZone, vi: vi) } ?? "—")
-                    .font(.system(.footnote, design: .rounded).weight(.semibold)).monospacedDigit()
+                    .font(.app(.footnote, design: .rounded).weight(.semibold)).monospacedDigit()
                     .frame(minWidth: 62, alignment: .leading)
-                Text(e.title).font(.subheadline).multilineTextAlignment(.leading)
+                Text(e.title).font(.app(.subheadline)).multilineTextAlignment(.leading)
                 Spacer(minLength: 0)
             }
             .padding(12)

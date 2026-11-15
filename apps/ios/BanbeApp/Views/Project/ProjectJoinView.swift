@@ -12,13 +12,13 @@ struct ProjectJoinView: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Button { app.screen = app.projectJoinBack } label: {
-                    Image(systemName: "chevron.left").font(.system(size: 17, weight: .semibold))
+                    Image(systemName: "chevron.left").font(.app(size: 17, weight: .semibold))
                         .frame(width: 44, height: 44).background(app.palette.block, in: Circle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(app.T("Quay lại", "Back"))
                 .accessibilityIdentifier("project.join.back")
-                Text(app.T("Vào đội sự kiện", "Join a team")).font(.headline).frame(maxWidth: .infinity).accessibilityAddTraits(.isHeader)
+                Text(app.T("Vào đội sự kiện", "Join a team")).font(.app(.headline)).frame(maxWidth: .infinity).accessibilityAddTraits(.isHeader)
                 Color.clear.frame(width: 44, height: 44)
             }
             .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 4)
@@ -27,7 +27,7 @@ struct ProjectJoinView: View {
                     codeField
                     if !app.projectJoinError.isEmpty {
                         Label(app.projectJoinError, systemImage: "exclamationmark.circle.fill")
-                            .font(.subheadline)
+                            .font(.app(.subheadline))
                             .foregroundStyle(BanbeTheme.alert)
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("project.join.error")
@@ -37,7 +37,7 @@ struct ProjectJoinView: View {
                     if let peek = app.projectJoinPeek { card(peek) }
                     Text(app.T("Bạn chỉ thấy dự án của sự kiện này: việc, chủ đề và lịch chạy của đội. Vai trò do người mời đặt sẵn.",
                                "You'll only see this event's team project: its tasks, topics and run-of-show. Your role is set by whoever invited you."))
-                        .font(.footnote).foregroundStyle(app.palette.ink3)
+                        .font(.app(.footnote)).foregroundStyle(app.palette.ink3)
                 }
                 .padding(.horizontal, 18).padding(.top, 14).padding(.bottom, 40)
             }
@@ -60,7 +60,7 @@ struct ProjectJoinView: View {
             ProjectFieldLabel(text: app.T("Mã mời hoặc liên kết", "Invite code or link"))
             HStack(spacing: 8) {
                 TextField("BB-XXXX", text: $app.projectJoinCode)
-                    .font(.system(.title3, design: .monospaced).weight(.bold))
+                    .font(.app(.title3, design: .monospaced).weight(.bold))
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
                     .submitLabel(.go)
@@ -71,7 +71,7 @@ struct ProjectJoinView: View {
                     .accessibilityLabel(app.T("Mã mời", "Invite code"))
                     .accessibilityIdentifier("project.join.code")
                 Button(app.T("Kiểm tra", "Check")) { check() }
-                    .font(.body.weight(.semibold))
+                    .font(.app(.body).weight(.semibold))
                     .padding(.horizontal, 16).frame(minHeight: 50)
                     .background(app.palette.blockInset, in: Capsule())
                     .disabled(app.projectJoinCode.trimmingCharacters(in: .whitespaces).isEmpty || app.projectJoinLoading)
@@ -79,7 +79,7 @@ struct ProjectJoinView: View {
             }
             Button { scanning = true } label: {
                 Label(app.T("Quét mã QR", "Scan a QR code"), systemImage: "qrcode.viewfinder")
-                    .font(.body.weight(.semibold))
+                    .font(.app(.body).weight(.semibold))
                     .frame(maxWidth: .infinity, minHeight: 50)
                     .background(app.palette.blockInset, in: Capsule())
             }
@@ -93,7 +93,7 @@ struct ProjectJoinView: View {
     private var signInCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(app.T("Đăng nhập để xem và nhận lời mời. Mã của bạn được giữ lại.", "Log in to see and accept this invite. Your code is kept for you."))
-                .font(.body).fixedSize(horizontal: false, vertical: true)
+                .font(.app(.body)).fixedSize(horizontal: false, vertical: true)
             InkButton(title: app.T("Đăng nhập để vào đội", "Log in to join"), enabled: true, cornerRadius: 999) { check() }
                 .accessibilityIdentifier("project.join.signIn")
         }
@@ -116,28 +116,28 @@ struct ProjectJoinView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(p.eventName ?? "").font(BanbeTheme.display(22)).fixedSize(horizontal: false, vertical: true)
                 Text([p.organizerName, eventDay(p)].compactMap { $0 }.joined(separator: " · "))
-                    .font(.subheadline).foregroundStyle(app.palette.ink2)
+                    .font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
             }
             HStack(spacing: 10) {
                 Image(systemName: "person.badge.key").foregroundStyle(app.palette.clay).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(app.T("Vai trò: ", "Role: ") + app.projectRoleName(p.role) + (p.laneName.map { " · \($0)" } ?? ""))
-                        .font(.body.weight(.semibold))
-                    Text(app.projectRoleNote(p.role ?? "helper")).font(.footnote).foregroundStyle(app.palette.ink2)
+                        .font(.app(.body).weight(.semibold))
+                    Text(app.projectRoleNote(p.role ?? "helper")).font(.app(.footnote)).foregroundStyle(app.palette.ink2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .accessibilityElement(children: .combine)
             if p.state == "ok" {
                 if let left = app.projectInviteExpiry(p.expiresAt) {
-                    Text(app.T("Lời mời \(left).", "Invite: \(left).")).font(.footnote).foregroundStyle(app.palette.ink3)
+                    Text(app.T("Lời mời \(left).", "Invite: \(left).")).font(.app(.footnote)).foregroundStyle(app.palette.ink3)
                 }
                 InkButton(title: app.T("Vào đội", "Join the team"), enabled: !app.projectJoinLoading, cornerRadius: 999) {
                     Task { await app.joinProject() }
                 }
                 .accessibilityIdentifier("project.join.confirm")
             } else {
-                Text(stateText(p)).font(.subheadline).foregroundStyle(p.state == "already_member" || p.state == "is_host" ? app.palette.ink : BanbeTheme.alert)
+                Text(stateText(p)).font(.app(.subheadline)).foregroundStyle(p.state == "already_member" || p.state == "is_host" ? app.palette.ink : BanbeTheme.alert)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("project.join.state")
                 if (p.state == "already_member" || p.state == "is_host"), let id = p.eventId {
@@ -198,7 +198,7 @@ struct ProjectInviteScanSheet: View {
                 Text(wrong ? app.T("Mã QR này không phải lời mời vào đội trên banbe.", "That QR isn't a banbe team invite.")
                            : app.T("Hướng máy ảnh vào mã QR mời mà Chủ sự kiện hoặc Quản lý đưa cho bạn.",
                                    "Point the camera at the invite QR the Host or a Manager showed you."))
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .foregroundStyle(wrong ? BanbeTheme.alert : app.palette.ink2)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("project.scan.hint")

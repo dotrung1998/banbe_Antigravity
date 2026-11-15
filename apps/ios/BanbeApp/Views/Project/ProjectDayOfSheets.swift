@@ -65,18 +65,18 @@ struct ProjectRosSheet: View {
                          placeholder: app.T("Ví dụ: Mở cửa đón khách", "e.g. Doors open"), id: "project.ros.title")
         VStack(alignment: .leading, spacing: 8) {
             DatePicker(app.T("Bắt đầu", "Start"), selection: $start, in: window, displayedComponents: [.date, .hourAndMinute])
-                .font(.body.weight(.semibold))
+                .font(.app(.body).weight(.semibold))
                 .onChange(of: start) { old, new in
                     // Moving the start keeps the length, so the end never ends up before it.
                     end = end.addingTimeInterval(new.timeIntervalSince(old))
                 }
                 .accessibilityIdentifier("project.ros.start")
             DatePicker(app.T("Kết thúc", "End"), selection: $end, in: window, displayedComponents: [.date, .hourAndMinute])
-                .font(.body.weight(.semibold))
+                .font(.app(.body).weight(.semibold))
                 .accessibilityIdentifier("project.ros.end")
             Text(app.T("Giờ theo múi giờ sự kiện (\(tz.identifier)). Kết thúc sau bắt đầu ít nhất \(limits.rosMinMinutes) phút.",
                        "Times are in the event's zone (\(tz.identifier)). The end is at least \(limits.rosMinMinutes) minutes after the start."))
-                .font(.footnote).foregroundStyle(timeOK ? app.palette.ink3 : BanbeTheme.alert)
+                .font(.app(.footnote)).foregroundStyle(timeOK ? app.palette.ink3 : BanbeTheme.alert)
                 .accessibilityIdentifier("project.ros.timeHint")
         }
         .environment(\.timeZone, tz)
@@ -103,7 +103,7 @@ struct ProjectRosSheet: View {
         .accessibilityIdentifier("project.ros.save")
         if itemID != nil {
             Button(role: .destructive) { deleting = true } label: {
-                Label(app.T("Xoá mốc", "Delete item"), systemImage: "trash").font(.body.weight(.semibold))
+                Label(app.T("Xoá mốc", "Delete item"), systemImage: "trash").font(.app(.body).weight(.semibold))
                     .frame(maxWidth: .infinity, minHeight: 50)
                     .foregroundStyle(BanbeTheme.alert).background(BanbeTheme.alert.opacity(0.12), in: Capsule())
             }
@@ -120,7 +120,7 @@ struct ProjectRosSheet: View {
         Button(role: .destructive) {
             Task { if let itemID, await app.deleteProjectRosItem(itemID, reason: reason.trimmingCharacters(in: .whitespacesAndNewlines)) { close() } }
         } label: {
-            Text(app.T("Xoá mốc", "Delete item")).font(.body.weight(.bold))
+            Text(app.T("Xoá mốc", "Delete item")).font(.app(.body).weight(.bold))
                 .frame(maxWidth: .infinity, minHeight: 50)
                 .foregroundStyle(BanbeTheme.alert).background(BanbeTheme.alert.opacity(0.12), in: Capsule())
         }
@@ -128,7 +128,7 @@ struct ProjectRosSheet: View {
         .disabled(!ProjectReasonField.valid(reason) || app.projectBusy)
         .opacity(ProjectReasonField.valid(reason) ? 1 : 0.4)
         .accessibilityIdentifier("project.ros.confirmDelete")
-        Text(app.T("Mốc bị xoá vào thùng rác 7 ngày.", "Deleted items stay in the trash for 7 days.")).font(.footnote).foregroundStyle(app.palette.ink3)
+        Text(app.T("Mốc bị xoá vào thùng rác 7 ngày.", "Deleted items stay in the trash for 7 days.")).font(.app(.footnote)).foregroundStyle(app.palette.ink3)
         Button(app.T("Không xoá", "Keep it")) { deleting = false }.frame(maxWidth: .infinity, minHeight: 44)
     }
 }
@@ -147,11 +147,11 @@ struct ProjectTrashSheet: View {
                 VStack(alignment: .leading, spacing: 14) {
                     Text(app.T("Mục bị xoá được giữ \(ProjectLimits.shared.trashDays) ngày (tối đa \(ProjectLimits.shared.trashMax) mục) rồi tự dọn. Mọi thao tác đều ghi người làm và lý do.",
                                "Deleted items are kept \(ProjectLimits.shared.trashDays) days (\(ProjectLimits.shared.trashMax) at most), then cleared. Every action records who and why."))
-                        .font(.subheadline).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
+                        .font(.app(.subheadline)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
                     if !loaded {
                         ProgressView().frame(maxWidth: .infinity).padding(.top, 20)
                     } else if items.isEmpty {
-                        Text(app.T("Thùng rác trống.", "The trash is empty.")).font(.subheadline).foregroundStyle(app.palette.ink2)
+                        Text(app.T("Thùng rác trống.", "The trash is empty.")).font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
                             .frame(maxWidth: .infinity).padding(.vertical, 24)
                             .accessibilityIdentifier("project.trash.empty")
                     } else {
@@ -172,23 +172,23 @@ struct ProjectTrashSheet: View {
     private func row(_ t: ProjectTrashItem) -> some View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(t.title).font(.body.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+                Text(t.title).font(.app(.body).weight(.semibold)).fixedSize(horizontal: false, vertical: true)
                 Text([app.projectTrashKindName(t.kind), app.projectPersonName(t.by), t.reason.map { "“\($0)”" }].compactMap { $0 }.joined(separator: " · "))
-                    .font(.footnote).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
+                    .font(.app(.footnote)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
             Button(app.T("Khôi phục", "Restore")) {
                 Task { if await app.restoreProjectItem(t) { items.removeAll { $0.id == t.id } } }
             }
-            .font(.subheadline.weight(.semibold))
+            .font(.app(.subheadline).weight(.semibold))
             .padding(.horizontal, 12).frame(minHeight: 44).background(app.palette.blockInset, in: Capsule())
             .accessibilityIdentifier("project.trash.restore.\(t.itemId)")
             if app.projectCan("trash.purge") {
                 Button {
                     Task { if await app.purgeProjectItem(t) { items.removeAll { $0.id == t.id } } }
                 } label: {
-                    Image(systemName: "trash").font(.system(size: 15, weight: .semibold)).frame(width: 44, height: 44)
+                    Image(systemName: "trash").font(.app(size: 15, weight: .semibold)).frame(width: 44, height: 44)
                         .foregroundStyle(BanbeTheme.alert).background(BanbeTheme.alert.opacity(0.12), in: Circle())
                 }
                 .buttonStyle(.plain)

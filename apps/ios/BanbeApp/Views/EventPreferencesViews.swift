@@ -35,7 +35,7 @@ struct EventPreferencesForm: View {
     private func question(_ title: String, id: String, options: [PrefOption],
                           selection: Binding<[String]?>) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(.system(size: 13.5, weight: .semibold))
+            Text(title).font(.app(size: 13.5, weight: .semibold))
             FlowLayout(spacing: 8, lineSpacing: 8) {
                 ForEach(options) { o in
                     chip(vi ? o.vi : o.en, selected: selection.wrappedValue?.contains(o.id) == true,
@@ -59,7 +59,7 @@ struct EventPreferencesForm: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(app.T("Ngân sách mỗi sự kiện", "Budget per event"))
-                    .font(.system(size: 13.5, weight: .semibold))
+                    .font(.app(size: 13.5, weight: .semibold))
                 Spacer(minLength: 8)
                 HStack(spacing: 6) {
                     ForEach(BudgetRegion.allCases, id: \.self) { r in
@@ -70,7 +70,7 @@ struct EventPreferencesForm: View {
             }
             Text(app.T("Khoảng giá tính theo \(region == .vn ? "đồng (VND)" : "đô la Mỹ (USD)").",
                        "Ranges are in \(region == .vn ? "Vietnamese dong (VND)" : "US dollars (USD)")."))
-                .font(.system(size: 11.5))
+                .font(.app(size: 11.5))
                 .foregroundStyle(app.palette.ink.opacity(0.7))
             FlowLayout(spacing: 8, lineSpacing: 8) {
                 ForEach(EventPrefTaxonomy.budgetTiers + [EventPrefTaxonomy.noPreference], id: \.self) { t in
@@ -96,7 +96,7 @@ struct EventPreferencesForm: View {
                       action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(text)
-                .font(.system(size: compact ? 11.5 : 13, weight: selected ? .semibold : .regular))
+                .font(.app(size: compact ? 11.5 : 13, weight: selected ? .semibold : .regular))
                 .multilineTextAlignment(.leading)
                 .padding(.horizontal, compact ? 10 : 14).padding(.vertical, compact ? 6 : 9)
                 .foregroundStyle(selected ? app.palette.paper : app.palette.ink)
@@ -116,7 +116,7 @@ struct EventPrefsPrivacyNote: View {
     var body: some View {
         Text(app.T("Câu trả lời chỉ thuộc về tài khoản của bạn và không bao giờ hiển thị cho host. Đây là sở thích bạn tự khai, không phải thông tin đã được xác minh.",
                    "Your answers are private to your account and never shown to hosts. They are self-declared preferences, not verified credentials."))
-            .font(.system(size: 11.5))
+            .font(.app(size: 11.5))
             .lineSpacing(3)
             .foregroundStyle(app.palette.ink.opacity(0.7))
     }
@@ -147,7 +147,7 @@ struct EventPreferencesView: View {
                     .padding(.top, 16)
                 Text(app.T("Dùng để gợi ý sự kiện phù hợp cho bạn. Câu nào cũng có thể bỏ qua.",
                            "Used to suggest events that suit you. Every question is optional."))
-                    .font(.system(size: 13.5))
+                    .font(.app(size: 13.5))
                     .lineSpacing(3)
                     .padding(.top, 10)
 
@@ -159,10 +159,10 @@ struct EventPreferencesView: View {
 
                 if failed {
                     Text(app.T("Chưa lưu được. Vui lòng thử lại.", "Couldn't save. Please try again."))
-                        .font(.system(size: 12)).foregroundStyle(BanbeTheme.alert).padding(.top, 14)
+                        .font(.app(size: 12)).foregroundStyle(BanbeTheme.alert).padding(.top, 14)
                 } else if saved {
                     Text(app.T("Đã lưu sở thích.", "Preferences saved."))
-                        .font(.system(size: 12)).padding(.top, 14)
+                        .font(.app(size: 12)).padding(.top, 14)
                 }
 
                 // Note 64: stay-and-update from Settings; navigate (back to the reservation) after the ✓ from there.

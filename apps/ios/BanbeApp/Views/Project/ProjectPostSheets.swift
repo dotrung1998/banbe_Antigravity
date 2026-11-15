@@ -29,7 +29,7 @@ struct ProjectPostSheet: View {
                         case .delete: deleteForm(post)
                         }
                     } else {
-                        Text(app.T("Bài này không còn nữa.", "This post is gone.")).font(.body).foregroundStyle(app.palette.ink2)
+                        Text(app.T("Bài này không còn nữa.", "This post is gone.")).font(.app(.body)).foregroundStyle(app.palette.ink2)
                     }
                 }
                 .padding(.bottom, 24)
@@ -54,20 +54,20 @@ struct ProjectPostSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             FlowLayout(spacing: 6, lineSpacing: 6) {
                 if let lane = app.projectSnapshot?.lanes?.first(where: { $0.id == p.laneId })?.name {
-                    Text(lane).font(.caption.weight(.bold)).padding(.horizontal, 9).padding(.vertical, 4)
+                    Text(lane).font(.app(.caption).weight(.bold)).padding(.horizontal, 9).padding(.vertical, 4)
                         .foregroundStyle(app.palette.clay).background(app.palette.clayBg, in: Capsule())
                 }
                 if !open { ProjectStateTag(state: p.state) }
                 if p.editedAt != nil {
-                    Text(app.T("đã sửa", "edited")).font(.caption.italic()).foregroundStyle(app.palette.ink3)
+                    Text(app.T("đã sửa", "edited")).font(.app(.caption).italic()).foregroundStyle(app.palette.ink3)
                         .padding(.vertical, 4)
                         .accessibilityIdentifier("project.post.edited")
                 }
             }
             Text(p.title).font(BanbeTheme.display(20)).fixedSize(horizontal: false, vertical: true)
-            if !p.body.isEmpty { Text(p.body).font(.body).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true) }
+            if !p.body.isEmpty { Text(p.body).font(.app(.body)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true) }
             Text(app.projectPersonName(p.authorId) + (p.addresseeId.map { " → " + app.projectPersonName($0) } ?? ""))
-                .font(.footnote).foregroundStyle(app.palette.ink3)
+                .font(.app(.footnote)).foregroundStyle(app.palette.ink3)
         }
         if p.type == "proposal" { options(p, open: open) }
         if p.type == "update" || p.type == "decision" { seen(p) }
@@ -91,9 +91,9 @@ struct ProjectPostSheet: View {
                 } label: {
                     HStack(spacing: 10) {
                         if mine { Image(systemName: "checkmark.circle.fill").foregroundStyle(app.palette.clay).accessibilityHidden(true) }
-                        Text(option).font(.body.weight(mine ? .bold : .semibold)).multilineTextAlignment(.leading)
+                        Text(option).font(.app(.body).weight(mine ? .bold : .semibold)).multilineTextAlignment(.leading)
                         Spacer(minLength: 6)
-                        Text("\(n)").font(.body.weight(.bold).monospacedDigit())
+                        Text("\(n)").font(.app(.body).weight(.bold).monospacedDigit())
                     }
                     .padding(.horizontal, 14)
                     .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
@@ -117,7 +117,7 @@ struct ProjectPostSheet: View {
             Text(open ? app.T("Mỗi người một phiếu. Bấm lại để rút phiếu, bấm lựa chọn khác để đổi.",
                               "One vote each. Tap again to take it back, or tap another option to switch.")
                       : app.T("Đã chốt. Không bỏ phiếu được nữa.", "Settled. Voting is closed."))
-                .font(.footnote).foregroundStyle(app.palette.ink3)
+                .font(.app(.footnote)).foregroundStyle(app.palette.ink3)
         }
     }
 
@@ -127,14 +127,14 @@ struct ProjectPostSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(names.isEmpty ? app.T("Chưa ai xem", "Nobody has seen it yet") : names.joined(separator: ", "))
-                    .font(.footnote).foregroundStyle(app.palette.ink2).lineLimit(2)
+                    .font(.app(.footnote)).foregroundStyle(app.palette.ink2).lineLimit(2)
                 Spacer(minLength: 6)
                 Text(app.T("\(p.seenCount)/\(app.projectHeadcount) đã xem", "\(p.seenCount)/\(app.projectHeadcount) seen"))
-                    .font(.footnote.weight(.semibold)).foregroundStyle(app.palette.ink2)
+                    .font(.app(.footnote).weight(.semibold)).foregroundStyle(app.palette.ink2)
             }
             if p.seenByMe {
                 Label(app.T("Bạn đã xem", "You've seen this"), systemImage: "eye")
-                    .font(.body.weight(.semibold)).foregroundStyle(app.palette.ink2)
+                    .font(.app(.body).weight(.semibold)).foregroundStyle(app.palette.ink2)
                     .frame(maxWidth: .infinity, minHeight: 50)
                     .background(app.palette.blockInset, in: Capsule())
                     .accessibilityIdentifier("project.post.seenDone")
@@ -155,8 +155,8 @@ struct ProjectPostSheet: View {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(list) { r in
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(app.projectPersonName(r.authorId)).font(.caption.weight(.bold)).foregroundStyle(app.palette.ink3)
-                        Text(r.body).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                        Text(app.projectPersonName(r.authorId)).font(.app(.caption).weight(.bold)).foregroundStyle(app.palette.ink3)
+                        Text(r.body).font(.app(.subheadline)).fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -170,7 +170,7 @@ struct ProjectPostSheet: View {
         if (p.type == "question" || p.type == "proposal") && open && app.projectCan("post.reply") {
             if p.repliesCount >= max {
                 Text(app.T("Đủ \(max) phản hồi. Hãy chốt hoặc đóng bài.", "\(max) replies reached. Settle or close the post."))
-                    .font(.subheadline).foregroundStyle(app.palette.ink2)
+                    .font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(alignment: .bottom, spacing: 8) {
@@ -182,7 +182,7 @@ struct ProjectPostSheet: View {
                                 if await app.replyProjectPost(p.id, body: text) { reply = ""; await reload() }
                             }
                         } label: {
-                            Image(systemName: "paperplane.fill").font(.system(size: 17, weight: .semibold))
+                            Image(systemName: "paperplane.fill").font(.app(size: 17, weight: .semibold))
                                 .frame(width: 50, height: 50)
                                 .foregroundStyle(app.palette.paper).background(app.palette.ink, in: Circle())
                         }
@@ -193,7 +193,7 @@ struct ProjectPostSheet: View {
                         .accessibilityIdentifier("project.post.send")
                     }
                     Text(app.T("Đã dùng \(p.repliesCount)/\(max) phản hồi", "\(p.repliesCount)/\(max) replies used"))
-                        .font(.footnote).foregroundStyle(app.palette.ink3)
+                        .font(.app(.footnote)).foregroundStyle(app.palette.ink3)
                 }
             }
         }
@@ -208,13 +208,13 @@ struct ProjectPostSheet: View {
             .accessibilityIdentifier("project.post.decide")
             Text(app.T("Bài đề xuất khoá lại và một Quyết định được ghi vào nhật ký. Hoà phiếu thì chọn lựa chọn đầu tiên.",
                        "The proposal locks and a Decision goes into the log. A tie picks the first option."))
-                .font(.footnote).foregroundStyle(app.palette.ink3)
+                .font(.app(.footnote)).foregroundStyle(app.palette.ink3)
         } else if open && p.type == "question" && app.projectCan("post.resolve", target(p)) {
             Button {
                 Task { if await app.resolveProjectPost(p.id) { await reload() } }
             } label: {
                 Label(app.T("Đánh dấu đã giải quyết", "Mark as resolved"), systemImage: "checkmark")
-                    .font(.body.weight(.semibold))
+                    .font(.app(.body).weight(.semibold))
                     .frame(maxWidth: .infinity, minHeight: 50)
                     .background(app.palette.blockInset, in: Capsule())
             }
@@ -234,7 +234,7 @@ struct ProjectPostSheet: View {
                     Button {
                         editTitle = p.title; editBody = p.body; mode = .edit
                     } label: {
-                        Label(app.T("Sửa bài", "Edit"), systemImage: "pencil").font(.body.weight(.semibold))
+                        Label(app.T("Sửa bài", "Edit"), systemImage: "pencil").font(.app(.body).weight(.semibold))
                             .frame(maxWidth: .infinity, minHeight: 50).background(app.palette.blockInset, in: Capsule())
                     }
                     .buttonStyle(PressableButtonStyle())
@@ -242,7 +242,7 @@ struct ProjectPostSheet: View {
                 }
                 if canDelete {
                     Button { reason = ""; mode = .delete } label: {
-                        Label(app.T("Xoá bài", "Delete"), systemImage: "trash").font(.body.weight(.semibold))
+                        Label(app.T("Xoá bài", "Delete"), systemImage: "trash").font(.app(.body).weight(.semibold))
                             .frame(maxWidth: .infinity, minHeight: 50)
                             .foregroundStyle(BanbeTheme.alert).background(BanbeTheme.alert.opacity(0.12), in: Capsule())
                     }
@@ -254,7 +254,7 @@ struct ProjectPostSheet: View {
         if mine(p.authorId) && !canEdit && p.state == "open" && p.type != "decision" {
             Text(app.T("Đã có người phản hồi nên bạn không sửa được nữa. Nhờ Quản lý nếu cần xoá.",
                        "Others have responded, so you can't edit it now. Ask a Manager if it must go."))
-                .font(.footnote).foregroundStyle(app.palette.ink3)
+                .font(.app(.footnote)).foregroundStyle(app.palette.ink3)
         }
     }
 
@@ -276,7 +276,7 @@ struct ProjectPostSheet: View {
         .accessibilityIdentifier("project.postEdit.save")
         Text(app.T("Bài sẽ hiện nhãn “đã sửa”. Chỉ sửa được khi chưa ai phản hồi, bỏ phiếu hay xem.",
                    "The post shows an “edited” label. It can be edited only before anyone replies, votes or marks it seen."))
-            .font(.footnote).foregroundStyle(app.palette.ink3)
+            .font(.app(.footnote)).foregroundStyle(app.palette.ink3)
         Button(app.T("Huỷ", "Cancel")) { mode = .view }.frame(maxWidth: .infinity, minHeight: 44)
     }
 
@@ -288,7 +288,7 @@ struct ProjectPostSheet: View {
         Button(role: .destructive) {
             Task { if await app.deleteProjectPost(p.id, reason: reason.trimmingCharacters(in: .whitespacesAndNewlines)) { close() } }
         } label: {
-            Text(app.T("Xoá bài", "Delete post")).font(.body.weight(.bold))
+            Text(app.T("Xoá bài", "Delete post")).font(.app(.body).weight(.bold))
                 .frame(maxWidth: .infinity, minHeight: 50)
                 .foregroundStyle(BanbeTheme.alert).background(BanbeTheme.alert.opacity(0.12), in: Capsule())
         }
@@ -296,7 +296,7 @@ struct ProjectPostSheet: View {
         .disabled(!ProjectReasonField.valid(reason) || app.projectBusy)
         .opacity(ProjectReasonField.valid(reason) ? 1 : 0.4)
         .accessibilityIdentifier("project.post.confirmDelete")
-        Text(app.T("Bài bị xoá vào thùng rác 7 ngày.", "Deleted posts stay in the trash for 7 days.")).font(.footnote).foregroundStyle(app.palette.ink3)
+        Text(app.T("Bài bị xoá vào thùng rác 7 ngày.", "Deleted posts stay in the trash for 7 days.")).font(.app(.footnote)).foregroundStyle(app.palette.ink3)
         Button(app.T("Không xoá", "Keep it")) { mode = .view }.frame(maxWidth: .infinity, minHeight: 44)
     }
 }
@@ -357,12 +357,12 @@ struct ProjectComposeSheet: View {
                     if let d = Calendar.current.date(byAdding: .day, value: 2, to: app.projectNow) { deadline = d }
                 } label: {
                     HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: app.projectPostIcon(t, filled: true)).font(.system(size: 18, weight: .semibold))
+                        Image(systemName: app.projectPostIcon(t, filled: true)).font(.app(size: 18, weight: .semibold))
                             .foregroundStyle(app.projectPostTint(t).fg).frame(width: 40, height: 40)
                             .background(app.projectPostTint(t).bg, in: Circle()).accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(app.projectPostTypeName(t)).font(.body.weight(.bold))
-                            Text(ok ? app.projectPostTypeHint(t) : notAllowedText(t)).font(.subheadline).foregroundStyle(app.palette.ink2)
+                            Text(app.projectPostTypeName(t)).font(.app(.body).weight(.bold))
+                            Text(ok ? app.projectPostTypeHint(t) : notAllowedText(t)).font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
                                 .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer(minLength: 0)
@@ -395,11 +395,11 @@ struct ProjectComposeSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(app.T("Muốn nói chuyện bâng quơ? Gặp trực tiếp hoặc dùng kênh của đội. Ở đây chỉ dành cho việc cần chốt.",
                        "For small talk, meet in person or use the team channel. This is for things that need settling."))
-                .font(.subheadline).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
+                .font(.app(.subheadline)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
             if let primary, let url = URL(string: primary.url) {
                 Link(destination: url) {
                     Label(primary.label.isEmpty ? app.T("Mở kênh của đội", "Open the team channel") : primary.label, systemImage: "arrow.up.right")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.app(.subheadline).weight(.semibold))
                         .padding(.horizontal, 14).frame(minHeight: 44)
                         .background(app.palette.blockInset, in: Capsule())
                 }
@@ -432,13 +432,13 @@ struct ProjectComposeSheet: View {
                 }
                 if options.count < l.proposalOptionsMax {
                     Button { options.append("") } label: {
-                        Label(app.T("Thêm lựa chọn", "Add option"), systemImage: "plus").font(.subheadline.weight(.semibold))
+                        Label(app.T("Thêm lựa chọn", "Add option"), systemImage: "plus").font(.app(.subheadline).weight(.semibold))
                             .padding(.horizontal, 14).frame(minHeight: 44).background(app.palette.blockInset, in: Capsule())
                     }
                     .buttonStyle(PressableButtonStyle())
                     .accessibilityIdentifier("project.compose.addOption")
                 }
-                Toggle(app.T("Hạn bỏ phiếu", "Vote by"), isOn: $hasDeadline).font(.body.weight(.semibold))
+                Toggle(app.T("Hạn bỏ phiếu", "Vote by"), isOn: $hasDeadline).font(.app(.body).weight(.semibold))
                     .accessibilityIdentifier("project.compose.hasDeadline")
                 if hasDeadline {
                     DatePicker(app.T("Hạn", "Deadline"), selection: $deadline, in: app.projectNow..., displayedComponents: .date)
@@ -459,7 +459,7 @@ struct ProjectComposeSheet: View {
         }
         if t == "decision" {
             Text(app.T("Quyết định khoá ngay và vào nhật ký. Mọi người chỉ bấm “Đã xem”.", "A decision locks at once and goes into the log. People just tap “Seen”."))
-                .font(.footnote).foregroundStyle(app.palette.ink3)
+                .font(.app(.footnote)).foregroundStyle(app.palette.ink3)
         }
         InkButton(title: app.T("Đăng", "Post"), enabled: ready(t) && !app.projectBusy, cornerRadius: 999,
                   disabledReason: readyReason(t)) {

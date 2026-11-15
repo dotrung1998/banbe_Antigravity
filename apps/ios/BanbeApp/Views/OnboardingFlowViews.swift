@@ -214,7 +214,7 @@ struct OnboardingTopBar: View {
         HStack(spacing: 10) {
             Button(action: onBack) {
                 Image(systemName: "chevron.left")
-                    .font(.body.weight(.semibold))
+                    .font(.app(.body).weight(.semibold))
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
@@ -230,13 +230,13 @@ struct OnboardingTopBar: View {
             .animation(.easeOut(duration: 0.35), value: step)
             .accessibilityHidden(true)
             Text("\(step)/\(OnboardingQuestion.count)")
-                .font(.footnote.weight(.bold)).monospacedDigit()
+                .font(.app(.footnote).weight(.bold)).monospacedDigit()
                 .foregroundStyle(app.palette.ink.opacity(0.7))
                 .accessibilityLabel(app.T("Câu \(step)/\(OnboardingQuestion.count)", "\(step) of \(OnboardingQuestion.count)"))
                 .accessibilityIdentifier("onboarding.progress")
             Button(action: onSkip) {
                 Text(app.T("Bỏ qua", "Skip"))
-                    .font(.subheadline.weight(.semibold))
+                    .font(.app(.subheadline).weight(.semibold))
                     .opacity(0.8)
                     .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())
@@ -285,7 +285,7 @@ struct OnboardingChoiceRow: View {
 
     private var check: some View {
         Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-            .font(.title3)
+            .font(.app(.title3))
             .foregroundStyle(selected ? app.palette.ink : app.palette.ink.opacity(0.3))
             .accessibilityHidden(true)
     }
@@ -294,7 +294,7 @@ struct OnboardingChoiceRow: View {
     private var face: some View {
         if let emoji {
             Text(emoji)
-                .font(.system(size: tile ? 32 : 22))
+                .font(.app(size: tile ? 32 : 22))
                 .scaleEffect(selected && !reduceMotion ? 1.15 : 1)
                 .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.5), value: selected)
                 .accessibilityHidden(true)
@@ -305,9 +305,9 @@ struct OnboardingChoiceRow: View {
         HStack(spacing: 14) {
             face
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.body.weight(selected ? .bold : .medium))
+                Text(title).font(.app(.body).weight(selected ? .bold : .medium))
                 if let detail {
-                    Text(detail).font(.footnote).opacity(0.75)
+                    Text(detail).font(.app(.footnote)).opacity(0.75)
                 }
             }
             .multilineTextAlignment(.leading)
@@ -326,7 +326,7 @@ struct OnboardingChoiceRow: View {
                 check
             }
             Spacer(minLength: 0)
-            Text(title).font(.body.weight(selected ? .bold : .medium))
+            Text(title).font(.app(.body).weight(selected ? .bold : .medium))
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -352,8 +352,8 @@ private struct OnboardingStepHeader: View {
                 if let onBack, let backTitle {
                     Button(action: onBack) {
                         HStack(spacing: 4) {
-                            Image(systemName: "chevron.left").font(.body.weight(.semibold))
-                            Text(backTitle).font(.subheadline.weight(.medium))
+                            Image(systemName: "chevron.left").font(.app(.body).weight(.semibold))
+                            Text(backTitle).font(.app(.subheadline).weight(.medium))
                         }
                         .frame(minHeight: 44)
                         .contentShape(Rectangle())
@@ -363,7 +363,7 @@ private struct OnboardingStepHeader: View {
                 }
                 Spacer(minLength: 8)
                 Text(label)
-                    .font(.footnote).monospacedDigit()
+                    .font(.app(.footnote)).monospacedDigit()
                     .foregroundStyle(app.palette.ink.opacity(0.65))
                     .frame(minHeight: 44)
                     .accessibilityIdentifier("onboarding.progress")
@@ -386,7 +386,7 @@ private struct OnboardingEyebrow: View {
     let text: String
     var body: some View {
         Text(text.uppercased())
-            .font(.system(size: 11, weight: .semibold)).tracking(1.3)
+            .font(.app(size: 11, weight: .semibold)).tracking(1.3)
             .foregroundStyle(app.palette.ink.opacity(0.62))
     }
 }
@@ -400,7 +400,7 @@ private struct OnboardingLinkButton: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.subheadline.weight(.medium))
+                .font(.app(.subheadline).weight(.medium))
                 .foregroundStyle(app.palette.ink.opacity(0.75))
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .contentShape(Rectangle())
@@ -460,7 +460,7 @@ private struct OnboardingWelcomeView: View {
                             .accessibilityIdentifier("onboarding.welcome")
                         Text(app.T("Supper club, buổi nghe nhạc, triển lãm. Do host thật tổ chức, mỗi lần vài chỗ.",
                                    "Supper clubs, listening sessions, openings. Run by real hosts, a few seats at a time."))
-                            .font(.body).lineSpacing(3).padding(.top, 10)
+                            .font(.app(.body)).lineSpacing(3).padding(.top, 10)
                             .foregroundStyle(.white.opacity(0.82))
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -468,7 +468,7 @@ private struct OnboardingWelcomeView: View {
                     VStack(spacing: 8) {
                         Button { flow.send(.start) } label: {
                             Text(app.T("Bắt đầu", "Get started"))
-                                .font(.body.weight(.semibold))
+                                .font(.app(.body).weight(.semibold))
                                 .foregroundStyle(Self.night)
                                 .frame(maxWidth: .infinity, minHeight: 50)
                                 .background(Color.white, in: Capsule())
@@ -478,7 +478,7 @@ private struct OnboardingWelcomeView: View {
                         .accessibilityIdentifier("onboarding.start")
                         Button { flow.send(.skipAll) } label: {
                             Text(app.T("Bỏ qua, xem tất cả sự kiện", "Skip, show me everything"))
-                                .font(.body.weight(.medium))
+                                .font(.app(.body).weight(.medium))
                                 .foregroundStyle(.white)
                                 .frame(maxWidth: .infinity, minHeight: 50)
                                 .overlay(Capsule().stroke(.white.opacity(0.85), lineWidth: 1))
@@ -487,7 +487,7 @@ private struct OnboardingWelcomeView: View {
                         .buttonStyle(PressableButtonStyle(haptic: false))
                         .accessibilityIdentifier("onboarding.skipAll")
                         Text(app.T("3 câu hỏi, khoảng một phút", "3 questions, about a minute"))
-                            .font(.footnote)
+                            .font(.app(.footnote))
                             .foregroundStyle(.white.opacity(0.65))
                             .padding(.top, 4)
                     }
@@ -576,7 +576,7 @@ private struct OnboardingQuestionView: View {
                         .accessibilityAddTraits(.isHeader)
                         .accessibilityIdentifier("onboarding.question.\(question.rawValue)")
                     Text(subtitle)
-                        .font(.subheadline).lineSpacing(2)
+                        .font(.app(.subheadline)).lineSpacing(2)
                         .foregroundStyle(app.palette.ink.opacity(0.72))
                         .padding(.top, 8)
                     Group {
@@ -589,7 +589,7 @@ private struct OnboardingQuestionView: View {
                     .padding(.top, 22)
                     // Each tap answers with what it leaves. Reserved height, so nothing jumps.
                     Text(feedback ?? " ")
-                        .font(.footnote.weight(.semibold))
+                        .font(.app(.footnote).weight(.semibold))
                         .foregroundStyle(app.palette.ink.opacity(0.78))
                         .frame(minHeight: 20, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
@@ -712,7 +712,7 @@ private struct OnboardingQuestionView: View {
                         ForEach(extra, id: \.self) { k in
                             Button { flow.send(.toggle(.interests, k)) } label: {
                                 Text("\(typeLabel(k)) ×")
-                                    .font(.subheadline.weight(.semibold))
+                                    .font(.app(.subheadline).weight(.semibold))
                                     .foregroundStyle(app.palette.paper)
                                     .padding(.horizontal, 14).frame(minHeight: 36)
                                     .background(app.palette.ink, in: Capsule())
@@ -735,11 +735,11 @@ private struct OnboardingQuestionView: View {
             action()
         } label: {
             VStack(spacing: 4) {
-                Text(emoji).font(.system(size: 26)).accessibilityHidden(true)
-                Text(title).font(.footnote.weight(selected ? .bold : .medium))
+                Text(emoji).font(.app(size: 26)).accessibilityHidden(true)
+                Text(title).font(.app(.footnote).weight(selected ? .bold : .medium))
                     .multilineTextAlignment(.center).lineLimit(2)
                 if countsReady || identifier.hasSuffix(".more") {
-                    Text(detail).font(.caption2).foregroundStyle(app.palette.ink.opacity(0.65))
+                    Text(detail).font(.app(.caption2)).foregroundStyle(app.palette.ink.opacity(0.65))
                 }
             }
             .foregroundStyle(app.palette.ink)
@@ -749,7 +749,7 @@ private struct OnboardingQuestionView: View {
             .overlay(shape.stroke(selected ? app.palette.ink : app.palette.rule, lineWidth: selected ? 1.5 : 1))
             .overlay(alignment: .topTrailing) {
                 if selected {
-                    Image(systemName: "checkmark.circle.fill").font(.footnote).padding(6).accessibilityHidden(true)
+                    Image(systemName: "checkmark.circle.fill").font(.app(.footnote)).padding(6).accessibilityHidden(true)
                 }
             }
             .contentShape(shape)
@@ -817,16 +817,16 @@ private struct OnboardingQuestionView: View {
         } label: {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.body.weight(selected ? .bold : .medium))
-                    if let detail { Text(detail).font(.footnote).opacity(0.7) }
+                    Text(title).font(.app(.body).weight(selected ? .bold : .medium))
+                    if let detail { Text(detail).font(.app(.footnote)).opacity(0.7) }
                 }
                 .multilineTextAlignment(.leading)
                 Spacer(minLength: 8)
                 if countsReady {
-                    Text(eventCountText(count, vi: vi)).font(.footnote).monospacedDigit().opacity(0.7)
+                    Text(eventCountText(count, vi: vi)).font(.app(.footnote)).monospacedDigit().opacity(0.7)
                 }
                 Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
+                    .font(.app(.title3))
                     .foregroundStyle(selected ? app.palette.ink : app.palette.ink.opacity(0.3))
                     .accessibilityHidden(true)
             }
@@ -877,11 +877,11 @@ private struct OnboardingTypesPanel: View {
             VStack(spacing: 0) {
                 HStack {
                     Text(app.T("Mọi loại sự kiện", "All types"))
-                        .font(.title3.weight(.semibold))
+                        .font(.app(.title3).weight(.semibold))
                         .accessibilityAddTraits(.isHeader)
                     Spacer()
                     Button(app.T("Xong", "Done"), action: onClose)
-                        .font(.body.weight(.semibold))
+                        .font(.app(.body).weight(.semibold))
                         .frame(minHeight: 44)
                         .accessibilityIdentifier("onboarding.types.done")
                 }
@@ -903,8 +903,8 @@ private struct OnboardingTypesPanel: View {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         if r.live.isEmpty && r.rest.isEmpty {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(app.T("Không có loại nào tên “\(query)”", "No type called “\(query)”")).font(.headline)
-                                Text(app.T("Thử một từ ngắn hơn.", "Try a shorter word.")).font(.subheadline).opacity(0.7)
+                                Text(app.T("Không có loại nào tên “\(query)”", "No type called “\(query)”")).font(.app(.headline))
+                                Text(app.T("Thử một từ ngắn hơn.", "Try a shorter word.")).font(.app(.subheadline)).opacity(0.7)
                             }
                             .padding(.vertical, 24)
                         }
@@ -934,7 +934,7 @@ private struct OnboardingTypesPanel: View {
 
     private func groupHeader(_ text: String) -> some View {
         Text(text.uppercased())
-            .font(.system(size: 11, weight: .semibold)).tracking(1.2)
+            .font(.app(size: 11, weight: .semibold)).tracking(1.2)
             .foregroundStyle(app.palette.ink.opacity(0.6))
             .padding(.top, 16).padding(.bottom, 4)
             .accessibilityAddTraits(.isHeader)
@@ -948,12 +948,12 @@ private struct OnboardingTypesPanel: View {
             flow.send(.toggle(.interests, o.id))
         } label: {
             HStack(spacing: 12) {
-                Text(PrefEmoji.of(o.id)).font(.title3).frame(width: 32).accessibilityHidden(true)
-                Text(vi ? o.vi : o.en).font(.body.weight(on ? .semibold : .regular))
+                Text(PrefEmoji.of(o.id)).font(.app(.title3)).frame(width: 32).accessibilityHidden(true)
+                Text(vi ? o.vi : o.en).font(.app(.body).weight(on ? .semibold : .regular))
                 Spacer(minLength: 8)
-                if countsReady && n > 0 { Text(eventCountText(n, vi: vi)).font(.footnote).opacity(0.65) }
+                if countsReady && n > 0 { Text(eventCountText(n, vi: vi)).font(.app(.footnote)).opacity(0.65) }
                 Image(systemName: on ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
+                    .font(.app(.title3))
                     .foregroundStyle(on ? app.palette.ink : app.palette.ink.opacity(0.3))
                     .accessibilityHidden(true)
             }
@@ -976,7 +976,7 @@ private struct OnboardingSavingView: View {
     var body: some View {
         VStack(spacing: 14) {
             ProgressView()
-            Text(title ?? app.T("Đang lưu lựa chọn của bạn…", "Saving your picks…")).font(.subheadline)
+            Text(title ?? app.T("Đang lưu lựa chọn của bạn…", "Saving your picks…")).font(.app(.subheadline))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)
@@ -991,14 +991,14 @@ private struct OnboardingSettingsFailedView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Image(systemName: "wifi.exclamationmark").font(.largeTitle).accessibilityHidden(true)
+            Image(systemName: "wifi.exclamationmark").font(.app(.largeTitle)).accessibilityHidden(true)
             Text(app.T("Chưa hoàn tất được", "Couldn't finish setup yet"))
                 .font(BanbeTheme.display(28))
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("onboarding.settingsFailed")
             Text(app.T("Lựa chọn của bạn đã được lưu. Thử lại, hoặc bỏ qua lúc này (bước này có thể hiện lại lần mở sau).",
                        "Your choices are saved. Retry, or skip for now (this step may come back next time you open the app)."))
-                .font(.subheadline).lineSpacing(3)
+                .font(.app(.subheadline)).lineSpacing(3)
             InkButton(title: app.T("Thử lại", "Retry")) { flow.send(.retrySettings) }
                 .accessibilityIdentifier("onboarding.settings.retry")
                 .padding(.top, 8)
@@ -1050,7 +1050,7 @@ struct PersonalizedRevealView: View {
                         .accessibilityIdentifier("onboarding.reveal")
                     if !isLoading && !failed {
                         Text(subtitle(plan))
-                            .font(.subheadline).lineSpacing(3)
+                            .font(.app(.subheadline)).lineSpacing(3)
                             .foregroundStyle(app.palette.ink.opacity(0.75))
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.top, 8)
@@ -1136,7 +1136,7 @@ struct PersonalizedRevealView: View {
         if isLoading {
             HStack(spacing: 10) {
                 ProgressView()
-                Text(app.T("Đang tìm sự kiện hợp với bạn…", "Finding events that fit…")).font(.subheadline)
+                Text(app.T("Đang tìm sự kiện hợp với bạn…", "Finding events that fit…")).font(.app(.subheadline))
             }
             .frame(maxWidth: .infinity, minHeight: 120)
             .accessibilityElement(children: .combine)
@@ -1146,10 +1146,10 @@ struct PersonalizedRevealView: View {
                 Label(app.T("Chưa tải được sự kiện. Lựa chọn của bạn đã được lưu.",
                             "Couldn't load events right now. Your answers are saved."),
                       systemImage: "wifi.exclamationmark")
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .accessibilityIdentifier("onboarding.reveal.failed")
                 Button(app.T("Thử lại", "Try again")) { Task { await reload(); trackOnce() } }
-                    .font(.subheadline.weight(.semibold))
+                    .font(.app(.subheadline).weight(.semibold))
                     .frame(minHeight: 44)
                     .accessibilityIdentifier("onboarding.reveal.retry")
             }
@@ -1157,11 +1157,11 @@ struct PersonalizedRevealView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text(app.T("Hiện chưa có sự kiện sắp tới nào\(areaLimited ? " ở \(app.currentAreaLabel)" : "").",
                            "No upcoming events yet\(areaLimited ? " in \(app.currentAreaLabel)" : "")."))
-                    .font(.headline)
+                    .font(.app(.headline))
                     .accessibilityIdentifier("onboarding.reveal.empty")
                 if areaLimited {
                     Button(app.T("Xem ở mọi khu vực", "Look in all areas")) { app.pickArea(LocationHierarchy.allID) }
-                        .font(.subheadline.weight(.semibold))
+                        .font(.app(.subheadline).weight(.semibold))
                         .frame(minHeight: 44)
                         .accessibilityIdentifier("onboarding.reveal.allAreas")
                 }
@@ -1199,7 +1199,7 @@ private struct RevealEventCard: View {
                         app.toggleFavorite(event.key)  // plays its own selection haptic
                     } label: {
                         Image(systemName: saved ? "heart.fill" : "heart")
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(.app(size: 17, weight: .semibold))
                             .foregroundStyle(saved ? app.palette.clay : app.palette.ink)
                             .frame(width: 40, height: 40)
                             .background(app.palette.paper.opacity(0.92), in: Circle())
@@ -1213,11 +1213,11 @@ private struct RevealEventCard: View {
                     .accessibilityIdentifier("onboarding.reveal.save")
                 }
             Text(event.name)
-                .font(.subheadline.weight(.semibold)).lineLimit(2)
+                .font(.app(.subheadline).weight(.semibold)).lineLimit(2)
                 .padding(.top, 8)
                 .accessibilityIdentifier("onboarding.reveal.event")
             Text("\(app.trStatus(event.when)) · \(app.trStatus(event.price))")
-                .font(.caption).opacity(0.7).lineLimit(2)
+                .font(.app(.caption)).opacity(0.7).lineLimit(2)
                 .padding(.top, 2)
         }
         .frame(width: 180, alignment: .leading)
@@ -1294,7 +1294,7 @@ private struct OnboardingConsentView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     Image(systemName: c.icon)
-                        .font(.system(size: 30, weight: .regular))
+                        .font(.app(size: 30, weight: .regular))
                         .padding(.top, 18)
                         .accessibilityHidden(true)
                     OnboardingEyebrow(text: c.eyebrow).padding(.top, 16)
@@ -1305,15 +1305,15 @@ private struct OnboardingConsentView: View {
                         .accessibilityAddTraits(.isHeader)
                         .accessibilityIdentifier("onboarding.consent.\(kind.rawValue)")
                     Text(c.lead)
-                        .font(.subheadline).lineSpacing(3)
+                        .font(.app(.subheadline)).lineSpacing(3)
                         .foregroundStyle(app.palette.ink.opacity(0.75))
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 8)
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(c.ticks, id: \.self) { t in
                             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                                Image(systemName: "checkmark").font(.footnote.weight(.bold)).accessibilityHidden(true)
-                                Text(t).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                                Image(systemName: "checkmark").font(.app(.footnote).weight(.bold)).accessibilityHidden(true)
+                                Text(t).font(.app(.subheadline)).fixedSize(horizontal: false, vertical: true)
                             }
                             .padding(.vertical, 12)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1334,7 +1334,7 @@ private struct OnboardingConsentView: View {
                     // Same size as Continue: saying no is as easy as saying yes.
                     Button { flow.answer(false) } label: {
                         Text(app.T("Để sau", "Not now"))
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.app(size: 15, weight: .semibold))
                             .frame(maxWidth: .infinity, minHeight: 50)
                             .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(app.palette.ink, lineWidth: 1))
                             .contentShape(Rectangle())
@@ -1344,7 +1344,7 @@ private struct OnboardingConsentView: View {
                     .accessibilityIdentifier("onboarding.consent.notNow")
                 }
                 Text(c.fine)
-                    .font(.footnote).multilineTextAlignment(.center)
+                    .font(.app(.footnote)).multilineTextAlignment(.center)
                     .foregroundStyle(app.palette.ink.opacity(0.65))
                     .frame(maxWidth: .infinity)
             }
@@ -1375,7 +1375,7 @@ private struct OnboardingRecapView: View {
                         .accessibilityAddTraits(.isHeader)
                         .accessibilityIdentifier("onboarding.recap")
                     Text(app.T("Đây là những gì bạn chọn. Đổi lúc nào cũng được.", "Here's what you chose. All of it can change later."))
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                         .foregroundStyle(app.palette.ink.opacity(0.75))
                         .padding(.top, 8)
                     VStack(spacing: 0) {
@@ -1402,16 +1402,16 @@ private struct OnboardingRecapView: View {
 
                     VStack(alignment: .leading, spacing: 6) {
                         Text(app.T("Xem hướng dẫn, khoảng 2 phút", "Take the tour, about 2 minutes"))
-                            .font(.headline)
+                            .font(.app(.headline))
                         Text(app.T("\(chapters.count) chương ngắn trên chính các màn hình thật. Chỉ đi tới, và bạn có thể dừng sau mỗi chương.",
                                    "\(chapters.count) short chapters on the real screens. It only goes forward, and you can stop after any chapter."))
-                            .font(.subheadline).lineSpacing(2)
+                            .font(.app(.subheadline)).lineSpacing(2)
                             .foregroundStyle(app.palette.ink.opacity(0.75))
                             .fixedSize(horizontal: false, vertical: true)
                         HStack(spacing: 6) {
                             ForEach(chapters) { c in
                                 Text(vi ? c.name.vi : c.name.en)
-                                    .font(.caption.weight(.semibold))
+                                    .font(.app(.caption).weight(.semibold))
                                     .padding(.horizontal, 10).padding(.vertical, 5)
                                     .background(app.palette.paper, in: Capsule())
                             }
@@ -1447,14 +1447,14 @@ private struct OnboardingRecapView: View {
 
     private func row(_ icon: String, _ title: String, _ where_: String, value: String?, on: Bool, id: String) -> some View {
         HStack(alignment: .center, spacing: 14) {
-            Image(systemName: icon).font(.body).frame(width: 24).accessibilityHidden(true)
+            Image(systemName: icon).font(.app(.body)).frame(width: 24).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.body)
-                Text(where_).font(.caption).foregroundStyle(app.palette.ink.opacity(0.62))
+                Text(title).font(.app(.body))
+                Text(where_).font(.app(.caption)).foregroundStyle(app.palette.ink.opacity(0.62))
             }
             Spacer(minLength: 8)
             Text(value ?? app.T("Chưa đặt", "Not set yet"))
-                .font(.subheadline.weight(on ? .semibold : .regular))
+                .font(.app(.subheadline).weight(on ? .semibold : .regular))
                 .foregroundStyle(app.palette.ink.opacity(on ? 1 : 0.62))
         }
         .padding(.vertical, 14)
@@ -1470,14 +1470,14 @@ private struct OnboardingSaveFailedView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Image(systemName: "wifi.exclamationmark").font(.largeTitle).accessibilityHidden(true)
+            Image(systemName: "wifi.exclamationmark").font(.app(.largeTitle)).accessibilityHidden(true)
             Text(app.T("Chưa lưu được", "Couldn't save yet"))
-                .font(.system(.title, design: .rounded).weight(.semibold))
+                .font(.app(.title, design: .rounded).weight(.semibold))
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("onboarding.saveFailed")
             Text(app.T("Câu trả lời vẫn còn trên máy này. Thử lại, hoặc bỏ qua lúc này (bước này có thể hiện lại lần mở sau).",
                        "Your answers are still on this device. Retry, or skip for now (this may come back next time you open the app)."))
-                .font(.subheadline).lineSpacing(3)
+                .font(.app(.subheadline)).lineSpacing(3)
             InkButton(title: app.T("Thử lại", "Retry")) { flow.send(.retrySave) }
                 .accessibilityIdentifier("onboarding.retry")
                 .padding(.top, 8)
@@ -1489,7 +1489,7 @@ private struct OnboardingSaveFailedView: View {
                 app.needsPreferencesOnboarding = false
                 flow.send(.skipForNow)
             }
-            .font(.subheadline.weight(.semibold))
+            .font(.app(.subheadline).weight(.semibold))
             .frame(maxWidth: .infinity, minHeight: 44)
             .buttonStyle(PressableButtonStyle(haptic: false))
             .accessibilityIdentifier("onboarding.failed.skip")

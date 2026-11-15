@@ -19,7 +19,7 @@ struct ProjectTeamTab: View {
                 Button { openSheet(.invite) } label: {
                     Label(qrInvites ? app.T("Mời bằng mã QR", "Invite by QR") : app.T("Mời thành viên", "Invite someone"),
                           systemImage: qrInvites ? "qrcode" : "link")
-                        .font(.body.weight(.semibold))
+                        .font(.app(.body).weight(.semibold))
                         .frame(maxWidth: .infinity, minHeight: 50)
                         .background(app.palette.blockInset, in: Capsule())
                 }
@@ -29,7 +29,7 @@ struct ProjectTeamTab: View {
                 liveInvites
             } else {
                 Text(app.T("Chỉ Chủ sự kiện và Quản lý mời được người.", "Only the Host and Managers can invite people."))
-                    .font(.footnote).foregroundStyle(app.palette.ink2).padding(.top, 12)
+                    .font(.app(.footnote)).foregroundStyle(app.palette.ink2).padding(.top, 12)
             }
             ProjectSectionHeader(title: app.T("Ai làm được gì", "Who can do what"))
             ProjectRoleMatrixView()
@@ -37,7 +37,7 @@ struct ProjectTeamTab: View {
                 Image(systemName: "info.circle").foregroundStyle(app.palette.clay).accessibilityHidden(true)
                 Text(app.T("Vai trò làm việc là riêng tư trong dự án. Nó khác với vai trò công khai ở trang Team của chủ sự kiện và không thay đổi trang đó.",
                            "Working roles are private to the project. They are separate from the public role on the host’s Team page and don’t change it."))
-                    .font(.subheadline).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
+                    .font(.app(.subheadline)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -81,14 +81,14 @@ struct ProjectTeamTab: View {
             ProjectAvatar(name: name, size: 42)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(name).font(.body.weight(.semibold))
+                    Text(name).font(.app(.body).weight(.semibold))
                     if isMe {
-                        Text(app.T("bạn", "you")).font(.caption.weight(.bold)).padding(.horizontal, 7).padding(.vertical, 2)
+                        Text(app.T("bạn", "you")).font(.app(.caption).weight(.bold)).padding(.horizontal, 7).padding(.vertical, 2)
                             .background(app.palette.blockInset, in: Capsule())
                     }
                 }
                 Text([app.projectRoleName(role), lane].compactMap { $0 }.joined(separator: " · "))
-                    .font(.footnote).foregroundStyle(app.palette.ink2)
+                    .font(.app(.footnote)).foregroundStyle(app.palette.ink2)
                 if role != "host" && (money || checkin) {
                     HStack(spacing: 6) {
                         if money { ProjectCapTag(icon: "wallet.pass", text: app.T("Tiền", "Money")) }
@@ -99,8 +99,8 @@ struct ProjectTeamTab: View {
             }
             Spacer(minLength: 6)
             VStack(alignment: .trailing, spacing: 0) {
-                Text("\(open)").font(.headline.monospacedDigit())
-                Text(app.T("việc mở", "open")).font(.caption).foregroundStyle(app.palette.ink2)
+                Text("\(open)").font(.app(.headline).monospacedDigit())
+                Text(app.T("việc mở", "open")).font(.app(.caption)).foregroundStyle(app.palette.ink2)
             }
         }
         .padding(.vertical, 10)
@@ -130,14 +130,14 @@ struct ProjectTeamTab: View {
                 ForEach(Array(app.projectInvites.enumerated()), id: \.element.id) { i, inv in
                     HStack(spacing: 10) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(inv.shortCode).font(.system(.body, design: .monospaced).weight(.bold))
+                            Text(inv.shortCode).font(.app(.body, design: .monospaced).weight(.bold))
                             Text([app.projectRoleName(inv.role), inv.laneId.flatMap { id in snap.lanes?.first { $0.id == id }?.name },
                                   app.projectInviteExpiry(inv.expiresAt)].compactMap { $0 }.joined(separator: " · "))
-                                .font(.footnote).foregroundStyle(app.palette.ink2)
+                                .font(.app(.footnote)).foregroundStyle(app.palette.ink2)
                         }
                         Spacer(minLength: 6)
                         Button(app.T("Huỷ", "Cancel")) { Task { await app.revokeProjectInvite(inv.id) } }
-                            .font(.subheadline.weight(.semibold)).foregroundStyle(BanbeTheme.alert)
+                            .font(.app(.subheadline).weight(.semibold)).foregroundStyle(BanbeTheme.alert)
                             .frame(minWidth: 44, minHeight: 44)
                             .accessibilityLabel(app.T("Huỷ lời mời \(inv.shortCode)", "Cancel invite \(inv.shortCode)"))
                             .accessibilityIdentifier("project.invite.revoke.\(inv.id)")
@@ -159,7 +159,7 @@ struct ProjectAvatar: View {
     var size: CGFloat = 42
 
     var body: some View {
-        Text(String(name.prefix(1)).uppercased()).font(.system(size: size * 0.4, weight: .bold))
+        Text(String(name.prefix(1)).uppercased()).font(.app(size: size * 0.4, weight: .bold))
             .frame(width: size, height: size)
             .background(app.palette.clayBg, in: Circle())
             .foregroundStyle(app.palette.clay)
@@ -172,7 +172,7 @@ struct ProjectCapTag: View {
     let icon: String
     let text: String
     var body: some View {
-        Label(text, systemImage: icon).font(.caption.weight(.bold)).lineLimit(1)
+        Label(text, systemImage: icon).font(.app(.caption).weight(.bold)).lineLimit(1)
             .padding(.horizontal, 8).padding(.vertical, 3)
             .foregroundStyle(app.palette.ink2)
             .background(app.palette.blockInset, in: Capsule())
@@ -189,10 +189,10 @@ struct ProjectRoleMatrixView: View {
             if dynamicTypeSize.isAccessibilitySize { stacked } else { table }
             Text(app.T("• chỉ trong hạng mục của mình · + Chủ sự kiện cấp được · ✎ đề xuất, Chủ sự kiện duyệt",
                        "• only in their own lane · + the Host can grant it · ✎ proposes, the Host approves"))
-                .font(.caption).foregroundStyle(app.palette.ink3).padding(.top, 10)
+                .font(.app(.caption)).foregroundStyle(app.palette.ink3).padding(.top, 10)
             Text(app.T("Quyền tiền và check-in cho thành viên đội chỉ có hiệu lực khi banbe bật tính năng này.",
                        "Money and check-in access for team members only takes effect once banbe turns it on."))
-                .font(.caption).foregroundStyle(app.palette.ink3).padding(.top, 4)
+                .font(.app(.caption)).foregroundStyle(app.palette.ink3).padding(.top, 4)
         }
         .padding(.horizontal, 12).padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -227,7 +227,7 @@ struct ProjectRoleMatrixView: View {
     static func header(_ app: AppState, mine: Int?) -> some View {
         HStack(spacing: 4) {
             ForEach(Array(shortNames(app).enumerated()), id: \.offset) { i, n in
-                Text(n).font(.caption2.weight(i == mine ? .heavy : .bold)).lineLimit(1).minimumScaleFactor(0.7)
+                Text(n).font(.app(.caption2).weight(i == mine ? .heavy : .bold)).lineLimit(1).minimumScaleFactor(0.7)
                     .foregroundStyle(i == mine ? app.palette.paper : app.palette.ink3)
                     .frame(width: 34, height: 22)
                     .background(i == mine ? app.palette.ink : .clear, in: Capsule())
@@ -240,7 +240,7 @@ struct ProjectRoleMatrixView: View {
             GridRow {
                 Color.clear.frame(height: 1).gridCellUnsizedAxes(.vertical)
                 ForEach(Array(shortNames.enumerated()), id: \.offset) { i, n in
-                    Text(n).font(.caption2.weight(i == mine ? .heavy : .bold)).lineLimit(1).minimumScaleFactor(0.7)
+                    Text(n).font(.app(.caption2).weight(i == mine ? .heavy : .bold)).lineLimit(1).minimumScaleFactor(0.7)
                         .foregroundStyle(i == mine ? app.palette.paper : app.palette.ink3)
                         .frame(width: 34, height: 22)
                         .background(i == mine ? app.palette.ink : .clear, in: Capsule())
@@ -253,7 +253,7 @@ struct ProjectRoleMatrixView: View {
             ForEach(ProjectRoleMatrix.rows) { r in
                 Divider().gridCellUnsizedAxes(.horizontal)
                 GridRow(alignment: .center) {
-                    Text(app.T(r.vi, r.en)).font(.footnote).fixedSize(horizontal: false, vertical: true)
+                    Text(app.T(r.vi, r.en)).font(.app(.footnote)).fixedSize(horizontal: false, vertical: true)
                         .padding(.vertical, 7)
                     ForEach(Array(r.cells.enumerated()), id: \.offset) { i, c in
                         Text(symbol(c)).font(i == mine ? .body.weight(.heavy) : .footnote.weight(.bold))
@@ -272,8 +272,8 @@ struct ProjectRoleMatrixView: View {
         VStack(alignment: .leading, spacing: 12) {
             ForEach(ProjectRoleMatrix.rows) { r in
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(app.T(r.vi, r.en)).font(.body.weight(.semibold))
-                    Text(cellsText(r)).font(.subheadline).foregroundStyle(app.palette.ink2)
+                    Text(app.T(r.vi, r.en)).font(.app(.body).weight(.semibold))
+                    Text(cellsText(r)).font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
                 }
                 .accessibilityElement(children: .combine)
             }

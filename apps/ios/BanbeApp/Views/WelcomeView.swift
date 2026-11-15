@@ -55,7 +55,7 @@ struct WelcomeView: View {
                 Button {
                     move { if storyFinished { storyFinished = false } else { story.back() } }
                 } label: {
-                    Image(systemName: "chevron.left").font(.body.weight(.semibold))
+                    Image(systemName: "chevron.left").font(.app(.body).weight(.semibold))
                         .frame(width: 44, height: 44).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -63,7 +63,7 @@ struct WelcomeView: View {
                 .accessibilityIdentifier("welcome.story.back")
                 Text(app.T("\((story.page ?? 0) + 1)/\(PublicStoryState.pageCount)",
                            "\((story.page ?? 0) + 1) of \(PublicStoryState.pageCount)"))
-                    .font(.footnote.weight(.semibold))
+                    .font(.app(.footnote).weight(.semibold))
                     .foregroundStyle(app.palette.ink.opacity(0.65))
                     .accessibilityIdentifier("welcome.story.progress")
             }
@@ -77,7 +77,7 @@ struct WelcomeView: View {
                     Analytics.track(.publicStorySkipped(step: story.page ?? 0))
                     move { story.close() }
                 } label: {
-                    Text(app.T("Bỏ qua", "Skip")).font(.subheadline.weight(.semibold))
+                    Text(app.T("Bỏ qua", "Skip")).font(.app(.subheadline).weight(.semibold))
                         .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -93,7 +93,7 @@ struct WelcomeView: View {
             action()
         } label: {
             Text(title)
-                .font(.footnote.weight(.semibold))
+                .font(.app(.footnote).weight(.semibold))
                 .padding(.horizontal, 12).frame(minHeight: 44)
                 .background(app.palette.field, in: Capsule())
                 .overlay(Capsule().stroke(app.palette.rule))
@@ -112,7 +112,7 @@ struct WelcomeView: View {
                     .padding(.top, 12)
                     .accessibilityHidden(true)
                 Text(app.T("Tìm những buổi gặp gỡ nhỏ đáng để đi", "Find small gatherings worth going to"))
-                    .font(.system(.largeTitle, design: .rounded).weight(.semibold))
+                    .font(.app(.largeTitle, design: .rounded).weight(.semibold))
                     .padding(.top, 28)
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityFocused($headingFocused)
@@ -120,7 +120,7 @@ struct WelcomeView: View {
                     .riseIn(animatesEntrance, shown: entered, index: 0)
                 Text(app.T("Supper club, triển lãm, nhạc và pop-up quanh bạn. Giữ chỗ chỉ trong vài chạm.",
                            "Supper clubs, galleries, music and pop-ups near you. Hold a seat in a few taps."))
-                    .font(.body).lineSpacing(3)
+                    .font(.app(.body)).lineSpacing(3)
                     .foregroundStyle(app.palette.ink.opacity(0.8))
                     .padding(.top, 10)
                     .riseIn(animatesEntrance, shown: entered, index: 1)
@@ -174,7 +174,7 @@ struct WelcomeView: View {
             } label: {
                 (Text(app.T("Đã có tài khoản? ", "Already have an account? ")).foregroundColor(app.palette.ink.opacity(0.7))
                  + Text(app.T("Đăng nhập", "Log in")).bold().underline())
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity, minHeight: 44)
                     .contentShape(Rectangle())
@@ -259,9 +259,9 @@ private struct WelcomeIllustration: View {
                     .animation(ease(i == 1 ? 1.5 : 1.6, [0.15, 0.6, 0.35][i]), value: photosIn)
             }
             HStack(spacing: 4) {
-                Image(systemName: "star.fill").font(.system(size: 11, weight: .bold))
+                Image(systemName: "star.fill").font(.app(size: 11, weight: .bold))
                     .foregroundStyle(Color(red: 0.80, green: 0.62, blue: 0.16))
-                Text(app.T("Dành cho bạn", "For You")).font(.system(size: 12, weight: .semibold))
+                Text(app.T("Dành cho bạn", "For You")).font(.app(size: 12, weight: .semibold))
             }
             .padding(.horizontal, 12).padding(.vertical, 7)
             .background(app.palette.paper, in: Capsule())

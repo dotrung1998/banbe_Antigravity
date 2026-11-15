@@ -100,7 +100,7 @@ struct HostSetupView: View {
             Capsule().fill(app.palette.ink.opacity(0.22)).frame(width: 36, height: 5).padding(.top, 8)
             ZStack {
                 Text(app.T("Hồ sơ tổ chức", "Host profile"))
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.app(size: 17, weight: .semibold))
                 HStack {
                     Spacer()
                     // X = "I don't want to be a host right now": organizer mode goes back off and no organizer
@@ -108,7 +108,7 @@ struct HostSetupView: View {
                     Button { if phase == .form { app.cancelHostSetup() } } label: {
                         // Liquid Glass disc, 44pt with a 22pt glyph: the same as the system X on the share-card sheet.
                         let icon = Image(systemName: "xmark")
-                            .font(.system(size: 22, weight: .regular))
+                            .font(.app(size: 22, weight: .regular))
                             .foregroundStyle(app.palette.ink)
                             .frame(width: 44, height: 44)
                         if #available(iOS 26.0, *), !reduceTransparency {
@@ -129,7 +129,7 @@ struct HostSetupView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(app.T("Đây là diện mạo khách sẽ thấy. Bạn có thể đổi bất cứ lúc nào.", "This is how guests will see you. You can change it any time."))
-                        .font(.system(size: 14)).opacity(0.68).padding(.top, 10).revealSource()
+                        .font(.app(size: 14)).opacity(0.68).padding(.top, 10).revealSource()
 
                     previewCard.padding(.top, 22)
 
@@ -138,7 +138,7 @@ struct HostSetupView: View {
 
                     sectionLabel(app.T("Tên", "Name"))
                     TextField(app.T("Tên tổ chức của bạn", "Your host name"), text: $name)
-                        .font(.system(size: 15))
+                        .font(.app(size: 15))
                         .padding(.horizontal, 16).padding(.vertical, 14)
                         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .onChange(of: name) { _, v in if v.count > nameMax { name = String(v.prefix(nameMax)) } }
@@ -148,11 +148,11 @@ struct HostSetupView: View {
                     HStack {
                         sectionLabel(app.T("Giới thiệu", "About"))
                         Spacer()
-                        Text("\(intro.count)/\(introMax)").font(.system(size: 11)).opacity(0.55).padding(.top, 26)
+                        Text("\(intro.count)/\(introMax)").font(.app(size: 11)).opacity(0.55).padding(.top, 26)
                     }
                     TextField(app.T("Bạn tổ chức những gì? Vì sao khách nên đến?", "What do you host? Why should guests come?"), text: $intro, axis: .vertical)
                         .lineLimit(4...6)
-                        .font(.system(size: 15))
+                        .font(.app(size: 15))
                         .padding(.horizontal, 16).padding(.vertical, 14)
                         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .onChange(of: intro) { _, v in if v.count > introMax { intro = String(v.prefix(introMax)) } }
@@ -160,7 +160,7 @@ struct HostSetupView: View {
                         .accessibilityIdentifier("hostSetup.intro")
 
                     if !error.isEmpty {
-                        Text(error).font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert).padding(.top, 14)
+                        Text(error).font(.app(size: 12.5)).foregroundStyle(BanbeTheme.alert).padding(.top, 14)
                             .accessibilityIdentifier("hostSetup.error")
                     }
                 }
@@ -179,7 +179,7 @@ struct HostSetupView: View {
     }
 
     private func sectionLabel(_ text: String) -> some View {
-        Text(text.uppercased()).font(.system(size: 11, weight: .semibold)).kerning(0.6).opacity(0.55).padding(.top, 26).padding(.bottom, 10)
+        Text(text.uppercased()).font(.app(size: 11, weight: .semibold)).kerning(0.6).opacity(0.55).padding(.top, 26).padding(.bottom, 10)
     }
 
     private var previewCard: some View {
@@ -194,7 +194,7 @@ struct HostSetupView: View {
             Text(name.trimmingCharacters(in: .whitespaces).isEmpty ? app.T("Tên của bạn", "Your name") : name)
                 .font(BanbeTheme.display(22)).multilineTextAlignment(.center).padding(.top, 12)
             Text(intro.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? app.T("Giới thiệu ngắn về bạn", "A short line about you") : intro)
-                .font(.system(size: 13)).multilineTextAlignment(.center)
+                .font(.app(size: 13)).multilineTextAlignment(.center)
                 .opacity(intro.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.4 : 0.75)
                 .frame(maxWidth: 300)
         }
@@ -214,7 +214,7 @@ struct HostSetupView: View {
                         } else {
                             RoundedRectangle(cornerRadius: 18, style: .continuous)
                                 .strokeBorder(ink.opacity(0.35), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
-                            Image(systemName: "plus").font(.system(size: 18, weight: .regular)).opacity(0.7)
+                            Image(systemName: "plus").font(.app(size: 18, weight: .regular)).opacity(0.7)
                         }
                     }
                     .frame(width: 64, height: 64)

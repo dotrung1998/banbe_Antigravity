@@ -24,13 +24,13 @@ struct ProjectRefundsList: View {
                              "Send from your bank, then tap “Mark refund sent”. The guest is told right away. Each one is recorded for the Host.")
                      : app.T("Chuyển từ ngân hàng của bạn rồi ghi nhận. Khách chỉ được báo sau khi Chủ sự kiện duyệt.",
                              "Send from your bank, then record it. The guest is told only after the Host approves."))
-                    .font(.footnote).foregroundStyle(app.palette.ink3).fixedSize(horizontal: false, vertical: true)
+                    .font(.app(.footnote)).foregroundStyle(app.palette.ink3).fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("project.refunds.mode")
             }
             if view == nil {
                 ProgressView().frame(maxWidth: .infinity)
             } else if rows.isEmpty {
-                Text(app.T("Không có khoản hoàn nào cần gửi.", "No refunds to send.")).font(.subheadline).foregroundStyle(app.palette.ink2)
+                Text(app.T("Không có khoản hoàn nào cần gửi.", "No refunds to send.")).font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
                     .frame(maxWidth: .infinity).padding(.vertical, 16)
                     .accessibilityIdentifier("project.refunds.empty")
             } else {
@@ -49,10 +49,10 @@ struct ProjectRefundsList: View {
             ProjectNameAmount(name: c.name, amount: c.amount)
             HStack(spacing: 8) {
                 if let due = app.projectRefundDueText(c.refundDueAt) {
-                    Text(due).font(.footnote).foregroundStyle(app.palette.ink2)
+                    Text(due).font(.app(.footnote)).foregroundStyle(app.palette.ink2)
                 }
                 if c.disputeOpen {
-                    Text(app.T("Đang khiếu nại", "Disputed")).font(.caption.weight(.bold))
+                    Text(app.T("Đang khiếu nại", "Disputed")).font(.app(.caption).weight(.bold))
                         .padding(.horizontal, 8).padding(.vertical, 3)
                         .foregroundStyle(BanbeTheme.alert).background(BanbeTheme.alert.opacity(0.12), in: Capsule())
                 }
@@ -61,15 +61,15 @@ struct ProjectRefundsList: View {
             case .waiting(let mine):
                 Label(mine ? app.T("Bạn đã ghi nhận · đang chờ Chủ sự kiện", "You recorded this · waiting for the Host")
                            : app.T("Đang chờ Chủ sự kiện", "Waiting for Host"), systemImage: "hourglass")
-                    .font(.footnote.weight(.semibold)).foregroundStyle(app.palette.ink2)
+                    .font(.app(.footnote).weight(.semibold)).foregroundStyle(app.palette.ink2)
                     .accessibilityIdentifier("project.refunds.waiting.\(c.claimId)")
             case .noAccount:
                 Text(app.T("Khách chưa thêm tài khoản nhận hoàn tiền.", "The guest hasn't added a refund account yet."))
-                    .font(.footnote).foregroundStyle(app.palette.ink3).fixedSize(horizontal: false, vertical: true)
+                    .font(.app(.footnote)).foregroundStyle(app.palette.ink3).fixedSize(horizontal: false, vertical: true)
             case .ready(let declined):
                 if let declined {
                     Text(app.T("Chủ sự kiện từ chối: ", "Host declined: ") + declined)
-                        .font(.footnote.weight(.semibold)).foregroundStyle(BanbeTheme.alert).fixedSize(horizontal: false, vertical: true)
+                        .font(.app(.footnote).weight(.semibold)).foregroundStyle(BanbeTheme.alert).fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("project.refunds.declined.\(c.claimId)")
                 }
             }
@@ -84,7 +84,7 @@ struct ProjectRefundsList: View {
                 HStack(spacing: 8) {
                     content
                     if !dynamicTypeSize.isAccessibilitySize {
-                        Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(app.palette.ink3).accessibilityHidden(true)
+                        Image(systemName: "chevron.right").font(.app(.footnote).weight(.semibold)).foregroundStyle(app.palette.ink3).accessibilityHidden(true)
                     }
                 }
                 .contentShape(Rectangle())
@@ -116,11 +116,11 @@ struct ProjectRefundSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(claim.name).font(.headline)
-                        Text(EventMarket.formatMoney(claim.amount, currency: "VND")).font(.title.weight(.bold).monospacedDigit())
+                        Text(claim.name).font(.app(.headline))
+                        Text(EventMarket.formatMoney(claim.amount, currency: "VND")).font(.app(.title).weight(.bold).monospacedDigit())
                             .accessibilityIdentifier("project.refund.amount")
                         if let due = app.projectRefundDueText(claim.refundDueAt) {
-                            Text(due).font(.footnote).foregroundStyle(app.palette.ink2)
+                            Text(due).font(.app(.footnote)).foregroundStyle(app.palette.ink2)
                         }
                     }
                     if let a = claim.account, case .ready(let declined) = state {
@@ -134,7 +134,7 @@ struct ProjectRefundSheet: View {
                         .projectCard(padding: 4)
                         if let declined {
                             Text(app.T("Chủ sự kiện từ chối lần trước: ", "The Host declined last time: ") + declined)
-                                .font(.footnote.weight(.semibold)).foregroundStyle(BanbeTheme.alert).fixedSize(horizontal: false, vertical: true)
+                                .font(.app(.footnote).weight(.semibold)).foregroundStyle(BanbeTheme.alert).fixedSize(horizontal: false, vertical: true)
                         }
                         VStack(alignment: .leading, spacing: 6) {
                             TextField(app.T("Ghi chú cho Chủ sự kiện (không bắt buộc)", "Note for the Host (optional)"), text: $note, axis: .vertical)
@@ -143,15 +143,15 @@ struct ProjectRefundSheet: View {
                                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                                 .accessibilityIdentifier("project.refund.note")
                                 .onChange(of: note) { _, v in if v.count > 280 { note = String(v.prefix(280)) } }
-                            Text("\(note.count)/280").font(.caption).foregroundStyle(app.palette.ink3)
+                            Text("\(note.count)/280").font(.app(.caption)).foregroundStyle(app.palette.ink3)
                         }
                         receiptPicker
                     } else if case .waiting = state {
                         Text(app.T("Khoản này đang chờ Chủ sự kiện duyệt.", "This refund is waiting for the Host."))
-                            .font(.subheadline).foregroundStyle(app.palette.ink2)
+                            .font(.app(.subheadline)).foregroundStyle(app.palette.ink2)
                     }
                     if !error.isEmpty {
-                        Text(error).font(.footnote.weight(.semibold)).foregroundStyle(BanbeTheme.alert)
+                        Text(error).font(.app(.footnote).weight(.semibold)).foregroundStyle(BanbeTheme.alert)
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("project.refund.error")
                     }
@@ -164,7 +164,7 @@ struct ProjectRefundSheet: View {
                             }
                         } label: {
                             Text(alone ? app.T("Đã hoàn tiền", "Mark refund sent") : app.T("Ghi nhận để chủ sự kiện duyệt", "Record transfer for Host approval"))
-                                .font(.body.weight(.bold)).multilineTextAlignment(.center)
+                                .font(.app(.body).weight(.bold)).multilineTextAlignment(.center)
                                 .frame(maxWidth: .infinity, minHeight: 50).padding(.horizontal, 12)
                                 .foregroundStyle(app.palette.paper)
                                 .background(canSend ? app.palette.ink : app.palette.ink3, in: Capsule())
@@ -174,12 +174,12 @@ struct ProjectRefundSheet: View {
                         .accessibilityIdentifier("project.refund.submit")
                         if case .noAccount = state {
                             Text(app.T("Khách chưa thêm tài khoản nhận hoàn tiền.", "The guest hasn't added a refund account yet."))
-                                .font(.footnote.weight(.semibold)).foregroundStyle(BanbeTheme.alert)
+                                .font(.app(.footnote).weight(.semibold)).foregroundStyle(BanbeTheme.alert)
                                 .accessibilityIdentifier("project.refund.noAccount")
                         }
                         Text(alone ? app.T("Khách được báo ngay.", "The guest is told right away.")
                                    : app.T("Khách chỉ được báo sau khi Chủ sự kiện duyệt.", "The guest is told only after the Host approves."))
-                            .font(.footnote).foregroundStyle(app.palette.ink3).fixedSize(horizontal: false, vertical: true)
+                            .font(.app(.footnote)).foregroundStyle(app.palette.ink3).fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("project.refund.footer")
                     }
                 }
@@ -197,9 +197,9 @@ struct ProjectRefundSheet: View {
         let action = receiptJPEG == nil ? app.T("Chọn", "Choose") : app.T("Đổi", "Change")
         return PhotosPicker(selection: $receiptItem, matching: .images) {
             HStack {
-                Label(title, systemImage: receiptJPEG == nil ? "paperclip" : "checkmark.circle.fill").font(.subheadline).foregroundStyle(ink)
+                Label(title, systemImage: receiptJPEG == nil ? "paperclip" : "checkmark.circle.fill").font(.app(.subheadline)).foregroundStyle(ink)
                 Spacer(minLength: 8)
-                Text(action).font(.subheadline.weight(.semibold)).foregroundStyle(ink.opacity(0.75))
+                Text(action).font(.app(.subheadline).weight(.semibold)).foregroundStyle(ink.opacity(0.75))
             }
             .padding(12).frame(minHeight: 44)
             .background(field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -219,7 +219,7 @@ struct ProjectRefundSheet: View {
     private func copyRow(_ label: String, _ value: String, id: String, mono: Bool = false) -> some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(label).font(.caption.weight(.semibold)).foregroundStyle(app.palette.ink2)
+                Text(label).font(.app(.caption).weight(.semibold)).foregroundStyle(app.palette.ink2)
                 Text(value.isEmpty ? "—" : value).font(mono ? .body.weight(.semibold).monospacedDigit() : .body.weight(.semibold))
                     .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
             }
@@ -231,7 +231,7 @@ struct ProjectRefundSheet: View {
                 Haptics.success()
             } label: {
                 Text(copied == id ? app.T("Đã chép", "Copied") : app.T("Chép", "Copy"))
-                    .font(.subheadline.weight(.semibold)).padding(.horizontal, 12).frame(minHeight: 44)
+                    .font(.app(.subheadline).weight(.semibold)).padding(.horizontal, 12).frame(minHeight: 44)
                     .background(app.palette.blockInset, in: Capsule())
             }
             .buttonStyle(PressableButtonStyle())
@@ -305,12 +305,12 @@ struct ProjectHostRefunds: View {
             VStack(alignment: .leading, spacing: 4) {
                 ProjectNameAmount(name: c.name, amount: c.amount)
                 Text(app.T("\(r?.by ?? "—") đã ghi nhận chuyển khoản", "Recorded by \(r?.by ?? "—")"))
-                    .font(.footnote).foregroundStyle(app.palette.ink2)
+                    .font(.app(.footnote)).foregroundStyle(app.palette.ink2)
                 if let note = r?.note, !note.isEmpty {
-                    Text("“\(note)”").font(.footnote).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
+                    Text("“\(note)”").font(.app(.footnote)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
                 }
                 if r?.hasProof == true {
-                    Label(app.T("Có biên lai", "Receipt attached"), systemImage: "paperclip").font(.footnote.weight(.semibold))
+                    Label(app.T("Có biên lai", "Receipt attached"), systemImage: "paperclip").font(.app(.footnote).weight(.semibold))
                         .foregroundStyle(app.palette.ink2)
                 }
             }
@@ -318,7 +318,7 @@ struct ProjectHostRefunds: View {
             .accessibilityIdentifier("project.hostRefunds.row.\(c.claimId)")
             buttons {
                 Button { approving = c } label: {
-                    Text(app.T("Duyệt", "Approve")).font(.subheadline.weight(.bold))
+                    Text(app.T("Duyệt", "Approve")).font(.app(.subheadline).weight(.bold))
                         .padding(.horizontal, 16).frame(minHeight: 44)
                         .foregroundStyle(app.palette.paper).background(app.palette.ink, in: Capsule())
                 }
@@ -326,7 +326,7 @@ struct ProjectHostRefunds: View {
                 .disabled(app.projectBusy)
                 .accessibilityIdentifier("project.hostRefunds.approve.\(c.claimId)")
                 Button { declining = c } label: {
-                    Text(app.T("Từ chối", "Decline")).font(.subheadline.weight(.semibold))
+                    Text(app.T("Từ chối", "Decline")).font(.app(.subheadline).weight(.semibold))
                         .padding(.horizontal, 16).frame(minHeight: 44)
                         .background(app.palette.blockInset, in: Capsule())
                 }
@@ -345,7 +345,7 @@ struct ProjectHostRefunds: View {
                 .accessibilityElement(children: .combine)
             Button { granting = c } label: {
                 Label(app.T("Để đội xử lý khoản hoàn này", "Let the team handle this refund"), systemImage: "person.badge.clock")
-                    .font(.subheadline.weight(.semibold)).padding(.horizontal, 12).frame(minHeight: 44)
+                    .font(.app(.subheadline).weight(.semibold)).padding(.horizontal, 12).frame(minHeight: 44)
                     .background(app.palette.blockInset, in: Capsule())
             }
             .buttonStyle(PressableButtonStyle())
@@ -378,11 +378,11 @@ struct ProjectHostRefunds: View {
     private func option(_ title: String, detail: String, on: Bool, id: String, run: @escaping () -> Void) -> some View {
         Button { if !on { run() } } label: {
             HStack(spacing: 12) {
-                Image(systemName: on ? "largecircle.fill.circle" : "circle").font(.title3)
+                Image(systemName: on ? "largecircle.fill.circle" : "circle").font(.app(.title3))
                     .foregroundStyle(on ? app.palette.clay : app.palette.ink3).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.body.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
-                    Text(detail).font(.footnote).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
+                    Text(title).font(.app(.body).weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+                    Text(detail).font(.app(.footnote)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -411,10 +411,10 @@ struct ProjectRefundDeclineSheet: View {
         CardSheet(title: app.T("Từ chối khoản hoàn", "Decline this refund"), closeID: "project.refundDecline.close", fullHeight: true, onClose: close) {
             VStack(alignment: .leading, spacing: 12) {
                 Text(app.T("\(claim.name) · \(EventMarket.formatMoney(claim.amount, currency: "VND"))",
-                           "\(claim.name) · \(EventMarket.formatMoney(claim.amount, currency: "VND"))")).font(.headline)
+                           "\(claim.name) · \(EventMarket.formatMoney(claim.amount, currency: "VND"))")).font(.app(.headline))
                 Text(app.T("Người ghi nhận sẽ thấy lý do và có thể ghi nhận lại. Khách không được báo.",
                            "The person who recorded it sees the reason and can record it again. The guest isn't told."))
-                    .font(.footnote).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
+                    .font(.app(.footnote)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
                 TextField(app.T("Lý do (bắt buộc)", "Reason (required)"), text: $reason, axis: .vertical)
                     .lineLimit(2...4)
                     .padding(12)
@@ -422,9 +422,9 @@ struct ProjectRefundDeclineSheet: View {
                     .accessibilityIdentifier("project.refundDecline.reason")
                     .onChange(of: reason) { _, v in if v.count > lim.reasonMax { reason = String(v.prefix(lim.reasonMax)) } }
                 Text(app.T("\(lim.reasonMin) đến \(lim.reasonMax) ký tự", "\(lim.reasonMin) to \(lim.reasonMax) characters"))
-                    .font(.caption).foregroundStyle(app.palette.ink3)
+                    .font(.app(.caption)).foregroundStyle(app.palette.ink3)
                 if !error.isEmpty {
-                    Text(error).font(.footnote.weight(.semibold)).foregroundStyle(BanbeTheme.alert)
+                    Text(error).font(.app(.footnote).weight(.semibold)).foregroundStyle(BanbeTheme.alert)
                         .accessibilityIdentifier("project.refundDecline.error")
                 }
                 Button {
@@ -434,7 +434,7 @@ struct ProjectRefundDeclineSheet: View {
                         else { error = app.projectNotice; app.projectNotice = "" }
                     }
                 } label: {
-                    Text(app.T("Từ chối", "Decline")).font(.body.weight(.bold))
+                    Text(app.T("Từ chối", "Decline")).font(.app(.body).weight(.bold))
                         .frame(maxWidth: .infinity, minHeight: 50)
                         .foregroundStyle(app.palette.paper).background(ok ? app.palette.ink : app.palette.ink3, in: Capsule())
                 }
@@ -464,11 +464,11 @@ struct ProjectDisputeGrantSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     Text(app.T("\(claim.name) · \(EventMarket.formatMoney(claim.amount, currency: "VND"))",
-                               "\(claim.name) · \(EventMarket.formatMoney(claim.amount, currency: "VND"))")).font(.headline)
+                               "\(claim.name) · \(EventMarket.formatMoney(claim.amount, currency: "VND"))")).font(.app(.headline))
                     Text(app.T("Người bạn chọn chỉ xử lý được khoản hoàn này, khi khiếu nại còn mở. Không gồm chat khiếu nại, thanh toán hay check-in.",
                                "The person you pick can handle only this refund, while the dispute is open. Not the dispute chat, payments or check-in."))
-                        .font(.footnote).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
-                    Text(app.T("Ai", "Who")).font(.subheadline.weight(.bold)).accessibilityAddTraits(.isHeader)
+                        .font(.app(.footnote)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
+                    Text(app.T("Ai", "Who")).font(.app(.subheadline).weight(.bold)).accessibilityAddTraits(.isHeader)
                     VStack(spacing: 0) {
                         ForEach(Array(people.enumerated()), id: \.element.id) { i, m in
                             let on = member == m.userId
@@ -478,8 +478,8 @@ struct ProjectDisputeGrantSheet: View {
                                         .foregroundStyle(on ? app.palette.clay : app.palette.ink3).accessibilityHidden(true)
                                     ProjectAvatar(name: app.projectPersonName(m.userId), size: 30)
                                     VStack(alignment: .leading, spacing: 1) {
-                                        Text(app.projectPersonName(m.userId)).font(.body.weight(.semibold))
-                                        Text(app.projectRoleName(m.role)).font(.footnote).foregroundStyle(app.palette.ink2)
+                                        Text(app.projectPersonName(m.userId)).font(.app(.body).weight(.semibold))
+                                        Text(app.projectRoleName(m.role)).font(.app(.footnote)).foregroundStyle(app.palette.ink2)
                                     }
                                     Spacer(minLength: 0)
                                 }
@@ -493,11 +493,11 @@ struct ProjectDisputeGrantSheet: View {
                         }
                     }
                     .projectCard(padding: 4)
-                    Text(app.T("Trong bao lâu", "For how long")).font(.subheadline.weight(.bold)).accessibilityAddTraits(.isHeader)
+                    Text(app.T("Trong bao lâu", "For how long")).font(.app(.subheadline).weight(.bold)).accessibilityAddTraits(.isHeader)
                     HStack(spacing: 8) {
                         ForEach([7, 14, 30].filter { $0 <= ProjectLimits.shared.disputeGrantMaxDays }, id: \.self) { d in
                             Button { days = d } label: {
-                                Text(app.T("\(d) ngày", "\(d) days")).font(.subheadline.weight(.semibold))
+                                Text(app.T("\(d) ngày", "\(d) days")).font(.app(.subheadline).weight(.semibold))
                                     .frame(maxWidth: .infinity, minHeight: 44)
                                     .foregroundStyle(days == d ? app.palette.paper : app.palette.ink)
                                     .background(days == d ? app.palette.ink : app.palette.blockInset, in: Capsule())
@@ -508,7 +508,7 @@ struct ProjectDisputeGrantSheet: View {
                         }
                     }
                     if !error.isEmpty {
-                        Text(error).font(.footnote.weight(.semibold)).foregroundStyle(BanbeTheme.alert)
+                        Text(error).font(.app(.footnote).weight(.semibold)).foregroundStyle(BanbeTheme.alert)
                             .accessibilityIdentifier("project.grant.error")
                     }
                     Button {
@@ -523,7 +523,7 @@ struct ProjectDisputeGrantSheet: View {
                             } else { error = app.projectNotice; app.projectNotice = "" }
                         }
                     } label: {
-                        Text(app.T("Giao khoản hoàn này", "Hand over this refund")).font(.body.weight(.bold))
+                        Text(app.T("Giao khoản hoàn này", "Hand over this refund")).font(.app(.body).weight(.bold))
                             .frame(maxWidth: .infinity, minHeight: 50)
                             .foregroundStyle(app.palette.paper).background(member != nil ? app.palette.ink : app.palette.ink3, in: Capsule())
                     }
@@ -549,9 +549,9 @@ private struct ProjectNameAmount: View {
     var body: some View {
         let big = dynamicTypeSize.isAccessibilitySize
         (big ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2)) : AnyLayout(HStackLayout(alignment: .firstTextBaseline))) {
-            Text(name).font(.body.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+            Text(name).font(.app(.body).weight(.semibold)).fixedSize(horizontal: false, vertical: true)
             if !big { Spacer(minLength: 6) }
-            Text(EventMarket.formatMoney(amount, currency: "VND")).font(.body.weight(.bold).monospacedDigit())
+            Text(EventMarket.formatMoney(amount, currency: "VND")).font(.app(.body).weight(.bold).monospacedDigit())
                 .lineLimit(1).minimumScaleFactor(0.7)
         }
     }

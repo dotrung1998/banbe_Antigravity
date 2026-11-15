@@ -52,7 +52,7 @@ struct AccountGroupView: View {
                 Button { app.goBack() } label: {
                     // note 66 — a group nested under Administration names it on the way back.
                     Text("‹ " + (app.accountGroupParentKey.map { app.accountGroupTitle(for: $0) } ?? app.T("Tài khoản", "Account")))
-                        .font(.system(size: 12))
+                        .font(.app(size: 12))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(app.palette.ink)
@@ -60,7 +60,7 @@ struct AccountGroupView: View {
 
                 HStack(spacing: 10) {
                     Image(systemName: titleIcon)
-                        .font(.system(size: 20, weight: .medium))
+                        .font(.app(size: 20, weight: .medium))
                         .frame(width: 34, height: 34)
                         .background((ROW_ACCENT_COLORS[app.accountGroupKey ?? ""] ?? .clear).opacity(0.33), in: Circle())
                     Text(title).font(BanbeTheme.display(24))
@@ -149,15 +149,15 @@ struct AccountGroupView: View {
     @ViewBuilder
     private var teamContent: some View {
         if !app.myOrganizerInvites.isEmpty {
-            Text(app.T("Lời mời Team", "Team Invites")).font(.system(size: 11.5, weight: .semibold))
+            Text(app.T("Lời mời Team", "Team Invites")).font(.app(size: 11.5, weight: .semibold))
             ForEach(app.myOrganizerInvites) { inv in
                 VStack(alignment: .leading, spacing: 8) {
                     Text(app.T("\(inv.organizers?.name ?? "Một tổ chức") mời bạn làm \(inv.publicRole)", "\(inv.organizers?.name ?? "An organizer") invited you as \(inv.publicRole)"))
-                        .font(.system(size: 13))
+                        .font(.app(size: 13))
                     HStack(spacing: 8) {
                         InkButton(title: app.T("Chấp nhận", "Accept")) { Task { await app.respondToOrganizerInvite(membershipID: inv.id, accept: true) } }
                         Button(app.T("Từ chối", "Decline")) { Task { await app.respondToOrganizerInvite(membershipID: inv.id, accept: false) } }
-                            .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                            .font(.app(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
                             .frame(maxWidth: .infinity).padding(.vertical, 10)
                             .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
                     }
@@ -169,19 +169,19 @@ struct AccountGroupView: View {
             }
         }
         if !app.myTeamMemberships.isEmpty {
-            Text(app.T("Đội ngũ của tôi", "My Teams")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            Text(app.T("Đội ngũ của tôi", "My Teams")).font(.app(size: 11.5, weight: .semibold)).padding(.top, 18)
             ForEach(app.myTeamMemberships) { m in
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(m.organizers?.name ?? app.T("Một tổ chức", "An organizer")).font(.system(size: 13))
-                        Text(m.publicRole).font(.system(size: 11)).opacity(0.65)
+                        Text(m.organizers?.name ?? app.T("Một tổ chức", "An organizer")).font(.app(size: 13))
+                        Text(m.publicRole).font(.app(size: 11)).opacity(0.65)
                     }
                     Spacer()
                     Button {
                         Task { await app.setOrganizerMemberVisibility(membershipID: m.id, visible: !m.publicVisible) }
                     } label: {
                         HStack(spacing: 6) {
-                            Text(app.T("Hiển thị tôi trong Team", "Show me in the Team")).font(.system(size: 10.5))
+                            Text(app.T("Hiển thị tôi trong Team", "Show me in the Team")).font(.app(size: 10.5))
                             ZStack(alignment: m.publicVisible ? .trailing : .leading) {
                                 Capsule().fill(m.publicVisible ? app.palette.ink : app.palette.ink.opacity(0.18)).frame(width: 38, height: 22)
                                 Circle().fill(app.palette.paper).frame(width: 17, height: 17).padding(2.5)
@@ -199,7 +199,7 @@ struct AccountGroupView: View {
         }
         if app.myOrganizerInvites.isEmpty && app.myTeamMemberships.isEmpty {
             Text(app.T("Chưa có lời mời hay Team nào.", "No invites or teams yet."))
-                .font(.system(size: 13)).opacity(0.65)
+                .font(.app(size: 13)).opacity(0.65)
         }
 
         // Account IA reorg (2026-09-30) — event-credit invites (organizer-
@@ -210,17 +210,17 @@ struct AccountGroupView: View {
         // sitting alongside real attendee bookings in "Tickets & Bookings".
         // Content/identifiers unchanged from their previous location.
         if !app.myEventCredits.isEmpty {
-            Text(app.T("Đóng góp sự kiện: lời mời đang chờ", "Event contributions: pending invites")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            Text(app.T("Đóng góp sự kiện: lời mời đang chờ", "Event contributions: pending invites")).font(.app(size: 11.5, weight: .semibold)).padding(.top, 18)
             ForEach(app.myEventCredits) { c in
                 VStack(alignment: .leading, spacing: 8) {
                     Text(app.T(
                         "\(c.organizers?.name ?? "Một tổ chức") ghi nhận bạn đã tổ chức \"\(c.events?.name ?? "")\"",
                         "\(c.organizers?.name ?? "An organizer") credited you for organizing \"\(c.events?.name ?? "")\""
-                    )).font(.system(size: 13))
+                    )).font(.app(size: 13))
                     HStack(spacing: 8) {
                         InkButton(title: app.T("Chấp nhận", "Accept")) { Task { await app.respondToEventCredit(creditID: c.id, accept: true) } }
                         Button(app.T("Từ chối", "Decline")) { Task { await app.respondToEventCredit(creditID: c.id, accept: false) } }
-                            .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                            .font(.app(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
                             .frame(maxWidth: .infinity).padding(.vertical, 10)
                             .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
                     }
@@ -232,16 +232,16 @@ struct AccountGroupView: View {
             }
         }
         if !app.myConfirmedEventCredits.isEmpty {
-            Text(app.T("Đóng góp sự kiện: đã xác nhận", "Event contributions: confirmed")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            Text(app.T("Đóng góp sự kiện: đã xác nhận", "Event contributions: confirmed")).font(.app(size: 11.5, weight: .semibold)).padding(.top, 18)
             ForEach(app.myConfirmedEventCredits) { c in
                 Button { app.goEvent(c.eventId) } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(c.events?.name ?? app.T("Một sự kiện", "An event")).font(.system(size: 13, weight: .semibold))
-                            Text(c.organizers?.name ?? app.T("Một tổ chức", "An organizer")).font(.system(size: 11)).opacity(0.65)
+                            Text(c.events?.name ?? app.T("Một sự kiện", "An event")).font(.app(size: 13, weight: .semibold))
+                            Text(c.organizers?.name ?? app.T("Một tổ chức", "An organizer")).font(.app(size: 11)).opacity(0.65)
                         }
                         Spacer(minLength: 0)
-                        Text("›").font(.system(size: 18)).opacity(0.5)
+                        Text("›").font(.app(size: 18)).opacity(0.5)
                     }
                     .foregroundStyle(app.palette.ink)
                     .padding(14)
@@ -283,10 +283,10 @@ struct AccountGroupView: View {
     private var activityContent: some View {
         if app.paymentsLoading && app.paymentBookings.isEmpty {
             Text(app.T("Đang tải vé của bạn…", "Loading your tickets…"))
-                .font(.system(size: 13)).opacity(0.65)
+                .font(.app(size: 13)).opacity(0.65)
         } else if app.paymentBookings.isEmpty {
             Text(app.T("Bạn chưa có vé nào.", "You don't have any tickets yet."))
-                .font(.system(size: 13)).opacity(0.65)
+                .font(.app(size: 13)).opacity(0.65)
         } else {
             let endedGiftIDs = Set(app.paymentBookings.filter { app.isFinishedGift($0) }.map(\.id))
             let active = app.paymentBookings.filter {
@@ -301,7 +301,7 @@ struct AccountGroupView: View {
                 return !retention.isHidden(booking.id, user: uid)
             }
             if !active.isEmpty {
-                Text(app.T("Vé của tôi", "My Tickets")).font(.system(size: 11.5, weight: .semibold))
+                Text(app.T("Vé của tôi", "My Tickets")).font(.app(size: 11.5, weight: .semibold))
                 VStack(spacing: 0) {
                     ForEach(Array(active.enumerated()), id: \.element.id) { i, b in
                         activeTicketRow(b)
@@ -313,13 +313,13 @@ struct AccountGroupView: View {
             }
             if !inactive.isEmpty {
                 HStack {
-                    Text(app.T("Đã hủy / hết hạn", "Cancelled / Expired")).font(.system(size: 11.5, weight: .semibold))
+                    Text(app.T("Đã hủy / hết hạn", "Cancelled / Expired")).font(.app(size: 11.5, weight: .semibold))
                     Spacer(minLength: 0)
                     Button(selecting ? app.T("Xong", "Done") : app.T("Chọn", "Select")) {
                         selecting.toggle()
                         selected = []
                     }
-                    .font(.system(size: 11.5, weight: .semibold))
+                    .font(.app(size: 11.5, weight: .semibold))
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("tickets.inactive.select")
                 }
@@ -345,12 +345,12 @@ struct AccountGroupView: View {
                         .disabled(selected.isEmpty)
                         .accessibilityIdentifier("tickets.inactive.delete")
                     }
-                    .font(.system(size: 12.5, weight: .semibold))
+                    .font(.app(size: 12.5, weight: .semibold))
                     .padding(.top, 10)
                 }
                 Text(app.T("Các mục này tự động bị xóa sau 30 ngày. Xóa chỉ ẩn khỏi danh sách của bạn. Hồ sơ hoàn tiền vẫn được giữ.",
                            "These are removed automatically after 30 days. Deleting only clears them from your list. Any refund record is kept."))
-                    .font(.system(size: 10.5)).opacity(0.6).padding(.top, 8)
+                    .font(.app(size: 10.5)).opacity(0.6).padding(.top, 8)
             }
         }
 
@@ -359,7 +359,7 @@ struct AccountGroupView: View {
         // ordinary grouped row on the same 18pt section rhythm as the two above
         // (it used to sit below them with no rhythm of its own), carrying its
         // real count in the same trailing position every other group row uses.
-        Text(app.T("Lịch sử", "History")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+        Text(app.T("Lịch sử", "History")).font(.app(size: 11.5, weight: .semibold)).padding(.top, 18)
         VStack(spacing: 0) {
             row(app.T("Sự Kiện Quá Khứ", "Past Events"), identifier: "account.completedList", icon: "calendar.badge.checkmark", trailing: "\(completedCount) ›") { app.goCompletedList() }
         }
@@ -368,16 +368,16 @@ struct AccountGroupView: View {
 
         // Tickets other people imported-in from a group booking (migration 152).
         if !app.importedTickets.isEmpty {
-            Text(app.T("Vé đã nhập", "Imported tickets")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            Text(app.T("Vé đã nhập", "Imported tickets")).font(.app(size: 11.5, weight: .semibold)).padding(.top, 18)
             VStack(spacing: 0) {
                 ForEach(Array(app.importedTickets.enumerated()), id: \.element.id) { i, t in
                     Button { app.importedTicketOpen = t } label: {
                         HStack(spacing: 12) {
-                            Image(systemName: "ticket").font(.system(size: 16)).frame(width: 30)
+                            Image(systemName: "ticket").font(.app(size: 16)).frame(width: 30)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(t.eventName).font(.system(size: 13.5, weight: .semibold))
+                                Text(t.eventName).font(.app(size: 13.5, weight: .semibold))
                                 Text(t.name + (t.isVoid ? " ▪︎ " + app.T("Đã huỷ", "Cancelled") : ""))
-                                    .font(.system(size: 11.5)).opacity(0.65)
+                                    .font(.app(size: 11.5)).opacity(0.65)
                             }
                             Spacer(minLength: 6)
                             Text("›")
@@ -400,7 +400,7 @@ struct AccountGroupView: View {
         // The recipient's own entry point for a claim code — deliberately its
         // own row, never reachable from the check-in QR, which is a different
         // credential entirely (see migration 132).
-        Text(app.T("Nhập vé được tặng hoặc vé nhóm", "Import a gifted or group ticket")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+        Text(app.T("Nhập vé được tặng hoặc vé nhóm", "Import a gifted or group ticket")).font(.app(size: 11.5, weight: .semibold)).padding(.top, 18)
         VStack(spacing: 0) {
             row(app.T("Nhập vé bằng mã nhận vé", "Import a ticket with your claim code"),
                 identifier: "account.giftImport", icon: "gift", trailing: "›") {
@@ -420,9 +420,9 @@ struct AccountGroupView: View {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(b.eventName.isEmpty ? app.T("Một sự kiện", "An event") : b.eventName)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.app(size: 13, weight: .semibold))
                     Text(app.T("Đã tặng cho \(b.recipientName ?? "")", "Gifted to \(b.recipientName ?? "")"))
-                        .font(.system(size: 11)).opacity(0.85)
+                        .font(.app(size: 11)).opacity(0.85)
                 }
                 Spacer(minLength: 0)
                 giftPDFButton(b)
@@ -436,11 +436,11 @@ struct AccountGroupView: View {
             } label: {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(b.eventName.isEmpty ? app.T("Một sự kiện", "An event") : b.eventName).font(.system(size: 13, weight: .semibold))
-                        Text(ticketStatusLabel(b)).font(.system(size: 11)).opacity(0.85)
+                        Text(b.eventName.isEmpty ? app.T("Một sự kiện", "An event") : b.eventName).font(.app(size: 13, weight: .semibold))
+                        Text(ticketStatusLabel(b)).font(.app(size: 11)).opacity(0.85)
                     }
                     Spacer(minLength: 0)
-                    Text("›").font(.system(size: 18)).opacity(0.5)
+                    Text("›").font(.app(size: 18)).opacity(0.5)
                 }
                 .foregroundStyle(app.palette.ink)
                 .padding(14)
@@ -459,8 +459,8 @@ struct AccountGroupView: View {
             if let url = app.exportGiftPDF(for: b) { pdfShare = PDFShareItem(url: url) }
         } label: {
             HStack(spacing: 5) {
-                Image(systemName: "arrow.down.document").font(.system(size: 12, weight: .medium))
-                Text(app.T("PDF", "PDF")).font(.system(size: 12, weight: .semibold))
+                Image(systemName: "arrow.down.document").font(.app(size: 12, weight: .medium))
+                Text(app.T("PDF", "PDF")).font(.app(size: 12, weight: .semibold))
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 12).padding(.vertical, 8)
@@ -476,11 +476,11 @@ struct AccountGroupView: View {
         HStack(spacing: 10) {
             if selecting {
                 Image(systemName: selected.contains(b.id) ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 18))
+                    .font(.app(size: 18))
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(b.eventName.isEmpty ? app.T("Một sự kiện", "An event") : b.eventName).font(.system(size: 13, weight: .semibold))
-                Text(terminalStatusLabel(b)).font(.system(size: 11))
+                Text(b.eventName.isEmpty ? app.T("Một sự kiện", "An event") : b.eventName).font(.app(size: 13, weight: .semibold))
+                Text(terminalStatusLabel(b)).font(.app(size: 11))
             }
             Spacer(minLength: 0)
             if b.isGifted { giftPDFButton(b) }
@@ -569,11 +569,11 @@ struct AccountGroupView: View {
             Divider().overlay(app.palette.rule)
             HStack(spacing: 12) {
                 Image(systemName: "envelope.badge")
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.app(size: 16, weight: .medium))
                     .frame(width: 22, height: 22)
                     .opacity(0.72)
                 Text(app.T("Gửi email chứng từ thanh toán", "Email payment documents"))
-                    .font(.system(size: 14))
+                    .font(.app(size: 14))
                 Spacer()
                 Toggle("", isOn: Binding(
                     get: { app.autoEmailDocuments },
@@ -622,16 +622,16 @@ struct AccountGroupView: View {
         // no new color introduced.
         VStack(alignment: .leading, spacing: 8) {
             Text(app.T("Quản Lý Tài Khoản", "Account Management"))
-                .font(.system(size: 11.5, weight: .semibold))
+                .font(.app(size: 11.5, weight: .semibold))
                 .foregroundStyle(app.palette.ink)
                 .padding(.top, 24)
 
             Button { app.deleteAccountStayOpen = true } label: {
                 HStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.shield").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22)
-                    Text(app.T("Xóa Tài Khoản", "Delete Account")).font(.system(size: 14, weight: .semibold))
+                    Image(systemName: "exclamationmark.shield").font(.app(size: 16, weight: .medium)).frame(width: 22, height: 22)
+                    Text(app.T("Xóa Tài Khoản", "Delete Account")).font(.app(size: 14, weight: .semibold))
                     Spacer()
-                    Text("›").font(.system(size: 15))
+                    Text("›").font(.app(size: 15))
                 }
                 .foregroundStyle(BanbeTheme.alert)
                 .padding(16)
@@ -793,14 +793,14 @@ struct AccountGroupView: View {
     @ViewBuilder
     private var adminTeamContent: some View {
         if let invite = app.myAdminInvite {
-            Text(app.T("Lời mời quản trị", "Admin Invite")).font(.system(size: 11.5, weight: .semibold))
+            Text(app.T("Lời mời quản trị", "Admin Invite")).font(.app(size: 11.5, weight: .semibold))
             VStack(alignment: .leading, spacing: 8) {
                 Text(app.T("Bạn được mời trở thành quản trị viên banbe.", "You've been invited to become a banbe admin."))
-                    .font(.system(size: 13))
+                    .font(.app(size: 13))
                 HStack(spacing: 8) {
                     InkButton(title: app.T("Chấp nhận", "Accept")) { Task { await app.respondToAdminInvite(inviteID: invite.id, accept: true) } }
                     Button(app.T("Từ chối", "Decline")) { Task { await app.respondToAdminInvite(inviteID: invite.id, accept: false) } }
-                        .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                        .font(.app(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
                         .frame(maxWidth: .infinity).padding(.vertical, 10)
                         .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
                 }
@@ -813,25 +813,25 @@ struct AccountGroupView: View {
 
         if app.accountType == "admin" && !app.canManageAdmins {
             Text(app.T("Bạn không có quyền quản lý đội ngũ quản trị.", "You don't have permission to manage the admin team."))
-                .font(.system(size: 13)).opacity(0.65).padding(.top, 18)
+                .font(.app(size: 13)).opacity(0.65).padding(.top, 18)
                 .accessibilityIdentifier("adminTeam.noPermission")
         }
 
         if app.canManageAdmins {
-            Text(app.T("Mời Quản Trị Viên", "Invite Admin")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            Text(app.T("Mời Quản Trị Viên", "Invite Admin")).font(.app(size: 11.5, weight: .semibold)).padding(.top, 18)
             VStack(alignment: .leading, spacing: 8) {
                 TextField(app.T("Email người được mời", "Invitee's email"), text: $app.adminInviteEmailDraft)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
-                    .font(.system(size: 13.5)).padding(10)
+                    .font(.app(size: 13.5)).padding(10)
                     .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(app.palette.rule))
                     .accessibilityIdentifier("adminTeam.emailInput")
                 if !app.adminInviteError.isEmpty {
-                    Text(app.adminInviteError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                    Text(app.adminInviteError).font(.app(size: 12)).foregroundStyle(BanbeTheme.alert)
                 }
                 if let confirmEmail = app.adminInviteConfirmEmail {
                     Text(app.T("Mời \(confirmEmail) làm quản trị viên banbe?", "Invite \(confirmEmail) as a banbe admin?"))
-                        .font(.system(size: 12.5))
+                        .font(.app(size: 12.5))
                     HStack(spacing: 8) {
                         InkButton(title: app.adminInviteBusy ? app.T("Đang gửi…", "Sending…") : app.T("Xác nhận mời", "Confirm invite")) {
                             Task { await app.confirmAdminInvite() }
@@ -839,7 +839,7 @@ struct AccountGroupView: View {
                         .opacity(app.adminInviteBusy ? 0.6 : 1)
                         .disabled(app.adminInviteBusy)
                         Button(app.T("Huỷ", "Cancel")) { app.cancelAdminInviteConfirm() }
-                            .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                            .font(.app(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
                             .frame(maxWidth: .infinity).padding(.vertical, 10)
                             .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
                     }
@@ -854,21 +854,21 @@ struct AccountGroupView: View {
 
             let pendingInvites = app.adminInvites.filter { $0.status == "pending" }
             if !pendingInvites.isEmpty {
-                Text(app.T("Lời Mời Đang Chờ", "Pending Invites")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+                Text(app.T("Lời Mời Đang Chờ", "Pending Invites")).font(.app(size: 11.5, weight: .semibold)).padding(.top, 18)
                 ForEach(pendingInvites) { inv in
                     HStack {
-                        Text(inv.invitedEmail).font(.system(size: 13)).lineLimit(1)
+                        Text(inv.invitedEmail).font(.app(size: 13)).lineLimit(1)
                         Spacer(minLength: 8)
                         if app.revokeAdminInviteConfirmID == inv.id {
                             HStack(spacing: 8) {
                                 Button(app.T("Thu hồi?", "Revoke?")) { Task { await app.confirmRevokeAdminInvite() } }
-                                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
+                                    .font(.app(size: 12, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
                                 Button(app.T("Huỷ", "Cancel")) { app.cancelRevokeAdminInviteConfirm() }
-                                    .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
+                                    .font(.app(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
                             }
                         } else {
                             Button(app.T("Thu hồi", "Revoke")) { app.requestRevokeAdminInviteConfirm(inv.id) }
-                                .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
+                                .font(.app(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
                         }
                     }
                     .foregroundStyle(app.palette.ink)
@@ -880,39 +880,39 @@ struct AccountGroupView: View {
             }
 
             if let removal = app.adminRemoval, !removal.votes.isEmpty {
-                Text(app.T("Cuộc Bỏ Phiếu Đang Mở", "Open Votes")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+                Text(app.T("Cuộc Bỏ Phiếu Đang Mở", "Open Votes")).font(.app(size: 11.5, weight: .semibold)).padding(.top, 18)
                 ForEach(removal.votes) { v in
                     VStack(alignment: .leading, spacing: 8) {
                         let who = v.targetName.isEmpty ? app.T("quản trị viên", "this admin") : v.targetName
                         Text(v.kind == "revoke_admin"
                              ? app.T("Gỡ \(who) khỏi đội ngũ quản trị", "Remove \(who) as an admin")
                              : app.T("Bỏ quyền quản lý đội ngũ của \(who)", "Remove team-management access from \(who)"))
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.app(size: 13, weight: .semibold))
                         let opener = v.openedByName.isEmpty ? app.T("một quản trị viên", "an admin") : v.openedByName
                         let expires = v.expiresAt.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? ""
                         Text(app.T("Mở bởi \(opener). Đồng ý \(v.yes) · Không \(v.no) · cần \(v.needed)/\(v.electorate) phiếu đồng ý. Hết hạn \(expires)",
                                    "Opened by \(opener). Yes \(v.yes) · No \(v.no) · \(v.needed) of \(v.electorate) yes votes needed. Expires \(expires)"))
-                            .font(.system(size: 12)).opacity(0.7)
+                            .font(.app(size: 12)).opacity(0.7)
                         if v.canVote {
                             HStack(spacing: 8) {
                                 InkButton(title: app.T("Đồng ý", "Approve")) { Task { await app.castAdminRemovalVote(voteID: v.id, approve: true) } }
                                     .opacity(app.adminRemovalBusy ? 0.6 : 1).disabled(app.adminRemovalBusy)
                                     .accessibilityIdentifier("adminRemovalVote.yes.\(v.id)")
                                 Button(app.T("Từ chối", "Reject")) { Task { await app.castAdminRemovalVote(voteID: v.id, approve: false) } }
-                                    .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                                    .font(.app(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
                                     .frame(maxWidth: .infinity).padding(.vertical, 10)
                                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
                                     .disabled(app.adminRemovalBusy)
                                     .accessibilityIdentifier("adminRemovalVote.no.\(v.id)")
                             }
                         } else if let mine = v.myVote {
-                            Text(app.T("Bạn đã bỏ phiếu: \(mine == "yes" ? "đồng ý" : "từ chối").", "You voted: \(mine == "yes" ? "approve" : "reject").")).font(.system(size: 12)).opacity(0.6)
+                            Text(app.T("Bạn đã bỏ phiếu: \(mine == "yes" ? "đồng ý" : "từ chối").", "You voted: \(mine == "yes" ? "approve" : "reject").")).font(.app(size: 12)).opacity(0.6)
                         } else {
-                            Text(app.T("Bạn không thể bỏ phiếu cho chính mình.", "You can't vote on your own removal.")).font(.system(size: 12)).opacity(0.6)
+                            Text(app.T("Bạn không thể bỏ phiếu cho chính mình.", "You can't vote on your own removal.")).font(.app(size: 12)).opacity(0.6)
                         }
                         if v.isOpener {
                             Button(app.T("Huỷ cuộc bỏ phiếu", "Cancel this vote")) { Task { await app.cancelAdminRemovalVote(voteID: v.id) } }
-                                .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
+                                .font(.app(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
                                 .disabled(app.adminRemovalBusy)
                         }
                     }
@@ -924,42 +924,42 @@ struct AccountGroupView: View {
                 }
             }
 
-            Text(app.T("Quản Trị Viên Hiện Tại", "Current Admins")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            Text(app.T("Quản Trị Viên Hiện Tại", "Current Admins")).font(.app(size: 11.5, weight: .semibold)).padding(.top, 18)
             ForEach(app.adminRoster) { a in
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text((a.displayName?.isEmpty == false ? a.displayName! : app.T("(Chưa đặt tên)", "(No name set)")) + (a.isSelf ? app.T(" (bạn)", " (you)") : ""))
-                            .font(.system(size: 13))
+                            .font(.app(size: 13))
                         if a.canManageAdmins {
-                            Text(app.T("Có quyền quản lý đội ngũ", "Can manage the admin team")).font(.system(size: 10.5)).opacity(0.6)
+                            Text(app.T("Có quyền quản lý đội ngũ", "Can manage the admin team")).font(.app(size: 10.5)).opacity(0.6)
                         }
                         if !a.isSelf && app.revokeAdminConfirmID != a.id && app.adminRemoval?.protectedUserId != a.id {
                             // Only an admin who already manages the team reaches this screen
                             // (server re-checks in set_admin_management_permission).
                             Button(a.canManageAdmins ? app.T("Bỏ quyền quản lý đội ngũ", "Remove team-management access") : app.T("Cấp quyền quản lý đội ngũ", "Allow managing the team"))
                             { Task { await app.setAdminManagementPermission(a.id, enabled: !a.canManageAdmins) } }
-                                .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                                .font(.app(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
                                 .padding(.top, 4)
                                 .accessibilityIdentifier("adminRosterPermission.\(a.id)")
                         }
                         if let removal = app.adminRemoval, removal.protectedUserId == a.id {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(app.T("Tài khoản được bảo vệ", "Protected admin")).font(.system(size: 10.5, weight: .semibold)).opacity(0.8)
+                                Text(app.T("Tài khoản được bảo vệ", "Protected admin")).font(.app(size: 10.5, weight: .semibold)).opacity(0.8)
                                 if !a.isSelf {
                                     if removal.adminCount < removal.minAdmins {
                                         Text(app.T("Chỉ có thể thay đổi khi có ít nhất \(removal.minAdmins) quản trị viên (hiện có \(removal.adminCount)), và phải qua bỏ phiếu.",
                                                    "Can only be changed with at least \(removal.minAdmins) admins (now \(removal.adminCount)), and only by a vote."))
-                                            .font(.system(size: 11.5)).opacity(0.65)
+                                            .font(.app(size: 11.5)).opacity(0.65)
                                     } else if !removal.canOpen {
                                         Text(app.T("Cần ít nhất 2 quản trị viên có quyền quản lý đội ngũ (không tính tài khoản này) để bỏ phiếu. Hãy cấp quyền quản lý đội ngũ cho quản trị viên khác.",
                                                    "At least 2 admins with team-management access (not counting this account) are needed to vote. Grant team-management access to another admin first."))
-                                            .font(.system(size: 11.5)).opacity(0.65)
+                                            .font(.app(size: 11.5)).opacity(0.65)
                                     } else {
                                         if a.canManageAdmins && !removal.votes.contains(where: { $0.kind == "revoke_management" }) {
                                             Button(app.T("Mở bỏ phiếu: bỏ quyền quản lý đội ngũ", "Start a vote: remove team-management access")) {
                                                 Task { await app.openAdminRemovalVote(targetID: a.id, kind: "revoke_management") }
                                             }
-                                            .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                                            .font(.app(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
                                             .disabled(app.adminRemovalBusy)
                                             .accessibilityIdentifier("adminRemovalOpen.management")
                                         }
@@ -967,7 +967,7 @@ struct AccountGroupView: View {
                                             Button(app.T("Mở bỏ phiếu: gỡ khỏi đội ngũ quản trị", "Start a vote: remove as admin")) {
                                                 Task { await app.openAdminRemovalVote(targetID: a.id, kind: "revoke_admin") }
                                             }
-                                            .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
+                                            .font(.app(size: 11.5, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
                                             .disabled(app.adminRemovalBusy)
                                             .accessibilityIdentifier("adminRemovalOpen.admin")
                                         }
@@ -982,13 +982,13 @@ struct AccountGroupView: View {
                         if app.revokeAdminConfirmID == a.id {
                             HStack(spacing: 8) {
                                 Button(app.T("Thu hồi?", "Revoke?")) { Task { await app.confirmRevokeAdmin() } }
-                                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
+                                    .font(.app(size: 12, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
                                 Button(app.T("Huỷ", "Cancel")) { app.cancelRevokeAdminConfirm() }
-                                    .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
+                                    .font(.app(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
                             }
                         } else {
                             Button(app.T("Thu hồi quyền", "Revoke")) { app.requestRevokeAdminConfirm(a.id) }
-                                .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
+                                .font(.app(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
                         }
                     }
                 }
@@ -1001,7 +1001,7 @@ struct AccountGroupView: View {
         }
 
         if app.myAdminInvite == nil && app.accountType != "admin" {
-            Text(app.T("Không có gì ở đây.", "Nothing here.")).font(.system(size: 13)).opacity(0.65)
+            Text(app.T("Không có gì ở đây.", "Nothing here.")).font(.app(size: 13)).opacity(0.65)
         }
     }
 
@@ -1013,13 +1013,13 @@ struct AccountGroupView: View {
     private var ticketDemoRow: some View {
         Button { if app.ticketDemoAvailable { ticketDemoPicker = true } } label: {
             HStack(spacing: 12) {
-                Image(systemName: "ticket").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
+                Image(systemName: "ticket").font(.app(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(app.T("Bản demo vé", "Ticket demo")).font(.system(size: 14))
-                    Text(app.T("Dữ liệu mẫu. Không lưu gì.", "Sample data. Nothing is saved.")).font(.system(size: 12)).opacity(0.65)
+                    Text(app.T("Bản demo vé", "Ticket demo")).font(.app(size: 14))
+                    Text(app.T("Dữ liệu mẫu. Không lưu gì.", "Sample data. Nothing is saved.")).font(.app(size: 12)).opacity(0.65)
                 }
                 Spacer()
-                Text("›").font(.system(size: 13))
+                Text("›").font(.app(size: 13))
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 16).padding(.vertical, 12)
@@ -1033,16 +1033,16 @@ struct AccountGroupView: View {
         Button { if app.projectDemoAvailable { demoPicker = true } } label: {
             HStack(spacing: 12) {
                 Image(systemName: "theatermasks")
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.app(size: 16, weight: .medium))
                     .frame(width: 22, height: 22)
                     .opacity(0.72)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(app.T("Bản demo dự án sự kiện", "Project hub demo")).font(.system(size: 14))
+                    Text(app.T("Bản demo dự án sự kiện", "Project hub demo")).font(.app(size: 14))
                         .accessibilityIdentifier("admin.projectDemo.title")
-                    Text(app.T("Dữ liệu mẫu. Không lưu gì.", "Sample data. Nothing is saved.")).font(.system(size: 12)).opacity(0.65)
+                    Text(app.T("Dữ liệu mẫu. Không lưu gì.", "Sample data. Nothing is saved.")).font(.app(size: 12)).opacity(0.65)
                 }
                 Spacer()
-                Text("›").font(.system(size: 13))
+                Text("›").font(.app(size: 13))
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 16).padding(.vertical, 12)
@@ -1056,20 +1056,20 @@ struct AccountGroupView: View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: icon)
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.app(size: 16, weight: .medium))
                     .frame(width: 22, height: 22)
                     .opacity(0.72)
-                Text(title).font(.system(size: 14))
+                Text(title).font(.app(size: 14))
                 Spacer()
                 if badge > 0 {
                     Text(badge > 99 ? "99+" : "\(badge)")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.app(size: 11, weight: .bold))
                         .foregroundStyle(app.palette.paper)
                         .padding(.horizontal, 7).padding(.vertical, 2)
                         .background(BanbeTheme.alert, in: Capsule())
                         .accessibilityLabel(app.T("\(badge) mục mới", "\(badge) new item(s)"))
                 }
-                Text(trailing).font(.system(size: 13))
+                Text(trailing).font(.app(size: 13))
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 16).padding(.vertical, 15)

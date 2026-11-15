@@ -52,7 +52,7 @@ struct DocumentsView: View {
 
                 HStack(spacing: 10) {
                     Image(systemName: isReceipt ? "receipt" : "doc.text")
-                        .font(.system(size: 20, weight: .medium))
+                        .font(.app(size: 20, weight: .medium))
                         .frame(width: 34, height: 34)
                         .background((ROW_ACCENT_COLORS["payments"] ?? .clear).opacity(0.33), in: Circle())
                     Text(title).font(BanbeTheme.display(24))
@@ -60,13 +60,13 @@ struct DocumentsView: View {
                 .foregroundStyle(app.palette.ink)
                 .padding(.top, 10)
                     .accessibilityIdentifier("documents.title")
-                Text(subtitle).font(.system(size: 12.5))
+                Text(subtitle).font(.app(size: 12.5))
                     .foregroundStyle(app.palette.ink.opacity(0.75)).padding(.top, 8)
 
                 VStack(spacing: 0) {
                     if app.documents.isEmpty {
                         Text(app.documentsLoading ? app.T("Đang tải…", "Loading…") : emptyText)
-                            .font(.system(size: 12.5)).foregroundStyle(app.palette.ink)
+                            .font(.app(size: 12.5)).foregroundStyle(app.palette.ink)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(16)
                             .accessibilityIdentifier("documents.empty")
@@ -124,7 +124,7 @@ struct DocumentsView: View {
                         .font(BanbeTheme.display(15)).foregroundStyle(app.palette.ink)
                         .lineLimit(1)
                     Text("\(doc.number) ▪︎ \(party)")
-                        .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                        .font(.app(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
                         .lineLimit(1)
                     // Was invisible outside a bare version-count on
                     // Attendance only (08-payment-documents.md's
@@ -135,14 +135,14 @@ struct DocumentsView: View {
                     // this label) once purge_after passes.
                     if doc.supersededAt != nil {
                         Text(app.T("Bản cũ · xoá sau 24h", "Old copy · deletes in 24h"))
-                            .font(.system(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                            .font(.app(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.6))
                     } else if hasOldCopy {
                         Text(app.T("Bản hiện tại", "Current copy"))
-                            .font(.system(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                            .font(.app(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.6))
                     }
                     if hasAmount {
                         Text(formatVnd(doc.totalVnd))
-                            .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                            .font(.app(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
                     } else if !caption.isEmpty {
                         // Was 11.5pt/regular/opacity 0.7 — same as the plain
                         // "number ▪︎ party" line above it, which read as too
@@ -153,12 +153,12 @@ struct DocumentsView: View {
                         // instead of the caption looking like an
                         // afterthought next to it.
                         Text(caption)
-                            .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.75))
+                            .font(.app(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.75))
                             .lineLimit(1)
                     }
                 }
                 Spacer()
-                Text("›").font(.system(size: 15)).foregroundStyle(app.palette.ink)
+                Text("›").font(.app(size: 15)).foregroundStyle(app.palette.ink)
             }
             .padding(.horizontal, 16).padding(.vertical, 13)
         }
@@ -216,17 +216,17 @@ struct DocumentViewerView: View {
                             VStack(spacing: 12) {
                                 Text(app.T("Chưa tải được chứng từ. Kiểm tra kết nối rồi thử lại.",
                                            "Couldn't load the document. Check your connection and try again."))
-                                    .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                                    .font(.app(size: 13)).foregroundStyle(app.palette.ink)
                                     .multilineTextAlignment(.center)
                                 if !app.documentFileURLErrorDetail.isEmpty {
                                     Text(app.documentFileURLErrorDetail)
-                                        .font(.system(size: 10.5, design: .monospaced))
+                                        .font(.app(size: 10.5, design: .monospaced))
                                         .foregroundStyle(app.palette.ink.opacity(0.55))
                                         .multilineTextAlignment(.center)
                                         .accessibilityIdentifier("documentView.errorDetail")
                                 }
                                 Button(app.T("Thử lại", "Try again")) { app.retryDocumentFileURL() }
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.app(size: 13, weight: .semibold))
                                     .foregroundStyle(app.palette.paper)
                                     .padding(.horizontal, 18).padding(.vertical, 10)
                                     .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -251,10 +251,10 @@ struct DocumentViewerView: View {
                         VStack(spacing: 2) {
                             Text(app.T("Chưa tải được chứng từ. Kiểm tra kết nối rồi thử lại.",
                                        "Couldn't load the document. Check your connection and try again."))
-                                .font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert)
+                                .font(.app(size: 12.5)).foregroundStyle(BanbeTheme.alert)
                             if !loadFailedDetail.isEmpty {
                                 Text(loadFailedDetail)
-                                    .font(.system(size: 10.5, design: .monospaced))
+                                    .font(.app(size: 10.5, design: .monospaced))
                                     .foregroundStyle(BanbeTheme.alert.opacity(0.7))
                                     .accessibilityIdentifier("documentView.errorDetail")
                             }
@@ -267,7 +267,7 @@ struct DocumentViewerView: View {
                     if !(doc.isUploaded && app.documentFileURLFailed) {
                         Button { printing = true } label: {
                             Text(app.T("Tải về ▪︎ In", "Download ▪︎ Print"))
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.app(size: 15, weight: .semibold))
                                 .frame(maxWidth: .infinity).padding(.vertical, 18).padding(.bottom, 12)
                                 .background(app.palette.ink)
                                 .foregroundStyle(app.palette.paper)
@@ -281,7 +281,7 @@ struct DocumentViewerView: View {
                     }
                 } else {
                     Text(app.T("Không tìm thấy chứng từ.", "Couldn't find that document."))
-                        .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                        .font(.app(size: 13)).foregroundStyle(app.palette.ink)
                         .padding(.horizontal, 22)
                     Spacer()
                 }
@@ -298,7 +298,7 @@ struct DocumentViewerView: View {
         VStack(alignment: .leading, spacing: 8) {
             if !replacing {
                 Button(app.T("Thay bằng bản khác", "Replace with a different file")) { showReplacePicker = true }
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.app(size: 12, weight: .semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
                     .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
@@ -306,25 +306,25 @@ struct DocumentViewerView: View {
                     .accessibilityIdentifier("document.replaceButton")
             } else {
                 Text(pendingFileURL?.lastPathComponent ?? "")
-                    .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    .font(.app(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
                 TextField(app.T("Lý do thay thế (bắt buộc, khách sẽ thấy lý do này)", "Reason for replacing (required, the guest will see this)"), text: $reason, axis: .vertical)
-                    .font(.system(size: 12.5))
+                    .font(.app(size: 12.5))
                     .padding(10)
                     .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
                     .accessibilityIdentifier("document.replaceReason")
                 if !app.documentUploadError.isEmpty {
-                    Text(app.documentUploadError).font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                    Text(app.documentUploadError).font(.app(size: 11.5)).foregroundStyle(BanbeTheme.alert)
                         .accessibilityIdentifier("document.replaceError")
                 }
                 HStack(spacing: 8) {
                     Button(app.T("Huỷ", "Cancel")) { replacing = false; pendingFileURL = nil }
-                        .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
+                        .font(.app(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
                         .frame(maxWidth: .infinity).padding(.vertical, 10)
                         .buttonStyle(.plain)
                     Button(app.documentUploading ? app.T("Đang tải lên…", "Uploading…") : app.T("Xác nhận thay thế", "Confirm replacement")) {
                         Task { await submitReplacement(doc) }
                     }
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.app(size: 12, weight: .semibold))
                     .foregroundStyle(app.palette.paper)
                     .frame(maxWidth: .infinity).padding(.vertical, 10)
                     .background(app.documentUploading ? app.palette.ink.opacity(0.5) : app.palette.ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
