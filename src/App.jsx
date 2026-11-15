@@ -767,6 +767,11 @@ function Shell() {
     });
   };
 
+  // Full-bleed screens (2026-11-15): Home's dark hero (simple shell), Event Detail and Map draw their own top edge
+  // and keep their content under the status-bar area; every other screen starts below that inset — see the scroll
+  // viewport's own comment for why (the system's status bar and its blur are drawn over the page since iOS 26.1).
+  const fullBleed = heroHome || state.screen === 'event' || state.screen === 'mapExplore';
+
   return (
     <div className="bb-stage" data-bb-theme={resolvedTheme} style={{ position: 'fixed', inset: 0, display: 'flex', justifyContent: 'center', background: '#EFEBE0' }}>
      {/* On a desktop browser .bb-device/.bb-screen draw a phone around the app
@@ -787,7 +792,15 @@ function Shell() {
         onPointerUp={endGesture}
         onPointerCancel={cancelGesture}
         style={{
-          width: '100%', maxWidth: 480, height: '100%', position: 'relative', WebkitOverflowScrolling: 'touch', background: 'var(--bb-bg)',
+          width: '100%', maxWidth: 480, position: 'relative', WebkitOverflowScrolling: 'touch', background: 'var(--bb-bg)',
+          // Fixed top area (2026-11-15, owner report: "the above areas are not fixed by the sections"): since iOS 26.1
+          // the status bar is drawn by the system above the page and a system blur washes over whatever is scrolled
+          // under it, so a screen's own sticky header (Schedule, Account, Messages, … — all pinned at top 0) ended up
+          // behind the clock and clipped. Every screen except the full-bleed ones (Home's dark hero, Event Detail,
+          // Map) now begins BELOW the status-bar inset, so nothing can scroll into that band and each screen's sticky
+          // header pins right under it, the way the dock is pinned at the bottom. env() is 0 on desktop, in the
+          // desktop phone frame and in Safari tabs, so nothing changes there.
+          ...(fullBleed ? { height: '100%' } : { height: `calc(100% - ${SAFE_TOP})`, marginTop: SAFE_TOP }),
           // Event Detail scrolls inside itself; the screen it was opened from (kept mounted beneath it) must never
           // scroll underneath — a drag starting on the Reserve / View-ticket bar used to scroll Home's feed.
           overflowY: state.screen === 'event' ? 'hidden' : 'auto',
@@ -837,7 +850,9 @@ function Shell() {
             the system draws the bar itself and colours it from body::before, see src/index.css). Home's dark hero
             deliberately extends beneath it; every other root screen gets the inset as top padding and a sticky paper
             strip so scrolled content never slides under the clock. Zero on desktop / Safari tabs. */}
-        <div style={{ paddingTop: (heroHome || state.screen === 'event') ? 0 : SAFE_TOP, paddingBottom: showBar ? DOCK_CLEARANCE : 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' }}>
+        {/* The status-bar inset now lives on the scroll viewport above (marginTop), not here: padding inside the
+            scroller could never stop content from scrolling up into the system's status-bar band. */}
+        <div style={{ paddingBottom: showBar ? DOCK_CLEARANCE : 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' }}>
           {[...(eventUnderlay ? [eventUnderlay] : []), state.screen, ...(swipeNeighbor ? [swipeNeighbor] : [])].map((s) => {
             const isCurrent = s === state.screen;
             // iOS parity (2026-10-18): the screen an open event returns to stays mounted BENEATH it (inert), so

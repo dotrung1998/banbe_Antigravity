@@ -78,7 +78,7 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
   return (
     <div data-testid="browse-screen" data-scope={scope} data-type={effType} style={{ minHeight: '100%', background: 'var(--bb-bg)', color: 'var(--bb-fg)', animation: enter }}>
       <style>{'@keyframes bbV23PushIn { from { transform: translateX(28%); opacity: .4; } to { transform: none; opacity: 1; } }'}</style>
-      <header data-testid="browse-nav" style={{ position: 'sticky', top: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: 8, padding: 'calc(env(safe-area-inset-top, 0px) + 8px) 12px 8px', background: 'var(--bb-bg)', borderBottom: '1px solid var(--bb-rule)' }}>
+      <header data-testid="browse-nav" style={{ position: 'sticky', top: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bb-bg)', borderBottom: '1px solid var(--bb-rule)' }}>
         <button type="button" onClick={onBack} aria-label={T('Về Trang chủ', 'Back to Home')} data-testid="browse-back" style={navBtn}><Icon d={BACK} /></button>
         {finding ? (
           <form role="search" onSubmit={(e) => { e.preventDefault(); inputRef.current?.blur(); setFinding(false); }} style={{ flex: 1, minWidth: 0 }}>
