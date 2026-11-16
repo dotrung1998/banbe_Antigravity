@@ -9,6 +9,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { searchBarStore, useSearchBar } from '../lib/searchBarStore.js';
 import { photoPill, ink, ink2, clay } from '../theme.js';
+import { SAFE_TOP } from '../lib/viewport.js';
 
 /** Top of the bar / of the empty row under it (Map's former value: the desktop phone frame's status bar + 8). */
 export function searchBarTop() {
@@ -90,6 +91,11 @@ export default function PersistentSearchBar() {
   const top = searchBarTop();
   const x = atHome ? frame.left - off.left : 16;
   const y = atHome ? frame.top - off.top : top;
+  // The bar is fixed to the window and both of its screens run to the very top of the page (Map is full-bleed, Search
+  // overlay too), so its own 8px has to start BELOW the status-bar strip (index.css `body::before`) — otherwise that
+  // strip paints the whole row away on a notched iPhone and the Map looks like it has no search bar at all. Over Home's
+  // own bar the measured frame is already a window rect, so it is used as is. iOS twin: safeAreaInsets.top + 8.
+  const yCss = atHome ? `${y}px` : `calc(${y}px + ${SAFE_TOP})`;
   const text = isMap ? bar.mapQuery : bar.searchQuery;
   const setText = (v) => (isMap ? searchBarStore.setMapQuery(v) : searchBarStore.setSearchQuery(v));
   const show = (active || lingering) && h;
@@ -106,7 +112,7 @@ export default function PersistentSearchBar() {
           style={{
             position: 'absolute', left: 0, top: 0, display: 'flex', alignItems: 'center', color: ink,
             width: atHome ? frame.width : 'calc(100% - 32px)', height: atHome ? 46 : 44,
-            transform: `translate(${x}px, ${y}px)`,
+            transform: `translate(${x}px, ${yCss})`,
             opacity: active && !hidden ? 1 : 0, pointerEvents: active && !hidden ? 'auto' : 'none',
             transition: glideT,
           }}>

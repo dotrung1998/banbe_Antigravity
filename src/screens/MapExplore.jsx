@@ -1,4 +1,4 @@
-import { screenHeight } from '../lib/viewport.js';
+import { screenHeight, SAFE_TOP } from '../lib/viewport.js';
 import { loadMapStyle } from '../lib/mapStyle.js';
 import { loadMapKit } from '../lib/mapkit.js';
 import { createMapKitMap } from '../lib/mapkitAdapter.js';
@@ -1365,9 +1365,12 @@ export default function MapExplore() {
 
   const compassOpacity = locPermission === 'granted' ? 1 : DISABLED_OPACITY;
 
-  // Inside the desktop phone frame the frame's own 50pt status bar covers the
-  // top of this fixed layer, so iOS's "safe area + 8" top controls start below it.
-  const topInset = (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(min-width: 700px) and (min-height: 560px) and (hover: hover) and (pointer: fine)').matches) ? 50 : 0;
+  // This is a full-bleed screen (App.jsx): the page runs under the iOS status bar, so the controls must start BELOW
+  // that inset themselves — otherwise the status-bar strip (index.css `body::before`) paints the search row (and the
+  // persistent bar drawn in it) away, and the chip row sits glued to the top of the screen. Inside the desktop phone
+  // frame the frame's own 50pt status bar covers the same band instead. iOS twin: MapExploreView's layers respect the
+  // safe area, with MapTopControls' own 8pt padding under it.
+  const topInset = `calc(${(typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(min-width: 700px) and (min-height: 560px) and (hover: hover) and (pointer: fine)').matches) ? 50 : 0}px + ${SAFE_TOP})`;
 
   // ---- row/card facts (all from real columns; nothing guessed) ----
   const en = s.lang === 'en';

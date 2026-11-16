@@ -99,6 +99,7 @@ import EventProject from './screens/EventProject.jsx';
 import ProjectJoin from './screens/ProjectJoin.jsx';
 import MyProjects from './screens/MyProjects.jsx';
 import { noteScreenChange } from './lib/zoomOrigin.js';
+import { SAFE_TOP } from './lib/viewport.js';
 
 const SCREENS = {
   splash: Splash,
@@ -216,7 +217,8 @@ function CreateUndoToast({ offer, aboveDock }) {
 }
 
 // Room under every docked screen so its last row scrolls clear of the floating dock (was a bare 92).
-const SAFE_TOP = 'var(--bb-safe-top, env(safe-area-inset-top, 0px))';
+// (`SAFE_TOP`, the status-bar inset as a CSS length, lives in src/lib/viewport.js — shared with the Map, the Search
+// overlay and the persistent search bar, all of which measure from the top of the window.)
 const DOCK_CLEARANCE = BAR_HEIGHT + BAR_BOTTOM_OFFSET + 18;
 
 // `hidden` (Map v5, note 73): the Map hides the dock at peek and mid and shows it at tall. It slides down and fades
