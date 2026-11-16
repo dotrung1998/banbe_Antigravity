@@ -1,13 +1,15 @@
 import SwiftUI
 
-// See all / Browse by type (v2.3, notes 81, 85, 86 and 88, switch home_v23). Web twin: src/screens/Browse.jsx. One route
-// family, one kind of screen: a list of events.
+// See all / Browse by type (v2.3, notes 81, 85, 86, 88 and 90, switch home_v23). Web twin: src/screens/Browse.jsx. One
+// route family, one kind of screen: a list of events.
 // · scope "all" is Browse by type: the whole catalogue as a LIST, never a grid (note 88). Every event at once, with the
 //   type chips narrowing it in place; "All" widens it back. The nav row says "Browse by type", a picked type is the
 //   30px content heading with its own count line.
 // · a scope is See all for one Home tab, with Home's same three tabs right under the nav so the reader switches tab in
-//   place (note 85), type chips counted inside that tab, then the list. Its chips close with a "Browse by type" link
-//   (note 86): that opens the every-event list and remembers the tab, so Back returns to the tab.
+//   place (note 85), type chips counted inside that tab, then the list.
+// Browse by type is the row's FOURTH TAB (note 90), alongside For You, Tonight and Weekend: it opens the every-event
+// list in place and remembers the tab it came from, so Back returns there — the quiet link under the chips is gone. The
+// row shows on every Browse screen, so the destination it leads to still reads as the tab it is.
 // Under the nav a deck of host faces: a tap lists the hosts, a host opens their real profile. The magnifier turns the
 // title into a search field. Its own Filters (When, Price, Seats). Four rows a page with the swipe signs, then an end
 // card. Rules: Lib/V23Rules.swift (BrowseRules, Pager, ListEnd).
@@ -162,36 +164,31 @@ struct BrowseView: View {
         let card = ListEnd.browseEnd(type: effType, typeName: effType == "all" ? nil : typeName, count: result.list.count,
                                      hidden: result.hidden, query: app.browseQuery, others: others)
         let titleText = (effType != "all" ? typeName?.t(app.isEN) : nil) ?? tabLabel?.t(app.isEN) ?? app.T("Duyệt theo loại", "Browse by type")
-        // The nav row names the screen ("Browse by type") and carries a running search. On a tab screen the tab row names
-        // it, and a picked type adds itself after the tab ("Tonight · Music"); the type is also the content's 30px heading.
-        let navTitle = !q.isEmpty ? "“\(q)”"
-            : (app.browseScope == "all" ? app.T("Duyệt theo loại", "Browse by type")
-                : (effType == "all" ? "" : (tabLabel.map { "\($0.t(app.isEN)) · \(titleText)" } ?? titleText)))
+        // The nav row carries the running search only: the screen's own name now lives in the heading under the tabs
+        // (note 91), and a picked type is that heading too, so the nav row never repeats it.
+        let navTitle = q.isEmpty ? "" : "“\(q)”"
         let nFilters = BrowseRules.filterCount(app.browseFilters)
-        let scopeTabsShown = app.browseScope != "all"
 
         VStack(spacing: 0) {
-            nav(navTitle, hairline: !scopeTabsShown)
-            if scopeTabsShown { scopeTabs }
+            // The tab row closes the header now that it shows on every Browse screen (note 90).
+            nav(navTitle, hairline: false)
+            scopeTabs
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        if app.browseScope == "all" && effType != "all" { typeListHead(titleText, count: counts[effType] ?? 0) }
+                        // The screen's title, under the tabs (note 91): the same 30px line and count as a picked type's
+                        // heading, so a tab names what it holds instead of leaving the top of the page to the host deck.
+                        listHead(titleText, count: result.list.count)
                         if !hosts.isEmpty {
                             HostDeckView(hosts: hosts) { hostsOpen = true }
                                 .padding(.horizontal, 20).padding(.top, 16)
                         }
                         if !chips.isEmpty || app.browseScope != "all" { typeChips(chips, counts: counts, total: entries.count, selected: effType) }
-                        if app.browseScope != "all" { browseTypesLink }
                         HStack {
-                            (Text("\(result.list.count)").bold() + Text(" " + app.T("sự kiện", result.list.count == 1 ? "event" : "events")))
-                                .font(.app(size: 14))
-                                .accessibilityIdentifier("browse.count")
                             Spacer()
                             filtersButton(nFilters)
                         }
                         .padding(.horizontal, 20).padding(.top, 6).padding(.bottom, 12)
-                        .id("browse.listTop")
                         V23Pager(items: rows, key: \.key, listID: "browse.list", hints: true,
                                  row: { r in EventRowV23View(row: r, idPrefix: "browse.event") { app.goEvent(r.key) } },
                                  end: { v in EndCardView(model: card, variant: v) { onEnd($0, proxy: proxy) } },
@@ -227,12 +224,13 @@ struct BrowseView: View {
 
     // MARK: Home's tabs
 
-    /// Home's three tabs, right under the nav (note 85): the same words, order and rhythm as Home's hero tabs, so See
-    /// all never sends the reader back to Home to change tab. Text over a rule, never a pill, so this row can't be
-    /// mistaken for the type chips' filter row below it.
+    /// Home's three tabs and Browse by type. Text over a rule, never a pill, so this row can't be mistaken for the
+    /// type chips' filter row below it. The fourth tab (note 90) opens the whole catalogue's list in place and
+    /// remembers this tab in `browseFrom`, so Back returns here; the row shows on every Browse screen, with the tab
+    /// selected on the every-event list.
     private var scopeTabs: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 18) {
+            HStack(spacing: 16) {
                 ForEach(HomeHeroTab.allCases, id: \.self) { t in
                     let on = app.browseScope == t.rawValue
                     Button {
@@ -240,19 +238,22 @@ struct BrowseView: View {
                         Haptics.selection()
                         app.browseSwitchScope(t.rawValue)
                     } label: {
-                        Text(app.T(t.vi, t.en))
-                            .font(.app(size: 17, weight: on ? .medium : .regular))
-                            .foregroundStyle(app.palette.ink.opacity(on ? 1 : 0.55))
-                            .lineLimit(1).fixedSize()
-                            .padding(.vertical, 10)
-                            .overlay(alignment: .bottom) { Rectangle().fill(on ? app.palette.ink : Color.clear).frame(height: 2) }
-                            .frame(minHeight: 44)
-                            .contentShape(Rectangle())
+                        tabLabel(t.vi, t.en, on: on)
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(on ? [.isSelected, .isButton] : .isButton)
                     .accessibilityIdentifier("browse.scope.\(t.rawValue)")
                 }
+                Button {
+                    guard app.browseScope != "all" else { return }
+                    Haptics.selection()
+                    app.browseOpenTypes()
+                } label: {
+                    tabLabel(app.T("Duyệt theo loại", "Browse by type"), on: app.browseScope == "all")
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(app.browseScope == "all" ? [.isSelected, .isButton] : .isButton)
+                .accessibilityIdentifier("browse.scope.all")
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 20)
@@ -262,12 +263,25 @@ struct BrowseView: View {
         .accessibilityIdentifier("browse.scopeTabs")
     }
 
+    /// One tab's label: 16pt so all four fit a phone's width, the open one in full ink over its own rule.
+    private func tabLabel(_ vi: String, _ en: String? = nil, on: Bool) -> some View {
+        Text(en.map { app.T(vi, $0) } ?? vi)
+            .font(.app(size: 16, weight: on ? .medium : .regular))
+            .foregroundStyle(app.palette.ink.opacity(on ? 1 : 0.55))
+            .lineLimit(1).fixedSize()
+            .padding(.vertical, 10)
+            .overlay(alignment: .bottom) { Rectangle().fill(on ? app.palette.ink : Color.clear).frame(height: 2) }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+    }
+
     private func eventCount(_ n: Int) -> String {
         app.isEN ? "\(n) \(n == 1 ? "event" : "events")" : "\(n) sự kiện"
     }
 
-    /// On a type's list the type is the content's own title; the nav row names the screen ("Browse by type", note 87).
-    private func typeListHead(_ title: String, count n: Int) -> some View {
+    /// The screen's own title, under the tabs (note 91): a picked type's name, else the open tab's, else "Browse by
+    /// type" — with the count line under it, the same shape a type's list has always had.
+    private func listHead(_ title: String, count n: Int) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(title).font(.app(size: 30)).tracking(-0.6)
                 .accessibilityAddTraits(.isHeader)
@@ -365,30 +379,6 @@ struct BrowseView: View {
         .accessibilityIdentifier("browse.type.\(key)")
     }
 
-    /// The way out of one tab's types to every type in the catalogue (note 86): right under the chips, in the same quiet
-    /// link look Home uses for "See all", so it reads as somewhere to go rather than another filter. Never drawn on the
-    /// grid itself, which is where it leads.
-    private var browseTypesLink: some View {
-        HStack(spacing: 0) {
-            Spacer(minLength: 0)
-            Button {
-                Haptics.selection()
-                app.browseOpenTypes()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "square.grid.2x2").font(.app(size: 14))
-                    Text(app.T("Duyệt theo loại", "Browse by type")).font(.app(size: 14, weight: .semibold))
-                    Image(systemName: "chevron.right").font(.app(size: 11, weight: .semibold)).opacity(0.55)
-                }
-                .padding(.horizontal, 4).frame(minHeight: 44)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("browse.browseTypes")
-        }
-        .padding(.horizontal, 20)
-    }
-
     private func filtersButton(_ n: Int) -> some View {
         Button { filtersOpen = true } label: {
             HStack(spacing: 8) {
@@ -422,8 +412,27 @@ struct BrowseView: View {
                                 body: ViEn("Xoá bộ lọc để xem lại mọi thứ.", "Clear the filters to see everything again."),
                                 actions: [.init(act: "clear-filters", label: ViEn("Xoá bộ lọc", "Clear filters"), primary: true, testId: "browse.emptyClear")])
         }
+        // An empty list is never a dead end (note 91): the card offers the next real step — another tab, the whole
+        // catalogue, the map, hosting — the same way the end cards do.
+        let actions: [EndCardModel.Action]
+        if app.browseScope == "all" {
+            actions = app.browseType != "all"
+                ? [.init(act: "type:all", label: ViEn("Xem mọi loại", "See every type"), primary: true),
+                   .init(act: "map", label: ViEn("Mở bản đồ", "Open the map"))]
+                : [.init(act: "map", label: ViEn("Mở bản đồ", "Open the map"), primary: true),
+                   .init(act: "host", label: ViEn("Tổ chức một buổi", "Host a night"))]
+        } else if app.browseScope == "weekend" {
+            actions = [.init(act: "type:all", label: ViEn("Xem mọi loại", "See every type"), primary: true),
+                       .init(act: "map", label: ViEn("Mở bản đồ", "Open the map"))]
+        } else {
+            actions = [.init(act: "scope:weekend", label: ViEn("Xem cuối tuần", "See this weekend"), primary: true),
+                       .init(act: "browse-types", label: ViEn("Duyệt theo loại", "Browse by type")),
+                       .init(act: "map", label: ViEn("Mở bản đồ", "Open the map"))]
+        }
         return EndCardModel(kind: "empty", eyebrow: ViEn("Sắp có", "Coming up"), title: ViEn("Chưa có gì ở đây.", "Nothing here yet."),
-                            body: ViEn("Sự kiện mới sẽ hiện ở đây khi chủ nhà đăng.", "New events show up here when hosts post them."), actions: [])
+                            body: ViEn("Sự kiện mới sẽ hiện ở đây khi chủ nhà đăng. Trong lúc chờ, thử một chỗ khác.",
+                                       "New events show up here when hosts post them. Meanwhile, try somewhere else."),
+                            actions: actions)
     }
 
     private func onEnd(_ act: String, proxy: ScrollViewProxy) {
@@ -432,10 +441,13 @@ struct BrowseView: View {
         case "clear-search": app.browseQuery = ""; finding = false
         case "map": app.goMapExploreFromHome()
         case "host": app.goCreate()
+        case "browse-types": app.browseOpenTypes()
         default:
             if act.hasPrefix("type:") {
                 app.browsePickType(String(act.dropFirst(5)))
                 withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.35)) { proxy.scrollTo("browse.listTop", anchor: .top) }
+            } else if act.hasPrefix("scope:") {
+                app.browseSwitchScope(String(act.dropFirst(6)))
             }
         }
     }

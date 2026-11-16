@@ -180,21 +180,25 @@ html, body {
   padding: 0;
 }
 
-/* iPhone status bar / Dynamic Island strip (web app opened full screen): painted with the dark hero colour on EVERY
-   screen so no pale band shows above the content. 0 high on desktop, in the desktop phone frame and in Safari tabs.
+/* iPhone status bar / Dynamic Island strip (web app opened full screen), painted the iOS way (note 90): it takes the
+   colour of the screen's own top edge instead of one fixed black band. An ordinary paper screen shows the paper — cream
+   in light, near-black in dark — with the system's dark glyphs; only a full-bleed screen whose top edge is the night hero
+   or a photo (Home's hero, Event Detail, Map) keeps the night colour. src/lib/themeColor.js writes `--bb-band` on <html>
+   whenever the screen or the theme changes, so this strip, the body behind it and Safari's own bar always agree.
+   0 high on desktop, in the desktop phone frame and in Safari tabs.
 
    iOS 26.1+ draws the status bar itself, above the page: `black-translucent` and `theme-color` are ignored, and the
    bar takes its colour from a fixed element at the very top of the page (WebKit's rules: at least 6 px tall, at least
    80% wide, within 4 px of the top). Apple's answer on WebKit bug 317153 is to remove black-translucent and let the
-   bar follow the page. So this element is that top edge: full width, fixed at top 0, dark on every screen. Without a
-   real height there (the inset is 0 once the system sits above the page) the bar fell back to the paper canvas and
-   the blurred white band the owner reported on 2026-11-15. */
+   bar follow the page. So this element is that top edge: full width, fixed at top 0. Without a real height there (the
+   inset is 0 once the system sits above the page) the bar fell back to the paper canvas and the blurred white band the
+   owner reported on 2026-11-15. */
 body::before {
   content: '';
   position: fixed;
   top: 0; left: 0; right: 0;
   height: var(--bb-safe-top, env(safe-area-inset-top, 0px));
-  background: #16140f;
+  background: var(--bb-band, #f7f4ec);
   z-index: 2147483000;
   pointer-events: none;
 }
@@ -206,9 +210,9 @@ body::before {
 }
 
 /* The rest of the page is painted by .bb-stage/#root over this; body is what the system samples as the page's own
-   background, so it stays night too instead of flashing (or tinting the status bar) paper. */
+   background, so it follows the same band colour instead of flashing another one. */
 body {
-  background: #16140f;
+  background: var(--bb-band, #f7f4ec);
   font-family: var(--bb-face, 'Be Vietnam Pro'), system-ui, sans-serif;
   min-height: 100vh;
   color: var(--bb-fg);
@@ -580,6 +584,12 @@ input::placeholder, textarea::placeholder {
 @keyframes bbPopIn {
   from { opacity: 0; transform: translateY(8px) scale(0.94); }
   to { opacity: 1; transform: translateY(0) scale(1); }
+}
+/* Root-tab swipe feedback (note 90): the ripple the water drop leaves behind when a page swipe commits
+   (src/components/SwipeDroplet.jsx). Short on purpose — it finishes inside the 250ms settle. */
+@keyframes bbSwipeRipple {
+  from { transform: scale(0.35); opacity: 0.55; }
+  to { transform: scale(1.6); opacity: 0; }
 }
 
 /* Dark mode: the wordmark is black artwork, so tint it to a bright amber. */

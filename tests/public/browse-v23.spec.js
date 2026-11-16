@@ -58,9 +58,9 @@ test('a guest deep link opens Browse on that type; Back returns Home', async ({ 
   const screen = page.getByTestId('browse-screen');
   await expect(screen).toBeVisible({ timeout: 20000 });
   await expect(screen).toHaveAttribute('data-type', 'music');
-  // The nav row names the screen; the type is the content's own title (note 87).
-  await expect(page.getByTestId('browse-nav-title')).toHaveText('Browse by type');
+  // The heading under the tabs names the screen (note 91); the nav row only carries a running search.
   await expect(page.getByTestId('browse-title')).toHaveText('Music');
+  await expect(page.getByTestId('browse-nav-title')).toHaveText('');
   await expect(page.getByTestId('browse-type-music')).toHaveAttribute('aria-selected', 'true');
   await shot(page, 'b1-browse-music');
   // There is no grid to step through any more (note 88): Back leaves Browse for Home.
@@ -75,19 +75,21 @@ test('Browse by type opens every event; a chip narrows it and All widens it back
   const screen = page.getByTestId('browse-screen');
   await expect(screen).toBeVisible({ timeout: 20000 });
   await expect(screen).toHaveAttribute('data-type', 'all');
-  // The list IS Browse by type (note 88): nav names it, chips narrow it, no grid anywhere.
-  await expect(page.getByTestId('browse-nav-title')).toHaveText('Browse by type');
+  // The list IS Browse by type (note 88): the heading under the tabs names it, chips narrow it, no grid anywhere.
+  await expect(page.getByTestId('browse-title')).toHaveText('Browse by type');
   await expect(page.getByTestId('browse-type-chips')).toBeVisible();
   await expect(page.getByTestId('browse-list')).toBeVisible();
   await expect(page.getByTestId('browse-filters-button')).toBeVisible();
   await expect(page.getByTestId('browse-type-grid')).toHaveCount(0);
-  await expect(page.getByTestId('browse-scope-tabs')).toHaveCount(0);
+  // Note 90: the tab row shows here too, with Browse by type — what this screen IS — as the open tab.
+  await expect(page.getByTestId('browse-scope-tabs')).toBeVisible();
+  await expect(page.getByTestId('browse-scope-all')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('browse-scope-foryou')).toHaveAttribute('aria-selected', 'false');
   await shot(page, 'b3-browse-by-type');
   const allN = Number((await page.getByTestId('browse-count').textContent()).match(/\d+/)[0]);
   expect(allN).toBeGreaterThan(0);
   await page.getByTestId('browse-type-music').click();
   await expect(page).toHaveURL(/\/browse\/music$/);
-  await expect(page.getByTestId('browse-nav-title')).toHaveText('Browse by type');
   await expect(page.getByTestId('browse-title')).toHaveText('Music');
   await expect(page.getByTestId('browse-count')).not.toHaveText(new RegExp(`^${allN} `));
   await page.getByTestId('browse-type-all').click();
@@ -104,35 +106,43 @@ test('See all carries Home three tabs: another tab switches in place and the URL
   await expect(page.getByTestId('browse-scope-tabs')).toBeVisible();
   await expect(page.getByTestId('browse-scope-foryou')).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByTestId('browse-scope-weekend')).toHaveAttribute('aria-selected', 'false');
+  // Note 91: the open tab names itself in the heading under the tabs, a picked type's look.
+  await expect(page.getByTestId('browse-title')).toHaveText('For You');
   await shot(page, 'b4-see-all-tabs');
   await page.getByTestId('browse-scope-weekend').click();
   await expect(page).toHaveURL(/\/see-all\/weekend$/);
   await expect(screen).toHaveAttribute('data-scope', 'weekend');
   await expect(page.getByTestId('browse-scope-weekend')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('browse-title')).toHaveText('Weekend');
   // The screen stays the open one (no trip through Home) and its own content now describes that tab.
   await expect(page.getByTestId('browse-screen')).toBeVisible();
 });
 
-test('from a tab, Browse by type opens every event and Back returns to that tab', async ({ page }) => {
+test('from a tab, Browse by type is the fourth tab: every event in place, Back returns to that tab', async ({ page }) => {
   await mockSupabase(page);
   await guestOpen(page, '/see-all/tonight');
   const screen = page.getByTestId('browse-screen');
   await expect(screen).toBeVisible({ timeout: 20000 });
-  // Note 86: the way out of one tab's types to every event in the catalogue, without going back to Home first.
-  const link = page.getByTestId('browse-browse-types');
-  await expect(link).toBeVisible();
+  // Note 90: Browse by type is a tab alongside For You / Tonight / Weekend, not a link below the chips.
+  const typesTab = page.getByTestId('browse-scope-all');
+  await expect(typesTab).toBeVisible();
+  await expect(typesTab).toHaveText('Browse by type');
+  await expect(typesTab).toHaveAttribute('aria-selected', 'false');
+  await expect(page.getByTestId('browse-browse-types')).toHaveCount(0);
   await shot(page, 'b5-see-all-browse-types');
-  await link.click();
+  await typesTab.click();
   await expect(page).toHaveURL(/\/browse$/);
   await expect(screen).toHaveAttribute('data-scope', 'all');
   await expect(screen).toHaveAttribute('data-type', 'all');
-  // The list is already on screen with every event and the type chips; no grid in between (note 88).
-  await expect(page.getByTestId('browse-nav-title')).toHaveText('Browse by type');
+  // The list is already on screen with every event and the type chips; no grid in between (note 88), and the same row
+  // stays, its fourth tab now open, its heading naming it (note 91).
+  await expect(page.getByTestId('browse-title')).toHaveText('Browse by type');
+  await expect(page.getByTestId('browse-nav-title')).toHaveText('');
   await expect(page.getByTestId('browse-list')).toBeVisible();
   await expect(page.getByTestId('browse-type-chips')).toBeVisible();
   await expect(page.getByTestId('browse-type-grid')).toHaveCount(0);
-  await expect(page.getByTestId('browse-scope-tabs')).toHaveCount(0);
-  await expect(page.getByTestId('browse-browse-types')).toHaveCount(0);
+  await expect(page.getByTestId('browse-scope-tabs')).toBeVisible();
+  await expect(typesTab).toHaveAttribute('aria-selected', 'true');
   // A chip narrows the same list; Back goes straight to the tab.
   await page.getByTestId('browse-type-music').click();
   await expect(page).toHaveURL(/\/browse\/music$/);
@@ -143,7 +153,7 @@ test('from a tab, Browse by type opens every event and Back returns to that tab'
   await expect(screen).toHaveAttribute('data-scope', 'tonight');
   await expect(page.getByTestId('browse-scope-tonight')).toHaveAttribute('aria-selected', 'true');
   // And the every-event list itself steps back to the tab, not Home.
-  await link.click();
+  await page.getByTestId('browse-scope-all').click();
   await expect(page.getByTestId('browse-list')).toBeVisible();
   await expect(page.getByTestId('browse-back')).toHaveAttribute('aria-label', 'Back to Tonight');
   await page.getByTestId('browse-back').click();
@@ -267,6 +277,7 @@ test('the next tab nudges only on the very first visit; both tabs darken while t
   expect(await page.evaluate(() => localStorage.getItem('banbe.v23.pagerNudgeSeen'))).toBe('1');
   // Swiping the track: the tabs' wrapper flags the swipe (darker tabs), then settles back.
   const wrap = page.locator('[data-swiping]').first();
+  await expect(page.getByTestId('browse-list-drop')).toBeVisible();
   await page.getByTestId('browse-list-track').evaluate((el) => { el.scrollLeft = 80; el.dispatchEvent(new Event('scroll')); });
   await expect(wrap).toHaveAttribute('data-swiping', '1');
   await expect(wrap).toHaveAttribute('data-swiping', '0', { timeout: 2000 });
@@ -274,6 +285,22 @@ test('the next tab nudges only on the very first visit; both tabs darken while t
   await page.reload();
   await expect(page.getByTestId('browse-list-hint-next')).toBeVisible({ timeout: 20000 });
   await expect(page.getByTestId('browse-list-hint-next')).toHaveAttribute('data-nudge', 'false');
+});
+
+test('an empty tab offers real next steps, measured by the open tab', async ({ page }) => {
+  await mockSupabase(page);
+  await guestOpen(page, '/see-all/tonight');
+  const screen = page.getByTestId('browse-screen');
+  await expect(screen).toBeVisible({ timeout: 20000 });
+  // Note 91: an empty list is never a dead end. The cue names the open tab and the card offers a real action.
+  await expect(page.getByTestId('browse-title')).toHaveText('Tonight');
+  await expect(page.getByTestId('browse-empty-weekend')).toBeVisible();
+  await expect(page.getByTestId('browse-empty-browse-types')).toBeVisible();
+  // The primary action switches to that tab in place, URL and heading included.
+  await page.getByTestId('browse-empty-weekend').click();
+  await expect(page).toHaveURL(/\/see-all\/weekend$/);
+  await expect(screen).toHaveAttribute('data-scope', 'weekend');
+  await expect(page.getByTestId('browse-title')).toHaveText('Weekend');
 });
 
 test('end and empty cards use the v2.3 paper card (dashed edge, serif line)', async ({ page }) => {

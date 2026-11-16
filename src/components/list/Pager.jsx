@@ -1,8 +1,10 @@
 // One pager for every v2.3 list (note 81): the Home Shortlist now, Browse by type / See all next. Four large rows a
 // page on their own horizontal track (the page around it never moves); the arrows and page numbers drive the same
-// track, so a tap and a swipe always agree. One ink under the numbers stretches across to the new number and settles,
-// rows slide in from the side you travel to, and "5–8 of 18" says where you are (read out politely). A short last page
-// ends with an end card sized to the missing rows. Reduced motion: the page turns without a slide, the ink jumps.
+// track, so a tap and a swipe always agree. One ink under the numbers is a water drop (note 91): while the list is
+// swiped the drop presses in and travels WITH the finger between the two nearest numbers, then settles onto the one it
+// lands on with a small wobble; a tap animates the same way. "5–8 of 18" says where you are (read out politely). A
+// short last page ends with an end card sized to the missing rows. Reduced motion: the page turns without a slide, the
+// drop jumps.
 // Pure rules live in src/lib/pager.js.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { paginate, pageRange, endCardRoom, showPageNav, inkFrames, pageAt, clampPage, pageWindow, PAGE_SIZE } from '../../lib/pager.js';
@@ -31,6 +33,10 @@ const HINT_CSS = `
 .bb-v23-cue.gone { opacity: 0; }
 `;
 const NUDGE_KEY = 'banbe.v23.pagerNudgeSeen';
+// The page indicator is a bead of water, not a pill (note 91): a soft asymmetric edge plus a highlight, so pressing it
+// and rolling it to the next number reads as a drop rather than a switch.
+const DROP_RADIUS = '50% 50% 50% 50% / 46% 46% 54% 54%';
+const DROP_FILL = 'radial-gradient(65% 80% at 34% 22%, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0.08) 42%, rgba(255,255,255,0) 62%), var(--bb-fg)';
 let nudgeSeenThisLoad = false;
 const nudgeSeen = () => { if (nudgeSeenThisLoad) return true; try { return localStorage.getItem(NUDGE_KEY) === '1'; } catch { return false; } };
 const markNudgeSeen = () => { nudgeSeenThisLoad = true; try { localStorage.setItem(NUDGE_KEY, '1'); } catch { /* private mode */ } };
@@ -69,6 +75,13 @@ export default function Pager({ items, getKey, renderRow, renderEnd, empty = nul
   const target = useRef(null);
   const targetTimer = useRef(0);
   const prevPage = useRef(0);
+  // The live drag (note 91): while the track is moving the drop belongs to the finger, not to the last committed page.
+  // `live` keeps a page change from also animating it, and `pageNow`/`countNow` let the settle timer read fresh values.
+  const live = useRef(false);
+  const pageNow = useRef(0);
+  pageNow.current = page;
+  const countNow = useRef(0);
+  countNow.current = pages.length;
   // The cue line fades after the first page turn; the peek plays once per list.
   const [turned, setTurned] = useState(false);
 
@@ -78,8 +91,61 @@ export default function Pager({ items, getKey, renderRow, renderEnd, empty = nul
     setPage(start);
     prevPage.current = start;
     target.current = null;
+    live.current = false;
     if (trackRef.current) trackRef.current.scrollLeft = start * trackRef.current.clientWidth;
   }, [signature]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Put the drop somewhere, right now, with no animation of its own.
+  const paintInk = useCallback((left, width, transform = '') => {
+    const ink = inkRef.current;
+    if (!ink) return;
+    ink.getAnimations?.().forEach(a => a.cancel());
+    ink.style.transform = transform;
+    ink.style.left = `${left}px`;
+    ink.style.width = `${width}px`;
+  }, []);
+
+  // The numbers the drop is travelling between, at a fractional page position (note 91). Reads the live scroll, so the
+  // drop presses and slides with the finger BEFORE any page has committed — the part that used to look like no
+  // animation at all. Squeezed hardest halfway between two numbers, edge-on at rest.
+  const liveInk = useCallback((scrollLeft) => {
+    const el = trackRef.current, nums = numsRef.current;
+    if (!el || !nums || !el.clientWidth) return;
+    const count = countNow.current;
+    if (count < 2) return;
+    const f = Math.max(0, Math.min(count - 1, scrollLeft / el.clientWidth));
+    const i = Math.floor(f);
+    const j = Math.min(count - 1, i + 1);
+    const a = nums.querySelector(`[data-page="${i}"]`);
+    if (!a) return;
+    const b = j !== i ? nums.querySelector(`[data-page="${j}"]`) : null;
+    const t = b ? Math.max(0, Math.min(1, f - i)) : 0;
+    const left = a.offsetLeft + (b ? (b.offsetLeft - a.offsetLeft) * t : 0);
+    const width = a.offsetWidth + (b ? (b.offsetWidth - a.offsetWidth) * t : 0);
+    // How far this is from either number: 0 at a number, 0.5 halfway between two.
+    const away = Math.min(Math.abs(f - i), Math.abs(f - j));
+    const squeeze = Math.min(0.16, away * 0.32);
+    live.current = true;
+    paintInk(left, width, `scale(${1 - squeeze * 0.45}, ${1 + squeeze})`);
+  }, [paintInk]);
+
+  // The finger let go (or the smooth scroll ended): release the press onto whichever number the track landed on.
+  const settleInk = useCallback(() => {
+    const nums = numsRef.current, ink = inkRef.current;
+    const to = nums?.querySelector(`[data-page="${pageNow.current}"]`);
+    if (!nums || !ink || !to) { live.current = false; return; }
+    const end = { left: to.offsetLeft, width: to.offsetWidth };
+    const start = { left: parseFloat(ink.style.left) || end.left, width: parseFloat(ink.style.width) || end.width };
+    const wasLive = live.current;
+    live.current = false;
+    if (!wasLive || reduced || !ink.animate) { paintInk(end.left, end.width); return; }
+    paintInk(end.left, end.width);
+    ink.animate([
+      { left: `${start.left}px`, width: `${start.width}px`, transform: 'scale(.9, 1.1)' },
+      { left: `${end.left}px`, width: `${end.width}px`, offset: 0.72, transform: 'scale(1.06, .94)' },
+      { left: `${end.left}px`, width: `${end.width}px`, transform: 'scale(1, 1)' },
+    ], { duration: 300, easing: 'cubic-bezier(.22,.9,.3,1)' });
+  }, [paintInk, reduced]);
 
   const placeInk = useCallback((from, animate) => {
     const nums = numsRef.current, ink = inkRef.current;
@@ -88,21 +154,30 @@ export default function Pager({ items, getKey, renderRow, renderEnd, empty = nul
     if (!to) return;
     const end = { left: to.offsetLeft, width: to.offsetWidth };
     ink.getAnimations?.().forEach(a => a.cancel());
+    ink.style.transform = '';
     ink.style.left = `${end.left}px`;
     ink.style.width = `${end.width}px`;
     const a = from != null ? nums.querySelector(`[data-page="${from}"]`) : null;
     if (!animate || reduced || !a || a === to || !ink.animate) return;
     const f = inkFrames({ left: a.offsetLeft, width: a.offsetWidth }, end);
+    // Press in, stretch across, settle with one small wobble — the drop is squeezed by the turn and lands soft.
     ink.animate([
-      { left: `${f[0].left}px`, width: `${f[0].width}px` },
-      { left: `${f[1].left}px`, width: `${f[1].width}px`, offset: 0.42 },
-      { left: `${f[2].left}px`, width: `${f[2].width}px` },
+      { left: `${f[0].left}px`, width: `${f[0].width}px`, transform: 'scale(.9, 1.1)' },
+      { left: `${f[1].left}px`, width: `${f[1].width}px`, offset: 0.4, transform: 'scale(1.1, .86)' },
+      { left: `${f[1].left}px`, width: `${f[1].width}px`, offset: 0.58, transform: 'scale(.97, 1.03)' },
+      { left: `${f[2].left}px`, width: `${f[2].width}px`, transform: 'scale(1, 1)' },
     ], { duration: 460, easing: 'cubic-bezier(.3,.9,.3,1)' });
   }, [page, reduced]);
 
-  // Land on a page: ink, then the rows slide in from the side you travel to.
+  // Land on a page: ink, then the rows slide in from the side you travel to. While a drag owns the drop (liveInk) the
+  // drop is NOT moved again here — settleInk releases it when the track stops, so the two never fight.
   useLayoutEffect(() => {
     const from = prevPage.current;
+    if (live.current) {
+      prevPage.current = page;
+      if (from !== page) setTurned(true);
+      return;
+    }
     placeInk(from === page ? null : from, true);
     if (from !== page) setTurned(true);
     if (from !== page && !reduced) {
@@ -139,12 +214,16 @@ export default function Pager({ items, getKey, renderRow, renderEnd, empty = nul
   const onScroll = () => {
     const el = trackRef.current;
     if (!el || !el.clientWidth) return;
-    // Both tabs darken while the list moves, then fade back once it settles.
-    if (hints && swipeRef.current) {
-      swipeRef.current.dataset.swiping = '1';
-      clearTimeout(swipeTimer.current);
-      swipeTimer.current = setTimeout(() => { if (swipeRef.current) swipeRef.current.dataset.swiping = '0'; }, 220);
-    }
+    // The drop belongs to the finger while the track moves (note 91): it presses in and travels between the two nearest
+    // numbers — the page only commits around halfway, so without this the drop looked static under the swipe.
+    if (!reduced) liveInk(el.scrollLeft);
+    // Both tabs darken while the list moves, then fade back once it settles; the drop is released at the same moment.
+    if (hints && swipeRef.current) swipeRef.current.dataset.swiping = '1';
+    clearTimeout(swipeTimer.current);
+    swipeTimer.current = setTimeout(() => {
+      if (hints && swipeRef.current) swipeRef.current.dataset.swiping = '0';
+      settleInk();
+    }, 220);
     const at = pageAt(el.scrollLeft, el.clientWidth, pages.length);
     if (target.current !== null) {
       if (at !== target.current) return;
@@ -202,7 +281,7 @@ export default function Pager({ items, getKey, renderRow, renderEnd, empty = nul
           <button type="button" style={{ ...navBtn, opacity: page === 0 ? 0.3 : 1 }} disabled={page === 0} onClick={() => go(page - 1)}
             aria-label={T('Trang trước', 'Previous page')} data-testid={`${testId}-prev`}>{CHEV('m15 6-6 6 6 6')}</button>
           <div ref={numsRef} style={{ position: 'relative', display: 'flex', gap: 2 }}>
-            <span ref={inkRef} aria-hidden="true" style={{ position: 'absolute', top: 6, height: 32, borderRadius: 999, background: 'var(--bb-fg)', pointerEvents: 'none' }} />
+            <span ref={inkRef} aria-hidden="true" data-testid={`${testId}-drop`} style={{ position: 'absolute', top: 6, height: 32, borderRadius: DROP_RADIUS, background: DROP_FILL, transformOrigin: '50% 50%', willChange: 'left, width, transform', pointerEvents: 'none' }} />
             {pageWindow(page, pages.length).map((i) => (
               <button key={i} type="button" data-page={i} data-testid={`${testId}-page-${i + 1}`} onClick={() => go(i)}
                 aria-label={T(`Trang ${i + 1}`, `Page ${i + 1}`)} aria-current={i === page ? 'page' : undefined}

@@ -1,4 +1,4 @@
-// See all / Browse by type (v2.3, notes 81, 85, 86 and 88). ONE route family, ONE kind of screen: a list of events.
+// See all / Browse by type (v2.3, notes 81, 85, 86, 88 and 90). ONE route family, ONE kind of screen: a list of events.
 // · /see-all/<tab> — one Home tab (For You, Tonight, Weekend) as its list. The same three tabs sit under the nav, so the
 //   reader moves between tabs without going back to Home (note 85); the type chips then narrow the open tab, and its
 //   own Filters (When, Price, Seats) sit beside the count. Under the tabs a deck of host faces replaces the description
@@ -6,8 +6,9 @@
 // · /browse[/<type>] — Browse by type, the whole catalogue as a LIST, never a grid (note 88): every event at once, with
 //   the type chips narrowing it in place. "All" widens it back to every event. The nav row names the screen ("Browse by
 //   type"), a picked type is the content's 30px heading with its own count line, and a search reads all three.
-// A tab screen closes its type chips with a "Browse by type" link (note 86): it opens that same every-event list and
-// remembers the tab, so Back returns to the tab instead of Home.
+// Browse by type is the row's FOURTH TAB (note 90), alongside For You, Tonight and Weekend: it opens the every-event
+// list in place and remembers the tab it came from, so Back returns there instead of Home. The row shows on every
+// Browse screen, so the destination it leads to still reads as the tab it is.
 // The magnifier left of Map turns the title into a search field (the native keyboard, Done keeps the query as the
 // list's filter, × clears it). The list pages four rows at a time with the onboarding-style swipe signs and ends with
 // an end card. Pure view: Home.jsx passes the scope's items (the same discovery items Home uses, so there is no second
@@ -34,11 +35,11 @@ const SEARCH = <><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></>;
 const CLOSE = <path d="M6 6l12 12M18 6 6 18" />;
 const MAP = <><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z" /><path d="M9 4v14M15 6v14" /></>;
 const SLIDERS = <><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></>;
-const GRID = <><rect x="4" y="4" width="6.5" height="6.5" rx="1.6" /><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6" /><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6" /><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6" /></>;
-const CHEVRON = <path d="m9 5 7 7-7 7" />;
 
 // The Home tabs, in Home's own order and words: See all carries them so a reader changes tab in place (note 85).
 const SCOPES = ['foryou', 'tonight', 'weekend'];
+// And the fourth tab (note 90): the whole catalogue, where the quiet link under the chips used to lead.
+const TYPES_TAB = { key: 'all', vi: 'Duyệt theo loại', en: 'Browse by type' };
 
 /**
  * @param {object} p
@@ -73,7 +74,6 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
   const others = chips.filter(d => d.key !== effType).map(d => ({ key: d.key, name: { vi: d.vi, en: d.en }, count: counts[d.key] }));
   const card = browseEnd({ type: effType, typeName: effType === 'all' ? null : typeName, list, hidden, query, others });
 
-  const evN = (n) => T(`${n} sự kiện`, `${n} ${n === 1 ? 'event' : 'events'}`);
   // The type chips share one chip look (ink fill when selected); the scope tabs above are text + rule, so the two rows
   // never read as the same control (note 85).
   const chipLook = (on) => ({
@@ -84,12 +84,32 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
 
   const titleText = effType !== 'all' && typeName ? T(typeName.vi, typeName.en)
     : tabLabel ? T(tabLabel.vi, tabLabel.en) : T('Duyệt theo loại', 'Browse by type');
-  // The nav row names the screen ("Browse by type") and carries a running search. On a tab screen the tab row names it,
-  // and a picked type adds itself after the tab ("Tonight · Music"); the type itself is also the content's 30px heading.
-  const navTitle = typed ? `“${typed}”`
-    : scope === 'all' ? T('Duyệt theo loại', 'Browse by type')
-      : effType !== 'all' && tabLabel && typeName ? `${T(tabLabel.vi, tabLabel.en)} · ${T(typeName.vi, typeName.en)}`
-        : '';
+  // The nav row carries the running search only: the screen's own name now lives in the heading under the tabs (note 91),
+  // and a picked type is that heading too, so the nav row never repeats it.
+  const navTitle = typed ? `“${typed}”` : '';
+
+  // An empty list is never a dead end (note 91): the card offers the next real step — another tab, the whole catalogue,
+  // the map, hosting — the same way the end cards do.
+  const emptyActions = scope === 'all' && effType !== 'all'
+    ? [
+      { act: 'type:all', primary: true, testId: 'browse-empty-all-types', label: { vi: 'Xem mọi loại', en: 'See every type' } },
+      { act: 'map', testId: 'browse-empty-map', label: { vi: 'Mở bản đồ', en: 'Open the map' } },
+    ]
+    : scope === 'all'
+      ? [
+        { act: 'map', primary: true, testId: 'browse-empty-map', label: { vi: 'Mở bản đồ', en: 'Open the map' } },
+        { act: 'host', testId: 'browse-empty-host', label: { vi: 'Tổ chức một buổi', en: 'Host a night' } },
+      ]
+      : scope === 'weekend'
+        ? [
+          { act: 'type:all', primary: true, testId: 'browse-empty-all-types', label: { vi: 'Xem mọi loại', en: 'See every type' } },
+          { act: 'map', testId: 'browse-empty-map', label: { vi: 'Mở bản đồ', en: 'Open the map' } },
+        ]
+        : [
+          { act: 'scope:weekend', primary: true, testId: 'browse-empty-weekend', label: { vi: 'Xem cuối tuần', en: 'See this weekend' } },
+          { act: 'browse-types', testId: 'browse-empty-browse-types', label: { vi: 'Duyệt theo loại', en: 'Browse by type' } },
+          { act: 'map', testId: 'browse-empty-map', label: { vi: 'Mở bản đồ', en: 'Open the map' } },
+        ];
 
   const [finding, setFinding] = useState(false);
   const [hostsOpen, setHostsOpen] = useState(false);
@@ -109,6 +129,8 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
     else if (act.startsWith('type:')) { pickType(act.slice(5)); scrollRef.current?.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' }); }
     else if (act === 'map') onMap(effType);
     else if (act === 'host') onHost();
+    else if (act === 'browse-types') onBrowseTypes();
+    else if (act.startsWith('scope:')) onScope(act.slice(6));
   };
   // Back leaves the screen (notes 86 and 88): Browse by type opened from a tab returns to that tab, everywhere else to
   // Home. There is no grid to step up to any more. The label says which way it goes.
@@ -141,37 +163,37 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
           <button type="button" onClick={() => onMap(effType)} aria-label={T('Xem trên bản đồ', 'See on the map')} data-testid="browse-map" style={navBtn}><Icon d={MAP} /></button>
         </div>
 
-        {/* The three Home tabs (note 85): text over a rule, the same rhythm as Home's hero tabs, so switching tab
-            never means going back to Home first. Never drawn on /browse, which has no tab. */}
-        {scope !== 'all' && (
-          <div role="tablist" aria-label={T('Trang chủ', 'Home')} data-hscroll data-testid="browse-scope-tabs"
-            style={{ display: 'flex', gap: 20, overflowX: 'auto', padding: '0 20px', scrollbarWidth: 'none' }}>
-            {SCOPES.map(k => {
-              const on = scope === k;
-              const label = TAB_LABEL[k];
-              return (
-                <button key={k} type="button" role="tab" aria-selected={on} data-testid={`browse-scope-${k}`} onClick={() => { if (!on) onScope(k); }}
-                  style={{ flex: 'none', border: 'none', background: 'none', fontFamily: 'inherit', fontSize: 17, padding: '10px 0 8px', cursor: 'pointer',
-                    color: 'inherit', opacity: on ? 1 : 0.55, fontWeight: on ? 500 : 300,
-                    borderBottom: `2px solid ${on ? 'var(--bb-fg)' : 'transparent'}` }}>
-                  {T(label.vi, label.en)}
-                </button>
-              );
-            })}
-          </div>
-        )}
+        {/* The three Home tabs and Browse by type (note 90): text over a rule, the same rhythm as Home's hero tabs, so
+            switching tab — or opening the whole catalogue — never means going back to Home first. Browse by type is a
+            tab like the others: it opens the every-event list in place and remembers this tab, so Back returns here. */}
+        <div role="tablist" aria-label={T('Trang chủ', 'Home')} data-hscroll data-testid="browse-scope-tabs"
+          style={{ display: 'flex', gap: 16, overflowX: 'auto', padding: '0 20px', scrollbarWidth: 'none' }}>
+          {SCOPES.map(k => ({ key: k, ...TAB_LABEL[k] })).concat(TYPES_TAB).map(t => {
+            const on = t.key === 'all' ? scope === 'all' : scope === t.key;
+            return (
+              <button key={t.key} type="button" role="tab" aria-selected={on} data-testid={`browse-scope-${t.key}`}
+                onClick={() => { if (on) return; if (t.key === 'all') onBrowseTypes(); else onScope(t.key); }}
+                style={{ flex: 'none', border: 'none', background: 'none', fontFamily: 'inherit', fontSize: 16, padding: '10px 0 8px', cursor: 'pointer',
+                  color: 'inherit', opacity: on ? 1 : 0.55, fontWeight: on ? 500 : 300, whiteSpace: 'nowrap',
+                  borderBottom: `2px solid ${on ? 'var(--bb-fg)' : 'transparent'}` }}>
+                {T(t.vi, t.en)}
+              </button>
+            );
+          })}
+        </div>
       </header>
 
       <>
-        {/* On a type's list the type is the content's own title; the nav row names the screen ("Browse by type"). */}
-        {scope === 'all' && effType !== 'all' && (
-            <div style={{ padding: '18px 20px 0' }}>
-              <h1 data-testid="browse-title" style={{ margin: 0, fontSize: 30, fontWeight: 400, letterSpacing: '-.02em', lineHeight: 1.1 }}>{titleText}</h1>
-              <div data-testid="browse-scope-count" style={{ fontSize: 13, opacity: 0.72, marginTop: 6 }}>
-                {[evN(counts[effType] || 0), areaLabel].filter(Boolean).join(' · ')}
-              </div>
-            </div>
-          )}
+        {/* The screen's title, under the tabs (note 91): the same 30px line and count as a picked type's heading, so a
+            tab names what it holds instead of leaving the top of the page to the host deck. A picked type wins, then the
+            open tab, then Browse by type itself. It is where a type-chip turn scrolls back to. */}
+        <div ref={scrollRef} style={{ padding: '18px 20px 0', scrollMarginTop: 108 }}>
+          <h1 data-testid="browse-title" style={{ margin: 0, fontSize: 30, fontWeight: 400, letterSpacing: '-.02em', lineHeight: 1.1 }}>{titleText}</h1>
+          <div data-testid="browse-scope-count" style={{ fontSize: 13, opacity: 0.72, marginTop: 6 }}>
+            <span data-testid="browse-count"><b>{list.length}</b> {T('sự kiện', list.length === 1 ? 'event' : 'events')}</span>
+            {areaLabel ? ` · ${areaLabel}` : ''}
+          </div>
+        </div>
           {hosts.length > 0 && (
             <div style={{ padding: '16px 20px 0' }}>
               <HostDeck hosts={hosts} onOpen={() => setHostsOpen(true)} T={T} />
@@ -195,20 +217,7 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
             </div>
           )}
 
-          {/* The way out of one tab's types to the whole catalogue (note 86): right under the chips, in the quiet link look
-              Home uses for "See all", so it reads as somewhere to go rather than another filter. It opens the every-event
-              list and Back returns to this tab. Never drawn on /browse itself, which is where it leads. */}
-          {scope !== 'all' && (
-            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 20px' }}>
-              <button type="button" onClick={onBrowseTypes} data-testid="browse-browse-types"
-                style={{ minHeight: 44, padding: '0 4px', border: 'none', background: 'none', color: 'inherit', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                <Icon d={GRID} size={16} />{T('Duyệt theo loại', 'Browse by type')}<Icon d={CHEVRON} size={13} />
-              </button>
-            </div>
-          )}
-
-          <div ref={scrollRef} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '6px 20px 12px', scrollMarginTop: 108 }}>
-            <span data-testid="browse-count" style={{ fontSize: 14 }}><b>{list.length}</b> {T('sự kiện', list.length === 1 ? 'event' : 'events')}</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '6px 20px 12px' }}>
             <button type="button" onClick={() => setFiltersOpen(true)} data-testid="browse-filters-button"
               aria-label={nFilters ? T(`Bộ lọc, đang bật ${nFilters}`, `Filters, ${nFilters} on`) : T('Bộ lọc', 'Filters')}
               style={{ minHeight: 44, padding: '0 14px', borderRadius: 999, border: 'none', background: 'var(--bb-block)', color: 'inherit', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
@@ -234,8 +243,8 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
               } : {
                 kind: 'empty', eyebrow: { vi: 'Sắp có', en: 'Coming up' },
                 title: { vi: 'Chưa có gì ở đây.', en: 'Nothing here yet.' },
-                body: { vi: 'Sự kiện mới sẽ hiện ở đây khi chủ nhà đăng.', en: 'New events show up here when hosts post them.' },
-                actions: [],
+                body: { vi: 'Sự kiện mới sẽ hiện ở đây khi chủ nhà đăng. Trong lúc chờ, thử một chỗ khác.', en: 'New events show up here when hosts post them. Meanwhile, try somewhere else.' },
+                actions: emptyActions,
               }} />
         )} />
       </>

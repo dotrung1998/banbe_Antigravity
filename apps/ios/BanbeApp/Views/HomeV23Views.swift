@@ -198,6 +198,8 @@ struct V23Pager<Item, Row: View, End: View, Empty: View>: View {
     @State private var swiping = false
     @State private var nudge = false
     @State private var nudgeX: CGFloat = 0
+    /// The page-number drop's press (note 91): 1 while a page turn squeezes it, 0 at rest.
+    @State private var dropPress: CGFloat = 0
 
     private var pages: [[Item]] { Pager.paginate(items) }
     private var signature: String { "\(listID)|" + items.map(key).joined(separator: "|") }
@@ -265,7 +267,7 @@ struct V23Pager<Item, Row: View, End: View, Empty: View>: View {
             }
             .onChange(of: page) { old, new in
                 if let new { Self.savedPages[signature] = new }
-                if old != nil && old != new { turned = true; Haptics.selection() }
+                if old != nil && old != new { turned = true; Haptics.selection(); playDropPress() }
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier(listID)
@@ -275,6 +277,18 @@ struct V23Pager<Item, Row: View, End: View, Empty: View>: View {
     private func go(_ i: Int) {
         let next = Pager.clampPage(i, pages.count)
         withAnimation(reduceMotion ? nil : .spring(response: 0.44, dampingFraction: 0.9)) { page = next }
+    }
+
+    /// The page indicator is a bead of water, not a pill (note 91): leaving a page presses it in, the move stretches it
+    /// across to the next number, and a spring lets it settle. While the list is actually being swiped it stays pressed
+    /// (below), so the drop visibly gathers under the finger instead of only moving once the page has committed.
+    /// Reduce Motion keeps it still.
+    private func playDropPress() {
+        guard !reduceMotion else { return }
+        withAnimation(.spring(response: 0.16, dampingFraction: 0.6)) { dropPress = 1 }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.5)) { dropPress = 0 }
+        }
     }
 
     private func numbers(_ count: Int) -> some View {
@@ -288,7 +302,25 @@ struct V23Pager<Item, Row: View, End: View, Empty: View>: View {
                             .foregroundStyle(on ? app.palette.paper : app.palette.ink)
                             .frame(minWidth: 44, minHeight: 44)
                             .background {
-                                if on { Capsule().fill(app.palette.ink).frame(height: 32).matchedGeometryEffect(id: "ink", in: inkSpace) }
+                                if on {
+                                    Capsule()
+                                        .fill(LinearGradient(colors: [app.palette.ink, app.palette.ink.opacity(0.84)],
+                                                             startPoint: .top, endPoint: .bottom))
+                                        .overlay(Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 0.8))
+                                        // The highlight that makes the ink read as a bead of water, not a chip.
+                                        .overlay(alignment: .topLeading) {
+                                            Ellipse().fill(.white.opacity(0.22))
+                                                .frame(width: 14, height: 8)
+                                                .blur(radius: 2)
+                                                .padding(.leading, 8).padding(.top, 3)
+                                        }
+                                        .frame(height: 32)
+                                        // Pressed in while the list is swiped, and squeezed again as a page turns.
+                                        .scaleEffect(x: 1 + dropPress * 0.14 + (swiping ? 0.1 : 0),
+                                                     y: 1 - dropPress * 0.2 - (swiping ? 0.12 : 0))
+                                        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: swiping)
+                                        .matchedGeometryEffect(id: "ink", in: inkSpace)
+                                }
                             }
                             .contentShape(Rectangle())
                     }
