@@ -33,7 +33,6 @@ extension AppState {
         goHome()
         // A remembered Home position would be re-applied over the jump for a moment (ScreenScaffold's restore).
         homeScrollOffsetY = nil
-        homeScrollAnchorID = nil
         homeWeekendScrollRequest = UUID()
     }
 
