@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ofType, typeCounts, matchesQuery, browseList, browseFilters, browseFilterCount, hostsOf, deckLine, deckFaces, rotateHosts, tintIndex, filterHosts, browseEnd } from '../../src/lib/browse.js';
+import { ofType, typeCounts, matchesQuery, browseList, browseFilters, browseFilterCount, hostsOf, deckLine, deckFaces, rotateHosts, tintIndex, filterHosts, browseEnd, browseDatesLabel } from '../../src/lib/browse.js';
 
 const now = Date.UTC(2026, 10, 13, 5, 0);
 const day = 864e5;
@@ -73,4 +73,13 @@ test('end cards: filters, search, all types, one type (no Notify me)', () => {
     assert.doesNotMatch(all, /—|;| - /);
     assert.ok(!c.actions.some(a => a.act === 'nudge'));
   }
+});
+
+test('the line under a tab title names its real dates (Vietnam clock)', () => {
+  const monday = Date.UTC(2026, 10, 16, 1, 0); // 2026-11-16 08:00 +07
+  assert.equal(browseDatesLabel('weekend', monday, 'en'), 'Fri 20 – Sun 22 Nov');
+  assert.equal(browseDatesLabel('weekend', monday, 'vi'), 'T6 20/11 – CN 22/11');
+  assert.equal(browseDatesLabel('tonight', monday, 'en'), 'Mon 16 Nov');
+  assert.equal(browseDatesLabel('all', monday, 'en'), null);
+  assert.equal(browseDatesLabel('weekend', monday + 6 * 86400000, 'en'), 'Sun 22 Nov');
 });

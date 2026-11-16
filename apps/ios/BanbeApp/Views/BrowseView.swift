@@ -178,18 +178,17 @@ struct BrowseView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         // The screen's title, under the tabs (note 91): the same 30px line and count as a picked type's
                         // heading, so a tab names what it holds instead of leaving the top of the page to the host deck.
-                        listHead(titleText, count: result.list.count)
-                        if !hosts.isEmpty {
-                            HostDeckView(hosts: hosts) { hostsOpen = true }
-                                .padding(.horizontal, 20).padding(.top, 16)
+                        // One heading row and one filter row (the Browse list pass): the hosts' faces sit beside the
+                        // title and Filters closes the chip row, where each used to take a row of its own and push
+                        // the first event almost halfway down the screen.
+                        listHead(titleText, count: result.list.count, hosts: hosts, now: now)
+                        HStack(spacing: 0) {
+                            if !chips.isEmpty || app.browseScope != "all" { typeChips(chips, counts: counts, total: entries.count, selected: effType) }
+                            else { Spacer(minLength: 0) }
+                            filtersButton(nFilters).padding(.leading, 8).padding(.trailing, 20)
                         }
-                        if !chips.isEmpty || app.browseScope != "all" { typeChips(chips, counts: counts, total: entries.count, selected: effType) }
-                        HStack {
-                            Spacer()
-                            filtersButton(nFilters)
-                        }
-                        .padding(.horizontal, 20).padding(.top, 6).padding(.bottom, 12)
-                        V23Pager(items: rows, key: \.key, listID: "browse.list", hints: true,
+                        .padding(.top, 12).padding(.bottom, 14)
+                        V23Pager(items: rows, key: \.key, listID: "browse.list",
                                  row: { r in EventRowV23View(row: r, idPrefix: "browse.event") { app.goEvent(r.key) } },
                                  end: { v in EndCardView(model: card, variant: v) { onEnd($0, proxy: proxy) } },
                                  empty: { EndCardView(model: emptyCard(hidden: result.hidden), variant: .solo) { onEnd($0, proxy: proxy) } })
@@ -280,17 +279,23 @@ struct BrowseView: View {
     }
 
     /// The screen's own title, under the tabs (note 91): a picked type's name, else the open tab's, else "Browse by
-    /// type" — with the count line under it, the same shape a type's list has always had.
-    private func listHead(_ title: String, count n: Int) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(title).font(.app(size: 30)).tracking(-0.6)
-                .accessibilityAddTraits(.isHeader)
-                .accessibilityIdentifier("browse.title")
-            Text([eventCount(n), app.area == LocationHierarchy.allID ? nil : app.currentAreaLabel].compactMap { $0 }.joined(separator: " · "))
-                .font(.app(size: 13)).opacity(0.72).padding(.top, 6)
-                .accessibilityIdentifier("browse.scopeCount")
+    /// type". Under it one line that says what the list holds — the weekend's or tonight's real dates on those tabs,
+    /// then the count and the area. The hosts' faces sit on the same row and open the host list.
+    private func listHead(_ title: String, count n: Int, hosts: [BrowseRules.Host], now: Date) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(title).font(.app(size: 30)).tracking(-0.6).lineLimit(1).minimumScaleFactor(0.7)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("browse.title")
+                Text([BrowseDates.label(scope: app.browseScope, now: now, english: app.isEN), eventCount(n),
+                      app.area == LocationHierarchy.allID ? nil : app.currentAreaLabel].compactMap { $0 }.joined(separator: " · "))
+                    .font(.app(size: 13)).opacity(0.72).padding(.top, 6)
+                    .accessibilityIdentifier("browse.scopeCount")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if !hosts.isEmpty { HostDeckView(hosts: hosts) { hostsOpen = true } }
         }
-        .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 4)
+        .padding(.horizontal, 20).padding(.top, 18)
     }
 
     // MARK: parts
@@ -355,8 +360,10 @@ struct BrowseView: View {
                 chip(key: "all", title: app.T("Tất cả", "All"), n: total, on: selected == "all")
                 ForEach(chips, id: \.key) { (d: (key: String, vi: String, en: String)) in chip(key: d.key, title: app.T(d.vi, d.en), n: counts[d.key] ?? 0, on: selected == d.key) }
             }
-            .padding(.horizontal, 20).padding(.top, 6).padding(.bottom, 10)
+            .padding(.leading, 20).padding(.trailing, 16)
         }
+        .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.93), .init(color: .clear, location: 1)],
+                             startPoint: .leading, endPoint: .trailing))
         .rootSwipeExclusion("browseTypeChips")
         .accessibilityIdentifier("browse.typeChips")
     }
@@ -379,19 +386,21 @@ struct BrowseView: View {
         .accessibilityIdentifier("browse.type.\(key)")
     }
 
+    /// Filters closes the chip row: an icon the size of the nav circles, with the number of filters on as a badge.
     private func filtersButton(_ n: Int) -> some View {
         Button { filtersOpen = true } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "slider.horizontal.3").font(.app(size: 15))
-                Text(app.T("Bộ lọc", "Filters")).font(.app(size: 14, weight: .semibold))
-                if n > 0 {
-                    Text("\(n)").font(.app(size: 12, weight: .bold)).foregroundStyle(app.palette.paper)
-                        .frame(minWidth: 20, minHeight: 20).padding(.horizontal, 3).background(app.palette.ink, in: Capsule())
+            Image(systemName: "slider.horizontal.3").font(.app(size: 15, weight: .medium))
+                .frame(width: 44, height: 44)
+                .background(app.palette.ink.opacity(0.07), in: Circle())
+                .overlay(alignment: .topTrailing) {
+                    if n > 0 {
+                        Text("\(n)").font(.app(size: 11, weight: .bold)).monospacedDigit().foregroundStyle(app.palette.paper)
+                            .frame(minWidth: 18, minHeight: 18).padding(.horizontal, 2).background(app.palette.ink, in: Capsule())
+                            .overlay(Capsule().stroke(app.palette.paper, lineWidth: 2))
+                            .offset(x: 4, y: -4)
+                    }
                 }
-            }
-            .padding(.horizontal, 14).frame(minHeight: 44)
-            .background(app.palette.block, in: Capsule())
-            .contentShape(Capsule())
+                .contentShape(Circle())
         }
         .buttonStyle(PressableButtonStyle())
         .accessibilityLabel(n > 0 ? app.T("Bộ lọc, đang bật \(n)", "Filters, \(n) on") : app.T("Bộ lọc", "Filters"))
@@ -453,6 +462,37 @@ struct BrowseView: View {
     }
 }
 
+// MARK: - Dates under the title
+
+/// What a tab's dates really are, for the line under its title: the weekend's days (the same Friday 17:00 to Sunday
+/// window the Weekend tab filters on), today's date for Tonight, nothing for the other lists.
+enum BrowseDates {
+    static func label(scope: String, now: Date, english: Bool, offsetMin: Int = HomeDiscovery.defaultOffsetMin) -> String? {
+        let option = scope == "weekend" ? "weekend" : scope == "tonight" ? "today" : nil
+        guard let option, let w = HomeDiscovery.dateWindow(option, now: now, offsetMin: offsetMin) else { return nil }
+        let zone = TimeZone(secondsFromGMT: offsetMin * 60) ?? .current
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = zone
+        let last = w.end.addingTimeInterval(-1)
+        func text(_ d: Date, _ format: String) -> String {
+            let f = DateFormatter()
+            f.calendar = cal; f.timeZone = zone
+            f.locale = Locale(identifier: "en_US_POSIX")
+            f.dateFormat = format
+            return f.string(from: d)
+        }
+        // Vietnamese days the way the rows write them: T2 … T7, CN.
+        func vi(_ d: Date) -> String {
+            let c = cal.dateComponents([.weekday, .day, .month], from: d)
+            return "\(["CN", "T2", "T3", "T4", "T5", "T6", "T7"][((c.weekday ?? 1) - 1) % 7]) \(c.day ?? 0)/\(c.month ?? 0)"
+        }
+        let oneDay = cal.isDate(w.start, inSameDayAs: last)
+        if !english { return oneDay ? vi(last) : vi(w.start) + " – " + vi(last) }
+        if oneDay { return text(last, "EEE d MMM") }
+        let sameMonth = cal.component(.month, from: w.start) == cal.component(.month, from: last)
+        return text(w.start, sameMonth ? "EEE d" : "EEE d MMM") + " – " + text(last, "EEE d MMM")
+    }
+}
+
 // MARK: - Host deck + list
 
 /// A host's face: their real photo, else a monogram on a theme tint.
@@ -480,8 +520,8 @@ struct HostFace: View {
     }
 }
 
-/// Four overlapping host faces, then +N, with "A, B and 16 more hosts". Turns over one face every few seconds (never
-/// with Reduce Motion). A tap opens the searchable host list.
+/// Overlapping host faces, then +N, beside the list's title. Turns over one face every few seconds (never with
+/// Reduce Motion). A tap opens the searchable host list, which is where the names are.
 struct HostDeckView: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -491,10 +531,9 @@ struct HostDeckView: View {
 
     var body: some View {
         if !hosts.isEmpty {
-            let deck = BrowseRules.deckFaces(order.isEmpty ? hosts : order)
-            let line = BrowseRules.deckLine(hosts)
+            let deck = BrowseRules.deckFaces(order.isEmpty ? hosts : order, shown: 3)
             Button(action: onOpen) {
-                HStack(spacing: 12) {
+                HStack(spacing: 0) {
                     HStack(spacing: -10) {
                         ForEach(Array(deck.faces.enumerated()), id: \.element.id) { i, h in
                             HostFace(host: h).zIndex(Double(deck.faces.count - i))
@@ -507,10 +546,6 @@ struct HostDeckView: View {
                         }
                     }
                     .animation(reduceMotion ? nil : .spring(response: 0.36, dampingFraction: 0.6), value: order.map(\.id))
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(line.names.t(app.isEN)).font(.app(size: 14, weight: .semibold)).lineLimit(1)
-                        if !line.more.en.isEmpty { Text(line.more.t(app.isEN)).font(.app(size: 12.5)).opacity(0.72) }
-                    }
                 }
                 .frame(minHeight: 48)
                 .contentShape(Rectangle())

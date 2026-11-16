@@ -178,14 +178,13 @@ test('rail of four ends in See all, which opens that tab; browser back and forwa
   await expect(page.getByTestId('browse-screen')).toHaveAttribute('data-type', 'music');
 });
 
-test('host deck shows four faces and +N, the host list searches and opens the real profile, Back returns to the list', async ({ page }) => {
+test('host deck shows three faces and +N beside the title, the host list searches and opens the real profile, Back returns to the list', async ({ page }) => {
   await mockSupabase(page);
   await guestOpen(page, '/browse/music');
   const deck = page.getByTestId('browse-host-deck');
   await expect(deck).toBeVisible({ timeout: 20000 });
   await expect(deck).toHaveAttribute('data-hosts', '6');
-  await expect(page.getByTestId('browse-host-more')).toHaveText('+2');
-  await expect(deck).toContainText('and 4 more hosts');
+  await expect(page.getByTestId('browse-host-more')).toHaveText('+3');
   await deck.click();
   await expect(page.getByTestId('host-list-sheet')).toBeVisible();
   await page.getByTestId('host-list-search').fill('gac');
@@ -235,24 +234,17 @@ test('own Filters: When, Price, Seats only, with a badge and a live count', asyn
   await expect(page.getByTestId('browse-count')).toHaveText(new RegExp(`^${n} event`));
 });
 
-test('swipe signs: a slim edge tab toward the next page and a cue line that fades after the first turn', async ({ page }) => {
+test('paging signs: numbers, arrows and the range only; no edge tabs, no swipe cue', async ({ page }) => {
   await mockSupabase(page);
   await guestOpen(page, '/browse/music');
   await expect(page.getByTestId('browse-screen')).toBeVisible({ timeout: 20000 });
   const list = page.getByTestId('browse-list');
   const pages = Number(await list.getAttribute('data-pages'));
   expect(pages).toBeGreaterThanOrEqual(2);
-  const next = page.getByTestId('browse-list-hint-next');
-  await expect(next).toBeVisible();
-  // Slim enough to stay clear of the prices; no pages lean or bounce at the edge.
-  expect((await next.boundingBox()).width).toBeLessThanOrEqual(20);
-  await expect(page.getByTestId('browse-list-hint-prev')).toHaveCount(0);
-  await expect(page.getByTestId('browse-list-cue')).toHaveAttribute('data-gone', 'false');
-  // The first visit nudges the tab once, so it may still be moving.
-  await next.click({ force: true });
+  await expect(page.getByTestId('browse-list-hint-next')).toHaveCount(0);
+  await expect(page.getByTestId('browse-list-cue')).toHaveCount(0);
+  await page.getByTestId('browse-list-next').click();
   await expect(list).toHaveAttribute('data-page', '1');
-  await expect(page.getByTestId('browse-list-cue')).toHaveAttribute('data-gone', 'true');
-  await expect(page.getByTestId('browse-list-hint-prev')).toBeVisible();
   // Rows have no chevron.
   await expect(page.locator('[data-testid^="browse-event-"]').first()).not.toContainText('›');
 });
@@ -268,23 +260,17 @@ test('reduced motion: the host deck does not turn over', async ({ page }) => {
   expect(await deck.innerHTML()).toBe(first);
 });
 
-test('the next tab nudges only on the very first visit; both tabs darken while the list is swiped', async ({ page }) => {
+test('the page drop follows the swipe: it is cut from the track position, not from the committed page', async ({ page }) => {
   await mockSupabase(page);
   await guestOpen(page, '/browse/music');
-  const next = page.getByTestId('browse-list-hint-next');
-  await expect(next).toBeVisible({ timeout: 20000 });
-  await expect(next).toHaveAttribute('data-nudge', 'true');
-  expect(await page.evaluate(() => localStorage.getItem('banbe.v23.pagerNudgeSeen'))).toBe('1');
-  // Swiping the track: the tabs' wrapper flags the swipe (darker tabs), then settles back.
-  const wrap = page.locator('[data-swiping]').first();
-  await expect(page.getByTestId('browse-list-drop')).toBeVisible();
-  await page.getByTestId('browse-list-track').evaluate((el) => { el.scrollLeft = 80; el.dispatchEvent(new Event('scroll')); });
-  await expect(wrap).toHaveAttribute('data-swiping', '1');
-  await expect(wrap).toHaveAttribute('data-swiping', '0', { timeout: 2000 });
-  // A later visit: no nudge.
-  await page.reload();
-  await expect(page.getByTestId('browse-list-hint-next')).toBeVisible({ timeout: 20000 });
-  await expect(page.getByTestId('browse-list-hint-next')).toHaveAttribute('data-nudge', 'false');
+  const drop = page.getByTestId('browse-list-drop');
+  await expect(drop).toBeVisible({ timeout: 20000 });
+  const clip = () => drop.evaluate(el => el.style.clipPath);
+  const rest = await clip();
+  // A quarter of a page in: the page has not committed, the drop has already moved.
+  await page.getByTestId('browse-list-track').evaluate((el) => { el.style.scrollSnapType = 'none'; el.scrollLeft = el.clientWidth / 4; el.dispatchEvent(new Event('scroll')); });
+  await expect(page.getByTestId('browse-list')).toHaveAttribute('data-page', '0');
+  expect(await clip()).not.toBe(rest);
 });
 
 test('an empty tab offers real next steps, measured by the open tab', async ({ page }) => {

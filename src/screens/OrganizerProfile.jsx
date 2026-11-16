@@ -194,7 +194,7 @@ export default function OrganizerProfile() {
       const startMs = e.startsAt ? Date.parse(e.startsAt) : null;
       return {
         key: e.key, name: e.name, img: e.photoUrl || e.img || '',
-        kicker: [trStatus(e.catLabel || ''), startMs ? cardDateBadge(startMs, rowTimeZone(e), T) : ''].filter(Boolean).join(' · '),
+        type: trStatus(e.catLabel || ''), when: startMs ? cardDateBadge(startMs, rowTimeZone(e), T) : '',
         place: e.area || '', isFree: !e.priceVnd,
         priceLabel: past ? '' : e.priceVnd ? formatMoney(e.priceVnd, rowCurrency(e)) : T('Miễn phí', 'Free'),
       };

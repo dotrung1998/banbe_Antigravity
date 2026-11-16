@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { paginate, pageRange, endCardRoom, showPageNav, inkFrames, pageAt, clampPage, pageWindow, PAGE_SIZE } from '../../src/lib/pager.js';
+import { paginate, pageRange, endCardRoom, showPageNav, dropEdges, pageAt, clampPage, pageWindow, PAGE_SIZE } from '../../src/lib/pager.js';
 import { shortlistEnd, slimmed } from '../../src/lib/listEnd.js';
 
 const fixture = JSON.parse(readFileSync(new URL('../fixtures/pager.json', import.meta.url), 'utf8'));
@@ -30,10 +30,12 @@ test('page navigation only with more than one page', () => {
   assert.equal(showPageNav(paginate(ids(5))), true);
 });
 
-test('ink stretches across both numbers, then settles on the new one', () => {
-  assert.deepEqual(inkFrames({ left: 10, width: 44 }, { left: 110, width: 44 }), [
-    { left: 10, width: 44 }, { left: 10, width: 144 }, { left: 110, width: 44 }]);
-  assert.deepEqual(inkFrames({ left: 110, width: 44 }, { left: 10, width: 44 })[1], { left: 10, width: 144 });
+test('the drop follows the swipe: at rest on the page, stretched mid-swipe, never off the numbers shown', () => {
+  assert.deepEqual(dropEdges(2, 0, 5), { trail: 2, lead: 2 });
+  assert.deepEqual(dropEdges(1.5, 0, 5), { trail: 1.25, lead: 1.75 });
+  assert.deepEqual(dropEdges(6, 4, 5), { trail: 2, lead: 2 });
+  assert.equal(dropEdges(9.4, 0, 5).lead, 4);
+  assert.deepEqual(dropEdges(1.6, 0, 5, true), { trail: 2, lead: 2 });
 });
 
 test('the nearest page wins and indexes are clamped', () => {

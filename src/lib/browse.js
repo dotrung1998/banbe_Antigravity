@@ -3,7 +3,7 @@
 // organizerName, organizerAvatarUrl, catDisplay } }), so the list, its counts, the host deck and the end card all read
 // the same rules. Copy is { vi, en } pairs for T(), and follows note 57 (no dash or semicolon between ideas).
 import { foldText } from './mapDiscovery.js';
-import { applyDiscoveryFilters, DEFAULT_FILTERS } from './homeDiscovery.js';
+import { applyDiscoveryFilters, DEFAULT_FILTERS, dateWindow, DEFAULT_OFFSET_MIN } from './homeDiscovery.js';
 
 export const SCOPES = ['all', 'foryou', 'tonight', 'weekend'];
 export const DECK_SHOWN = 4;
@@ -153,4 +153,24 @@ export function browseEnd({ type, typeName, list, hidden, query, others }) {
     actions: others.slice(0, 2).map((o, i) => ({ act: `type:${o.key}`, label: L(`${o.name.vi} · ${o.count}`, `${o.name.en} · ${o.count}`), primary: i === 0 }))
       .concat([{ act: 'type:all', label: L('Mọi loại', 'All types'), primary: others.length === 0 }]),
   };
+}
+
+/**
+ * What a tab's dates really are, for the line under its title: the weekend's days (the same Friday 17:00 to Sunday
+ * window the Weekend tab filters on), today's date for Tonight, null for the other lists. iOS twin: BrowseDates.label.
+ */
+const EN_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const VI_DAYS = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+const EN_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+export function browseDatesLabel(scope, now, lang = 'en', offsetMin = DEFAULT_OFFSET_MIN) {
+  const option = scope === 'weekend' ? 'weekend' : scope === 'tonight' ? 'today' : null;
+  const w = option ? dateWindow(option, now, offsetMin) : null;
+  if (!w) return null;
+  const at = ms => new Date(ms + offsetMin * 60000);
+  const a = at(w[0]), b = at(w[1] - 1000);
+  const en = (d, month) => `${EN_DAYS[d.getUTCDay()]} ${d.getUTCDate()}${month ? ` ${EN_MONTHS[d.getUTCMonth()]}` : ''}`;
+  const vi = d => `${VI_DAYS[d.getUTCDay()]} ${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
+  const sameDay = a.getUTCFullYear() === b.getUTCFullYear() && a.getUTCMonth() === b.getUTCMonth() && a.getUTCDate() === b.getUTCDate();
+  if (lang === 'vi') return sameDay ? vi(b) : `${vi(a)} – ${vi(b)}`;
+  return sameDay ? en(b, true) : `${en(a, a.getUTCMonth() !== b.getUTCMonth())} – ${en(b, true)}`;
 }

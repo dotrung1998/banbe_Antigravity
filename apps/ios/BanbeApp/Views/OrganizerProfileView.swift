@@ -598,7 +598,7 @@ extension OrganizerProfileView {
         let when = app.discoveryDateBadge(e.startsAt, timeZone: zone)
         let price: String = past ? "" : (known.map { $0.isFree ? app.T("Miễn phí", "Free") : app.trStatus($0.price) } ?? "")
         return V23Row(key: e.id, name: e.name, img: e.coverURL ?? known?.img ?? "",
-                      kicker: [type, when].filter { !$0.isEmpty }.joined(separator: " · "),
+                      when: when, type: type,
                       place: known?.locationLabel ?? known?.location?.area ?? "",
                       priceLabel: price, isFree: !past && (known?.isFree ?? false), status: nil)
     }

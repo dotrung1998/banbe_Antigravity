@@ -21,7 +21,7 @@ import HostDeck from '../components/browse/HostDeck.jsx';
 import HostListSheet from './sheets/HostListSheet.jsx';
 import HomeFilterSheet from './sheets/HomeFilterSheet.jsx';
 import { CategoryGlyph } from '../components/home/HomeDiscoveryParts.jsx';
-import { browseList, typeCounts, hostsOf, browseEnd, browseFilters, browseFilterCount } from '../lib/browse.js';
+import { browseList, typeCounts, hostsOf, browseEnd, browseFilters, browseFilterCount, browseDatesLabel } from '../lib/browse.js';
 import { categoryDefs } from '../lib/eventTypes.js';
 import { useReducedMotion } from '../lib/useReducedMotion.js';
 import { TAB_LABEL } from '../components/home/ShortlistV23.jsx';
@@ -111,6 +111,7 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
           { act: 'map', testId: 'browse-empty-map', label: { vi: 'Mở bản đồ', en: 'Open the map' } },
         ];
 
+  const dates = browseDatesLabel(scope, now, lang);
   const [finding, setFinding] = useState(false);
   const [hostsOpen, setHostsOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -184,49 +185,51 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
       </header>
 
       <>
-        {/* The screen's title, under the tabs (note 91): the same 30px line and count as a picked type's heading, so a
-            tab names what it holds instead of leaving the top of the page to the host deck. A picked type wins, then the
-            open tab, then Browse by type itself. It is where a type-chip turn scrolls back to. */}
-        <div ref={scrollRef} style={{ padding: '18px 20px 0', scrollMarginTop: 108 }}>
-          <h1 data-testid="browse-title" style={{ margin: 0, fontSize: 30, fontWeight: 400, letterSpacing: '-.02em', lineHeight: 1.1 }}>{titleText}</h1>
-          <div data-testid="browse-scope-count" style={{ fontSize: 13, opacity: 0.72, marginTop: 6 }}>
-            <span data-testid="browse-count"><b>{list.length}</b> {T('sự kiện', list.length === 1 ? 'event' : 'events')}</span>
-            {areaLabel ? ` · ${areaLabel}` : ''}
+        {/* One heading row and one filter row (the Browse list pass). The title, under the tabs (note 91): a picked
+            type wins, then the open tab, then Browse by type itself; under it one line that says what the list holds —
+            the weekend's or tonight's real dates, the count, the area. The hosts' faces sit on the same row, and
+            Filters closes the chip row; each used to take a row of its own and push the first event far down the
+            screen. The title is where a type-chip turn scrolls back to. */}
+        <div ref={scrollRef} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '18px 20px 0', scrollMarginTop: 108 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h1 data-testid="browse-title" style={{ margin: 0, fontSize: 30, fontWeight: 400, letterSpacing: '-.02em', lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{titleText}</h1>
+            <div data-testid="browse-scope-count" style={{ fontSize: 13, opacity: 0.72, marginTop: 6 }}>
+              {dates ? <span data-testid="browse-dates">{dates} · </span> : null}
+              <span data-testid="browse-count"><b>{list.length}</b> {T('sự kiện', list.length === 1 ? 'event' : 'events')}</span>
+              {areaLabel ? ` · ${areaLabel}` : ''}
+            </div>
           </div>
+          {hosts.length > 0 && <HostDeck hosts={hosts} onOpen={() => setHostsOpen(true)} T={T} />}
         </div>
-          {hosts.length > 0 && (
-            <div style={{ padding: '16px 20px 0' }}>
-              <HostDeck hosts={hosts} onOpen={() => setHostsOpen(true)} T={T} />
-            </div>
-          )}
 
-          {chips.length > 0 && (
-            <div role="tablist" aria-label={T('Loại sự kiện', 'Event types')} data-hscroll data-testid="browse-type-chips"
-              style={{ display: 'flex', gap: 8, overflowX: 'auto', padding: '12px 20px 10px', scrollbarWidth: 'none' }}>
-              {[{ key: 'all', vi: 'Tất cả', en: 'All' }, ...chips].map(d => {
-                const on = effType === d.key;
-                const n = d.key === 'all' ? items.length : counts[d.key];
-                return (
-                  <button key={d.key} type="button" role="tab" aria-selected={on} data-testid={`browse-type-${d.key}`} onClick={() => pickType(d.key)} style={chipLook(on)}>
-                    {d.key !== 'all' && <CategoryGlyph cat={d.key} size={16} strokeWidth={1.6} />}
-                    <span>{T(d.vi, d.en)}</span>
-                    <span data-testid={`browse-type-count-${d.key}`} style={{ fontWeight: 500, opacity: 0.7, fontVariantNumeric: 'tabular-nums' }}>{n}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '6px 20px 12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', padding: '12px 0 14px' }}>
+            {chips.length > 0 ? (
+              <div role="tablist" aria-label={T('Loại sự kiện', 'Event types')} data-hscroll data-testid="browse-type-chips"
+                style={{ flex: 1, minWidth: 0, display: 'flex', gap: 8, overflowX: 'auto', padding: '0 16px 0 20px', scrollbarWidth: 'none',
+                  WebkitMaskImage: 'linear-gradient(90deg, #000 93%, transparent)', maskImage: 'linear-gradient(90deg, #000 93%, transparent)' }}>
+                {[{ key: 'all', vi: 'Tất cả', en: 'All' }, ...chips].map(d => {
+                  const on = effType === d.key;
+                  const n = d.key === 'all' ? items.length : counts[d.key];
+                  return (
+                    <button key={d.key} type="button" role="tab" aria-selected={on} data-testid={`browse-type-${d.key}`} onClick={() => pickType(d.key)} style={chipLook(on)}>
+                      {d.key !== 'all' && <CategoryGlyph cat={d.key} size={16} strokeWidth={1.6} />}
+                      <span>{T(d.vi, d.en)}</span>
+                      <span data-testid={`browse-type-count-${d.key}`} style={{ fontWeight: 500, opacity: 0.7, fontVariantNumeric: 'tabular-nums' }}>{n}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : <div style={{ flex: 1 }} />}
+            {/* Filters closes the chip row: an icon the size of the nav circles, the number of filters on as a badge. */}
             <button type="button" onClick={() => setFiltersOpen(true)} data-testid="browse-filters-button"
               aria-label={nFilters ? T(`Bộ lọc, đang bật ${nFilters}`, `Filters, ${nFilters} on`) : T('Bộ lọc', 'Filters')}
-              style={{ minHeight: 44, padding: '0 14px', borderRadius: 999, border: 'none', background: 'var(--bb-block)', color: 'inherit', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-              <Icon d={SLIDERS} size={17} />{T('Bộ lọc', 'Filters')}
-              {nFilters > 0 && <span data-testid="browse-filter-badge" style={{ minWidth: 20, height: 20, padding: '0 6px', borderRadius: 999, background: 'var(--bb-fg)', color: 'var(--bb-bg)', fontSize: 12, fontWeight: 700, display: 'grid', placeItems: 'center' }}>{nFilters}</span>}
+              style={{ ...navBtn, position: 'relative', margin: '0 20px 0 8px' }}>
+              <Icon d={SLIDERS} size={17} />
+              {nFilters > 0 && <span data-testid="browse-filter-badge" style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, padding: '0 4px', boxSizing: 'border-box', borderRadius: 999, background: 'var(--bb-fg)', color: 'var(--bb-bg)', boxShadow: '0 0 0 2px var(--bb-bg)', fontSize: 11, fontWeight: 700, display: 'grid', placeItems: 'center' }}>{nFilters}</span>}
             </button>
           </div>
 
-          <Pager items={rows} getKey={r => r.key} lang={lang} T={T} testId="browse-list" rowHeight={ROW_HEIGHT} hints
+          <Pager items={rows} getKey={r => r.key} lang={lang} T={T} testId="browse-list" rowHeight={ROW_HEIGHT}
             renderRow={r => <EventRowV23 row={r} onOpen={() => onOpenEvent(r.key)} testId={`browse-event-${r.key}`} />}
             renderEnd={end => <EndCard card={card} variant={end.variant} onAction={onEnd} T={T} />}
             empty={(

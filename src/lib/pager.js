@@ -56,13 +56,18 @@ export function pageWindow(page, pageCount, max = 5) {
 export const showPageNav = pages => pages.length > 1;
 
 /**
- * The ink under the page numbers stretches from the old number across to the new one, then settles there.
- * Given the old and new number boxes ({left, width}), returns the three keyframes [from, stretched, to].
+ * The drop under the page numbers follows the swipe. `progress` is the track's position in pages (1.5 = halfway from
+ * the second page to the third), `first` the first page number shown, `count` how many are shown. Returns the drop's
+ * two edges in cells from the first number: at rest both sit on the open page; between pages the leading edge eases
+ * out (runs ahead) and the trailing edge eases in (lags), so the drop is longest mid-swipe. `still` (Reduced motion):
+ * no stretch, the drop steps from number to number. iOS twin: PagerDropRules.edges.
  */
-export function inkFrames(from, to) {
-  const lo = Math.min(from.left, to.left);
-  const hi = Math.max(from.left + from.width, to.left + to.width);
-  return [{ left: from.left, width: from.width }, { left: lo, width: hi - lo }, { left: to.left, width: to.width }];
+export function dropEdges(progress, first, count, still = false) {
+  if (count <= 0) return { trail: 0, lead: 0 };
+  const rel = Math.min(Math.max((Number.isFinite(progress) ? progress : 0) - first, 0), count - 1);
+  if (still) { const r = Math.round(rel); return { trail: r, lead: r }; }
+  const base = Math.floor(rel), f = rel - base;
+  return { trail: base + f * f, lead: base + 1 - (1 - f) * (1 - f) };
 }
 
 /** The page nearest to a scroll position (the track, not our intentions, decides). */

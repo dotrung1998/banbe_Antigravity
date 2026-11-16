@@ -214,4 +214,31 @@ final class V23EventRulesTests: XCTestCase {
         XCTAssertNil(EventEnd.error(mode: .open, start: "19:00", end: nil))
         XCTAssertEqual(EventEnd.duration("22:00", "02:00"), 240)
     }
+
+    // The page drop follows the swipe: at rest it sits on the page, mid-swipe its leading edge runs ahead and its
+    // trailing edge lags, and it never leaves the numbers shown.
+    func testPagerDropFollowsTheSwipe() {
+        let rest = PagerDropRules.edges(progress: 2, first: 0, count: 5, still: false)
+        XCTAssertEqual(rest.trail, 2); XCTAssertEqual(rest.lead, 2)
+        let mid = PagerDropRules.edges(progress: 1.5, first: 0, count: 5, still: false)
+        XCTAssertEqual(mid.trail, 1.25, accuracy: 0.0001); XCTAssertEqual(mid.lead, 1.75, accuracy: 0.0001)
+        let windowed = PagerDropRules.edges(progress: 6, first: 4, count: 5, still: false)
+        XCTAssertEqual(windowed.trail, 2); XCTAssertEqual(windowed.lead, 2)
+        let over = PagerDropRules.edges(progress: 9.4, first: 0, count: 5, still: false)
+        XCTAssertEqual(over.lead, 4)
+        let still = PagerDropRules.edges(progress: 1.6, first: 0, count: 5, still: true)
+        XCTAssertEqual(still.trail, 2); XCTAssertEqual(still.lead, 2)
+    }
+
+    // The line under a tab's title names its real dates (Vietnam clock): Mon 16 Nov 2026 -> the weekend is Fri 20 to
+    // Sun 22; on the Sunday itself only that day is left.
+    func testBrowseDatesLabel() {
+        let monday = Date(timeIntervalSince1970: 1_794_790_800) // 2026-11-16 08:00 +07
+        XCTAssertEqual(BrowseDates.label(scope: "weekend", now: monday, english: true), "Fri 20 – Sun 22 Nov")
+        XCTAssertEqual(BrowseDates.label(scope: "weekend", now: monday, english: false), "T6 20/11 – CN 22/11")
+        XCTAssertEqual(BrowseDates.label(scope: "tonight", now: monday, english: true), "Mon 16 Nov")
+        XCTAssertNil(BrowseDates.label(scope: "all", now: monday, english: true))
+        let sunday = monday.addingTimeInterval(6 * 86_400)
+        XCTAssertEqual(BrowseDates.label(scope: "weekend", now: sunday, english: true), "Sun 22 Nov")
+    }
 }

@@ -374,6 +374,9 @@ struct UITestFixtureRoot: View {
         case "schedule": app.screen = .schedule
         case "map": app.screen = .mapExplore   // Map redesign: live public events, fixture fill above
         case "inbox": app.screen = .inbox
+        // `shell.browse` opens Browse by type on the fixture's events; `shell.browseWeekend` the Weekend tab's See all.
+        case "browse": app.openBrowse()
+        case "browseWeekend": app.openBrowse(scope: "weekend")
         case "account", "accountSolo": app.screen = .profile
         case "adminFeatures": app.screen = .adminFeatures
         case "guide":

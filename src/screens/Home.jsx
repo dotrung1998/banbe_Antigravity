@@ -592,7 +592,7 @@ export default function Home({ browse = false }) {
     return applyDiscoveryFilters(discoveryItems, DEFAULT_FILTERS, nowMs).filter(open);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [discoveryItems, forYouRanked, Math.floor(nowMs / 60000)]);
-  // One v2.3 row (EventRowV23): kicker type · when, title, place or status, price.
+  // One v2.3 row (EventRowV23): when · type, title, then place or status with the price.
   const shapeRow = useCallback((it) => {
     const e = it.ev;
     const fill = fillBadge(it.booked, it.capacity);
@@ -601,7 +601,7 @@ export default function Home({ browse = false }) {
     const def = TYPE_DEF_BY_KEY.get(it.catKeys?.[0]);
     return {
       key: e.key, name: e.name, img: e.img,
-      kicker: [def ? T(def.vi, def.en) : trStatus(e.catDisplay || e.cat), badgeDate(it.startsAt, e.isReal ? e.tz : null)].filter(Boolean).join(' · '),
+      type: def ? T(def.vi, def.en) : trStatus(e.catDisplay || e.cat), when: badgeDate(it.startsAt, e.isReal ? e.tz : null),
       place: [e.isReal ? e.area : e.locationLabel, it.distanceKm != null ? `${it.distanceKm.toFixed(1).replace('.', ',')} km` : null].filter(Boolean).join(' · '),
       priceLabel: it.priceVnd === 0 ? T('Miễn phí', 'Free') : trStatus(e.price), isFree: it.priceVnd === 0,
       status: soldOut ? { tone: 'alert', text: T('Hết chỗ', 'Sold out') }
