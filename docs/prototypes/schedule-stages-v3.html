@@ -1,0 +1,2124 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-motion="full">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>banbe — Schedule v3 · the month book, every stage</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* banbe Schedule prototype v3.
+   v2 put the stage on the stage: one control walking the life of a plan, three options that
+   all had to survive all eight moments. v3 keeps that spine and answers the note the owner
+   left on it: options B (month desk) and C (plan book) were two navigation modes over one
+   job. The month answered "when am I free"; the book answered "what do I owe"; a person had
+   to pick which question to ask before asking either. They are one option here — THE MONTH
+   BOOK: the month page is the table of contents, and the plan stubs under it are the page.
+   Nothing opens a second surface, so there is no sheet, no ribbon and no mode switch.
+   Option A (the day spine) is unchanged. Material system is the v2.3 one (paper, glass
+   chrome, editorial serif, spring motion), tokens are the app's own. */
+:root{
+  /* surfaces — the app's own palette, not an invented one */
+  --bg:#F7F4EC; --fg:#1B1916; --fg2:rgba(27,25,22,.74); --fg3:rgba(27,25,22,.58);
+  --rule:rgba(27,25,22,.16); --divider:rgba(27,25,22,.08);
+  --block:#EEE8DA; --inset:#FBF8F1; --sel:#FFFFFF;
+  /* accents (shared with the v2.3 prototype and the iOS palette) */
+  --alert:#9A3E2D; --clay:#A2543A; --moss:#4C5F3A; --honey:#8A6418; --plum:#6B4E7C;
+  --honey-soft:#F3E3BC; --moss-soft:#E4EAD9; --plum-soft:#EDE4F1; --clay-soft:#F2E2DA;
+  --night:#14110C; --stage:#DCD5C7;
+  --serif:'Iowan Old Style','Palatino Linotype',Palatino,Georgia,'Times New Roman',serif;
+  /* material tokens — one recipe for every glass surface */
+  --glass:rgba(251,248,241,.62);
+  --glass-strong:rgba(251,248,241,.88);
+  --glass-line:rgba(255,255,255,.62);
+  --glass-shadow:0 18px 44px rgba(27,25,22,.16),0 2px 6px rgba(27,25,22,.06);
+  --rim:inset 0 1px 0 rgba(255,255,255,.7);
+  --shadow-1:0 1px 2px rgba(27,25,22,.05), 0 10px 30px rgba(27,25,22,.07);
+  --shadow-2:0 22px 60px rgba(27,25,22,.18), 0 3px 10px rgba(27,25,22,.06);
+  --shadow-dock:0 16px 40px rgba(27,25,22,.22);
+  /* motion tokens — the numbers quoted in the panel */
+  --t-press:110ms; --t-quick:180ms; --t-base:280ms; --t-slow:420ms;
+  --ease-out:cubic-bezier(.22,.61,.36,1); --ease-spring:cubic-bezier(.2,1.04,.3,1); --ease-soft:cubic-bezier(.32,.72,0,1);
+}
+:root[data-theme="dark"]{
+  --bg:#14120E; --fg:#F2EDE1; --fg2:rgba(242,237,225,.76); --fg3:rgba(242,237,225,.6);
+  --rule:rgba(242,237,225,.2); --divider:rgba(242,237,225,.08);
+  --block:#2A2620; --inset:#1B1813; --sel:#221E17;
+  --alert:#E8715B; --clay:#D8926C; --moss:#A9C487; --honey:#F2C46D; --plum:#C9A8D8;
+  --honey-soft:#3A2E14; --moss-soft:#242B1B; --plum-soft:#2B2333; --clay-soft:#37241D;
+  --night:#080705; --stage:#050504;
+  --glass:rgba(20,18,14,.62); --glass-strong:rgba(20,18,14,.9);
+  --glass-line:rgba(255,255,255,.1);
+  --glass-shadow:0 18px 44px rgba(0,0,0,.55),0 2px 6px rgba(0,0,0,.35);
+  --rim:inset 0 1px 0 rgba(255,255,255,.07);
+  --shadow-1:0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.4);
+  --shadow-2:0 24px 70px rgba(0,0,0,.6);
+  --shadow-dock:0 18px 50px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  font-family:'Be Vietnam Pro',system-ui,-apple-system,sans-serif;
+  background:
+    radial-gradient(90% 60% at 18% -10%, #FDFBF5 0%, rgba(253,251,245,0) 60%),
+    radial-gradient(70% 50% at 100% 100%, #CFC6B6 0%, rgba(207,198,182,0) 55%),
+    var(--stage);
+  color:var(--fg);-webkit-font-smoothing:antialiased;
+}
+:root[data-theme="dark"] body{background:
+  radial-gradient(90% 60% at 18% -10%, #1B1811 0%, rgba(27,24,17,0) 60%),
+  radial-gradient(70% 50% at 100% 100%, #070605 0%, rgba(7,6,5,0) 55%),
+  var(--stage)}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+svg.i{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.stage{min-height:100%;display:flex;gap:48px;justify-content:center;align-items:flex-start;flex-wrap:wrap;padding:26px 24px 30px}
+
+/* ---------------- side panel ---------------- */
+.panel{width:396px;flex:none;position:sticky;top:0;max-height:calc(100vh - 56px);overflow:auto;padding:0 4px 40px 0;
+  scrollbar-width:thin;scrollbar-color:var(--rule) transparent}
+.panel::-webkit-scrollbar{width:6px}
+.panel::-webkit-scrollbar-thumb{background:var(--rule);border-radius:99px}
+.eyebrow{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--clay);font-weight:700;margin:0 0 9px}
+.panel h1{font-family:var(--serif);font-weight:400;font-size:34px;letter-spacing:-.025em;margin:0 0 10px;line-height:1.04}
+.panel .lede{font-size:13px;color:var(--fg2);line-height:1.62;margin:0 0 20px}
+.ctl{margin-bottom:12px}
+.ctl label{display:block;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--fg2);margin-bottom:7px}
+.seg{display:flex;background:var(--glass);border:1px solid var(--glass-line);border-radius:999px;padding:3px;
+  box-shadow:var(--rim);backdrop-filter:blur(20px) saturate(1.5);-webkit-backdrop-filter:blur(20px) saturate(1.5)}
+.seg button{flex:1;height:34px;padding:0 6px;white-space:nowrap;border-radius:999px;font-size:12px;font-weight:600;color:var(--fg3);display:flex;align-items:center;justify-content:center;gap:5px;
+  transition:background var(--t-quick) var(--ease-out),color var(--t-quick) var(--ease-out)}
+.seg button.on{background:var(--fg);color:var(--bg)}
+.ctl .mini-hint{font-size:10.5px;color:var(--fg3);line-height:1.5;margin:7px 0 0}
+
+/* the prototype's own option rail, directly above the phone: the switcher lives next to the
+   thing it switches, both ways, instead of only in the panel. It is outside the device on
+   purpose — the merge removed the mode switch from inside the app. */
+.optRailWrap{display:flex;flex-direction:column;align-items:center;gap:7px}
+.optRail{display:flex;align-items:center;gap:3px;padding:4px;border-radius:999px;
+  background:var(--glass-strong);border:1px solid var(--glass-line);
+  box-shadow:var(--shadow-1),var(--rim);backdrop-filter:blur(20px) saturate(1.6);
+  -webkit-backdrop-filter:blur(20px) saturate(1.6)}
+.optRail button{height:32px;padding:0 12px;border-radius:999px;font-size:11.5px;font-weight:600;color:var(--fg3);
+  display:inline-flex;align-items:center;gap:7px;white-space:nowrap;
+  transition:background var(--t-quick) var(--ease-out),color var(--t-quick) var(--ease-out)}
+.optRail button.on{background:var(--fg);color:var(--bg)}
+.optRail button:active{transform:scale(.96)}
+.optRail button .k{display:grid;place-items:center;width:15px;height:15px;border-radius:4px;font-size:9px;
+  font-weight:700;border:1px solid currentColor;opacity:.5;font-variant-numeric:tabular-nums}
+.optRail button.on .k{opacity:.75}
+.optRailHint{font-size:10px;color:var(--fg3);letter-spacing:.04em}
+.optRailHint b{color:var(--fg2);font-weight:600}
+/* the answer to "how do I go back and forth", stated once */
+.swapNote{margin-top:12px;padding:11px 13px;border-radius:14px;border:1px dashed var(--rule);
+  display:flex;flex-direction:column;gap:5px;font-size:11px;line-height:1.45;color:var(--fg2)}
+.swapNote b{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--fg3);font-weight:700}
+.swapNote span{display:flex;gap:7px;align-items:flex-start}
+.swapNote span i{font-style:normal;color:var(--clay);font-weight:700;flex:none}
+.swapNote kbd{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;background:var(--block);
+  border:1px solid var(--rule);border-radius:4px;padding:0 4px}
+.replay{width:100%;height:40px;margin-top:10px;border-radius:999px;border:1px solid var(--rule);font-size:12.5px;font-weight:600;color:var(--fg);
+  transition:transform var(--t-press) var(--ease-out),background var(--t-quick) var(--ease-out)}
+.replay:active{transform:scale(.98);background:var(--block)}
+:where(.seg button,.optRail button,.replay,.iconbtn,.a-day,.b-cell,.c-row,.rowbtn,.stamp,.chipStage,.mb-clear):focus-visible{
+  outline:2px solid var(--clay);outline-offset:2px}
+
+/* The stage rail: eight moments a plan lives through, as chips that wrap. */
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chipStage{position:relative;height:32px;padding:0 11px 0 9px;border-radius:999px;border:1px solid var(--rule);
+  background:var(--sel);font-size:11.5px;font-weight:600;color:var(--fg2);display:inline-flex;align-items:center;gap:6px;
+  transition:transform var(--t-press) var(--ease-out),background var(--t-quick) var(--ease-out),color var(--t-quick) var(--ease-out),border-color var(--t-quick)}
+.chipStage:active{transform:scale(.96)}
+.chipStage i{width:5px;height:5px;border-radius:50%;flex:none;background:currentColor;opacity:.5}
+.chipStage.on{background:var(--fg);color:var(--bg);border-color:transparent}
+.chipStage.on i{opacity:1;background:var(--bg)}
+.chipStage.on[data-k="hold"] i{background:var(--honey)}
+.chipStage.on[data-k="ok"] i{background:var(--moss)}
+.chipStage.on[data-k="host"] i{background:var(--plum)}
+.chipStage.on[data-k="ended"] i{background:var(--fg3)}
+
+/* the current stage, stated in one card so the phone never has to explain itself */
+.optCard{margin-top:14px;padding:14px 15px;border-radius:16px;background:var(--glass);border:1px solid var(--glass-line);
+  box-shadow:var(--rim),var(--shadow-1);backdrop-filter:blur(20px) saturate(1.4);-webkit-backdrop-filter:blur(20px) saturate(1.4)}
+.optCard .n{display:flex;align-items:baseline;gap:8px;margin-bottom:5px;flex-wrap:wrap}
+.optCard .n b{font-family:var(--serif);font-size:19px;font-weight:400;letter-spacing:-.01em}
+.optCard .n span{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--clay);font-weight:700}
+.optCard p{margin:0;font-size:12px;line-height:1.55;color:var(--fg2)}
+.optCard dl{display:grid;grid-template-columns:78px 1fr;gap:4px 10px;margin:11px 0 0;font-size:11.5px;line-height:1.45}
+.optCard dt{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg3);font-weight:600;padding-top:2px}
+.optCard dd{margin:0;color:var(--fg)}
+.optCard dd b{font-weight:600}
+
+/* comparison + stages */
+.sect{margin-top:22px;padding-top:18px;border-top:1px solid var(--rule)}
+.sect h2{font-family:var(--serif);font-size:19px;font-weight:400;margin:0 0 4px;letter-spacing:-.01em}
+.sect .hint{font-size:11px;color:var(--fg3);margin:0 0 12px;line-height:1.5}
+table.cmp{width:100%;border-collapse:collapse;font-size:11px}
+table.cmp th,table.cmp td{text-align:left;padding:7px 6px 7px 0;border-bottom:1px solid var(--divider);vertical-align:top;line-height:1.4}
+table.cmp thead th{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg3);font-weight:700;padding-bottom:6px}
+table.cmp tbody th{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--fg2);font-weight:600;width:70px}
+table.cmp td b{font-weight:600}
+table.cmp tr:last-child th,table.cmp tr:last-child td{border-bottom:0}
+table.cmp td.on{background:color-mix(in srgb,var(--clay) 9%,transparent);border-radius:6px}
+
+/* roadmap — the v2.3 quest log, for the schedule this time */
+.quest{margin-top:24px;padding-top:20px;border-top:1px solid var(--rule)}
+.questHead{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:9px}
+.questHead h2{font-family:var(--serif);font-size:19px;font-weight:400;margin:0;letter-spacing:-.01em}
+.questHead span{font-size:10.5px;font-variant-numeric:tabular-nums;color:var(--fg3);letter-spacing:.08em}
+.questBar{height:3px;border-radius:99px;background:var(--block);overflow:hidden;margin-bottom:16px}
+.questBar i{display:block;height:100%;border-radius:99px;background:var(--clay);
+  transform-origin:left;animation:questIn 900ms var(--ease-spring) both}
+@keyframes questIn{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.questList{list-style:none;margin:0;padding:0;position:relative}
+.questList li{position:relative;display:grid;grid-template-columns:26px 1fr auto;gap:10px;align-items:start;padding:0 0 15px}
+.questList li:not(:last-child)::before{content:"";position:absolute;left:12px;top:23px;bottom:2px;width:1px;background:var(--divider)}
+.questList li:last-child{padding-bottom:4px}
+.qNode{width:25px;height:25px;border-radius:50%;border:1px solid var(--rule);display:grid;place-items:center;flex:none;
+  font-size:10px;font-weight:700;color:var(--fg3);background:var(--bg);font-variant-numeric:tabular-nums}
+.questList li.done .qNode{background:var(--moss);border-color:transparent;color:#fff}
+.questList li.current .qNode{background:var(--fg);border-color:transparent;color:var(--bg);box-shadow:0 0 0 4px color-mix(in srgb,var(--clay) 18%,transparent)}
+.questList b{display:block;font-size:12.5px;font-weight:600;letter-spacing:-.005em;padding-top:2px}
+.questList small{display:block;font-size:11px;line-height:1.45;color:var(--fg3);margin-top:2px}
+.questList em{font-style:normal;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg3);
+  border:1px solid var(--rule);border-radius:99px;padding:3px 7px;margin-top:1px;white-space:nowrap}
+.questList li.current em{background:var(--fg);color:var(--bg);border-color:transparent}
+.questNext{display:flex;flex-direction:column;gap:3px;margin-top:12px;padding:11px 13px;border-radius:14px;
+  background:var(--glass);border:1px solid var(--glass-line);box-shadow:var(--rim)}
+.questNext span{font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--clay);font-weight:700}
+.questNext b{font-size:12px;font-weight:600;line-height:1.4}
+
+/* notes: the long-form evidence, collapsed by default */
+.notes{margin-top:22px;border-top:1px solid var(--rule)}
+.notes summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;
+  font-size:12.5px;font-weight:600;color:var(--fg);padding:14px 0}
+.notes summary::-webkit-details-marker{display:none}
+.notes summary::after{content:"+";font-weight:400;font-size:16px;color:var(--fg3);transition:transform var(--t-base) var(--ease-spring)}
+.notes[open] summary::after{transform:rotate(45deg)}
+.notes h3{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--fg3);font-weight:700;margin:16px 0 8px}
+.notes ul{margin:0 0 14px;padding-left:15px;font-size:12px;line-height:1.6;color:var(--fg2)}
+.notes li{margin-bottom:7px}
+.notes b{color:var(--fg);font-weight:600}
+.notes code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;background:var(--block);padding:1px 4px;border-radius:4px}
+.notes a{color:var(--clay);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--clay) 40%,transparent)}
+.notes a:hover{border-bottom-color:var(--clay)}
+.ev{list-style:none;padding:0;margin:0 0 6px;counter-reset:ev}
+.ev li{counter-increment:ev;position:relative;padding:0 0 10px 26px;font-size:11.5px;line-height:1.55;color:var(--fg2)}
+.ev li::before{content:counter(ev);position:absolute;left:0;top:1px;width:17px;height:17px;border-radius:50%;border:1px solid var(--rule);
+  display:grid;place-items:center;font-size:9px;font-weight:700;color:var(--fg3);font-variant-numeric:tabular-nums}
+.ev li b{color:var(--fg);font-weight:600}
+.ev li em{font-style:normal;color:var(--fg2);font-size:10.5px;display:block;margin-top:2px}
+.spec{display:grid;grid-template-columns:1fr auto;gap:5px 12px;font-size:11px;color:var(--fg2);margin:0 0 4px}
+.spec b{font-weight:500;color:var(--fg);font-variant-numeric:tabular-nums}
+.legend{display:grid;grid-template-columns:1fr 1fr;gap:7px 12px;margin:0 0 6px;font-size:11px;color:var(--fg2)}
+.legend span{display:flex;align-items:center;gap:7px}
+.legend i{width:16px;height:16px;border-radius:5px;flex:none;border:1px solid}
+.lg-ok{background:var(--moss-soft);border-color:var(--moss)}
+.lg-hold{background:var(--honey-soft);border-color:var(--honey)}
+.lg-await{background:transparent;border-style:dashed;border-color:var(--fg3)}
+.lg-host{background:var(--plum-soft);border-color:var(--plum)}
+.lg-add{background:var(--clay-soft);border-color:var(--clay)}
+.lg-end{background:var(--block);border-color:var(--rule)}
+.foot{font-size:10.5px;color:var(--fg3);line-height:1.5;margin-top:20px;padding-top:14px;border-top:1px solid var(--rule)}
+
+/* ---------------- phone ---------------- */
+/* One iPhone, 390 × 844 for the layout pass; the stage control can morph the same body into the
+   iPhone Duo (cover 466 × 678, inner 890 × 626) and an iPad Air 11" (1180 × 820 / 820 × 1180).
+   The stage scales the whole body, never the app, so the app is measured exactly as on the phone. */
+.stagePhone{flex:none;display:flex;flex-direction:column;align-items:center;gap:16px}
+.phoneSlot{position:relative;flex:none;width:calc(var(--pw,412px) * var(--k,1));height:calc(var(--ph,866px) * var(--k,1))}
+.phoneFit{position:absolute;top:0;left:0;width:var(--pw,412px);height:var(--ph,866px);transform:scale(var(--k,1));transform-origin:top left}
+.phone{--dw:390px;--dh:844px;--dr:52px;--bz:11px;
+  width:calc(var(--dw) + var(--bz) * 2);height:calc(var(--dh) + var(--bz) * 2);flex:none;border-radius:calc(var(--dr) + var(--bz) - 1px);
+  padding:var(--bz);position:relative;overflow:hidden;
+  background:linear-gradient(150deg,#3A342A 0%,#0B0A07 38%,#221E17 72%,#4A4336 100%);
+  box-shadow:0 70px 120px rgba(20,17,12,.38),0 18px 40px rgba(20,17,12,.22),inset 0 1px 0 rgba(255,255,255,.22)}
+.phone::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.12),inset 0 1px 0 rgba(255,255,255,.35)}
+/* folding and unfolding: the body changes size and the app reflows inside it */
+.phone.morph,.phone.morph .device{transition:width 460ms var(--ease-soft),height 460ms var(--ease-soft),border-radius 460ms var(--ease-soft)}
+.phone.morph .opt,.phone.morph .pane{transition:opacity 230ms var(--ease-out)}
+.phone.morph.dip .opt,.phone.morph.dip .pane{opacity:.35}
+.phone.ipad{background:linear-gradient(150deg,#55595F 0%,#1A1B1D 30%,#0E0F10 70%,#4A4D52 100%)}
+.phone.ipad .device{--st:30px}
+.phone.ipad .island{display:none}
+.phone.duo .island{display:none}
+.phone.duo .punch{display:block}
+.device.wide .punch{left:75%}
+.punch{display:none;position:absolute;top:13px;left:50%;width:12px;height:12px;margin-left:-6px;border-radius:50%;
+  background:#000;z-index:96;pointer-events:none}
+.device{--st:52px;--lw:50%;position:relative;width:var(--dw);height:var(--dh);flex:none;border-radius:var(--dr);overflow:hidden;background:var(--bg);
+  clip-path:inset(0 round var(--dr));-webkit-clip-path:inset(0 round var(--dr));isolation:isolate;color:var(--fg);
+  transition:background var(--t-base) var(--ease-out)}
+.island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:112px;height:32px;border-radius:20px;background:#000;z-index:96;pointer-events:none}
+.status{position:absolute;top:0;left:0;right:0;height:var(--st);z-index:95;display:flex;justify-content:space-between;align-items:center;
+  padding:2px 26px 0 30px;font-size:14.5px;font-weight:600;color:var(--fg);pointer-events:none}
+.status .sb-r{display:flex;align-items:center;gap:5px}
+
+/* every option is its own stacking context, so a dock or a sheet can never paint over the wrong screen */
+.opt{position:absolute;inset:0;overflow:hidden;isolation:isolate;z-index:1;background:var(--bg);
+  animation:optIn var(--t-base) var(--ease-out) both}
+.opt[hidden]{display:none !important}
+@keyframes optIn{from{opacity:0;transform:scale(.995)}to{opacity:1;transform:none}}
+.opt::after{content:"";position:absolute;left:0;right:0;bottom:0;height:132px;z-index:50;pointer-events:none;
+  background:linear-gradient(180deg,transparent,color-mix(in srgb,var(--bg) 80%,transparent) 22%,color-mix(in srgb,var(--bg) 97%,transparent) 44%,var(--bg) 62%,var(--bg) 100%)}
+.scroll{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;overscroll-behavior:contain;padding-bottom:118px}
+.scroll::-webkit-scrollbar{display:none}
+
+/* split view: Duo inner display and iPad landscape. The list keeps the left pane, the plan takes
+   the right one, the dock belongs to the list — the iPad pattern, not two phones. */
+.device.wide .opt{right:auto;width:var(--lw);animation:none}
+.device.wide .opt::after{right:0}
+.device.wide .pane{display:block;left:var(--lw)}
+.device.wide .opt::before{content:"";position:absolute;top:0;bottom:0;right:0;width:1px;background:var(--divider);z-index:60}
+.device.wide .dock{left:calc(var(--lw) / 2);transform:translateX(-50%)}
+.device.wide .toast{right:auto;width:calc(var(--lw) - 32px)}
+.device.roomy .a-head,.device.roomy .a-agenda,.device.roomy .a-foot,.device.roomy .b-head,.device.roomy .b-grid,
+.device.roomy .b-legend,.device.roomy .b-open,.device.roomy .c-group,.device.roomy .c-blank,.device.roomy .c-past,
+.device.roomy .mb-picked,.device.roomy .b-none{padding-left:26px;padding-right:26px}
+.device.roomy .c-hero{margin-left:26px;margin-right:26px}
+
+/* the right-hand plan, shared by both options on a wide stage */
+.pane{display:none;position:absolute;top:0;bottom:0;right:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;
+  background:var(--bg);padding:calc(var(--st) + 6px) 0 40px}
+.pane::-webkit-scrollbar{display:none}
+.pane::after{content:"";position:absolute;left:0;top:0;bottom:0;width:18px;pointer-events:none;
+  background:linear-gradient(90deg,color-mix(in srgb,var(--fg) 6%,transparent),transparent)}
+
+/* ---------------- shared bits ---------------- */
+*{scrollbar-width:none}
+.eyeb{font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--clay);font-weight:700}
+.serif{font-family:var(--serif);font-weight:400;letter-spacing:-.015em}
+.tnum{font-variant-numeric:tabular-nums}
+.ph{background-size:cover;background-position:center;background-color:var(--block)}
+.dot{width:5px;height:5px;border-radius:50%;background:currentColor;display:inline-block}
+.stamp{display:inline-flex;align-items:center;gap:4px;height:19px;padding:0 6px;border-radius:5px;
+  font-size:9px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;border:1px solid currentColor;white-space:nowrap}
+.stamp.ok{color:var(--moss)} .stamp.hold{color:var(--honey)} .stamp.await{color:var(--fg3);border-style:dashed}
+.stamp.host{color:var(--plum)} .stamp.end{color:var(--fg3)} .stamp.add{color:var(--clay)} .stamp.disc{color:var(--fg3);border-style:dashed}
+.stamp.ink{color:var(--fg)}
+.rowbtn{display:flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 15px 0 13px;border-radius:999px;
+  font-size:11.5px;font-weight:600;background:var(--fg);color:var(--bg);
+  transition:transform var(--t-press) var(--ease-out),background var(--t-quick)}
+.rowbtn:active{transform:scale(.97)}
+.rowbtn,.iconbtn,.a-monthbtn,.c-pastbtn,.mb-clear{position:relative}
+.rowbtn::after,.iconbtn::after,.a-monthbtn::after,.c-pastbtn::after,.mb-clear::after{content:"";position:absolute;inset:-4px;border-radius:inherit}
+.rowbtn.ghost{background:transparent;color:var(--fg);border:1px solid var(--rule)}
+.rowbtn.tiny{height:32px;padding:0 12px;font-size:11px}
+.rowbtn[disabled]{opacity:.5;pointer-events:none}
+.iconbtn{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--rule);color:var(--fg);
+  background:var(--sel);transition:transform var(--t-press) var(--ease-out),background var(--t-quick)}
+.iconbtn:active{transform:scale(.92)}
+.iconbtn svg{width:16px;height:16px}
+.segmini{display:inline-flex;gap:2px;padding:3px;border-radius:999px;background:var(--block);border:1px solid var(--divider)}
+.segmini button{height:28px;padding:0 13px;border-radius:999px;font-size:11.5px;font-weight:600;color:var(--fg3);
+  transition:background var(--t-quick) var(--ease-out),color var(--t-quick) var(--ease-out)}
+.segmini button.on{background:var(--fg);color:var(--bg)}
+.hair{height:1px;background:var(--rule);border:0;margin:0}
+
+/* the stage, named on the screen itself — the panel and the phone never disagree */
+.stagePill{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;border-radius:999px;
+  background:var(--block);border:1px solid var(--divider);font-size:10px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--fg2);white-space:nowrap}
+.stagePill i{width:5px;height:5px;border-radius:50%;background:var(--fg3);flex:none}
+.stagePill[data-k="hold"]{background:var(--honey-soft);border-color:color-mix(in srgb,var(--honey) 30%,transparent);color:var(--honey)}
+.stagePill[data-k="hold"] i{background:var(--honey)}
+.stagePill[data-k="ok"]{background:var(--moss-soft);border-color:color-mix(in srgb,var(--moss) 28%,transparent);color:var(--moss)}
+.stagePill[data-k="ok"] i{background:var(--moss)}
+.stagePill[data-k="host"]{background:var(--plum-soft);border-color:color-mix(in srgb,var(--plum) 28%,transparent);color:var(--plum)}
+.stagePill[data-k="host"] i{background:var(--plum)}
+.stagePill[data-k="await"]{border-style:dashed;color:var(--fg2)}
+.stagePill[data-k="ended"]{opacity:.75}
+
+/* one shared countdown, everywhere a real hold is expiring */
+.a-count{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:var(--honey);
+  font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.a-count.warn{color:var(--alert)}
+
+/* =====================================================================================
+   OPTION A — "The day spine"   (unchanged from v2)
+   One day at a time, read top to bottom. The left rail is the time, the line is the day,
+   and the node on it is the stage. Chosen for the goer on the way somewhere.
+   ===================================================================================== */
+.a-wrap{position:absolute;inset:0;background:var(--bg)}
+.a-scroll{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;padding-bottom:134px;overscroll-behavior:contain}
+.a-scroll::-webkit-scrollbar{display:none}
+.a-head{padding:calc(var(--st) + 2px) 20px 0}
+.a-toprow{display:flex;align-items:center;gap:8px;height:36px}
+.a-brand{flex:1;display:flex;flex-direction:column;gap:1px;min-width:0}
+.a-monthbtn{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 12px;border-radius:999px;border:1px solid var(--rule);
+  font-size:11.5px;font-weight:600;color:var(--fg2);background:var(--sel)}
+.a-monthbtn svg{width:13px;height:13px;opacity:.7}
+.a-title{font-family:var(--serif);font-size:29px;font-weight:400;letter-spacing:-.025em;line-height:1.06;margin:13px 0 0}
+.a-title em{font-style:normal;color:var(--fg3)}
+.a-sub{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:8px 0 0;font-size:11.5px;color:var(--fg2);line-height:1.45}
+.a-sub .item::before{content:"·";margin-right:7px;color:var(--fg3);font-weight:700}
+.a-sub .item:first-child::before{content:none;margin:0}
+.a-sub b{font-weight:600;color:var(--fg)}
+/* the stage sentence: one line of copy that belongs to the stage, not to the plan */
+.a-notice{display:flex;gap:8px;align-items:flex-start;margin:12px 0 0;padding:10px 12px;border-radius:13px;
+  background:var(--block);font-size:11px;line-height:1.5;color:var(--fg2);animation:riseIn var(--t-base) var(--ease-spring) both}
+.a-notice svg{width:13px;height:13px;flex:none;margin-top:1px;color:var(--clay)}
+.a-notice.hold{background:var(--honey-soft);color:var(--honey)}
+.a-notice.hold svg{color:var(--honey)}
+/* the status bar's strip of paper: content scrolls under it, never through it */
+.a-wrap::before,.b-wrap::before,.pane::before{content:"";position:absolute;left:0;right:0;top:0;height:var(--st);
+  z-index:9;pointer-events:none;
+  background:linear-gradient(180deg,var(--bg) 52%,color-mix(in srgb,var(--bg) 84%,transparent) 88%,transparent)}
+.a-sticky{position:sticky;top:var(--st);z-index:6;background:var(--bg);padding-top:0;margin-top:12px;
+  box-shadow:0 10px 14px -14px rgba(27,25,22,.4)}
+.a-strip{display:flex;gap:2px;padding:4px 14px 8px}
+.a-day{flex:1;min-width:0;border-radius:15px;padding:7px 0 8px;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--fg);
+  transition:background var(--t-quick) var(--ease-out),color var(--t-quick) var(--ease-out),transform var(--t-press) var(--ease-out)}
+.a-day:active{transform:scale(.94)}
+.a-day .w{font-size:9px;letter-spacing:.09em;text-transform:uppercase;opacity:.66;font-weight:700}
+.a-day b{font-size:16px;font-weight:500;line-height:1;font-variant-numeric:tabular-nums}
+.a-day .dj{width:4px;height:4px;border-radius:50%;background:transparent;margin-top:3px}
+.a-day.has .dj{background:var(--moss)}
+.a-day.hason .dj{background:var(--honey)}
+.a-day.today b{text-decoration:underline;text-underline-offset:4px;text-decoration-thickness:1.5px}
+.a-day.on{background:var(--fg);color:var(--bg)}
+.a-day.on .w{opacity:.82}
+.a-day.on .dj{background:var(--bg)}
+.a-day.on.hason .dj{background:var(--honey)}
+.a-modes{display:flex;align-items:center;gap:8px;padding:0 18px 10px}
+.a-modes .segmini button span{opacity:.6;margin-left:4px;font-variant-numeric:tabular-nums}
+
+.a-agenda{padding:14px 18px 0}
+.a-row{display:grid;grid-template-columns:46px 18px minmax(0,1fr);align-items:start;padding-bottom:11px;
+  animation:riseIn var(--t-base) var(--ease-spring) both}
+.a-row:nth-child(1){animation-delay:20ms}.a-row:nth-child(2){animation-delay:60ms}
+.a-row:nth-child(3){animation-delay:100ms}.a-row:nth-child(4){animation-delay:140ms}
+.a-row:nth-child(5){animation-delay:180ms}.a-row:nth-child(6){animation-delay:220ms}
+.a-time{font-size:12.5px;font-weight:600;color:var(--fg2);padding:10px 6px 0 0;text-align:right;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.a-time small{display:block;font-size:9px;font-weight:600;color:var(--fg2);letter-spacing:.04em;margin-top:1px}
+.a-spine{align-self:stretch;position:relative;display:flex;justify-content:center}
+.a-spine::before{content:"";position:absolute;top:0;bottom:-11px;width:1px;background:var(--rule)}
+.a-row:first-child .a-spine::before{top:14px}
+.a-row:last-child .a-spine::before{bottom:auto;height:18px}
+.a-node{position:relative;z-index:1;width:11px;height:11px;border-radius:50%;margin-top:14px;background:var(--bg);border:1.5px solid var(--fg)}
+.a-row.s-booked .a-node{background:var(--moss);border-color:var(--moss)}
+.a-row.s-hold .a-node{background:var(--honey);border-color:var(--honey);animation:holdPulse 2.6s var(--ease-out) infinite}
+.a-row.s-await .a-node{background:var(--bg);border-color:var(--fg3);border-style:dashed}
+.a-row.s-host .a-node{background:var(--plum);border-color:var(--plum)}
+.a-row.s-added .a-node{background:var(--clay);border-color:var(--clay)}
+.a-row.s-ended .a-node{background:var(--bg);border-color:var(--rule)}
+.a-row.s-disc .a-node{background:var(--sel);border-color:var(--fg3);border-style:dashed}
+.a-row.s-live .a-node{background:var(--clay);border-color:var(--clay);
+  animation:livePulse 1.9s var(--ease-out) infinite}
+
+.a-card{position:relative;overflow:hidden;background:var(--sel);border:1px solid var(--rule);border-radius:16px;
+  padding:11px 13px 11px;box-shadow:var(--shadow-1);text-align:left;width:100%;
+  transition:transform var(--t-press) var(--ease-out),box-shadow var(--t-base) var(--ease-out)}
+.a-card:active{transform:scale(.99)}
+.a-card .ttl{font-size:14.5px;font-weight:600;letter-spacing:-.011em;line-height:1.3;display:block}
+.a-card .meta{display:flex;align-items:center;gap:3px 9px;flex-wrap:wrap;font-size:11.5px;color:var(--fg2);margin-top:4px;line-height:1.4}
+.a-card .meta span,.c-row .mm span,.c-hero .meta span{white-space:nowrap}
+.a-card .a-state{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:9px}
+.a-card .a-note{font-size:10.5px;color:var(--fg2);margin-top:6px;line-height:1.45}
+.a-card .acts{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:9px}
+.a-card.hold{border-color:color-mix(in srgb,var(--honey) 42%,var(--rule));background:linear-gradient(180deg,var(--honey-soft),var(--sel) 66%)}
+.a-card.hold::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--honey)}
+.a-card.await{border-style:dashed;background:transparent;box-shadow:none}
+.a-card.host{border-color:color-mix(in srgb,var(--plum) 34%,var(--rule));background:linear-gradient(180deg,var(--plum-soft),var(--sel) 72%)}
+.a-card.ended{background:var(--block);border-color:var(--divider);box-shadow:none;opacity:.7}
+.a-card.disc{border-style:dashed;background:transparent;box-shadow:none}
+.a-card.live{border-color:color-mix(in srgb,var(--clay) 40%,var(--rule));box-shadow:var(--shadow-2)}
+/* a hold is an object with a deadline: the bar drains as the minutes go */
+.a-drive{height:3px;border-radius:99px;background:color-mix(in srgb,var(--honey) 25%,transparent);
+  margin:10px -13px -11px;overflow:hidden}
+.a-drive i{display:block;height:100%;border-radius:99px;background:var(--honey);
+  transform-origin:left;transition:transform 1s linear}
+.a-moved{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:10px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--clay)}
+.a-now{display:flex;align-items:center;gap:8px;margin:2px 0 10px 52px}
+.a-now .ln{flex:1;height:1px;background:var(--clay);opacity:.5}
+.a-now span{font-size:8.5px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:var(--clay)}
+.a-now .dotc{width:5px;height:5px;border-radius:50%;background:var(--clay)}
+.a-foot{padding:6px 20px 0;font-size:10.5px;color:var(--fg3);line-height:1.5}
+.a-conflict{font-size:10.5px;color:var(--fg2);margin-top:6px;display:flex;gap:5px;align-items:flex-start}
+.a-conflict svg{width:12px;height:12px;margin-top:1px;color:var(--honey)}
+
+/* =====================================================================================
+   OPTION B — "The month book"   (v3: v2's month desk + plan book, merged)
+   The month page says when you are free. The stubs under it say what each day owes you.
+   The month already knows which day you touched, so nothing opens a second surface:
+   v2's peek sheet and v2's ribbon both became the book itself.
+   Class names keep their v2 prefixes (b- = month chrome, c- = the ticket language) so the
+   two halves can be compared with v2 line for line.
+   ===================================================================================== */
+.b-wrap{position:absolute;inset:0;background:
+  radial-gradient(120% 55% at 50% -12%, color-mix(in srgb,var(--inset) 88%,transparent), transparent 72%),var(--bg)}
+.b-scroll{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;overscroll-behavior:contain;
+  padding:calc(var(--st) + 2px) 0 132px}
+.b-scroll::-webkit-scrollbar{display:none}
+.b-head{display:flex;align-items:flex-end;gap:8px;padding:6px 20px 0}
+.b-head .l{flex:1;min-width:0}
+.b-head h1{font-family:var(--serif);font-size:31px;font-weight:400;margin:5px 0 0;line-height:1;letter-spacing:-.025em}
+.b-head h1 small{font-size:13px;letter-spacing:.05em;color:var(--fg3);margin-left:5px}
+.b-nav{display:flex;gap:5px;align-items:center}
+.b-nav .iconbtn{width:32px;height:32px}
+.b-grid{display:grid;grid-template-columns:repeat(7,1fr);padding:11px 14px 0}
+.b-wk{text-align:center;font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--fg3);padding-bottom:5px}
+.b-week{grid-column:1 / -1;display:grid;grid-template-columns:repeat(7,1fr);border-top:1px solid var(--divider);padding:1px 0}
+.b-week:first-of-type{border-top:0}
+.b-cell{position:relative;min-height:42px;border-radius:11px;padding:6px 0 4px;text-align:center;color:var(--fg);
+  transition:background var(--t-quick) var(--ease-out),color var(--t-quick) var(--ease-out),transform var(--t-press) var(--ease-out)}
+.b-cell:active{transform:scale(.93)}
+.b-cell b{display:block;font-size:14px;font-weight:500;line-height:1.1;font-variant-numeric:tabular-nums}
+.b-cell .dts{display:flex;gap:2px;justify-content:center;height:5px;margin-top:5px}
+.b-cell .dts i{width:4px;height:4px;border-radius:2px;background:var(--moss)}
+.b-cell .dts i.h{background:var(--honey)}
+.b-cell .dts i.p{background:var(--plum)}
+.b-cell .dts i.a{background:transparent;box-shadow:inset 0 0 0 1px var(--fg3)}
+/* shade is commitment: a day you hold a ticket for. Waiting gets an outline, not a shade. */
+.b-cell[data-n="1"]{background:color-mix(in srgb,var(--moss) 11%,transparent)}
+.b-cell[data-n="2"]{background:color-mix(in srgb,var(--moss) 19%,transparent)}
+.b-cell[data-n="3"]{background:color-mix(in srgb,var(--moss) 27%,transparent)}
+.b-cell.out{opacity:.3}
+.b-cell.today b{text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1.5px}
+.b-cell.on{background:var(--fg);color:var(--bg)}
+.b-cell.on .dts i{background:var(--bg)}
+.b-cell.on .dts i.h{background:var(--honey)}
+.b-cell.on .dts i.p{background:var(--plum)}
+.b-cell.on .dts i.a{background:transparent;box-shadow:inset 0 0 0 1px var(--bg)}
+.b-cell.holding{box-shadow:inset 0 0 0 1.4px var(--honey)}
+.b-cell.live{box-shadow:inset 0 0 0 1.4px var(--clay)}
+.b-cell.hosting{box-shadow:inset 0 0 0 1.4px var(--plum)}
+.b-cell.awaiting::after{content:"";position:absolute;inset:4px 6px;border-radius:8px;border:1.2px dashed var(--fg3);opacity:.5;pointer-events:none}
+.b-legend{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 20px 0;font-size:10px;color:var(--fg2)}
+.b-legend span{display:inline-flex;align-items:center;gap:5px}
+.b-legend i{width:7px;height:7px;border-radius:2px;background:var(--moss)}
+.b-legend i.h{background:var(--honey)}
+.b-legend i.p{background:var(--plum)}
+.b-open{padding:9px 20px 0;font-size:11px;color:var(--fg2);line-height:1.5;display:flex;gap:8px;align-items:flex-start}
+.b-open svg{width:13px;height:13px;flex:none;margin-top:1px;color:var(--moss)}
+.b-open.hold svg{color:var(--honey)}
+.b-open.live svg{color:var(--clay)}
+
+/* the day you picked, named above the book — the whole month is one tap away */
+.mb-picked{display:flex;align-items:center;gap:8px;margin:16px 20px 0;padding:9px 10px 9px 12px;border-radius:13px;
+  background:var(--block);border:1px solid var(--divider)}
+.mb-picked .k{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--fg3);font-weight:700}
+.mb-picked b{font-size:12.5px;font-weight:600;letter-spacing:-.005em}
+.mb-picked .n{font-size:10.5px;color:var(--fg3);font-variant-numeric:tabular-nums}
+.mb-picked .sp{flex:1}
+.mb-clear{height:26px;padding:0 10px;border-radius:999px;border:1px solid var(--rule);font-size:10.5px;font-weight:600;
+  color:var(--fg2);background:var(--sel);white-space:nowrap}
+.b-none{margin:14px 20px 0;padding:20px 16px;border-radius:16px;border:1.4px dashed var(--rule);text-align:center}
+.b-none h3{font-family:var(--serif);font-size:17px;font-weight:400;margin:0 0 4px}
+.b-none p{font-size:11.5px;color:var(--fg2);line-height:1.55;margin:0 0 11px}
+.b-none .chipsrow{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+.b-none .chipsrow button{height:30px;padding:0 12px;border-radius:999px;border:1px solid var(--rule);font-size:11px;font-weight:600;background:var(--sel)}
+
+/* --- the book: the stub language of Event Detail V8, now the body of the month --- */
+.c-hero{position:relative;margin:12px 20px 0;border-radius:20px;background:var(--sel);border:1px solid var(--rule);
+  box-shadow:var(--shadow-2);overflow:hidden;animation:riseIn var(--t-slow) var(--ease-spring) both}
+.c-hero .art{height:104px;position:relative;overflow:hidden}
+.c-hero .art .im{position:absolute;inset:0;transform:scale(1.02)}
+.c-hero .art .sh{position:absolute;inset:0;background:linear-gradient(180deg,rgba(10,9,7,.14) 0%,rgba(10,9,7,.28) 40%,rgba(10,9,7,.72) 100%)}
+.c-hero .dateblk{position:absolute;left:14px;bottom:10px;color:#FFF8EA;display:flex;align-items:baseline;gap:7px}
+.c-hero .dateblk b{font-family:var(--serif);font-size:27px;line-height:.85;font-weight:400}
+.c-hero .dateblk span{font-size:8.5px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;opacity:.9}
+.c-hero .nx{position:absolute;right:11px;top:11px;height:22px;padding:0 9px;border-radius:999px;
+  background:rgba(247,244,236,.94);color:#1B1916;font-size:8.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  display:inline-flex;align-items:center;gap:5px}
+.c-hero.hold{box-shadow:0 0 0 1.5px color-mix(in srgb,var(--honey) 55%,transparent),var(--shadow-2)}
+.c-hero.live{box-shadow:0 0 0 1.5px color-mix(in srgb,var(--clay) 55%,transparent),var(--shadow-2)}
+.c-hero .body{padding:13px 15px 0}
+.c-hero .ttl{font-family:var(--serif);font-size:21px;font-weight:400;line-height:1.12;margin:0;letter-spacing:-.02em}
+.c-hero .meta{display:flex;align-items:center;gap:2px 9px;flex-wrap:wrap;font-size:11px;color:var(--fg2);margin-top:5px}
+.c-hero .cd{display:flex;align-items:center;gap:7px;margin-top:9px;font-size:11.5px;font-weight:600;color:var(--honey);font-variant-numeric:tabular-nums}
+.c-hero .cd svg{width:13px;height:13px}
+.c-perf{position:relative;height:22px;margin-top:10px;display:flex;align-items:center;padding:0 0}
+.c-perf .ln{flex:1;border-top:1.5px dashed var(--rule)}
+.c-perf::before,.c-perf::after{content:"";position:absolute;top:50%;width:14px;height:14px;border-radius:50%;
+  background:var(--bg);transform:translateY(-50%);box-shadow:inset 0 0 0 1px var(--rule)}
+.c-perf::before{left:-22px}
+.c-perf::after{right:-22px}
+.c-acts{display:flex;align-items:center;gap:7px;padding:2px 15px 14px;flex-wrap:wrap}
+.c-group{padding:20px 20px 0}
+.c-group h2{display:flex;align-items:center;gap:8px;font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--fg3);margin:0 0 4px;font-weight:700}
+.c-group h2 .ln{flex:1;height:1px;background:var(--rule)}
+.c-group h2 .n{font-variant-numeric:tabular-nums;letter-spacing:.04em}
+.c-row{display:grid;grid-template-columns:3px 44px minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;text-align:left;
+  padding:10px 0;border-bottom:1px solid var(--divider);color:var(--fg);transition:background var(--t-quick) var(--ease-out)}
+.c-row:last-child{border-bottom:0}
+.c-row .bar{align-self:stretch;margin:3px 0;border-radius:2px;background:var(--moss)}
+.c-row.s-hold .bar{background:var(--honey)} .c-row.s-host .bar{background:var(--plum)}
+.c-row.s-added .bar{background:var(--clay)} .c-row.s-ended .bar{background:var(--rule)}
+.c-row.s-await .bar{background:repeating-linear-gradient(180deg,var(--fg3) 0 3px,transparent 3px 6px);opacity:.6}
+.c-row.s-disc .bar{background:var(--rule)}
+.c-th{width:44px;height:44px;border-radius:11px;position:relative;overflow:hidden;border:1px solid var(--divider)}
+.c-th.dash{border-style:dashed;background:transparent;display:grid;place-items:center;color:var(--fg3)}
+.c-row .tt{font-size:13.5px;font-weight:600;letter-spacing:-.01em;line-height:1.25;display:block}
+.c-row .mm{font-size:10.5px;color:var(--fg2);margin-top:3px;display:flex;align-items:center;gap:2px 9px;flex-wrap:wrap}
+.c-row.s-ended{opacity:.6}
+.c-row .rt{display:flex;flex-direction:column;align-items:flex-end;gap:4px;text-align:right}
+.c-row .rt .tm{font-size:11px;font-weight:600;color:var(--fg2);font-variant-numeric:tabular-nums}
+.c-blank{margin:14px 20px 0;padding:22px 18px;border-radius:18px;border:1.4px dashed var(--rule);text-align:center}
+.c-blank .ic{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;margin:0 auto 10px;background:var(--block);color:var(--fg2)}
+.c-blank h3{font-family:var(--serif);font-size:18px;font-weight:400;margin:0 0 5px}
+.c-blank p{font-size:11.5px;color:var(--fg2);line-height:1.55;margin:0 0 13px}
+.c-chips{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+.c-chips button{height:30px;padding:0 12px;border-radius:999px;border:1px solid var(--rule);font-size:11px;font-weight:600;background:var(--sel)}
+.c-past{padding:14px 20px 0}
+.c-pastbtn{display:flex;align-items:center;gap:8px;width:100%;padding:9px 0;font-size:11px;color:var(--fg3);font-weight:600;text-align:left}
+.c-pastbtn .ln{flex:1;height:1px;background:var(--divider)}
+.c-discoverNote{display:flex;gap:6px;align-items:flex-start;font-size:10.5px;color:var(--fg2);margin-top:6px}
+.c-discoverNote svg{width:12px;height:12px;flex:none;margin-top:1px;color:var(--honey)}
+
+/* =====================================================================================
+   THE PLAN, on the right-hand pane (Duo inner display, iPad landscape)
+   One renderer for both options: the stage is the same object whichever list you came
+   from, so the detail can be too.
+   ===================================================================================== */
+.pd{padding:0 24px}
+.pd-hero{position:relative;border-radius:20px;overflow:hidden;background:var(--night);color:#FFF8EA;height:168px}
+.pd-hero .im{position:absolute;inset:0;transform:scale(1.02)}
+.pd-hero .sh{position:absolute;inset:0;background:linear-gradient(180deg,rgba(10,9,7,.05) 0%,rgba(10,9,7,.3) 45%,rgba(10,9,7,.86) 100%)}
+.pd-hero .in{position:absolute;left:16px;right:16px;bottom:14px}
+.pd-hero .k{font-size:8.5px;letter-spacing:.18em;text-transform:uppercase;font-weight:700;opacity:.86}
+.pd-hero h2{font-family:var(--serif);font-weight:400;font-size:25px;line-height:1.1;letter-spacing:-.02em;margin:5px 0 0}
+.pd-hero .m{font-size:11px;opacity:.82;margin-top:5px;display:flex;gap:9px;flex-wrap:wrap}
+.pd-head{display:flex;align-items:center;gap:8px;padding:0 0 10px}
+.pd-head h3{font-family:var(--serif);font-size:17px;font-weight:400;margin:0;letter-spacing:-.01em}
+.pd-head .sp{flex:1}
+.pd-state{margin-top:14px;padding:12px 14px;border-radius:14px;background:var(--block);border:1px solid var(--divider)}
+.pd-state.hold{background:var(--honey-soft);border-color:color-mix(in srgb,var(--honey) 26%,transparent)}
+.pd-state.ok{background:var(--moss-soft);border-color:color-mix(in srgb,var(--moss) 24%,transparent)}
+.pd-state.host{background:var(--plum-soft);border-color:color-mix(in srgb,var(--plum) 24%,transparent)}
+.pd-state.await{background:transparent;border-style:dashed}
+.pd-state .r{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pd-state p{margin:7px 0 0;font-size:11.5px;line-height:1.5;color:var(--fg2)}
+.pd-state .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.pd-rows{margin-top:16px;border-top:1px solid var(--rule)}
+.pd-row{display:grid;grid-template-columns:88px minmax(0,1fr);gap:12px;padding:11px 0;border-bottom:1px solid var(--divider);align-items:start}
+.pd-row dt{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg3);font-weight:700;padding-top:3px}
+.pd-row dd{margin:0;font-size:12.5px;line-height:1.45}
+.pd-row dd b{font-weight:600}
+.pd-row dd small{display:block;font-size:10.5px;color:var(--fg3);margin-top:2px}
+.pd-sec{margin-top:18px}
+.pd-sec h4{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--fg3);font-weight:700;margin:0 0 9px}
+.pd-steps{list-style:none;margin:0;padding:0;position:relative}
+.pd-steps li{position:relative;display:grid;grid-template-columns:19px 1fr;gap:10px;padding:0 0 13px;font-size:11.5px;line-height:1.45}
+.pd-steps li:not(:last-child)::before{content:"";position:absolute;left:9px;top:17px;bottom:1px;width:1px;background:var(--divider)}
+.pd-steps .n{width:19px;height:19px;border-radius:50%;border:1px solid var(--rule);display:grid;place-items:center;
+  font-size:9px;font-weight:700;color:var(--fg3);background:var(--bg)}
+.pd-steps li.done .n{background:var(--moss);border-color:transparent;color:#fff}
+.pd-steps li.now .n{background:var(--honey);border-color:transparent;color:#fff}
+.pd-steps b{display:block;font-weight:600;padding-top:1px}
+.pd-steps small{display:block;color:var(--fg3);font-size:10.5px;margin-top:2px}
+.pd-guests{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.pd-guests div{aspect-ratio:1;border-radius:9px;background:var(--block);display:grid;place-items:center;
+  font-size:10.5px;font-weight:600;color:var(--fg2)}
+.pd-note{font-size:10.5px;color:var(--fg3);line-height:1.5;margin-top:14px;padding-top:12px;border-top:1px solid var(--divider)}
+.pd-empty{padding:40px 24px;text-align:center;color:var(--fg2);font-size:12px;line-height:1.55}
+
+/* ---------------- dock ---------------- */
+/* the dock: 5 slots, icon-only, one ink disc on the active tab (BottomTabBar.jsx). Schedule is active here. */
+.dock{position:absolute;left:50%;transform:translateX(-50%);bottom:16px;z-index:60;display:flex;align-items:center;gap:1px;padding:6px;
+  border-radius:999px;background:var(--glass-strong);border:1px solid var(--glass-line);
+  box-shadow:var(--glass-shadow),var(--rim);backdrop-filter:blur(26px) saturate(1.7);-webkit-backdrop-filter:blur(26px) saturate(1.7);
+  transition:opacity var(--t-base) var(--ease-out),transform var(--t-base) var(--ease-out),left var(--t-base) var(--ease-soft)}
+.dock.under{opacity:0;transform:translateX(-50%) translateY(14px);pointer-events:none}
+.dock button{width:54px;height:46px;border-radius:999px;display:grid;place-items:center;color:var(--fg3);position:relative;
+  transition:color var(--t-quick) var(--ease-out),transform var(--t-press) var(--ease-out)}
+.dock button:active{transform:scale(.92)}
+.dock button.on{color:var(--bg)}
+.dock button.on::before{content:"";position:absolute;width:34px;height:34px;border-radius:50%;background:var(--fg)}
+.dock svg{position:relative;width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.dock .plus{color:var(--fg)}
+.dock .plus i{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:var(--block);border:1px solid var(--rule)}
+.dock .plus svg{width:17px;height:17px;stroke-width:2.2}
+
+/* toast, above the dock */
+.toast{position:absolute;left:16px;right:16px;bottom:84px;z-index:70;display:flex;align-items:center;gap:9px;
+  padding:11px 14px;border-radius:14px;background:var(--glass-strong);border:1px solid var(--glass-line);
+  box-shadow:var(--glass-shadow),var(--rim);backdrop-filter:blur(22px) saturate(1.6);-webkit-backdrop-filter:blur(22px) saturate(1.6);
+  font-size:12.5px;font-weight:500;color:var(--fg);
+  transform:translateY(10px);opacity:0;pointer-events:none;transition:opacity var(--t-quick) var(--ease-out),transform var(--t-base) var(--ease-spring)}
+.toast.on{opacity:1;transform:none}
+.toast svg{width:15px;height:15px;color:var(--moss);flex:none}
+
+/* entrance: one shared rise-and-fade, staggered by the rows themselves */
+@keyframes riseIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes popIn{from{transform:scale(.82);opacity:0}to{transform:none;opacity:1}}
+@keyframes holdPulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--honey) 55%,transparent)}
+  70%{box-shadow:0 0 0 9px color-mix(in srgb,var(--honey) 0%,transparent)}100%{box-shadow:0 0 0 0 transparent}}
+@keyframes livePulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--clay) 50%,transparent)}
+  70%{box-shadow:0 0 0 8px color-mix(in srgb,var(--clay) 0%,transparent)}100%{box-shadow:0 0 0 0 transparent}}
+
+/* reduced motion is a first-class state, not a fallback: nothing travels, everything still lands */
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after{animation-duration:1ms !important;animation-delay:0ms !important;
+  transition-duration:1ms !important;transition-delay:0ms !important}
+:root[data-motion="reduced"] .a-row.s-hold .a-node,
+:root[data-motion="reduced"] .a-row.s-live .a-node{animation:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--honey) 32%,transparent)}
+@media (prefers-reduced-motion:reduce){
+  .a-row,.c-hero,.opt{animation:none !important}
+  .a-row.s-hold .a-node,.a-row.s-live .a-node{animation:none}
+}
+/* If a stage is too small for the panel + phone side by side, the phone goes first. */
+@media (max-width:900px){
+  .stage{flex-direction:column-reverse;align-items:center;gap:26px}
+  .stagePhone{order:1}
+  .panel{position:static;max-height:none;width:min(560px,100%);order:2}
+}
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <!-- ======================= design panel ======================= -->
+  <aside class="panel">
+    <div class="eyebrow">banbe · prototype · Schedule v3</div>
+    <h1>Two questions, one month book</h1>
+    <p class="lede">v2 offered three architectures, and two of them were really one job split in half: the month desk answered “when am I free”, the plan book answered “what do I owe”, and a person had to choose a navigation mode before they could ask either. v3 merges them. The month page stays the table of contents, the plans underneath it are stubs in the ticket language Event Detail V8 already speaks, and nothing opens a second surface — no sheet, no ribbon, no mode switch. Option A is untouched. Both options still have to survive all eight stages, on a phone, folded, and on a tablet.</p>
+
+    <div class="ctl">
+      <label>Stage — the life of a plan</label>
+      <div class="chips" id="segStage">
+        <button class="chipStage on" data-k="life"><i></i>Full week</button>
+        <button class="chipStage" data-k="open"><i></i>Open</button>
+        <button class="chipStage" data-k="hold"><i></i>Held</button>
+        <button class="chipStage" data-k="await"><i></i>Awaiting</button>
+        <button class="chipStage" data-k="ok"><i></i>Confirmed</button>
+        <button class="chipStage" data-k="dayof"><i></i>Day-of</button>
+        <button class="chipStage" data-k="host"><i></i>Hosting</button>
+        <button class="chipStage" data-k="ended"><i></i>Ended</button>
+      </div>
+    </div>
+
+    <div class="optCard" id="stageCard">
+      <div class="n"><span id="stageKicker">The whole life</span><b id="stageName">The full week</b></div>
+      <p id="stageRule">Every state in the order the week happens, which is what the screen must do on any ordinary Tuesday.</p>
+      <dl>
+        <dt>Must answer</dt><dd id="stageAsk">What does my week look like?</dd>
+        <dt>This option</dt><dd id="stageHow">The spine shows every state as a node colour, and each card carries its own verb.</dd>
+      </dl>
+    </div>
+
+    <div class="ctl" style="margin-top:14px">
+      <label>Option</label>
+      <div class="seg" id="segOption">
+        <button class="on" data-opt="a">A · Day spine</button>
+        <button data-opt="b">B+C · Month book</button>
+      </div>
+      <p class="mini-hint">v2's B (month desk) and C (plan book) are one option: <b>B+C</b>. Flip it here, with the rail above the phone, or with the keys 1 and 2.</p>
+    </div>
+
+    <div class="optCard" id="optCard">
+      <div class="n"><span id="optKicker">Option A</span><b id="optName">The day spine</b></div>
+      <p id="optDesc">A single day, read down a time line. The rail is the clock, the line is the day, and the node on the line is the stage of that plan.</p>
+      <dl>
+        <dt>Answers</dt><dd id="optAnswers">What's next, and what do I have to do about it</dd>
+        <dt>Best at</dt><dd id="optBest">The day you're in — the goer on the way somewhere</dd>
+        <dt>Costs</dt><dd id="optCost">You can't see a free weekend without leaving the day</dd>
+      </dl>
+    </div>
+
+    <div class="swapNote">
+      <b>How to go back and forth</b>
+      <span><i>1</i><span>The rail <b>above the phone</b>, or the Option control here. Both stay in sync, both ways.</span></span>
+      <span><i>2</i><span>Keys <kbd>1</kbd> and <kbd>2</kbd>, anywhere in the page.</span></span>
+      <span><i>3</i><span>Inside the app, A's month chip opens B+C. There is no B+C → A control on purpose: a mode switch inside the screen was the thing this merge deleted.</span></span>
+    </div>
+
+    <div class="ctl" style="margin-top:14px">
+      <label>Device stage</label>
+      <div class="seg" id="segDevice">
+        <button class="on" data-dev="solo">Solo</button>
+        <button data-dev="duo">Duo</button>
+        <button data-dev="ipad">iPad</button>
+      </div>
+    </div>
+    <div class="ctl" id="variantCtl" hidden>
+      <label id="variantLabel">Duo state</label>
+      <div class="seg" id="segVariant">
+        <button class="on" data-v="a">Inner display</button>
+        <button data-v="b">Cover screen</button>
+      </div>
+    </div>
+
+    <div class="ctl" style="display:flex;gap:10px">
+      <div style="flex:1">
+        <label>Theme</label>
+        <div class="seg" id="segTheme"><button class="on" data-theme="light">Light</button><button data-theme="dark">Dark</button></div>
+      </div>
+      <div style="flex:1">
+        <label>Motion</label>
+        <div class="seg" id="segMotion"><button class="on" data-motion="full">Full</button><button data-motion="reduced">Reduced</button></div>
+      </div>
+    </div>
+    <div class="ctl">
+      <label>Haptics</label>
+      <div class="seg" id="segHaptics"><button class="on" data-haptics="on">On</button><button data-haptics="off">Off</button></div>
+    </div>
+    <button class="replay" id="replay">Replay the stage</button>
+
+    <div class="sect">
+      <h2>The two, side by side</h2>
+      <p class="hint">Switch the phone with the rail above it, the Option control here, or keys 1 / 2; this table stays put so the trade is visible at any stage.</p>
+      <table class="cmp">
+        <thead><tr><th></th><th>A · Day spine</th><th>B+C · Month book</th></tr></thead>
+        <tbody>
+          <tr><th>Opens on</th><td>Today, at the next thing</td><td>The month, then the next plan's stub</td></tr>
+          <tr><th>Answers</th><td>What's next</td><td>When am I free, and what does each day owe me</td></tr>
+          <tr><th>Reads as</th><td>A vertical time line</td><td>A printed month page over a book of stubs</td></tr>
+          <tr><th>Strong</th><td>State per plan, one glance</td><td>Free days and the one action that matters, on one surface</td></tr>
+          <tr><th>Weak</th><td>Finding a free weekend</td><td>The first plan sits lower — the month takes the top third</td></tr>
+          <tr><th>On Duo / iPad</th><td>Day list + the plan beside it</td><td>Month and book on the left, the plan on the right</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="sect">
+      <h2>The eight stages, and what each may say</h2>
+      <p class="hint">Set the Stage control and the phone rebuilds itself for that moment; the same text appears under the stage card above.</p>
+      <table class="cmp">
+        <thead><tr><th>Stage</th><th>What it must say</th><th>How each option does it</th></tr></thead>
+        <tbody>
+          <tr><th>1 · Open</th><td>Nothing planned. Not an error, and not a dead end.</td><td><b>A</b> the spine continues, hollow, one action · <b>B+C</b> the month keeps its shape with empty days dimmed, and the book becomes a dashed blank stub with three ways out</td></tr>
+          <tr><th>2 · Held</th><td>A seat is yours for 21 minutes. Pay, extend, or let it go.</td><td><b>A</b> honey node, live countdown, a bar that drains · <b>B+C</b> a honey ring on the day cell and the hold's own stub under it, countdown and Pay in one glance</td></tr>
+          <tr><th>3 · Awaiting</th><td>You paid; the host hasn't confirmed. Nothing to do but wait — say so.</td><td><b>A</b> dashed card, dashed node, "usually within an hour" · <b>B+C</b> a dashed day outline (waiting is not busy) and an Awaiting stamp with Message the host</td></tr>
+          <tr><th>4 · Confirmed</th><td>You have a ticket. The next useful thing is the ticket itself.</td><td><b>A</b> moss node, moss stamp, Open ticket · <b>B+C</b> a solid moss dot in the day and the stub's tear-off opens the ticket</td></tr>
+          <tr><th>5 · Day-of</th><td>Where, when, how long to get there. No hunting.</td><td><b>A</b> now-line, live node, countdown, Directions · <b>B+C</b> the day is ringed in clay and the book opens on tonight's live stub</td></tr>
+          <tr><th>6 · Hosting</th><td>It is a job, not a booking. Say what is left to do.</td><td><b>A</b> plum node, doors time, guest count · <b>B+C</b> a plum outline on the day, and the stub carries the run of show instead of a price</td></tr>
+          <tr><th>7 · Ended</th><td>History, not clutter. Keep it, don't lead with it.</td><td><b>A</b> grey node, 70% opacity, "Ended" · <b>B+C</b> grey dots on the month, and ended plans folded under "Ended" at the bottom of the book</td></tr>
+          <tr><th>8 · Device</th><td>The same stage on a phone, folded, and on a tablet.</td><td>Both options keep their list on the left and give the plan the right pane — never a stretched phone column</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="quest">
+      <div class="questHead"><h2>Roadmap</h2><span>7 / 8</span></div>
+      <div class="questBar"><i style="width:88%"></i></div>
+      <ol class="questList">
+        <li class="done"><span class="qNode">✓</span><div><b>Foundations</b><small>Tokens, serif, spacing, the motion scale</small></div><em>v1</em></li>
+        <li class="done"><span class="qNode">✓</span><div><b>Three architectures</b><small>Day spine, month desk, plan book — not three skins</small></div><em>v1</em></li>
+        <li class="done"><span class="qNode">✓</span><div><b>Six plan states</b><small>Colour, words and a verb for each</small></div><em>v1</em></li>
+        <li class="done"><span class="qNode">✓</span><div><b>Stage system</b><small>One control walks the life of a plan; every option rebuilds for each moment</small></div><em>v2</em></li>
+        <li class="done"><span class="qNode">✓</span><div><b>Stage motion</b><small>Rows rise per stage, the hold drains, the pay → awaiting → confirmed hand-off plays</small></div><em>v2</em></li>
+        <li class="done"><span class="qNode">✓</span><div><b>Device stages</b><small>Solo, Duo inner/cover, iPad landscape/portrait, list + detail</small></div><em>v2</em></li>
+        <li class="done"><span class="qNode">✓</span><div><b>One month book</b><small>v2's B and C merged: the month page and the plan stubs, one surface, no sheet</small></div><em>v3</em></li>
+        <li class="current"><span class="qNode">8</span><div><b>Ship one option</b><small>Lift it onto ScheduleView.swift and Schedule.jsx with the real states</small></div><em>next</em></li>
+      </ol>
+      <div class="questNext"><span>Next up</span><b>Pick the option, then map the eight stages onto the real booking states in schedulePresentation.js</b></div>
+    </div>
+
+    <details class="notes">
+      <summary>Why B and C are one option now</summary>
+      <ul>
+        <li><b>They were never two products.</b> v2's month desk and plan book both sat on the same list of plans and differed only in which control came first: a grid, or a ribbon. Two entry points, one job — and the person had to know which they wanted before they could look.</li>
+        <li><b>The peek sheet was a second navigation mode wearing a gesture.</b> In v2's B you picked a day, then dragged a sheet, then read rows that were plainer than the book's stubs. The month already knew which day you touched, so v3 puts the day's plans in the flow and spends the gesture budget on nothing at all.</li>
+        <li><b>The book was missing the only thing a month gives you.</b> v2's C had a 14-slot ribbon: fine for jumping, useless for “am I free next Thursday”. The month page is that ribbon with the answer in it.</li>
+        <li><b>No information is lost in the merge.</b> Month marks (shade, rings, dashes) came from B; the hero stub, the tear-off perforation, the week groups and the folded history came from C. What went away is the sheet, the ribbon, the second scroll and the mode switch.</li>
+        <li><b>Two options is the honest number.</b> One is a day read down a time line — the goer on the way somewhere. The other is a month read down a book — the person deciding, holding and paying. Anything else v2 offered was a variation of these two.</li>
+      </ul>
+    </details>
+
+    <details class="notes">
+      <summary>What the research says</summary>
+      <h3>Evidence used, and where it stops</h3>
+      <ol class="ev">
+        <li><b>Baymard measured 1,700+ hours and 311 think-aloud sessions on booking sites; a calendar that doesn't show what's inside a date makes people click blindly.</b> One participant: "I had to click on a bunch of different dates in order to figure out what date I could even go." <em>This is why B's month shows what each day holds — shade for a ticket, a honey ring for a hold, a dashed outline for waiting — instead of a bare number.</em> <a href="https://baymard.com/research-articles/tours-and-experiences-launch" target="_blank" rel="noopener">Baymard, 2023</a></li>
+        <li><b>The same research found the picker must lead to detail, not a picture.</b> A user tapping a date that only enlarged a photo: "you'd think that you could click on it, but now it's just enlarging the photo." <em>B's day goes straight to the stubs in the flow — content, not a preview, and no sheet between the tap and the answer.</em> <a href="https://baymard.com/ecommerce-design-examples/date-picker" target="_blank" rel="noopener">Baymard, date picker examples</a></li>
+        <li><b>A short list beats a calendar when there are few dates — cap it at about ten.</b> Calendars suit dates near the present; scrolling a long picker is "slow and unproductive". <em>B's book is grouped and short (Today, this week, next week, later); the month is there for the scan, not for the scroll.</em> <a href="https://www.nngroup.com/articles/date-input/" target="_blank" rel="noopener">NN/g, Li 2017</a></li>
+        <li><b>Progressive disclosure: two levels, no more, and the second level must be labelled with what's inside.</b> "Designs that go beyond 2 disclosure levels typically have low usability." <em>B has exactly two: the month, then the day's stubs. v2's B added a third (grid → sheet → plan) and that is the level the merge removed.</em> <a href="https://www.nngroup.com/articles/progressive-disclosure/" target="_blank" rel="noopener">NN/g, Nielsen 2006</a></li>
+        <li><b>Empty states have three jobs: say what the system is doing, teach, and offer a direct pathway.</b> Never show "no records" while still loading, and never a blank container. <em>The Open stage is written twice, once per option, and neither is a shrug.</em> <a href="https://www.nngroup.com/articles/empty-state-interface-design/" target="_blank" rel="noopener">NN/g, Kaplan 2021</a></li>
+        <li><b>Recognition beats recall: saved lists and history are cheap memory.</b> <em>B is literally a book of what you already committed to; A names the next thing so you don't count days.</em> <a href="https://www.nngroup.com/articles/recognition-and-recall/" target="_blank" rel="noopener">NN/g, Budiu 2024</a></li>
+        <li><b>Chunking: visually distinct, labelled groups scan faster and are remembered better than one undifferentiated stream.</b> <em>Days are headers in A, weeks are groups in B, and the whole screen is a chunk per stage.</em> <a href="https://www.nngroup.com/articles/chunking/" target="_blank" rel="noopener">NN/g, Moran 2016</a></li>
+        <li><b>WCAG 2.2.1 (Level A): if a time limit can't be extended, you must warn before it expires and allow extension — at least 20 seconds, at least ten times.</b> <em>The held stage warns and offers Pay and Extend, in both options, instead of quietly expiring.</em> <a href="https://www.w3.org/WAI/WCAG22/Understanding/timing-adjustable.html" target="_blank" rel="noopener">W3C WAI</a></li>
+        <li><b>Scarcity has a documented failure mode: if the countdown looks invented, trust falls.</b> <em>So the timer only exists where a real hold expires, it counts from the server's deadline, and it never invents urgency on a normal event.</em> <a href="https://www.nngroup.com/articles/scarcity-principle-ux/" target="_blank" rel="noopener">NN/g, Cardello 2014</a></li>
+        <li><b>Response times: 0.1 s feels direct, 1 s keeps flow, 10 s needs a progress indicator.</b> <em>The countdown ticks once a second and never blocks a tap; picking a day redraws the book immediately.</em> <a href="https://www.nngroup.com/articles/response-times-3-important-limits/" target="_blank" rel="noopener">NN/g, Nielsen 1993</a></li>
+        <li><b>Apple HIG: 44×44 pt default targets (28 pt absolute minimum), support at least 200% text growth, replace zoom/scale motion with fades under Reduce Motion, and put the most important thing high and leading.</b> <em>Stub rows, dock slots and buttons clear 44 pt; month cells are 42 pt tall with 2 pt gutters, which is the densest control on the screen and is only acceptable because every cell is a full-width column of the grid. The demo ships a Reduced switch.</em> <a href="https://developer.apple.com/design/human-interface-guidelines/accessibility" target="_blank" rel="noopener">Apple HIG, Accessibility</a></li>
+        <li><b>iPadOS expects a split: lists on one side, the selected item on the other, and the right side is never empty.</b> <em>The wide stage does exactly that, with no Back on the detail side because nothing was pushed.</em> <a href="https://developer.apple.com/design/human-interface-guidelines/layout" target="_blank" rel="noopener">Apple HIG, Layout</a></li>
+        <li><b>Material 3: 48×48 dp minimum touch targets, and a modal bottom sheet opens capped at 50% of screen height.</b> <em>v3 keeps the sheet's fractions in the safe area instead of the sheet: the book starts in the top third of the scroll, and nothing is ever half-covered.</em> <a href="https://m3.material.io/components/bottom-sheets/guidelines" target="_blank" rel="noopener">Material 3, bottom sheets</a></li>
+        <li><b>Google Calendar itself opens on a list of upcoming events, and its "Schedule" mode is a list by day.</b> The incumbents treat the grid as a tool, not a home. <a href="https://support.google.com/calendar/answer/6110849" target="_blank" rel="noopener">Google Calendar Help</a></li>
+        <li><b>What the market does:</b> Fantastical ships a horizontal "DayTicker" plus full day/week/month views; Notion Calendar merges deadlines into the calendar; Amie merges todos and reshuffles the day. All three are vendor claims, not research — they show the direction, they don't prove it. <a href="https://flexibits.com/fantastical" target="_blank" rel="noopener">Fantastical</a> · <a href="https://www.notion.com/product/calendar" target="_blank" rel="noopener">Notion Calendar</a></li>
+      </ol>
+      <h3>What is not researched</h3>
+      <ul>
+        <li><b>No study on a mobile time gutter.</b> The left-rail argument is transfer from desktop eye-tracking, plus convention. Ship it because it's cheap, not because it's proven.</li>
+        <li><b>No documented dot cap.</b> Neither Apple nor Google says how many dots a day cell may show. Ours caps at 3 and then lets the book say the rest — a product choice, labelled as one.</li>
+        <li><b>No HIG or Material page on calendars or agenda views.</b> Both stop at "pickers". Everything above the picker is our judgement, defended by the studies that do exist.</li>
+        <li><b>No research on stage-by-stage schedule UIs.</b> The eight stages come from the app's own booking states (<code>schedulePresentation.js</code>, notes 27/44), not from a study. The claim is narrower than it sounds: a screen that changes with the state is cheaper to read than one that explains the state in a paragraph.</li>
+        <li><b>No research on merging a calendar and a list on one phone screen.</b> The merge is an argument from progressive disclosure and from v2's own friction, not from a measured study. Treat it as the thing to test, not the thing that is proven.</li>
+        <li><b>Baymard's full date-picker guideline set is paywalled.</b> The free summaries are what's quoted here.</li>
+      </ul>
+    </details>
+
+    <details class="notes">
+      <summary>Stages, states, and what each one may say</summary>
+      <h3>The six states, one colour each</h3>
+      <div class="legend">
+        <span><i class="lg-ok"></i>Confirmed — a real ticket</span>
+        <span><i class="lg-hold"></i>On hold — a deadline</span>
+        <span><i class="lg-await"></i>Awaiting host — no action</span>
+        <span><i class="lg-host"></i>You host — a job to do</span>
+        <span><i class="lg-add"></i>Added by you — this browser</span>
+        <span><i class="lg-end"></i>Ended — history</span>
+      </div>
+      <ul>
+        <li><b>Colour is never the only signal.</b> Hold is honey <em>and</em> a countdown <em>and</em> a Pay button; hosting is plum <em>and</em> the words "You host"; ended is grey <em>and</em> faded <em>and</em> says "Ended". A colour-blind reader loses nothing.</li>
+        <li><b>Each stage gets the verb it deserves.</b> Held → Pay now / Extend 10 min. Awaiting → Message the host. Confirmed → Open ticket / Directions. Day-of → Directions / Your ticket. Hosting → Run of show / Guest list. Ended → Recap. Open → Find something.</li>
+        <li><b>The stages are connected, not separate.</b> Press <b>Pay now</b> on the held plan and the phone walks itself to <em>Awaiting</em>, then — the way the host's confirmation actually arrives — to <em>Confirmed</em>, with the stub re-stamping in place. That sequence is the product.</li>
+        <li><b>No stage borrows another's urgency.</b> Only a real hold counts down, and it counts down against the deadline, not a decorative one.</li>
+        <li><b>Awaiting is honest about waiting.</b> It doesn't say "confirmed pending" or invent a promise; it says the host hasn't looked yet and gives you the one useful action. On B's month it deliberately earns no shade — waiting is not the same as busy.</li>
+        <li><b>Day-of is a different screen, not a badge.</b> The now-line in A and the live hero stub in B exist so nobody scrolls to find out where they are going tonight.</li>
+      </ul>
+    </details>
+
+    <details class="notes">
+      <summary>Motion spec</summary>
+      <div class="spec"><span>Press</span><b>110 ms · out</b></div>
+      <div class="spec"><span>Stage change</span><b>280 ms · spring 1.04, rows staggered 40 ms</b></div>
+      <div class="spec"><span>Day pick (month cell)</span><b>180 ms · out, book re-rises 420 ms</b></div>
+      <div class="spec"><span>Pay → Awaiting → Confirmed</span><b>240 ms, then 3.6 s host beat</b></div>
+      <div class="spec"><span>Hold drain</span><b>1 s linear · the only number that moves alone</b></div>
+      <div class="spec"><span>Hold pulse</span><b>2.6 s loop · halo only</b></div>
+      <div class="spec"><span>Live pulse (day-of)</span><b>1.9 s loop · halo only</b></div>
+      <div class="spec"><span>Fold / unfold / rotate</span><b>460 ms · soft, app reflows</b></div>
+      <div class="spec"><span>Reduce Motion</span><b>fade at 1 ms · no travel, no pulse, the tick stays</b></div>
+      <ul>
+        <li>Motion only ever explains a change of place or a change of state. Nothing moves that you didn't touch, and nothing delays reading.</li>
+        <li>Changing stage is a re-staging, not a page load: the option keeps its scroll position, the rows rise in order, the stage pill recolours without a jump.</li>
+        <li>There is no sheet to animate any more — the merge deleted a gesture, and the day pick now only re-orders the book under a month that stays exactly where it was.</li>
+        <li>Under Reduce Motion the pulses become static halos, the fold becomes a cut, and the countdown still ticks — because the number is information, not decoration.</li>
+        <li><code>prefers-reduced-motion</code> does the same automatically, so the OS setting is honoured without touching the switch.</li>
+      </ul>
+    </details>
+
+    <details class="notes">
+      <summary>What I'd ship</summary>
+      <h3>B as the screen, A's spine inside its hero</h3>
+      <ul>
+        <li><b>Default to B+C.</b> It is now the only option that answers both questions the app gets: “when am I free” (the month) and “what do I owe or hold” (the stub). A answers the second faster, but it cannot answer the first without leaving the day.</li>
+        <li><b>Keep A as the day-of presentation, not as a second screen.</b> On the day-of stage B+C's hero already is A's card, one per plan, with the live countdown and Directions. That is the part of A worth keeping inside B.</li>
+        <li><b>The merge removed four controls.</b> Today's Schedule has a mode switch, a month button, a week strip and a month toggle over one list. B+C has the month, one “Today” chip and the day's own “Whole month” clear.</li>
+        <li><b>Keep the stamp for the hold.</b> A stamped deadline on a stub is the strongest of the three at making a payment feel like an object that can be completed — worth bringing into the ticket flow itself, not just the schedule list.</li>
+        <li><b>The stage is data, not a mode.</b> Everything above is one list with a state per plan; the “stage” control here is a way to look at that list through one state at a time. Ship the same idea as a filter the screen can enter by itself — when a hold is expiring, the Schedule should open on it without being asked.</li>
+        <li><b>What not to build:</b> an “overlap” claim. Events have no end time everywhere yet (note 38), so the prototype says “starts within 2 hours of a plan” — never “overlaps” — until real end times exist.</li>
+      </ul>
+    </details>
+
+    <p class="foot">Prototype only: no backend, no auth, one fixed demo account. Drawn from the app's real tokens (notes 06/44/45) and the real Schedule rules in <code>src/lib/schedulePresentation.js</code>. Photos are the project's own. Times are generated from your clock, so the demo is always "today".</p>
+  </aside>
+
+  <!-- ======================= phone ======================= -->
+  <div class="stagePhone" id="stagePhone">
+  <div class="optRailWrap">
+    <div class="optRail" id="optRail" role="group" aria-label="Prototype option">
+      <button class="on" data-opt="a" aria-pressed="true">A · Day spine <span class="k">1</span></button>
+      <button data-opt="b" aria-pressed="false">B+C · Month book <span class="k">2</span></button>
+    </div>
+    <span class="optRailHint"><b>B + C are one option</b> · switch either way · keys 1 / 2</span>
+  </div>
+  <div class="phoneSlot" id="phoneSlot"><div class="phoneFit" id="phoneFit">
+  <div class="phone" id="phone">
+    <div class="device" id="device">
+      <div class="island"></div>
+      <span class="punch"></span>
+      <div class="status"><span id="sbTime">9:41</span>
+        <span class="sb-r">
+          <svg class="i" width="17" height="12" viewBox="0 0 17 12"><path d="M1 8v3M5 6v5M9 3.5v7.5M13 1v10"/></svg>
+          <svg class="i" width="16" height="12" viewBox="0 0 16 12"><path d="M1 5.2a10 10 0 0 1 14 0M3.4 7.6a6.6 6.6 0 0 1 9.2 0M6 10a3 3 0 0 1 4 0"/><circle cx="8" cy="11" r=".6" fill="currentColor" stroke="none"/></svg>
+          <svg class="i" width="24" height="12" viewBox="0 0 24 12"><rect x="1" y="2.5" width="19" height="7" rx="2"/><path d="M22 5v2.4"/><rect x="3" y="4.5" width="14" height="3" rx="1" fill="currentColor" stroke="none"/></svg>
+        </span>
+      </div>
+
+      <!-- A · the day spine -->
+      <section class="opt" id="optA" aria-label="Option A, the day spine"></section>
+      <!-- B · the month book (v2's month desk and plan book, merged) -->
+      <section class="opt" id="optB" hidden aria-label="Option B+C, the month book"></section>
+      <!-- the right-hand plan, wide stages only -->
+      <aside class="pane" id="planPane" aria-label="The selected plan"></aside>
+
+      <div class="dock" id="dock">
+        <button data-dock="home" aria-label="Home"><svg viewBox="0 0 24 24"><path d="M4 10.6 12 4l8 6.6V20H4z"/><path d="M9.5 20v-5.5h5V20"/></svg></button>
+        <button data-dock="map" aria-label="Map"><svg viewBox="0 0 24 24"><path d="M4 7.5 9.5 5l5 2.5L20 5v11.5L14.5 19l-5-2.5L4 19z"/><path d="M9.5 5v11.5M14.5 7.5V19"/></svg></button>
+        <button class="on" data-dock="schedule" aria-label="Schedule, selected"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2.4"/><path d="M3.5 9.6h17M8 3v4M16 3v4"/><circle cx="8.6" cy="13.2" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="13.2" r="1" fill="currentColor" stroke="none"/></svg></button>
+        <button data-dock="messages" aria-label="Messages"><svg viewBox="0 0 24 24"><path d="M4 6.5h16v10H12l-5 3.5v-3.5H4z"/></svg></button>
+        <button data-dock="account" aria-label="Account"><svg viewBox="0 0 24 24"><circle cx="12" cy="8.6" r="3.6"/><path d="M4.8 20c1.1-3.7 3.8-5.6 7.2-5.6s6.1 1.9 7.2 5.6"/></svg></button>
+      </div>
+      <div class="toast" id="toast"><svg class="i" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7"/></svg><span id="toastText"></span></div>
+    </div>
+  </div>
+  </div></div></div>
+
+</div>
+
+
+<script>
+/* ==========================================================================
+   The prototype's whole brain. One data set, two renderers, one state.
+   The rules mirror src/lib/schedulePresentation.js: strongest source wins per
+   event, an expired hold is not a plan, ended events never sit above tonight,
+   and the stage of a plan decides its verb before its colour.
+   v3's only structural change is that renderB is the *merged* month + book:
+   the day pick is state on the month, not a sheet to drag.
+   ========================================================================== */
+(() => {
+'use strict';
+
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+/* ---------------- dates ---------------- */
+const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WDF = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const NOW = Date.now();
+const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const sameDay = (a, b) => startOfDay(a).getTime() === startOfDay(b).getTime();
+const today = startOfDay(NOW);
+const weekOf = (d) => {
+  const x = startOfDay(d);
+  const off = (x.getDay() + 6) % 7;             /* Monday-first, like the Vietnamese app */
+  const first = addDays(x, -off);
+  return Array.from({ length: 7 }, (_, i) => addDays(first, i));
+};
+const monthGrid = (d) => {
+  const first = new Date(d.getFullYear(), d.getMonth(), 1);
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  const rows = [];
+  let cur = weekOf(first)[0];
+  while (cur <= last) {
+    rows.push(weekOf(cur).map((x) => ({ date: x, inMonth: x.getMonth() === first.getMonth() })));
+    cur = addDays(cur, 7);
+  }
+  return rows;
+};
+const hhmm = (t) => { const d = new Date(t); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+const dayTitle = (d) => `${WDF[d.getDay()]}, ${d.getDate()} ${MON[d.getMonth()]}`;
+const dayShort = (d) => `${WD[d.getDay()]} ${d.getDate()}`;
+const at = (offset, h, m = 0) => { const d = addDays(today, offset); d.setHours(h, m, 0, 0); return d.getTime(); };
+
+/* ---------------- the demo account ---------------- */
+/* Times come from the visitor's clock, so "today" is always today and the hold is always
+   twenty-one real minutes. The plans are fixed; only the dates move. */
+const HOLD_MS = 21 * 60000;
+const PLANS = [
+  { id: 'p1', key: 'dayof', src: 'booked', t: 'Sunset listening · Bến Bạch Đằng', cat: 'Music',
+    place: 'Bến Bạch Đằng, Quận 1', dist: '1.8 km', start: at(0, 19, 0), end: '21:00', doors: '18:30',
+    tickets: 2, price: '300.000₫', host: 'Orbit Records', photo: 'DSCF4864' },
+  { id: 'p2', key: 'hold', src: 'holding', t: 'Bàn Dài · Cheese & Wine', cat: 'Supper club',
+    place: 'Hẻm 12, Quận 3', dist: '3.1 km', start: at(1, 19, 30), end: '22:00',
+    tickets: 2, price: '480.000₫', host: 'Bàn Dài', photo: 'DSCF2023' },
+  { id: 'p3', key: 'await', src: 'awaiting', t: 'Life drawing at Xưởng 12', cat: 'Gallery',
+    place: 'Xưởng 12, Quận 4', dist: '4.8 km', start: at(3, 18, 30), end: '21:00',
+    tickets: 1, price: '180.000₫', host: 'Mọt Lớp', photo: 'DSCF2438' },
+  { id: 'p4', key: 'ok', src: 'booked', t: 'Chợ phiên đêm · Bến Thành', cat: 'Pop-up',
+    place: 'Chợ Bến Thành, Quận 1', dist: '2.2 km', start: at(4, 20, 0), end: '23:00',
+    tickets: 2, price: '150.000₫', host: 'Một Lớp', photo: 'DSCF2503' },
+  { id: 'p5', key: 'ok', src: 'booked', t: 'Gallery Walk · Quận 3', cat: 'Gallery',
+    place: 'Ba sân, Quận 3', dist: '2.0 km', start: at(6, 18, 0), end: '20:30',
+    tickets: 1, price: '150.000₫', host: 'Fanci', photo: 'DSCF6837' },
+  { id: 'p6', key: 'host', src: 'hosting', t: 'Porch Session #14', cat: 'Supper club',
+    place: 'Nhà bạn, Thảo Điền', start: at(2, 19, 0), end: '22:30', doors: '18:30',
+    guests: 18, host: 'You', photo: 'DSCF4517' },
+  { id: 'p7', key: 'added', src: 'added', t: 'Café listening: nhạc cũ', cat: 'Music',
+    place: 'Bệt Café, Quận 1', start: at(9, 9, 0), end: '11:30', host: 'Café Note', photo: 'DSCF2836' },
+  { id: 'p8', key: 'ended', src: 'ended', t: 'Modular Rail Jam', cat: 'Music',
+    place: 'Sân vận động, Quận 5', start: at(-2, 15, 0), end: '18:00', tickets: 1, host: 'Modular', photo: 'DSCF4550' },
+];
+const DISCOVER = [
+  { id: 'd1', src: 'discover', key: 'discover', t: 'Fashion Market 30', cat: 'Fashion', place: 'Chợ 30, Quận 1',
+    dist: '1.2 km', start: at(1, 19, 0), price: '120.000₫', host: 'Fanci', photo: 'DSCF6279' },
+  { id: 'd2', src: 'discover', key: 'discover', t: 'Sân Thượng Cinema', cat: 'Gallery', place: 'Quận 3',
+    dist: '2.7 km', start: at(2, 19, 0), price: '100.000₫', host: 'Fanci', photo: 'DSCF7459' },
+  { id: 'd3', src: 'discover', key: 'discover', t: 'Hẻm Walking Tour', cat: 'Gallery', place: 'Quận 4',
+    dist: '5.1 km', start: at(4, 8, 0), price: '90.000₫', host: 'Orbit', photo: 'DSCF4880' },
+];
+const photo = (name) => `background-image:url('/photos/optimized/${name}.webp'),url('../../public/photos/optimized/${name}.webp')`;
+
+/* ---------------- the stages ---------------- */
+/* Eight moments, each with the question it has to answer and the way each option answers it.
+   The panel card and the phone both read from here, so they can never disagree.
+   v3 keys are 'a' and 'b' only: the merged month book replaced v2's 'b' and 'c'. */
+const STAGE = {
+  life: { n: 0, kicker: 'The whole life', label: 'The full week', short: 'Full week',
+    rule: 'Every state in the order the week happens, which is what the screen must do on an ordinary Tuesday.',
+    ask: 'What does my week look like?',
+    how: {
+      a: 'The spine shows every state as its node colour, and each card carries its own verb.',
+      b: 'The month marks holds, tickets, doors you run and days you are only waiting on; the book under it leads with the next plan and groups the rest by week.',
+    } },
+  open: { n: 1, kicker: 'Stage 1 of 7', label: 'Open', short: 'Open',
+    rule: 'Nothing planned is not an error and not a dead end: say what the screen knows, then offer one way out.',
+    ask: 'What could I do?',
+    how: {
+      a: 'The spine stays, hollow. One hollow node, one action, and three things actually on this week.',
+      b: 'The month keeps its shape with empty days dimmed, and the book becomes a dashed blank stub with three ways out. No invented plan.',
+    } },
+  hold: { n: 2, kicker: 'Stage 2 of 7', label: 'Held', short: 'Held',
+    rule: 'A seat is yours for twenty-one minutes. Pay, extend, or let it go — all three, visibly.',
+    ask: 'Do I have to act on this?',
+    how: {
+      a: 'Honey node, the live countdown inside the card, and a bar that drains as the minutes go.',
+      b: 'A honey ring on the day in the month, and the hold’s own stub right under it: countdown, Pay, Extend. The deadline is visible from the grid and actionable in the book, with no sheet in between.',
+    } },
+  await: { n: 3, kicker: 'Stage 3 of 7', label: 'Awaiting the host', short: 'Awaiting',
+    rule: 'You paid; the host has not looked yet. Nothing to do but wait — say so, and give the one useful action.',
+    ask: 'Is this still going to happen?',
+    how: {
+      a: 'A dashed card and a dashed node, plus the honest line “usually within an hour”.',
+      b: 'A dashed outline on the day instead of a shade — waiting is not busy — and an Awaiting stamp on the stub with Message the host as the only action.',
+    } },
+  ok: { n: 4, kicker: 'Stage 4 of 7', label: 'Confirmed', short: 'Confirmed',
+    rule: 'You have a ticket. The next useful thing is the ticket itself, not a reminder that you have one.',
+    ask: 'Where is my ticket?',
+    how: {
+      a: 'Moss node, moss stamp, and Open ticket as the primary action beside Directions.',
+      b: 'A solid moss dot in the day, and the stub’s tear-off line opens the ticket. A day you hold a ticket for reads differently from a day you are only waiting on.',
+    } },
+  dayof: { n: 5, kicker: 'Stage 5 of 7', label: 'Tonight', short: 'Day-of',
+    rule: 'Where, when, how long to get there. No hunting, no scrolling, no “1 plan” summary.',
+    ask: 'Am I on time tonight?',
+    how: {
+      a: 'A now-line cuts the day, the node goes live, and the card leads with the countdown and Directions.',
+      b: 'Tonight’s day is ringed in clay in the month, and the book opens on its live stub with the countdown and Directions as the one solid button.',
+    } },
+  host: { n: 6, kicker: 'Stage 6 of 7', label: 'You host', short: 'Hosting',
+    rule: 'It is a job, not a booking. Say what is left to do, who is coming, and when the doors open.',
+    ask: 'What do I have to run tonight?',
+    how: {
+      a: 'Plum node, doors time on the card, guest count, and Run of show instead of Open ticket.',
+      b: 'A plum outline on the day — your own door, not a booking — and the stub carries the run of show and the guest list instead of a price.',
+    } },
+  ended: { n: 7, kicker: 'Stage 7 of 7', label: 'Ended', short: 'Ended',
+    rule: 'History, not clutter. Keep it, do not lead with it, and never let it sit above tonight.',
+    ask: 'What did I do?',
+    how: {
+      a: 'A grey node at 70%, one line, one action: See the recap.',
+      b: 'Grey dots still keep their place on the month, and ended plans fold under “Ended” at the bottom of the book, one tap open.',
+    } },
+};
+
+const OPT = {
+  a: { kicker: 'Option A', name: 'The day spine',
+    desc: 'A single day, read down a time line. The rail is the clock, the line is the day, and the node on the line is the stage of that plan.',
+    answers: 'What’s next, and what do I have to do about it',
+    best: 'The day you’re in — the goer on the way somewhere',
+    costs: 'You can’t see a free weekend without leaving the day' },
+  b: { kicker: 'Option B+C', name: 'The month book',
+    desc: 'The month page is the table of contents; the plans under it are stubs out of the ticket language Event Detail V8 already speaks. One surface, two depths, no sheet and no ribbon — v2’s B and C, merged.',
+    answers: 'When am I free, and what does each day owe me',
+    best: 'Planning a week and acting on it — the hold you must not forget, the ticket you need tonight',
+    costs: 'The month takes the top third, so the first plan sits lower than it does in A' },
+};
+
+/* ---------------- state ---------------- */
+const S = {
+  opt: 'a', stage: 'life', device: 'solo', variant: 'a',
+  day: today.getTime(), month: new Date(today.getFullYear(), today.getMonth(), 1).getTime(),
+  picked: false, paneId: null, focusId: null, pastOpen: false,
+  holdTotal: HOLD_MS, holdEnds: NOW + HOLD_MS,
+  scroll: { a: 0, b: 0, pane: 0 },
+  haptics: true,
+};
+
+/* ---------------- the list, through a stage ---------------- */
+const byStart = (a, b) => a.start - b.start;
+const all = () => PLANS.slice();
+const find = (id) => all().concat(DISCOVER).find((p) => p.id === id);
+const srcOf = (p) => p.src;
+
+function plansFor(k) {
+  if (k === 'open') return [];
+  if (k === 'life') return all().filter((p) => srcOf(p) !== 'ended').sort(byStart);
+  return all().filter((p) => p.key === k).sort(byStart);
+}
+const stageList = () => plansFor(S.stage);
+const focusOf = () => stageList()[0] || null;
+
+/* ---------------- words ---------------- */
+const STATE = {
+  booked: { stamp: 'Confirmed', cls: 'ok', node: 'booked' },
+  holding: { stamp: 'Seat on hold', cls: 'hold', node: 'hold' },
+  awaiting: { stamp: 'Awaiting host', cls: 'await', node: 'await' },
+  hosting: { stamp: 'You host', cls: 'host', node: 'host' },
+  added: { stamp: 'Added by you', cls: 'add', node: 'added' },
+  ended: { stamp: 'Ended', cls: 'end', node: 'ended' },
+  discover: { stamp: 'Discover', cls: 'disc', node: 'disc' },
+};
+const stateOf = (p) => STATE[srcOf(p)] || STATE.booked;
+const STATE_COPY = {
+  booked: 'Confirmed by the host. Your ticket is in the Tickets tab and at the door.',
+  holding: 'A seat is yours for twenty-one minutes. Nothing leaves your account until you pay.',
+  awaiting: 'Paid. The host has not looked yet — usually within an hour, and nothing is needed from you.',
+  hosting: 'You run this one. Guests, doors and the run of show live here.',
+  added: 'Added by you. It lives in this browser only, so it will not follow you to another device.',
+  ended: 'Ended. Kept for its recap, and never shown above anything upcoming.',
+  discover: 'Not in your schedule yet. Adding it keeps it before you book.',
+};
+
+function durText(ms) {
+  if (ms <= 0) return '0:00';
+  const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}:${String(sec).padStart(2, '0')}`;
+}
+const inText = (ms) => (ms <= 0 ? 'now' : `in ${durText(ms)}`);
+/* inside half a day a countdown is useful; beyond it, a date is */
+const whenText = (t) => (t - Date.now() <= 0 ? 'now'
+  : t - Date.now() < 12 * 3600000 ? `in ${durText(t - Date.now())}` : `${WD[new Date(t).getDay()]} ${hhmm(t)}`);
+const startText = (t) => (t > Date.now() ? `in ${durText(t - Date.now())}` : `started ${durText(Date.now() - t)} ago`);
+const holdFrac = () => Math.max(0, Math.min(1, (S.holdEnds - Date.now()) / S.holdTotal));
+const stagePill = () => `<span class="stagePill" data-k="${S.stage}"><i></i>${esc(STAGE[S.stage].short)}</span>`;
+
+/* the empty line for a stage — never "no records", always a state plus a door */
+const EMPTY = { life: 'Wide open', open: 'Nothing planned', hold: 'Nothing on hold',
+  await: 'Nothing awaiting the host', ok: 'No ticket on this day', dayof: 'Nothing tonight',
+  host: 'Nothing to run', ended: 'Nothing to look back on' };
+const EMPTY_COPY = {
+  life: 'Nothing booked, nothing held, nothing you added. The month keeps its shape; days with a mark have something.',
+  open: 'Nothing booked, nothing held, nothing you added — which is a fine state, not a failure. Three things are actually on this week.',
+  hold: 'No seat is waiting on you right now. When one is, it appears in the book with its timer and its two ways out.',
+  await: 'Every payment you have made has been looked at. There is nothing to wait on.',
+  ok: 'Your tickets are on other days. The month marks every day that has one.',
+  dayof: 'Nothing starts today. The next plan is in the book, one tap away.',
+  host: 'You are not hosting today. Your next door time appears here with its guest count.',
+  ended: 'Once an event ends it moves under “Ended” in the book, quietly, with its recap.',
+};
+
+/* what a discover suggestion collides with — a real statement, never "overlaps" */
+function conflict(p) {
+  const near = PLANS.find((m) => srcOf(m) !== 'ended' && sameDay(m.start, p.start) && Math.abs(m.start - p.start) < 2 * 3600000);
+  return near ? `Starts within 2 hours of ${near.t}` : '';
+}
+
+/* one set of verbs, so no screen invents its own */
+function actsFor(p, tiny) {
+  const solid = tiny ? 'rowbtn tiny' : 'rowbtn';
+  const ghost = tiny ? 'rowbtn ghost tiny' : 'rowbtn ghost';
+  const id = p.id;
+  switch (srcOf(p)) {
+    case 'holding':
+      return `<button class="${solid}" data-act="pay" data-id="${id}">Pay now${p.price ? ` · ${esc(p.price)}` : ''}</button>
+              <button class="${ghost}" data-act="extend" data-id="${id}">Extend 10 min</button>`;
+    case 'awaiting':
+      return `<button class="${ghost}" data-act="msg" data-id="${id}">Message the host</button>`;
+    case 'hosting':
+      return `<button class="${solid}" data-act="ros" data-id="${id}">Run of show</button>
+              <button class="${ghost}" data-act="guests" data-id="${id}">Guest list${p.guests ? ` · ${p.guests}` : ''}</button>`;
+    case 'ended':
+      return `<button class="${ghost}" data-act="recap" data-id="${id}">See the recap</button>`;
+    case 'added':
+      return `<button class="${ghost}" data-act="calendar" data-id="${id}">Add to Apple Calendar</button>`;
+    case 'discover':
+      return `<button class="${solid}" data-act="add" data-id="${id}">＋ Add to banbe Schedule</button>`;
+    default:
+      if (S.stage === 'dayof') return `<button class="${solid}" data-act="dir" data-id="${id}">Directions</button>
+              <button class="${ghost}" data-act="ticket" data-id="${id}">Your ticket</button>`;
+      return `<button class="${solid}" data-act="ticket" data-id="${id}">Open ticket</button>
+              <button class="${ghost}" data-act="dir" data-id="${id}">Directions</button>`;
+  }
+}
+
+/* ==============================================================
+   OPTION A — the day spine
+   ============================================================== */
+const aMeta = (p) => [p.place, p.cat, p.dist].filter(Boolean).map((m) => `<span>${esc(m)}</span>`).join('');
+
+function aCard(p) {
+  const src = srcOf(p);
+  const st = stateOf(p);
+  const live = src === 'booked' && S.stage === 'dayof';
+  let state = '';
+  let note = '';
+  let drive = '';
+  if (src === 'holding') {
+    state = `<span class="a-count" data-cd="hold"></span><span class="stamp hold">Seat on hold</span>`;
+    note = 'Your seat is held until the timer ends. Nothing leaves your account until you pay.';
+    drive = `<div class="a-drive"><i style="transform:scaleX(${holdFrac().toFixed(3)})"></i></div>`;
+  } else if (live) {
+    state = `<span class="a-count" data-cd="start" data-start="${p.start}"></span><span class="stamp ok">Confirmed</span>`;
+    note = `Doors ${esc(p.doors || hhmm(p.start))}${p.end ? ` · ends ${esc(p.end)}` : ''}`;
+  } else if (src === 'awaiting') {
+    state = `<span class="stamp await">Awaiting host</span><span class="stamp await">Usually within an hour</span>`;
+    note = 'Paid. The host has not looked yet, so there is nothing for you to do.';
+  } else if (src === 'hosting') {
+    state = `<span class="stamp host">You host</span><span class="stamp ink">${p.guests} guests</span>`;
+    note = `Doors ${esc(p.doors || hhmm(p.start))} · you run this one, it is not a booking.`;
+  } else if (src === 'added') {
+    state = `<span class="stamp add">Added by you</span><span class="stamp add">This browser only</span>`;
+  } else if (src === 'ended') {
+    state = `<span class="stamp end">Ended</span>`;
+    note = `${dayShort(new Date(p.start))} · ${esc(p.cat)}`;
+  } else if (src === 'discover') {
+    state = `<span class="stamp disc">Discover</span>${p.price ? `<span class="stamp ink">${esc(p.price)}</span>` : ''}`;
+    note = conflict(p) ? `<span class="a-conflict"><svg class="i" viewBox="0 0 24 24"><path d="M12 8v5M12 16.5v.5"/><circle cx="12" cy="12" r="9"/></svg>${esc(conflict(p))}</span>` : '';
+  } else {
+    state = `<span class="stamp ok">Confirmed</span>${p.tickets ? `<span class="stamp ink">${p.tickets} vé</span>` : ''}`;
+  }
+
+  const cls = ['a-card',
+    src === 'holding' ? 'hold' : src === 'awaiting' ? 'await' : src === 'hosting' ? 'host'
+      : src === 'ended' ? 'ended' : src === 'discover' ? 'disc' : live ? 'live' : '',
+  ].filter(Boolean).join(' ');
+
+  return `<div class="a-row s-${live ? 'live' : st.node}">
+    <div class="a-time">${hhmm(p.start)}<small>${esc(p.cat.split(' ')[0])}</small></div>
+    <div class="a-spine"><span class="a-node"></span></div>
+    <div class="${cls}" data-act="open" data-id="${p.id}">
+      <span class="ttl">${esc(p.t)}</span>
+      <div class="meta">${aMeta(p)}</div>
+      <div class="a-state">${state}</div>
+      ${note ? `<div class="a-note">${note}</div>` : ''}
+      <div class="acts">${actsFor(p, true)}</div>
+      ${drive}
+    </div>
+  </div>`;
+}
+
+function aEmpty() {
+  const k = S.stage;
+  const act = k === 'open'
+    ? `<button class="rowbtn tiny" data-act="find">See what’s on this week</button>`
+    : `<button class="rowbtn tiny" data-act="month">Open the month</button>`;
+  return `<div class="a-row s-none" style="animation:none">
+    <div class="a-time">—</div>
+    <div class="a-spine"><span class="a-node" style="border-color:var(--rule)"></span></div>
+    <div class="a-card" style="background:transparent;border-style:dashed;box-shadow:none">
+      <span class="ttl" style="font-family:var(--serif);font-size:17px;font-weight:400">${esc(EMPTY[k])}</span>
+      <div class="meta">${esc(EMPTY_COPY[k])}</div>
+      <div class="acts">${act}</div>
+    </div>
+  </div>`;
+}
+
+function discoverBlock() {
+  return `<div class="c-group" style="padding-left:0;padding-right:0;padding-top:6px">
+      <h2>Actually on this week<span class="ln"></span><span class="n">3</span></h2>
+    </div>
+    ${DISCOVER.map(aCard).join('')}`;
+}
+
+function renderA() {
+  const list = stageList();
+  const day = new Date(S.day);
+  const rows = list.filter((p) => sameDay(p.start, day));
+  const isToday = sameDay(day, NOW);
+  const week = weekOf(day);
+  const monthD = new Date(day.getFullYear(), day.getMonth(), 1);
+  const st = STAGE[S.stage];
+
+  const bits = [];
+  if (rows.length) {
+    bits.push(`<b>${rows.length === 1 ? '1 plan' : `${rows.length} plans`}</b>`);
+    bits.push(`first at ${hhmm(rows[0].start)}`);
+    const nx = rows.find((p) => p.start >= NOW);
+    if (nx) bits.push(`next <b>${whenText(nx.start)}</b>`);
+  } else {
+    bits.push(esc(EMPTY[S.stage]));
+  }
+
+  const nowLine = `<div class="a-now"><span class="dotc"></span><span data-now>Now ${hhmm(Date.now())}</span><span class="ln"></span></div>`;
+  let agenda = '';
+  if (rows.length) {
+    let inserted = false;
+    agenda = rows.map((p) => {
+      if (isToday && !inserted && p.start >= NOW) { inserted = true; return nowLine + aCard(p); }
+      return aCard(p);
+    }).join('');
+  } else {
+    agenda = aEmpty() + (S.stage === 'open' ? discoverBlock() : '');
+  }
+
+  const strip = week.map((d) => {
+    const dl = list.filter((p) => sameDay(p.start, d));
+    const n = dl.length;
+    const held = dl.some((p) => srcOf(p) === 'holding');
+    const cls = ['a-day', n ? (held ? 'has hason' : 'has') : '', sameDay(d, NOW) ? 'today' : '', sameDay(d, day) ? 'on' : '']
+      .filter(Boolean).join(' ');
+    return `<button class="${cls}" data-act="day" data-day="${d.getTime()}"
+      aria-label="${esc(dayTitle(d))}${n ? `, ${n} ${n === 1 ? 'plan' : 'plans'}` : ''}${sameDay(d, day) ? ', selected' : ''}">
+      <span class="w">${WD[d.getDay()]}</span><b>${d.getDate()}</b><span class="dj"></span></button>`;
+  }).join('');
+
+  const notice = S.stage === 'life' ? '' : `<div class="a-notice${S.stage === 'hold' ? ' hold' : ''}">
+      <svg class="i" viewBox="0 0 24 24"><path d="M12 8v5M12 16.5v.5"/><circle cx="12" cy="12" r="9"/></svg>
+      <span>${esc(st.rule)}</span></div>`;
+
+  return `<div class="a-wrap"><div class="a-scroll">
+    <div class="a-head">
+      <div class="a-toprow">
+        ${stagePill()}
+        <span style="flex:1"></span>
+        ${isToday ? '' : `<button class="a-monthbtn" data-act="day" data-day="${today.getTime()}">Today</button>`}
+        <button class="a-monthbtn" data-act="month">
+          <svg class="i" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2.3"/><path d="M3.5 9.7h17M8 3v4M16 3v4"/></svg>
+          ${MON[monthD.getMonth()].slice(0, 3)}
+          <svg class="i" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+      </div>
+      <h1 class="a-title">${WDF[day.getDay()]} <em>${day.getDate()}</em> ${MON[day.getMonth()]}</h1>
+      <p class="a-sub">${bits.map((b) => `<span class="item">${b}</span>`).join('')}</p>
+      ${notice}
+    </div>
+
+    <div class="a-sticky">
+      <div class="a-strip">${strip}</div>
+    </div>
+
+    <div class="a-agenda">${agenda}</div>
+    <p class="a-foot">The strip picks the day, the month chip opens B, and the stage control above the phone picks the moment.<br>Events you add yourself live in this browser only.</p>
+  </div></div>`;
+}
+
+
+/* ==============================================================
+   OPTION B — the month book (v3)
+   v2's month desk and plan book are one renderer here. The month is the only navigation:
+   tapping a day sets state, and the book under it re-orders. Nothing opens over it.
+   ============================================================== */
+const WEEK0 = weekOf(NOW)[0].getTime();
+const groupOf = (t) => {
+  if (t < today.getTime()) return 'ended';
+  if (sameDay(t, NOW)) return 'today';
+  const w = weekOf(t)[0].getTime();
+  if (w === WEEK0) return 'this';
+  if (w === addDays(new Date(WEEK0), 7).getTime()) return 'next';
+  return 'later';
+};
+const GROUP_LABEL = { today: 'Today', this: 'This week', next: 'Next week', later: 'Later', ended: 'Ended' };
+
+function bOpenNote() {
+  switch (S.stage) {
+    case 'open': return 'Every day this month is empty of plans. The month keeps its shape anyway, because a calendar that collapses when it is empty teaches nothing.';
+    case 'hold': return '<b>One hold</b> is running out. Its day is ringed in honey in the month, and its stub is the first thing in the book — pay from either.';
+    case 'await': return 'One payment is waiting on the host. Waiting earns a dashed outline, not a shade: it is not the same as a busy day.';
+    case 'ok': return 'Two tickets this week. A solid dot is a day you already hold a ticket for; shade is only how full the day is.';
+    case 'dayof': return 'Tonight is ringed in clay in the month, and the book is already open on it. Nothing else needs a tap.';
+    case 'host': return 'You host in two days. Plum is your own door to run, not a booking to attend.';
+    case 'ended': return 'Looking back. Ended days keep their dots in grey, and the book keeps them folded under anything upcoming.';
+    default: return 'Shaded days are fuller days. A honey ring is a hold, a clay ring is tonight, a plum ring is a door you run, a dashed cell is a payment you are waiting on.';
+  }
+}
+const bOpenCls = () => (S.stage === 'hold' ? ' hold' : S.stage === 'dayof' ? ' live' : '');
+
+function cRow(p) {
+  const src = srcOf(p);
+  const st = stateOf(p);
+  const thumb = src === 'discover'
+    ? '<div class="c-th dash"><svg class="i" width="16" height="16" viewBox="0 0 24 24"><path d="M12 4.5 13.9 10l5.6 1.9-5.6 1.9L12 19.5l-1.9-5.7L4.5 11.9 10.1 10Z"/></svg></div>'
+    : `<div class="c-th ph" style="${photo(p.photo)}"></div>`;
+  const bits = [hhmm(p.start)];
+  if (p.place) bits.push(p.place);
+  if (src === 'hosting') bits.push(`${p.guests} guests`);
+  return `<div class="c-row s-${st.node}" data-act="open" data-id="${p.id}">
+    <span class="bar"></span>
+    ${thumb}
+    <span>
+      <span class="tt">${esc(p.t)}</span>
+      <span class="mm">${bits.map((b) => `<span>${esc(b)}</span>`).join('')}</span>
+    </span>
+    <span class="rt">
+      <span class="stamp ${st.cls}">${esc(st.stamp)}</span>
+      ${src === 'holding' ? `<span class="a-count" data-cd="hold" style="font-size:10px"></span>` : ''}
+      ${src === 'holding' ? `<button class="rowbtn tiny" data-act="pay" data-id="${p.id}">Pay</button>` : ''}
+    </span>
+  </div>`;
+}
+
+function cHero(p) {
+  const src = srcOf(p);
+  const st = stateOf(p);
+  const day = new Date(p.start);
+  const live = src === 'booked' && S.stage === 'dayof';
+  let status;
+  if (src === 'holding') {
+    status = `<span class="a-count" data-cd="pay" style="color:var(--honey);font-weight:700"></span>`;
+  } else if (src === 'awaiting') {
+    status = '<span style="font-size:11px;color:var(--fg2)">Waiting on the host · usually within an hour</span>';
+  } else if (src === 'hosting') {
+    status = `<span style="font-size:11px;color:var(--plum);font-weight:600">Doors ${esc(p.doors || hhmm(p.start))} · ${p.guests} guests</span>`;
+  } else if (src === 'ended') {
+    status = '<span style="font-size:11px;color:var(--fg3)">Ended</span>';
+  } else if (src === 'added') {
+    status = '<span style="font-size:11px;color:var(--fg2)">Added by you · this browser only</span>';
+  } else if (live) {
+    status = `<span class="a-count" data-cd="start" data-start="${p.start}" style="color:var(--clay);font-weight:700"></span>`;
+  } else {
+    status = `<span style="font-size:11px;color:var(--fg2)">${whenText(p.start)}</span>`;
+  }
+
+  /* the tag names why this plan is the one at the top: the day you picked, or tonight, or the next */
+  const tag = src === 'ended' ? 'Last plan'
+    : S.picked ? dayShort(day)
+      : sameDay(day, NOW) ? 'Today'
+        : S.stage === 'hold' ? 'Pay by ' + hhmm(S.holdEnds)
+          : 'Next up';
+
+  return `<div class="c-hero ${src === 'holding' ? 'hold' : live ? 'live' : ''}">
+    <div class="art">
+      <div class="ph im" style="${photo(p.photo)}"></div>
+      <div class="sh"></div>
+      <div class="dateblk"><b>${day.getDate()}</b><span>${MON[day.getMonth()].slice(0, 3)} · ${WD[day.getDay()]}</span></div>
+      <div class="nx">${esc(tag)}</div>
+    </div>
+    <div class="body">
+      <h2 class="ttl">${esc(p.t)}</h2>
+      <div class="meta">${[p.place, p.cat, p.dist].filter(Boolean).map((m) => `<span>${esc(m)}</span>`).join('')}</div>
+      <div class="cd">${status}</div>
+      <div class="c-perf"><span class="ln"></span></div>
+      <div class="c-acts" style="padding-left:0;padding-right:0">
+        <span class="stamp ${st.cls}">${esc(st.stamp)}</span>
+        ${p.tickets ? `<span style="font-size:11px;color:var(--fg2)" class="tnum">${p.tickets} vé</span>` : ''}
+        ${p.tickets && p.price ? `<span style="font-size:11px;color:var(--fg3)" class="tnum">${esc(p.price)}</span>` : ''}
+        <span style="flex:1"></span>
+      </div>
+    </div>
+    <div class="c-acts">${actsFor(p, false)}</div>
+  </div>`;
+}
+
+function renderB() {
+  const list = stageList();
+  const day = new Date(S.day);
+  const monthD = new Date(S.month);
+  const grid = monthGrid(monthD);
+  const isToday = sameDay(day, NOW);
+  const headRow = weekOf(day).map((d) => `<div class="b-wk">${WD[d.getDay()]}</div>`).join('');
+
+  /* the day you picked, the plan that leads the book, and everything else */
+  const pickedList = S.picked ? list.filter((p) => sameDay(p.start, day)) : [];
+  const carried = (!S.picked && S.focusId && list.some((p) => p.id === S.focusId))
+    ? find(S.focusId) : null;
+  const hero = S.picked ? (pickedList[0] || null) : (carried || list[0] || null);
+  const alsoPicked = S.picked ? pickedList.slice(1) : [];
+  const restList = list.filter((p) => p !== hero && !alsoPicked.includes(p));
+
+  const weeks = grid.map((row) => `<div class="b-week">${row.map(({ date: d, inMonth }) => {
+    const dl = list.filter((p) => sameDay(p.start, d));
+    const n = dl.length;
+    const srcs = dl.map(srcOf);
+    const held = srcs.includes('holding');
+    const live = S.stage === 'dayof' && srcs.includes('booked');
+    const hosted = srcs.includes('hosting');
+    const waiting = srcs.includes('awaiting');
+    /* shade is commitment; a hold and a wait get a ring instead, so they read differently */
+    const committed = srcs.filter((s) => s === 'booked' || s === 'hosting' || s === 'added').length;
+    const cls = ['b-cell', inMonth ? '' : 'out', sameDay(d, NOW) ? 'today' : '', sameDay(d, day) ? 'on' : '',
+      held ? 'holding' : '', (!held && live) ? 'live' : '',
+      (!held && !live && hosted) ? 'hosting' : '', (!held && !live && !hosted && waiting) ? 'awaiting' : '',
+    ].filter(Boolean).join(' ');
+    const dots = dl.slice(0, 3).map((p) => {
+      const s = srcOf(p);
+      const c = s === 'holding' ? 'h' : s === 'hosting' ? 'p' : s === 'awaiting' ? 'a' : '';
+      return `<i class="${c}"></i>`;
+    }).join('');
+    return `<button class="${cls}" ${committed ? `data-n="${Math.min(committed, 3)}"` : ''} data-act="day" data-day="${d.getTime()}"
+      aria-label="${esc(dayTitle(d))}${n ? `, ${n} ${n === 1 ? 'plan' : 'plans'}` : ', nothing'}${sameDay(d, day) ? ', selected' : ''}">
+      <b>${d.getDate()}</b><span class="dts">${dots}</span></button>`;
+  }).join('')}</div>`).join('');
+
+  const pickedHead = `<div class="mb-picked">
+      <span class="k">Picked</span><b>${dayShort(day)} ${MON[day.getMonth()].slice(0, 3)}</b>
+      <span class="n">${pickedList.length ? `${pickedList.length} ${pickedList.length === 1 ? 'plan' : 'plans'}` : 'nothing'}</span>
+      <span class="sp"></span>
+      <button class="mb-clear" data-act="unpick">Whole month</button>
+    </div>`;
+
+  const none = `<div class="b-none">
+      <h3>Nothing on ${dayShort(day)}</h3>
+      <p>${esc(EMPTY_COPY[S.stage])}</p>
+      <div class="chipsrow">
+        <button data-act="unpick">Whole month</button>
+        <button data-act="find">See what’s on</button>
+      </div>
+    </div>`;
+
+  const blank = `<div class="c-blank">
+      <div class="ic"><svg class="i" width="17" height="17" viewBox="0 0 24 24">${S.stage === 'open' ? '<path d="M5 7h14v13H5zM8 3v4M16 3v4M5 11h14"/>' : '<circle cx="12" cy="12" r="8.5"/><path d="M12 8v8M8 12h8"/>'}</svg></div>
+      <h3>${esc(EMPTY[S.stage])}</h3>
+      <p>${esc(EMPTY_COPY[S.stage])}</p>
+      <div class="c-chips">
+        <button data-act="${S.stage === 'open' ? 'find' : 'life'}">${S.stage === 'open' ? 'See what’s on' : 'Back to the whole week'}</button>
+        <button data-act="today">Today</button>
+      </div>
+    </div>`;
+
+  const groups = ['today', 'this', 'next', 'later'].map((g) => {
+    const rows = restList.filter((p) => groupOf(p.start) === g);
+    if (!rows.length) return '';
+    const label = `${S.picked ? 'Also · ' : ''}${GROUP_LABEL[g]}`;
+    return `<div class="c-group"><h2>${label}<span class="ln"></span><span class="n">${rows.length}</span></h2>
+      ${rows.map(cRow).join('')}</div>`;
+  }).join('');
+
+  const pastAll = PLANS.filter((p) => srcOf(p) === 'ended').sort((a, b) => b.start - a.start);
+  const pastBlock = (S.stage === 'life' && pastAll.length) ? `<div class="c-past">
+      <button class="c-pastbtn" data-act="togglePast">${S.pastOpen ? 'Hide' : `${pastAll.length} ended`}<span class="ln"></span>
+        <svg class="i" width="12" height="12" viewBox="0 0 24 24"><path d="${S.pastOpen ? 'm6 15 6-6 6 6' : 'm6 9 6 6 6-6'}"/></svg></button>
+      ${S.pastOpen ? pastAll.map(cRow).join('') : ''}
+    </div>` : '';
+
+  const discover = S.stage === 'open' ? `<div class="c-group" style="padding-top:6px"><h2>Actually on this week<span class="ln"></span><span class="n">3</span></h2>
+      ${DISCOVER.map(cRow).join('')}</div>
+      <div class="c-group" style="padding-top:0"><div class="c-discoverNote">
+        <svg class="i" viewBox="0 0 24 24"><path d="M12 8v5M12 16.5v.5"/><circle cx="12" cy="12" r="9"/></svg>
+        <span>Adding one keeps it in your schedule before you book. Two of these start within 2 hours of a plan you already have.</span></div></div>` : '';
+
+  return `<div class="b-wrap"><div class="b-scroll">
+    <div class="b-head">
+      <div class="l"><span class="eyeb">Your month</span>
+        <h1>${MON[monthD.getMonth()]}<small>${monthD.getFullYear()}</small></h1></div>
+      <div class="b-nav">
+        <button class="iconbtn" data-act="mstep" data-v="-1" aria-label="Previous month"><svg class="i" viewBox="0 0 24 24"><path d="m14 6-6 6 6 6"/></svg></button>
+        ${isToday ? '' : `<button class="a-monthbtn" data-act="today">Today</button>`}
+        <button class="iconbtn" data-act="mstep" data-v="1" aria-label="Next month"><svg class="i" viewBox="0 0 24 24"><path d="m10 6 6 6-6 6"/></svg></button>
+      </div>
+    </div>
+
+    <div class="b-legend">
+      ${stagePill()}
+      <span style="flex:1"></span>
+      <span><i></i>ticket</span>
+      <span><i class="h"></i>hold</span>
+      <span><i class="p"></i>you host</span>
+    </div>
+
+    <div class="b-grid">${headRow}${weeks}</div>
+
+    <div class="b-open${bOpenCls()}">
+      <svg class="i" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7"/></svg>
+      <span>${bOpenNote()}</span>
+    </div>
+
+    ${S.picked ? pickedHead : ''}
+    ${S.picked && !pickedList.length ? none : (hero ? cHero(hero) : blank)}
+    ${alsoPicked.length ? `<div class="c-group" style="padding-top:14px"><h2>Also on ${dayShort(day)}<span class="ln"></span><span class="n">${alsoPicked.length}</span></h2>
+      ${alsoPicked.map(cRow).join('')}</div>` : ''}
+    ${groups}
+    ${discover}
+    ${pastBlock}
+    <p class="a-foot" style="padding:14px 20px 0">The month is the table of contents; the book under it is the page.<br>Ended plans fold away so history never outshouts tonight.</p>
+  </div></div>`;
+}
+
+/* ==============================================================
+   THE PLAN — the right-hand pane on a wide stage
+   ============================================================== */
+function stepsFor(p) {
+  const s = srcOf(p);
+  if (s === 'holding') return [
+    ['Seat held', `${p.tickets || 1} vé for you`, 'done'],
+    ['Pay', `${p.price || ''} · VietQR or card`, 'now'],
+    ['Host confirms', 'Usually within an hour', ''],
+    ['Door', 'Scan your QR at the entrance', ''],
+  ];
+  if (s === 'awaiting') return [
+    ['Paid', `${p.price || ''} · done`, 'done'],
+    ['Host confirms', 'Usually within an hour', 'now'],
+    ['Ticket', 'Issued the moment they accept', ''],
+    ['Door', 'Scan your QR at the entrance', ''],
+  ];
+  if (s === 'hosting') return [
+    ['Room set', 'Seats, lights, the playlist', 'done'],
+    [`Doors ${p.doors || hhmm(p.start)}`, 'The venue manager has the guest list', 'now'],
+    ['Show', `Starts ${hhmm(p.start)}${p.end ? `, ends ${p.end}` : ''}`, ''],
+    ['Close', 'Check-out, then the split', ''],
+  ];
+  if (s === 'ended') return [
+    ['Attended', dayTitle(new Date(p.start)), 'done'],
+    ['Recap', 'Photos and what you spent', 'now'],
+  ];
+  if (s === 'added') return [
+    ['Added by you', 'This browser only', 'done'],
+    ['Book a seat', 'Once the host opens the date', 'now'],
+    ['Door', 'Scan your QR at the entrance', ''],
+  ];
+  if (s === 'discover') return [
+    ['Not booked', 'Being suggested to you', ''],
+    ['Add to Schedule', 'Keeps it before you book', 'now'],
+    ['Book', 'A seat, held for 21 minutes', ''],
+    ['Door', 'Scan your QR at the entrance', ''],
+  ];
+  return [
+    ['Confirmed', `${p.tickets || 1} vé · ${p.price || ''}`, 'done'],
+    ['Ticket', 'In your Tickets tab', 'done'],
+    ['Door', dayTitle(new Date(p.start)), S.stage === 'dayof' ? 'now' : ''],
+    ['After', 'The recap lands here', ''],
+  ];
+}
+
+function planDetail(p) {
+  const src = srcOf(p);
+  const st = stateOf(p);
+  const day = new Date(p.start);
+  const rows = [
+    ['When', `<b>${dayTitle(day)}</b><small>${hhmm(p.start)}${p.end ? ` – ${p.end}` : ''}${p.doors ? ` · doors ${p.doors}` : ''}</small>`],
+    ['Where', `<b>${esc(p.place || '—')}</b><small>${p.dist ? `${esc(p.dist)} from you` : 'Venue confirmed'}</small>`],
+    ['Who', `<b>${esc(p.host === 'You' ? 'You are the host' : p.host || '—')}</b><small>${src === 'hosting' ? `${p.guests} guests on the list` : 'Confirmed host'}</small>`],
+  ];
+  if (src === 'hosting') rows.push(['Money', '<b>You keep the door</b><small>Settled after check-out</small>']);
+  else if (p.price) rows.push([src === 'awaiting' ? 'Paid' : 'Price', `<b>${esc(p.price)}</b><small>${p.tickets ? `${p.tickets} vé` : ''}</small>`]);
+
+  let rule = '';
+  if (src === 'holding') rule = `Held until ${hhmm(S.holdEnds)}. Pay, extend, or let it go.`;
+  else if (src === 'awaiting') rule = 'Paid. The host has not looked yet — usually within an hour.';
+  else if (src === 'hosting') rule = `You host. ${p.guests} guests, doors ${p.doors || hhmm(p.start)}.`;
+  else if (src === 'ended') rule = `Ended ${dayShort(day)}. Your recap is ready.`;
+  else if (src === 'added') rule = 'Added by you. This entry lives in this browser only.';
+  else if (src === 'discover') rule = 'Not in your schedule yet. Adding it keeps it before you book.';
+  else if (S.stage === 'dayof') rule = `Tonight. Doors ${p.doors || hhmm(p.start)} — 8 minutes away.`;
+  else rule = 'Confirmed. Your ticket is ready.';
+
+  const stateCls = src === 'holding' ? 'hold' : src === 'awaiting' ? 'await' : src === 'hosting' ? 'host'
+    : src === 'booked' ? 'ok' : '';
+
+  const countdown = src === 'holding'
+    ? `<span class="a-count" data-cd="pay"></span>`
+    : (src === 'booked' && S.stage === 'dayof')
+      ? `<span class="a-count" style="color:var(--clay)" data-cd="start" data-start="${p.start}"></span>`
+      : '';
+
+  const guests = src === 'hosting'
+    ? `<div class="pd-sec"><h4>On the list</h4><div class="pd-guests">
+        ${['MD', 'TL', 'AN', 'BH', 'VK', 'NQ', 'PT', '＋10'].map((g) => `<div>${g}</div>`).join('')}
+      </div></div>` : '';
+
+  return `<div class="pd">
+    <div class="pd-hero">
+      <div class="ph im" style="${photo(p.photo)}"></div>
+      <div class="sh"></div>
+      <div class="in">
+        <div class="k">${esc(p.cat)} · ${esc(STAGE[S.stage].short)}</div>
+        <h2>${esc(p.t)}</h2>
+        <div class="m">${[p.place, p.dist].filter(Boolean).map((m) => `<span>${esc(m)}</span>`).join('')}</div>
+      </div>
+    </div>
+
+    <div class="pd-head" style="padding-top:14px">
+      <h3>The plan</h3>
+      <span class="sp"></span>
+      ${stagePill()}
+      <span class="stamp ${st.cls}">${esc(st.stamp)}</span>
+    </div>
+
+    <div class="pd-state ${stateCls}">
+      <div class="r">${countdown}<span style="font-size:12px;line-height:1.45;font-weight:600">${esc(rule)}</span></div>
+      <p>${esc(STATE_COPY[src] || '')}</p>
+      <div class="acts">${actsFor(p, false)}</div>
+    </div>
+
+    <dl class="pd-rows">
+      ${rows.map(([k, v]) => `<div class="pd-row"><dt>${k}</dt><dd>${v}</dd></div>`).join('')}
+    </dl>
+
+    <div class="pd-sec">
+      <h4>${src === 'hosting' ? 'Run of show' : 'The way this plan goes'}</h4>
+      <ol class="pd-steps">
+        ${stepsFor(p).map(([t, s, cls], i) => `<li class="${cls}"><span class="n">${cls === 'done' ? '✓' : i + 1}</span>
+          <span><b>${esc(t)}</b><small>${esc(s)}</small></span></li>`).join('')}
+      </ol>
+    </div>
+
+    ${guests}
+
+    <p class="pd-note">One plan, every stage: press Pay and this pane walks to Awaiting, then to Confirmed when the host answers. Nothing here is a mock of a different screen — it is the same plan at a different moment.</p>
+  </div>`;
+}
+
+function renderPane() {
+  const pane = $('#planPane');
+  if (!pane) return;
+  const p = find(S.paneId) || focusOf();
+  pane.innerHTML = p ? planDetail(p) : `<div class="pd-empty">Nothing in this stage.<br>Change the Stage control to see the same app in another moment.</div>`;
+}
+
+/* ==============================================================
+   Painting
+   ============================================================== */
+function renderAll(reset) {
+  const grab = (sel) => { const el = $(sel); return el ? el.scrollTop : 0; };
+  if (!reset) {
+    S.scroll.a = grab('#optA .a-scroll');
+    S.scroll.b = grab('#optB .b-scroll');
+    S.scroll.pane = grab('#planPane');
+  }
+  $('#optA').innerHTML = renderA();
+  $('#optB').innerHTML = renderB();
+  renderPane();
+  if (!reset) {
+    const put = (sel, v) => { const el = $(sel); if (el) el.scrollTop = v; };
+    put('#optA .a-scroll', S.scroll.a);
+    put('#optB .b-scroll', S.scroll.b);
+    put('#planPane', S.scroll.pane);
+  }
+  tickers();
+  syncPanel();
+}
+
+/* the panel never explains the phone: both read from the same STAGE table */
+function syncPanel() {
+  const st = STAGE[S.stage];
+  $('#stageKicker').textContent = st.kicker;
+  $('#stageName').textContent = st.label;
+  $('#stageRule').textContent = st.rule;
+  $('#stageAsk').textContent = st.ask;
+  $('#stageHow').textContent = st.how[S.opt] || st.how.a;
+  const o = OPT[S.opt];
+  $('#optKicker').textContent = o.kicker;
+  $('#optName').textContent = o.name;
+  $('#optDesc').textContent = o.desc;
+  $('#optAnswers').textContent = o.answers;
+  $('#optBest').textContent = o.best;
+  $('#optCost').textContent = o.costs;
+  $$('#segStage button').forEach((b) => b.classList.toggle('on', b.dataset.k === S.stage));
+  $$('#segOption button, #optRail button').forEach((b) => {
+    const on = b.dataset.opt === S.opt;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+}
+
+/* One tick a second, and only the numbers that are information. Nothing here moves layout. */
+function tickers() {
+  const now = Date.now();
+  $$('[data-cd="hold"]').forEach((el) => { el.textContent = `${durText(Math.max(0, S.holdEnds - now))} left`; });
+  $$('[data-cd="pay"]').forEach((el) => {
+    el.textContent = S.holdEnds > now ? `${durText(S.holdEnds - now)} left to pay` : 'The hold has expired';
+  });
+  $$('[data-cd="start"]').forEach((el) => { el.textContent = startText(Number(el.dataset.start)); });
+  const f = holdFrac().toFixed(3);
+  $$('.a-drive i').forEach((el) => { el.style.transform = `scaleX(${f})`; });
+  $$('[data-now]').forEach((el) => { el.textContent = `Now ${hhmm(now)}`; });
+  const t = $('#sbTime');
+  if (t) t.textContent = S.device === 'ipad' ? `${hhmm(now)}  ${dayShort(new Date(now))}` : hhmm(now);
+}
+
+/* ==============================================================
+   State changes
+   ============================================================== */
+function goStage(k, opts) {
+  if (!STAGE[k]) return;
+  const o = opts || {};
+  S.stage = k;
+  /* a hand-off can carry the plan it is about, so "Pay → Awaiting → Confirmed" keeps the
+     paying plan in front of you instead of jumping to whatever is booked first */
+  const forced = o.focus ? find(o.focus) : null;
+  const f = forced || focusOf();
+  S.focusId = f ? f.id : null;
+  S.paneId = f ? f.id : null;
+  S.day = startOfDay(f ? f.start : NOW).getTime();
+  S.picked = false;
+  const anchor = new Date(S.day);
+  S.month = new Date(anchor.getFullYear(), anchor.getMonth(), 1).getTime();
+  renderAll(true);
+  haptic('light');
+  if (o.toast) toast(o.toast);
+}
+
+function setOpt(k) {
+  if (!OPT[k]) return;
+  S.opt = k;
+  ['a', 'b'].forEach((x) => { const el = $('#opt' + x.toUpperCase()); if (el) el.hidden = x !== k; });
+  renderAll(false);
+}
+
+/* ==============================================================
+   Device stages — Solo, the Duo (inner / cover), the iPad
+   ============================================================== */
+const DEVICES = {
+  solo: { w: 390, h: 844, r: 52, bz: 11 },
+  cover: { w: 466, h: 678, r: 40, bz: 11 },
+  inner: { w: 890, h: 626, r: 30, bz: 11, split: '50%' },
+  ipadL: { w: 1180, h: 820, r: 18, bz: 22, split: '400px' },
+  ipadP: { w: 820, h: 1180, r: 18, bz: 22 },
+};
+const VARIANTS = {
+  duo: { label: 'Duo state', a: 'Inner display', b: 'Cover screen' },
+  ipad: { label: 'Orientation', a: 'Landscape', b: 'Portrait' },
+};
+const deviceKind = () => (S.device === 'duo' ? (S.variant === 'a' ? 'inner' : 'cover')
+  : S.device === 'ipad' ? (S.variant === 'a' ? 'ipadL' : 'ipadP') : 'solo');
+
+function syncStage() {
+  const slot = $('#phoneSlot');
+  const d = DEVICES[deviceKind()];
+  const pw = d.w + d.bz * 2;
+  const ph = d.h + d.bz * 2;
+  const wideWin = window.matchMedia('(min-width: 901px)').matches;
+  const reserved = wideWin ? 396 + 48 : 0;
+  const availW = Math.max(300, document.documentElement.clientWidth - reserved - 48);
+  let k = availW / pw;
+  if (S.device === 'ipad') k = Math.min(k, Math.max(420, window.innerHeight - 130) / ph);
+  k = Math.max(.3, Math.min(1, k));
+  slot.style.setProperty('--pw', pw + 'px');
+  slot.style.setProperty('--ph', ph + 'px');
+  slot.style.setProperty('--k', String(k));
+}
+
+function applyDevice(animate) {
+  const phone = $('#phone');
+  const device = $('#device');
+  const kind = deviceKind();
+  const d = DEVICES[kind];
+  if (animate && !reduced) {
+    phone.classList.add('morph', 'dip');
+    setTimeout(() => phone.classList.remove('dip'), 240);
+    clearTimeout(applyDevice._t);
+    applyDevice._t = setTimeout(() => { phone.classList.remove('morph'); syncStage(); }, 480);
+  }
+  phone.classList.toggle('duo', S.device === 'duo');
+  phone.classList.toggle('ipad', S.device === 'ipad');
+  phone.classList.toggle('portrait', kind === 'ipadP');
+  phone.style.setProperty('--dw', d.w + 'px');
+  phone.style.setProperty('--dh', d.h + 'px');
+  phone.style.setProperty('--dr', d.r + 'px');
+  phone.style.setProperty('--bz', d.bz + 'px');
+  device.classList.toggle('wide', !!d.split);
+  device.classList.toggle('roomy', S.device === 'ipad');
+  if (d.split) device.style.setProperty('--lw', d.split);
+  syncStage();
+  syncVariantUI();
+  renderPane();
+  tickers();
+}
+
+function syncVariantUI() {
+  const v = VARIANTS[S.device];
+  $('#variantCtl').hidden = !v;
+  if (!v) return;
+  $('#variantLabel').textContent = v.label;
+  $$('#segVariant button').forEach((b) => {
+    b.textContent = v[b.dataset.v];
+    b.classList.toggle('on', b.dataset.v === S.variant);
+  });
+}
+
+/* ==============================================================
+   Small services
+   ============================================================== */
+let reduced = false;
+function applyMotion(on) {
+  reduced = !!on;
+  document.documentElement.dataset.motion = reduced ? 'reduced' : 'full';
+  $$('#segMotion button').forEach((b) => b.classList.toggle('on', (b.dataset.motion === 'reduced') === reduced));
+}
+
+let toastT = 0;
+function toast(msg) {
+  const t = $('#toast');
+  $('#toastText').textContent = msg;
+  t.classList.add('on');
+  clearTimeout(toastT);
+  toastT = setTimeout(() => t.classList.remove('on'), 2600);
+}
+
+function haptic(kind) {
+  if (!S.haptics || !navigator.vibrate) return;
+  try { navigator.vibrate(kind === 'success' ? [10, 40, 14] : 7); } catch (_) { /* refused, never mind */ }
+}
+
+/* ==============================================================
+   What the phone does
+   ============================================================== */
+let payTimer = 0;
+
+$('#device').addEventListener('click', (e) => {
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  const act = el.dataset.act;
+  const id = el.dataset.id;
+  const p = id ? find(id) : null;
+
+  switch (act) {
+    case 'day': {
+      S.day = Number(el.dataset.day);
+      const d = new Date(S.day);
+      S.month = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+      /* picking a day is the whole navigation of option B: no sheet, no route, just state */
+      S.picked = true;
+      renderAll(false);
+      haptic('light');
+      break;
+    }
+    case 'today': {
+      S.day = today.getTime();
+      S.month = new Date(today.getFullYear(), today.getMonth(), 1).getTime();
+      S.picked = false;
+      renderAll(false);
+      haptic('light');
+      break;
+    }
+    case 'unpick': {
+      S.picked = false;
+      S.day = today.getTime();
+      S.month = new Date(today.getFullYear(), today.getMonth(), 1).getTime();
+      renderAll(false);
+      haptic('light');
+      break;
+    }
+    case 'life': goStage('life', { toast: 'Back to the whole week' }); break;
+    case 'month': setOpt('b'); haptic('light'); break;
+    case 'mstep': {
+      const m = new Date(S.month);
+      m.setMonth(m.getMonth() + Number(el.dataset.v));
+      S.month = m.getTime();
+      S.picked = false;
+      renderAll(false);
+      haptic('light');
+      break;
+    }
+    case 'togglePast': S.pastOpen = !S.pastOpen; renderAll(false); break;
+    case 'find': goStage('open', { toast: 'Three things are on this week' }); break;
+    case 'open': {
+      if (!p) break;
+      S.paneId = p.id;
+      S.day = startOfDay(p.start).getTime();
+      renderAll(false);
+      const wide = $('#device').classList.contains('wide');
+      if (!wide) toast(`${p.t} · the plan`);
+      haptic('light');
+      break;
+    }
+    case 'pay': {
+      if (!p) break;
+      /* the plan walks with you: it is now the awaiting plan, so the next stage opens on it */
+      p.src = 'awaiting';
+      p.key = 'await';
+      goStage('await', { toast: 'Paid · the host has an hour to confirm', focus: p.id });
+      haptic('success');
+      clearTimeout(payTimer);
+      /* the host's answer, the way it actually arrives: nothing to do, then a ticket */
+      payTimer = setTimeout(() => {
+        p.src = 'booked';
+        p.key = 'ok';
+        if (S.stage === 'await') goStage('ok', { toast: 'The host confirmed · your ticket is ready', focus: p.id });
+      }, 3600);
+      break;
+    }
+    case 'extend': {
+      S.holdEnds += 10 * 60000;
+      S.holdTotal += 10 * 60000;
+      renderAll(false);
+      toast('Extended · ten more minutes on your seat');
+      haptic('light');
+      break;
+    }
+    case 'ticket': toast(`Your ticket · ${p ? p.t : ''}`); break;
+    case 'dir': toast(`Directions · ${p && p.dist ? p.dist : '8 min'} away`); break;
+    case 'msg': toast(`Message ${p ? p.host : 'the host'}`); break;
+    case 'ros': goStage('host', { toast: 'Run of show' }); break;
+    case 'guests': toast(`${p ? p.guests : 18} guests on the list`); break;
+    case 'calendar': toast('Added to Apple Calendar'); break;
+    case 'recap': toast('Opening the recap'); break;
+    case 'add': {
+      const d = find(id);
+      if (d && !PLANS.includes(d)) { d.src = 'added'; d.key = 'added'; PLANS.push(d); }
+      goStage('life', { toast: `Added ${d ? d.t : 'the event'} · it stays before you book` });
+      haptic('success');
+      break;
+    }
+    default: break;
+  }
+});
+
+$('#dock').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-dock]');
+  if (!b) return;
+  if (b.dataset.dock === 'schedule') return toast('You are on Schedule');
+  toast(`${b.dataset.dock[0].toUpperCase()}${b.dataset.dock.slice(1)} · outside this prototype`);
+});
+
+/* ==============================================================
+   The panel
+   ============================================================== */
+$('#segStage').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-k]');
+  if (!b) return;
+  goStage(b.dataset.k);
+});
+$('#segOption').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-opt]');
+  if (b) { setOpt(b.dataset.opt); haptic('light'); }
+});
+/* the rail above the phone is the same control, so it uses the same path — one state, two doors */
+$('#optRail').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-opt]');
+  if (b) { setOpt(b.dataset.opt); haptic('light'); }
+});
+/* keys 1 and 2 flip the option anywhere in the page, so comparing never needs a scroll */
+window.addEventListener('keydown', (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  if (e.key === '1') { setOpt('a'); haptic('light'); }
+  else if (e.key === '2') { setOpt('b'); haptic('light'); }
+});
+$('#segDevice').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-dev]');
+  if (!b || b.dataset.dev === S.device) return;
+  S.device = b.dataset.dev;
+  S.variant = 'a';
+  $$('#segDevice button').forEach((x) => x.classList.toggle('on', x === b));
+  applyDevice(true);
+  haptic('light');
+});
+$('#segVariant').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-v]');
+  if (!b || b.dataset.v === S.variant) return;
+  S.variant = b.dataset.v;
+  applyDevice(true);
+  haptic('light');
+});
+$('#segTheme').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-theme]');
+  if (!b) return;
+  document.documentElement.dataset.theme = b.dataset.theme;
+  $$('#segTheme button').forEach((x) => x.classList.toggle('on', x === b));
+});
+$('#segMotion').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-motion]');
+  if (!b) return;
+  applyMotion(b.dataset.motion === 'reduced');
+  toast(reduced ? 'Motion reduced · nothing travels, everything lands' : 'Full motion');
+});
+$('#segHaptics').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-haptics]');
+  if (!b) return;
+  S.haptics = b.dataset.haptics === 'on';
+  $$('#segHaptics button').forEach((x) => x.classList.toggle('on', x === b));
+  haptic('success');
+});
+
+/* replay: the hold comes back with its full twenty-one minutes, the paying plan goes back
+   to waiting on the host, and the book opens on the week */
+$('#replay').addEventListener('click', () => {
+  clearTimeout(payTimer);
+  const held = find('p2');
+  const awaitP = find('p3');
+  if (held) { held.src = 'holding'; held.key = 'hold'; }
+  if (awaitP) { awaitP.src = 'awaiting'; awaitP.key = 'await'; }
+  S.holdEnds = Date.now() + HOLD_MS;
+  S.holdTotal = HOLD_MS;
+  S.pastOpen = false;
+  S.picked = false;
+  goStage('life', { toast: 'Stage replayed' });
+  S.scroll = { a: 0, b: 0, pane: 0 };
+});
+
+/* ==============================================================
+   First paint
+   ============================================================== */
+const reduceQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+applyMotion(reduceQuery.matches);
+document.documentElement.dataset.theme = 'light';
+applyDevice(false);
+goStage('life');
+setInterval(tickers, 1000);
+window.addEventListener('resize', syncStage);
+window.addEventListener('orientationchange', syncStage);
+reduceQuery.addEventListener?.('change', (e) => applyMotion(e.matches));
+
+})();
+</script>
+</body>
+</html>

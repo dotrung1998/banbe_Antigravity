@@ -1,0 +1,1554 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-motion="full">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>banbe — Schedule · three options</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* banbe Schedule prototype v1. Three answers to the same question — "what am I doing, and when?" — built on
+   the v2.3 material system (paper, glass chrome, editorial serif, spring motion) and on the app's real tokens
+   (.claude/notes/06-design-tokens.md: paper #F7F4EC, ink #1B1916, field #EEE8DA, alert #9A3E2D).
+   Every state the real Schedule must survive is in here: confirmed, seat on hold, awaiting the host, you host,
+   added by you, ended, and discover. Nothing in the phone is a stock picture of a calendar. */
+:root{
+  /* surfaces — the app's own palette, not an invented one */
+  --bg:#F7F4EC; --fg:#1B1916; --fg2:rgba(27,25,22,.74); --fg3:rgba(27,25,22,.58);
+  --rule:rgba(27,25,22,.16); --divider:rgba(27,25,22,.08);
+  --block:#EEE8DA; --inset:#FBF8F1; --sel:#FFFFFF;
+  /* accents (shared with the v2.3 prototype and the iOS palette) */
+  --alert:#9A3E2D; --clay:#A2543A; --moss:#4C5F3A; --honey:#8A6418; --plum:#6B4E7C;
+  --honey-soft:#F3E3BC; --moss-soft:#E4EAD9; --plum-soft:#EDE4F1; --clay-soft:#F2E2DA;
+  --night:#14110C; --stage:#DCD5C7;
+  --serif:'Iowan Old Style','Palatino Linotype',Palatino,Georgia,'Times New Roman',serif;
+  /* material tokens — one recipe for every glass surface */
+  --glass:rgba(251,248,241,.62);
+  --glass-strong:rgba(251,248,241,.88);
+  --glass-line:rgba(255,255,255,.62);
+  --glass-shadow:0 18px 44px rgba(27,25,22,.16),0 2px 6px rgba(27,25,22,.06);
+  --rim:inset 0 1px 0 rgba(255,255,255,.7);
+  --shadow-1:0 1px 2px rgba(27,25,22,.05),0 10px 30px rgba(27,25,22,.07);
+  --shadow-2:0 22px 60px rgba(27,25,22,.18),0 3px 10px rgba(27,25,22,.06);
+  --shadow-dock:0 16px 40px rgba(27,25,22,.22);
+  /* motion tokens — the numbers quoted in the panel */
+  --t-press:110ms; --t-quick:180ms; --t-base:280ms; --t-slow:420ms;
+  --ease-out:cubic-bezier(.22,.61,.36,1); --ease-spring:cubic-bezier(.2,1.04,.3,1); --ease-soft:cubic-bezier(.32,.72,0,1);
+}
+:root[data-theme="dark"]{
+  --bg:#14120E; --fg:#F2EDE1; --fg2:rgba(242,237,225,.76); --fg3:rgba(242,237,225,.6);
+  --rule:rgba(242,237,225,.2); --divider:rgba(242,237,225,.08);
+  --block:#2A2620; --inset:#1B1813; --sel:#221E17;
+  --alert:#E8715B; --clay:#D8926C; --moss:#A9C487; --honey:#F2C46D; --plum:#C9A8D8;
+  --honey-soft:#3A2E14; --moss-soft:#242B1B; --plum-soft:#2B2333; --clay-soft:#37241D;
+  --night:#080705; --stage:#050504;
+  --glass:rgba(20,18,14,.62); --glass-strong:rgba(20,18,14,.9);
+  --glass-line:rgba(255,255,255,.1);
+  --glass-shadow:0 18px 44px rgba(0,0,0,.55),0 2px 6px rgba(0,0,0,.35);
+  --rim:inset 0 1px 0 rgba(255,255,255,.07);
+  --shadow-1:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.4);
+  --shadow-2:0 24px 70px rgba(0,0,0,.6);
+  --shadow-dock:0 18px 50px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  font-family:'Be Vietnam Pro',system-ui,-apple-system,sans-serif;
+  background:
+    radial-gradient(90% 60% at 18% -10%, #FDFBF5 0%, rgba(253,251,245,0) 60%),
+    radial-gradient(70% 50% at 100% 100%, #CFC6B6 0%, rgba(207,198,182,0) 55%),
+    var(--stage);
+  color:var(--fg);-webkit-font-smoothing:antialiased;
+}
+:root[data-theme="dark"] body{background:
+  radial-gradient(90% 60% at 18% -10%, #1B1811 0%, rgba(27,24,17,0) 60%),
+  radial-gradient(70% 50% at 100% 100%, #070605 0%, rgba(7,6,5,0) 55%),
+  var(--stage)}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+svg.i{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.stage{min-height:100%;display:flex;gap:48px;justify-content:center;align-items:flex-start;flex-wrap:wrap;padding:26px 24px 30px}
+
+/* ---------------- side panel ---------------- */
+.panel{width:392px;flex:none;position:sticky;top:0;max-height:calc(100vh - 56px);overflow:auto;padding:0 4px 40px 0;
+  scrollbar-width:thin;scrollbar-color:var(--rule) transparent}
+.panel::-webkit-scrollbar{width:6px}
+.panel::-webkit-scrollbar-thumb{background:var(--rule);border-radius:99px}
+.eyebrow{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--clay);font-weight:700;margin:0 0 9px}
+.panel h1{font-family:var(--serif);font-weight:400;font-size:34px;letter-spacing:-.025em;margin:0 0 10px;line-height:1.04}
+.panel .lede{font-size:13px;color:var(--fg2);line-height:1.62;margin:0 0 20px}
+.ctl{margin-bottom:12px}
+.ctl label{display:block;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--fg2);margin-bottom:7px}
+.seg{display:flex;background:var(--glass);border:1px solid var(--glass-line);border-radius:999px;padding:3px;
+  box-shadow:var(--rim);backdrop-filter:blur(20px) saturate(1.5);-webkit-backdrop-filter:blur(20px) saturate(1.5)}
+.seg button{flex:1;height:34px;padding:0 6px;white-space:nowrap;border-radius:999px;font-size:12px;font-weight:600;color:var(--fg3);display:flex;align-items:center;justify-content:center;gap:5px;
+  transition:background var(--t-quick) var(--ease-out),color var(--t-quick) var(--ease-out)}
+.seg button.on{background:var(--fg);color:var(--bg)}
+.seg.three button{font-size:11.5px}
+.replay{width:100%;height:40px;margin-top:10px;border-radius:999px;border:1px solid var(--rule);font-size:12.5px;font-weight:600;color:var(--fg);
+  transition:transform var(--t-press) var(--ease-out),background var(--t-quick) var(--ease-out)}
+.replay:active{transform:scale(.98);background:var(--block)}
+:where(.seg button,.replay,.iconbtn,.a-day,.b-cell,.c-mini,.c-row,.b-row,.rowbtn,.stamp,.mcell):focus-visible{
+  outline:2px solid var(--clay);outline-offset:2px}
+
+/* the current option, stated in one card so the phone never has to explain itself */
+.optCard{margin-top:14px;padding:14px 15px;border-radius:16px;background:var(--glass);border:1px solid var(--glass-line);
+  box-shadow:var(--rim),var(--shadow-1);backdrop-filter:blur(20px) saturate(1.4);-webkit-backdrop-filter:blur(20px) saturate(1.4)}
+.optCard .n{display:flex;align-items:baseline;gap:8px;margin-bottom:5px}
+.optCard .n b{font-family:var(--serif);font-size:19px;font-weight:400;letter-spacing:-.01em}
+.optCard .n span{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--clay);font-weight:700}
+.optCard p{margin:0;font-size:12px;line-height:1.55;color:var(--fg2)}
+.optCard dl{display:grid;grid-template-columns:74px 1fr;gap:4px 10px;margin:11px 0 0;font-size:11.5px;line-height:1.45}
+.optCard dt{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg3);font-weight:600;padding-top:2px}
+.optCard dd{margin:0;color:var(--fg)}
+
+/* comparison + stages */
+.sect{margin-top:22px;padding-top:18px;border-top:1px solid var(--rule)}
+.sect h2{font-family:var(--serif);font-size:19px;font-weight:400;margin:0 0 4px;letter-spacing:-.01em}
+.sect .hint{font-size:11px;color:var(--fg3);margin:0 0 12px;line-height:1.5}
+table.cmp{width:100%;border-collapse:collapse;font-size:11px}
+table.cmp th,table.cmp td{text-align:left;padding:7px 6px 7px 0;border-bottom:1px solid var(--divider);vertical-align:top;line-height:1.4}
+table.cmp thead th{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg3);font-weight:700;padding-bottom:6px}
+table.cmp tbody th{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--fg2);font-weight:600;width:70px}
+table.cmp td b{font-weight:600}
+table.cmp td.on{background:color-mix(in srgb,var(--clay) 9%,transparent);border-radius:6px}
+table.cmp tr:last-child th,table.cmp tr:last-child td{border-bottom:0}
+
+/* notes: the long-form evidence, collapsed by default */
+.notes{margin-top:22px;border-top:1px solid var(--rule)}
+.notes summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;
+  font-size:12.5px;font-weight:600;color:var(--fg);padding:14px 0}
+.notes summary::-webkit-details-marker{display:none}
+.notes summary::after{content:"+";font-weight:400;font-size:16px;color:var(--fg3);transition:transform var(--t-base) var(--ease-spring)}
+.notes[open] summary::after{transform:rotate(45deg)}
+.notes h3{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--fg3);font-weight:700;margin:16px 0 8px}
+.notes ul{margin:0 0 14px;padding-left:15px;font-size:12px;line-height:1.6;color:var(--fg2)}
+.notes li{margin-bottom:7px}
+.notes b{color:var(--fg);font-weight:600}
+.notes code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;background:var(--block);padding:1px 4px;border-radius:4px}
+.notes a{color:var(--clay);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--clay) 40%,transparent)}
+.notes a:hover{border-bottom-color:var(--clay)}
+.ev{list-style:none;padding:0;margin:0 0 6px;counter-reset:ev}
+.ev li{counter-increment:ev;position:relative;padding:0 0 10px 26px;font-size:11.5px;line-height:1.55;color:var(--fg2)}
+.ev li::before{content:counter(ev);position:absolute;left:0;top:1px;width:17px;height:17px;border-radius:50%;border:1px solid var(--rule);
+  display:grid;place-items:center;font-size:9px;font-weight:700;color:var(--fg3);font-variant-numeric:tabular-nums}
+.ev li b{color:var(--fg);font-weight:600}
+.ev li em{font-style:normal;color:var(--fg3);font-size:10.5px;display:block;margin-top:2px}
+.spec{display:grid;grid-template-columns:1fr auto;gap:5px 12px;font-size:11px;color:var(--fg2);margin:0 0 4px}
+.spec b{font-weight:500;color:var(--fg);font-variant-numeric:tabular-nums}
+.legend{display:grid;grid-template-columns:1fr 1fr;gap:7px 12px;margin:0 0 6px;font-size:11px;color:var(--fg2)}
+.legend span{display:flex;align-items:center;gap:7px}
+.legend i{width:16px;height:16px;border-radius:5px;flex:none;border:1px solid}
+.lg-ok{background:var(--moss-soft);border-color:var(--moss)}
+.lg-hold{background:var(--honey-soft);border-color:var(--honey)}
+.lg-await{background:transparent;border-style:dashed;border-color:var(--fg3)}
+.lg-host{background:var(--plum-soft);border-color:var(--plum)}
+.lg-add{background:var(--clay-soft);border-color:var(--clay)}
+.lg-end{background:var(--block);border-color:var(--rule)}
+.foot{font-size:10.5px;color:var(--fg3);line-height:1.5;margin-top:20px;padding-top:14px;border-top:1px solid var(--rule)}
+
+
+/* ---------------- phone ---------------- */
+/* One iPhone, 390 × 844, the size every screen here was laid out for. The stage scales the whole body,
+   never the app, so the layout inside is measured exactly as it would be on a phone. */
+.stagePhone{flex:none;display:flex;flex-direction:column;align-items:center;gap:16px}
+.phoneSlot{position:relative;flex:none;width:calc(var(--pw,412px) * var(--k,1));height:calc(var(--ph,866px) * var(--k,1))}
+.phoneFit{position:absolute;top:0;left:0;width:var(--pw,412px);height:var(--ph,866px);transform:scale(var(--k,1));transform-origin:top left}
+.phone{--dw:390px;--dh:844px;--dr:52px;--bz:11px;
+  width:calc(var(--dw) + var(--bz) * 2);height:calc(var(--dh) + var(--bz) * 2);flex:none;border-radius:calc(var(--dr) + var(--bz) - 1px);
+  padding:var(--bz);position:relative;overflow:hidden;
+  background:linear-gradient(150deg,#3A342A 0%,#0B0A07 38%,#221E17 72%,#4A4336 100%);
+  box-shadow:0 70px 120px rgba(20,17,12,.38),0 18px 40px rgba(20,17,12,.22),inset 0 1px 0 rgba(255,255,255,.22)}
+.phone::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.12),inset 0 1px 0 rgba(255,255,255,.35)}
+.device{--st:52px;position:relative;width:var(--dw);height:var(--dh);flex:none;border-radius:var(--dr);overflow:hidden;background:var(--bg);
+  clip-path:inset(0 round var(--dr));-webkit-clip-path:inset(0 round var(--dr));isolation:isolate;color:var(--fg);
+  transition:background var(--t-base) var(--ease-out)}
+.island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:112px;height:32px;border-radius:20px;background:#000;z-index:96;pointer-events:none}
+.status{position:absolute;top:0;left:0;right:0;height:var(--st);z-index:95;display:flex;justify-content:space-between;align-items:center;
+  padding:2px 26px 0 30px;font-size:14.5px;font-weight:600;color:var(--fg);pointer-events:none}
+.status .sb-r{display:flex;align-items:center;gap:5px}
+.screen{position:absolute;inset:0;overflow:hidden}
+.screen::after{content:"";position:absolute;left:0;right:0;bottom:0;height:132px;z-index:50;pointer-events:none;
+  background:linear-gradient(180deg,transparent,color-mix(in srgb,var(--bg) 80%,transparent) 22%,color-mix(in srgb,var(--bg) 97%,transparent) 44%,var(--bg) 62%,var(--bg) 100%)}
+.scroll{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;overscroll-behavior:contain;padding-bottom:118px}
+.scroll::-webkit-scrollbar{display:none}
+
+/* the dock: 5 slots, icon-only, one ink disc on the active tab (BottomTabBar.jsx). Schedule is active here. */
+.dock{position:absolute;left:50%;transform:translateX(-50%);bottom:16px;z-index:60;display:flex;align-items:center;gap:1px;padding:6px;
+  border-radius:999px;background:var(--glass-strong);border:1px solid var(--glass-line);
+  box-shadow:var(--glass-shadow),var(--rim);backdrop-filter:blur(26px) saturate(1.7);-webkit-backdrop-filter:blur(26px) saturate(1.7);
+  transition:opacity var(--t-base) var(--ease-out),transform var(--t-base) var(--ease-out)}
+.dock.under{opacity:0;transform:translateX(-50%) translateY(14px);pointer-events:none}
+.dock button{width:54px;height:46px;border-radius:999px;display:grid;place-items:center;color:var(--fg3);position:relative;
+  transition:color var(--t-quick) var(--ease-out),transform var(--t-press) var(--ease-out)}
+.dock button:active{transform:scale(.92)}
+.dock button.on{color:var(--bg)}
+.dock button.on::before{content:"";position:absolute;width:34px;height:34px;border-radius:50%;background:var(--fg)}
+.dock svg{position:relative;width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.dock .plus{color:var(--fg)}
+.dock .plus i{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:var(--block);border:1px solid var(--rule)}
+.dock .plus svg{width:17px;height:17px;stroke-width:2.2}
+
+/* toast, above the dock */
+.toast{position:absolute;left:16px;right:16px;bottom:84px;z-index:70;display:flex;align-items:center;gap:9px;
+  padding:11px 14px;border-radius:14px;background:var(--glass-strong);border:1px solid var(--glass-line);
+  box-shadow:var(--glass-shadow),var(--rim);backdrop-filter:blur(22px) saturate(1.6);
+  font-size:12.5px;font-weight:500;color:var(--fg);
+  transform:translateY(10px);opacity:0;pointer-events:none;transition:opacity var(--t-quick) var(--ease-out),transform var(--t-base) var(--ease-spring)}
+.toast.on{opacity:1;transform:none}
+.toast svg{width:15px;height:15px;color:var(--moss)}
+
+/* ---------------- shared bits ---------------- */
+*{scrollbar-width:none}
+.eyeb{font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--clay);font-weight:700}
+.serif{font-family:var(--serif);font-weight:400;letter-spacing:-.015em}
+.tnum{font-variant-numeric:tabular-nums}
+.ph{background-size:cover;background-position:center;background-color:var(--block)}
+.sel{background:var(--sel)}
+.dot{width:5px;height:5px;border-radius:50%;background:currentColor;display:inline-block}
+.stamp{display:inline-flex;align-items:center;gap:4px;height:19px;padding:0 6px;border-radius:5px;
+  font-size:9px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;border:1px solid currentColor;white-space:nowrap}
+.stamp.ok{color:var(--moss)} .stamp.hold{color:var(--honey)} .stamp.await{color:var(--fg3);border-style:dashed}
+.stamp.host{color:var(--plum)} .stamp.end{color:var(--fg3)} .stamp.add{color:var(--clay)} .stamp.disc{color:var(--fg3);border-style:dashed}
+.stamp.ink{color:var(--fg)}
+.rowbtn{display:flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 15px 0 13px;border-radius:999px;
+  font-size:11.5px;font-weight:600;background:var(--fg);color:var(--bg);
+  transition:transform var(--t-press) var(--ease-out),background var(--t-quick)}
+.rowbtn:active{transform:scale(.97)}
+.rowbtn,.iconbtn,.a-monthbtn,.c-pastbtn{position:relative}
+.rowbtn::after,.iconbtn::after,.a-monthbtn::after,.c-pastbtn::after{
+  content:"";position:absolute;inset:-4px;border-radius:inherit}
+.rowbtn.ghost{background:transparent;color:var(--fg);border:1px solid var(--rule)}
+.rowbtn.tiny{height:32px;padding:0 12px;font-size:11px}
+.iconbtn{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--rule);color:var(--fg);
+  background:var(--sel);transition:transform var(--t-press) var(--ease-out),background var(--t-quick)}
+.iconbtn:active{transform:scale(.92)}
+.iconbtn svg{width:16px;height:16px}
+.segmini{display:inline-flex;gap:2px;padding:3px;border-radius:999px;background:var(--block);border:1px solid var(--divider)}
+.segmini button{height:28px;padding:0 13px;border-radius:999px;font-size:11.5px;font-weight:600;color:var(--fg3);
+  transition:background var(--t-quick) var(--ease-out),color var(--t-quick) var(--ease-out)}
+.segmini button.on{background:var(--fg);color:var(--bg)}
+.hair{height:1px;background:var(--rule);border:0;margin:0}
+.mono{font-variant-numeric:tabular-nums}
+
+/* entrance: one shared rise-and-fade, staggered by the rows themselves */
+@keyframes riseIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes sheetUp{from{transform:translateY(28px);opacity:0}to{transform:none;opacity:1}}
+@keyframes popIn{from{transform:scale(.82);opacity:0}to{transform:none;opacity:1}}
+@keyframes holdPulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--honey) 55%,transparent)}
+  70%{box-shadow:0 0 0 9px color-mix(in srgb,var(--honey) 0%,transparent)}100%{box-shadow:0 0 0 0 transparent}}
+
+/* the month sheet, opened from A's month button and C's calendar button */
+.mscrim{position:absolute;inset:0;z-index:80;background:rgba(20,17,12,.34);display:flex;align-items:flex-end;
+  animation:fadeIn var(--t-quick) var(--ease-out)}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.msheet{width:100%;max-height:86%;overflow:auto;background:var(--sel);border-top:1px solid var(--rule);border-radius:24px 24px 0 0;padding:14px 18px 26px;
+  box-shadow:0 -18px 50px rgba(20,17,12,.28);animation:sheetUp var(--t-base) var(--ease-spring)}
+.msheet .mhead{display:flex;align-items:center;gap:6px;margin-bottom:10px}
+.msheet .mhead h2{flex:1;margin:0;font-family:var(--serif);font-size:21px;font-weight:400;text-align:center}
+.mgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.mgrid .wk{text-align:center;font-size:9.5px;font-weight:600;color:var(--fg3);padding:4px 0}
+.mcell{position:relative;border-radius:11px;min-height:46px;padding:5px 0 4px;text-align:center;color:var(--fg);
+  transition:background var(--t-quick) var(--ease-out)}
+.mcell b{display:block;font-size:13.5px;font-weight:500;font-variant-numeric:tabular-nums}
+.mcell .dts{display:flex;gap:2px;justify-content:center;height:5px;margin-top:4px}
+.mcell .dts i{width:4px;height:4px;border-radius:2px;background:var(--moss)}
+.mcell.out{opacity:.34}
+.mcell.today b{text-decoration:underline;text-underline-offset:3px}
+.mcell.on{background:var(--fg);color:var(--bg)}
+.mcell.on .dts i{background:var(--bg)}
+.mcell.hold::after{content:"";position:absolute;inset:2px;border-radius:9px;border:1.4px solid var(--honey);pointer-events:none}
+.magenda{margin-top:14px}
+.magenda h3{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--fg3);margin:0 0 8px;font-weight:700}
+.mrow{display:flex;gap:10px;align-items:baseline;width:100%;text-align:left;padding:7px 0;font-size:13px;color:var(--fg);
+  border-bottom:1px solid var(--divider)}
+.mrow span:first-child{width:46px;color:var(--fg3);font-size:12px}
+
+/* If a stage is too small for the panel + phone side by side, the phone goes first. */
+@media (max-width:900px){
+  .stage{flex-direction:column-reverse;align-items:center;gap:28px}
+  .panel{position:static;max-height:none;width:min(560px,100%);order:2}
+}
+
+
+/* =====================================================================================
+   OPTION A — "The day spine"
+   One day at a time, read top to bottom. The left rail is the time, the line is the day,
+   and the node on it is the state. Chosen for the goer on the way somewhere.
+   ===================================================================================== */
+.a-wrap{position:absolute;inset:0;background:var(--bg)}
+.a-wrap::before,.b-wrap::before,.c-wrap::before{content:"";position:absolute;left:0;right:0;top:0;height:var(--st);z-index:9;pointer-events:none;
+  background:linear-gradient(180deg,var(--bg) 52%,color-mix(in srgb,var(--bg) 84%,transparent) 88%,transparent)}
+.a-scroll{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;padding-bottom:134px;overscroll-behavior:contain}
+.a-scroll::-webkit-scrollbar{display:none}
+.a-head{padding:calc(var(--st) + 2px) 20px 0}
+.a-toprow{display:flex;align-items:center;gap:8px;height:36px}
+.a-brand{flex:1;display:flex;flex-direction:column;gap:1px;min-width:0}
+.a-brand .eyeb{font-size:8.5px}
+.a-monthbtn{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 12px;border-radius:999px;border:1px solid var(--rule);
+  font-size:11.5px;font-weight:600;color:var(--fg2);background:var(--sel)}
+.a-monthbtn svg{width:13px;height:13px;opacity:.7}
+.a-title{font-family:var(--serif);font-size:29px;font-weight:400;letter-spacing:-.025em;line-height:1.06;margin:13px 0 0}
+.a-title em{font-style:normal;color:var(--fg3)}
+.a-sub{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:8px 0 0;font-size:11.5px;color:var(--fg2);line-height:1.45}
+.a-sub .item::before{content:"·";margin-right:7px;color:var(--fg3);font-weight:700}
+.a-sub .item:first-child::before{content:none;margin:0}
+.a-sub b{font-weight:600;color:var(--fg)}
+.a-sticky{position:sticky;top:0;z-index:6;background:var(--bg);padding-top:0;margin-top:12px;
+  box-shadow:0 10px 14px -14px rgba(27,25,22,.4)}
+.a-strip{display:flex;gap:2px;padding:4px 14px 8px}
+.a-day{flex:1;min-width:0;border-radius:15px;padding:7px 0 8px;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--fg);
+  transition:background var(--t-quick) var(--ease-out),color var(--t-quick) var(--ease-out),transform var(--t-press) var(--ease-out)}
+.a-day:active{transform:scale(.94)}
+.a-day .w{font-size:9px;letter-spacing:.09em;text-transform:uppercase;opacity:.66;font-weight:700}
+.a-day b{font-size:16px;font-weight:500;line-height:1;font-variant-numeric:tabular-nums}
+.a-day .dj{width:4px;height:4px;border-radius:50%;background:transparent;margin-top:3px}
+.a-day.has .dj{background:var(--moss)}
+.a-day.hason .dj{background:var(--honey)}
+.a-day.today b{text-decoration:underline;text-underline-offset:4px;text-decoration-thickness:1.5px}
+.a-day.on{background:var(--fg);color:var(--bg)}
+.a-day.on .w{opacity:.82}
+.a-day.on .dj{background:var(--bg)}
+.a-day.on.hason .dj{background:var(--honey)}
+.a-modes{display:flex;align-items:center;gap:8px;padding:0 18px 10px}
+.a-modes .segmini button span{opacity:.6;margin-left:4px;font-variant-numeric:tabular-nums}
+
+.a-agenda{padding:14px 18px 0}
+.a-row{display:grid;grid-template-columns:46px 18px minmax(0,1fr);align-items:start;padding-bottom:11px;
+  animation:riseIn var(--t-base) var(--ease-spring) both}
+.a-row:nth-child(1){animation-delay:20ms}.a-row:nth-child(2){animation-delay:60ms}
+.a-row:nth-child(3){animation-delay:100ms}.a-row:nth-child(4){animation-delay:140ms}
+.a-row:nth-child(5){animation-delay:180ms}.a-row:nth-child(6){animation-delay:220ms}
+.a-time{font-size:12.5px;font-weight:600;color:var(--fg2);padding:10px 6px 0 0;text-align:right;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.a-time small{display:block;font-size:9px;font-weight:600;color:var(--fg2);letter-spacing:.04em;margin-top:1px}
+.a-spine{align-self:stretch;position:relative;display:flex;justify-content:center}
+.a-spine::before{content:"";position:absolute;top:0;bottom:-11px;width:1px;background:var(--rule)}
+.a-row:first-child .a-spine::before{top:14px}
+.a-row:last-child .a-spine::before{bottom:auto;height:18px}
+.a-node{position:relative;z-index:1;width:11px;height:11px;border-radius:50%;margin-top:14px;background:var(--bg);border:1.5px solid var(--fg)}
+.a-row.s-booked .a-node{background:var(--moss);border-color:var(--moss)}
+.a-row.s-hold .a-node{background:var(--honey);border-color:var(--honey);animation:holdPulse 2.6s var(--ease-out) infinite}
+.a-row.s-await .a-node{background:var(--bg);border-color:var(--fg3);border-style:dashed}
+.a-row.s-host .a-node{background:var(--plum);border-color:var(--plum)}
+.a-row.s-added .a-node{background:var(--clay);border-color:var(--clay)}
+.a-row.s-ended .a-node{background:var(--bg);border-color:var(--rule)}
+.a-row.s-disc .a-node{background:var(--sel);border-color:var(--fg3);border-style:dashed}
+
+.a-card{position:relative;overflow:hidden;background:var(--sel);border:1px solid var(--rule);border-radius:16px;
+  padding:11px 13px 11px;box-shadow:var(--shadow-1);text-align:left;width:100%;
+  transition:transform var(--t-press) var(--ease-out),box-shadow var(--t-base) var(--ease-out)}
+.a-card:active{transform:scale(.99)}
+.a-card .ttl{font-size:14.5px;font-weight:600;letter-spacing:-.011em;line-height:1.3;display:block}
+.a-card .meta{display:flex;align-items:center;gap:3px 9px;flex-wrap:wrap;font-size:11.5px;color:var(--fg2);margin-top:4px;line-height:1.4}
+.a-card .meta span,.c-row .mm span,.b-row .mm span,.c-hero .meta span{white-space:nowrap}
+.a-card .a-state{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:9px}
+.a-card .a-note{font-size:10.5px;color:var(--fg2);margin-top:6px;line-height:1.45}
+.a-card .acts{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:9px}
+.a-card.hold{border-color:color-mix(in srgb,var(--honey) 42%,var(--rule));background:linear-gradient(180deg,var(--honey-soft),var(--sel) 66%)}
+.a-card.hold::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--honey)}
+.a-card.await{border-style:dashed;background:transparent;box-shadow:none}
+.a-card.host{border-color:color-mix(in srgb,var(--plum) 34%,var(--rule));background:linear-gradient(180deg,var(--plum-soft),var(--sel) 72%)}
+.a-card.ended{background:var(--block);border-color:var(--divider);box-shadow:none;opacity:.7}
+.a-card.disc{border-style:dashed;background:transparent;box-shadow:none}
+.a-count{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:var(--honey);font-variant-numeric:tabular-nums}
+.a-now{display:flex;align-items:center;gap:8px;margin:2px 0 10px 52px}
+.a-now .ln{flex:1;height:1px;background:var(--clay);opacity:.5}
+.a-now span{font-size:8.5px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:var(--clay)}
+.a-now .dotc{width:5px;height:5px;border-radius:50%;background:var(--clay)}
+.a-foot{padding:6px 20px 0;font-size:10.5px;color:var(--fg3);line-height:1.5}
+.a-conflict{font-size:10.5px;color:var(--fg2);margin-top:6px;display:flex;gap:5px;align-items:flex-start}
+.a-conflict svg{width:12px;height:12px;margin-top:1px;color:var(--honey)}
+
+/* =====================================================================================
+   OPTION B — "The month desk"
+   The month is the screen; the day is a sheet over it. The grid answers "how busy", the
+   sheet answers "what is it". Chosen when finding a free day is the job.
+   ===================================================================================== */
+.b-wrap{position:absolute;inset:0;background:var(--bg)}
+.b-scroll{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;overscroll-behavior:contain;
+  padding:calc(var(--st) + 2px) 0 calc(33% + 86px)}
+.b-scroll::-webkit-scrollbar{display:none}
+.b-head{display:flex;align-items:flex-end;gap:8px;padding:6px 18px 0}
+.b-head .l{flex:1;min-width:0}
+.b-head h1{font-family:var(--serif);font-size:32px;font-weight:400;margin:5px 0 0;line-height:1;letter-spacing:-.025em}
+.b-head h1 small{font-size:13px;letter-spacing:.05em;color:var(--fg3);margin-left:5px}
+.b-nav{display:flex;gap:5px;align-items:center}
+.b-nav .iconbtn{width:32px;height:32px}
+.b-grid{display:grid;grid-template-columns:repeat(7,1fr);padding:10px 10px 0}
+.b-wk{text-align:center;font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--fg3);padding-bottom:7px}
+.b-week{grid-column:1 / -1;display:grid;grid-template-columns:repeat(7,1fr);border-top:1px solid var(--divider);padding:3px 0}
+.b-week:first-of-type{border-top:0}
+.b-week.open{background:color-mix(in srgb,var(--fg) 3.5%,transparent);border-radius:12px}
+.b-cell{position:relative;min-height:40px;border-radius:11px;padding:6px 0 5px;text-align:center;color:var(--fg);
+  transition:background var(--t-quick) var(--ease-out),color var(--t-quick) var(--ease-out),transform var(--t-press) var(--ease-out)}
+.b-cell:active{transform:scale(.93)}
+.b-cell b{display:block;font-size:14px;font-weight:500;line-height:1.1;font-variant-numeric:tabular-nums}
+.b-cell .dts{display:flex;gap:2px;justify-content:center;height:5px;margin-top:4px}
+.b-cell .dts i{width:4px;height:4px;border-radius:2px;background:var(--moss)}
+.b-cell .dts i.h{background:var(--honey)}
+.b-cell[data-n="1"]{background:color-mix(in srgb,var(--moss) 11%,transparent)}
+.b-cell[data-n="2"]{background:color-mix(in srgb,var(--moss) 19%,transparent)}
+.b-cell[data-n="3"]{background:color-mix(in srgb,var(--moss) 27%,transparent)}
+.b-cell.out{opacity:.3}
+.b-cell.today b{text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1.5px}
+.b-cell.on{background:var(--fg);color:var(--bg)}
+.b-cell.on .dts i{background:var(--bg)}
+.b-cell.on .dts i.h{background:var(--honey)}
+.b-cell.holding{box-shadow:inset 0 0 0 1.4px var(--honey)}
+.b-band{grid-column:1 / -1;display:grid;grid-template-columns:repeat(7,1fr);gap:3px;padding:0 0 8px}
+.b-slot{display:flex;flex-direction:column;gap:3px;align-items:stretch}
+.b-chip{display:block;width:100%;text-align:center;padding:3px 2px;border-radius:6px;font-size:9px;line-height:1.15;
+  font-variant-numeric:tabular-nums;font-weight:600;letter-spacing:.01em;
+  background:var(--sel);border:1px solid var(--divider);color:var(--fg2);white-space:nowrap;overflow:hidden}
+.b-chip.t{background:var(--moss-soft);border-color:color-mix(in srgb,var(--moss) 32%,transparent);color:var(--fg)}
+.b-chip.h{background:var(--honey-soft);border-color:color-mix(in srgb,var(--honey) 40%,transparent);color:var(--honey)}
+.b-chip.p{background:var(--plum-soft);border-color:color-mix(in srgb,var(--plum) 32%,transparent);color:var(--plum)}
+.b-chip.more{border-style:dashed;color:var(--fg3);background:transparent}
+.b-legend{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 20px 0;font-size:10px;color:var(--fg2)}
+.b-legend span{display:inline-flex;align-items:center;gap:5px}
+.b-legend i{width:7px;height:7px;border-radius:2px;background:var(--moss)}
+.b-legend i.h{background:var(--honey)}
+.b-legend i.ring{border-radius:50%;box-shadow:inset 0 0 0 1.4px var(--honey);background:transparent}
+.b-open{padding:7px 20px 4px;font-size:11px;color:var(--fg2);line-height:1.5;display:flex;gap:8px;align-items:flex-start}
+.b-open svg{width:13px;height:13px;flex:none;margin-top:1px;color:var(--moss)}
+
+/* the peek sheet: 44% of the screen, drags to 88%; Material caps a modal sheet's open position at 50% */
+.b-sheet{position:absolute;left:10px;right:10px;bottom:88px;height:auto;max-height:48%;z-index:52;display:flex;flex-direction:column;
+  background:var(--sel);border:1px solid var(--rule);border-radius:20px;
+  box-shadow:0 -10px 34px rgba(27,25,22,.14),var(--rim);
+  transition:bottom var(--t-base) var(--ease-soft),height var(--t-base) var(--ease-soft),left var(--t-base) var(--ease-soft),right var(--t-base) var(--ease-soft);
+  animation:sheetUp var(--t-base) var(--ease-spring) both;touch-action:pan-y}
+.b-sheet.full{bottom:0;height:88%;max-height:none;left:0;right:0;border-radius:22px 22px 0 0;border-bottom:0}
+.b-sheet.dragging{transition:none}
+.b-grab{display:flex;justify-content:center;padding:9px 0 5px;flex:none;cursor:grab;touch-action:none}
+.b-grab i{width:38px;height:4px;border-radius:2px;background:var(--rule)}
+.b-sheet .sh{display:flex;align-items:baseline;gap:7px;padding:3px 18px 9px;flex:none}
+.b-sheet .sh h2{font-family:var(--serif);font-size:18px;font-weight:400;margin:0;letter-spacing:-.01em}
+.b-sheet .sh .n{font-size:10.5px;color:var(--fg3);font-weight:600}
+.b-sheet .sh .sp{flex:1}
+.b-rows{flex:1;overflow-y:auto;padding:0 14px 4px;scrollbar-width:none}
+.b-rows::-webkit-scrollbar{display:none}
+.b-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;text-align:left;
+  padding:9px 4px;border-bottom:1px solid var(--divider);color:var(--fg)}
+.b-row:last-child{border-bottom:0}
+.b-th{width:38px;height:38px;border-radius:10px;position:relative;overflow:hidden;border:1px solid var(--divider)}
+.b-th.dash{border-style:dashed;background:transparent;display:grid;place-items:center;color:var(--fg3);font-size:14px}
+.b-row .tt{font-size:13px;font-weight:600;letter-spacing:-.01em;line-height:1.3;display:block}
+.b-row .mm{font-size:10.5px;color:var(--fg2);margin-top:2px;display:flex;gap:2px 9px;align-items:center;flex-wrap:wrap}
+.b-row .rt{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.b-empty{padding:16px 18px;text-align:center}
+.b-empty h3{font-family:var(--serif);font-size:17px;font-weight:400;margin:0 0 5px}
+.b-empty p{font-size:11.5px;color:var(--fg2);line-height:1.55;margin:0 0 12px}
+.b-sheetFoot{flex:none;display:flex;align-items:center;gap:8px;padding:8px 16px 12px;font-size:10.5px;color:var(--fg3)}
+
+/* =====================================================================================
+   OPTION C — "The plan book"
+   No grid: the plans are the screen, as stubs out of the ticket language Event Detail V8
+   already speaks. The ribbon is the calendar, minimised to its only job — jump.
+   ===================================================================================== */
+.c-wrap{position:absolute;inset:0;background:
+  radial-gradient(120% 60% at 50% -10%, color-mix(in srgb,var(--inset) 90%,transparent), transparent 70%),var(--bg)}
+.c-scroll{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;overscroll-behavior:contain;padding:calc(var(--st) + 2px) 0 142px}
+.c-scroll::-webkit-scrollbar{display:none}
+.c-head{display:flex;align-items:flex-start;gap:10px;padding:6px 18px 0}
+.c-head .l{flex:1;min-width:0}
+.c-head h1{font-family:var(--serif);font-size:26px;font-weight:400;margin:5px 0 0;line-height:1.12;letter-spacing:-.022em}
+.c-head .sub{font-size:11px;color:var(--fg2);margin-top:5px}
+.c-ribbon{display:flex;gap:2px;overflow-x:auto;padding:12px 14px 4px;scrollbar-width:none;
+  -webkit-mask-image:linear-gradient(90deg,#000 0,#000 93%,transparent 100%);
+  mask-image:linear-gradient(90deg,#000 0,#000 93%,transparent 100%)}
+.c-ribbon::-webkit-scrollbar{display:none}
+.c-mini{flex:0 0 40px;border-radius:13px;padding:6px 0 6px;display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--fg);
+  transition:background var(--t-quick) var(--ease-out),color var(--t-quick) var(--ease-out),transform var(--t-press) var(--ease-out)}
+.c-mini:active{transform:scale(.93)}
+.c-mini span{font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;opacity:.66;font-weight:700}
+.c-mini b{font-size:15px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1}
+.c-mini .dj{display:flex;gap:2px;height:4px;margin-top:3px}
+.c-mini .dj i{width:3.5px;height:3.5px;border-radius:2px;background:var(--moss)}
+.c-mini .dj i.h{background:var(--honey)}
+.c-mini.today span{color:var(--clay);opacity:1}
+.c-mini.on.today span{color:var(--bg);opacity:.92}
+.c-mini.on{background:var(--fg);color:var(--bg)}
+.c-mini.on span{opacity:.75}
+.c-mini.on .dj i{background:var(--bg)}
+.c-mini.on .dj i.h{background:var(--honey)}
+.c-hero{position:relative;margin:12px 20px 0;border-radius:20px;background:var(--sel);border:1px solid var(--rule);
+  box-shadow:var(--shadow-2);overflow:hidden;animation:riseIn var(--t-slow) var(--ease-spring) both}
+.c-hero .art{height:104px;position:relative;overflow:hidden}
+.c-hero .art .im{position:absolute;inset:0;transform:scale(1.02)}
+.c-hero .art .sh{position:absolute;inset:0;background:linear-gradient(180deg,rgba(10,9,7,.14) 0%,rgba(10,9,7,.28) 40%,rgba(10,9,7,.72) 100%)}
+.c-hero .dateblk{position:absolute;left:14px;bottom:10px;color:#FFF8EA;display:flex;align-items:baseline;gap:7px}
+.c-hero .dateblk b{font-family:var(--serif);font-size:27px;line-height:.85;font-weight:400}
+.c-hero .dateblk span{font-size:8.5px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;opacity:.9}
+.c-hero .nx{position:absolute;right:11px;top:11px;height:22px;padding:0 9px;border-radius:999px;
+  background:rgba(247,244,236,.94);color:#1B1916;font-size:8.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  display:inline-flex;align-items:center;gap:5px}
+.c-hero .body{padding:13px 15px 0}
+.c-hero .ttl{font-family:var(--serif);font-size:21px;font-weight:400;line-height:1.12;margin:0;letter-spacing:-.02em}
+.c-hero .meta{display:flex;align-items:center;gap:2px 9px;flex-wrap:wrap;font-size:11px;color:var(--fg2);margin-top:5px}
+.c-hero .cd{display:flex;align-items:center;gap:7px;margin-top:9px;font-size:11.5px;font-weight:600;color:var(--honey);font-variant-numeric:tabular-nums}
+.c-hero .cd svg{width:13px;height:13px}
+.c-perf{position:relative;height:22px;margin-top:10px;display:flex;align-items:center;padding:0 0}
+.c-perf .ln{flex:1;border-top:1.5px dashed var(--rule)}
+.c-perf::before,.c-perf::after{content:"";position:absolute;top:50%;width:14px;height:14px;border-radius:50%;
+  background:var(--bg);transform:translateY(-50%);box-shadow:inset 0 0 0 1px var(--rule)}
+.c-perf::before{left:-22px}
+.c-perf::after{right:-22px}
+.c-acts{display:flex;align-items:center;gap:7px;padding:2px 15px 14px;flex-wrap:wrap}
+.c-group{padding:20px 20px 0}
+.c-group h2{display:flex;align-items:center;gap:8px;font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--fg3);margin:0 0 4px;font-weight:700}
+.c-group h2 .ln{flex:1;height:1px;background:var(--rule)}
+.c-group h2 .n{font-variant-numeric:tabular-nums;letter-spacing:.04em}
+.c-row{display:grid;grid-template-columns:3px 44px minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;text-align:left;
+  padding:10px 0;border-bottom:1px solid var(--divider);color:var(--fg);transition:background var(--t-quick) var(--ease-out)}
+.c-row:last-child{border-bottom:0}
+.c-row .bar{align-self:stretch;margin:3px 0;border-radius:2px;background:var(--moss)}
+.c-row.s-hold .bar{background:var(--honey)} .c-row.s-host .bar{background:var(--plum)}
+.c-row.s-added .bar{background:var(--clay)} .c-row.s-ended .bar{background:var(--rule)}
+.c-row.s-await .bar{background:repeating-linear-gradient(180deg,var(--fg3) 0 3px,transparent 3px 6px);opacity:.6}
+.c-row.s-disc .bar{background:var(--rule)}
+.c-th{width:44px;height:44px;border-radius:11px;position:relative;overflow:hidden;border:1px solid var(--divider)}
+.c-th.dash{border-style:dashed;background:transparent;display:grid;place-items:center;color:var(--fg3)}
+.c-row .tt{font-size:13.5px;font-weight:600;letter-spacing:-.01em;line-height:1.25;display:block}
+.c-row .mm{font-size:10.5px;color:var(--fg2);margin-top:3px;display:flex;align-items:center;gap:2px 9px;flex-wrap:wrap}
+.c-row.s-ended{opacity:.6}
+.c-row .rt{display:flex;flex-direction:column;align-items:flex-end;gap:4px;text-align:right}
+.c-row .rt .tm{font-size:11px;font-weight:600;color:var(--fg2);font-variant-numeric:tabular-nums}
+.c-blank{margin:14px 20px 0;padding:22px 18px;border-radius:18px;border:1.4px dashed var(--rule);text-align:center}
+.c-blank .ic{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;margin:0 auto 10px;background:var(--block);color:var(--fg2)}
+.c-blank h3{font-family:var(--serif);font-size:18px;font-weight:400;margin:0 0 5px}
+.c-blank p{font-size:11.5px;color:var(--fg2);line-height:1.55;margin:0 0 13px}
+.c-chips{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+.c-chips button{height:30px;padding:0 12px;border-radius:999px;border:1px solid var(--rule);font-size:11px;font-weight:600;background:var(--sel)}
+.c-past{padding:14px 20px 0}
+.c-pastbtn{display:flex;align-items:center;gap:8px;width:100%;padding:9px 0;font-size:11px;color:var(--fg3);font-weight:600;text-align:left}
+.c-pastbtn .ln{flex:1;height:1px;background:var(--divider)}
+.c-discoverNote{display:flex;gap:6px;align-items:flex-start;font-size:10.5px;color:var(--fg2);margin-top:6px}
+.c-discoverNote svg{width:12px;height:12px;flex:none;margin-top:1px;color:var(--honey)}
+
+/* reduced motion is a first-class state, not a fallback: nothing travels, everything still lands */
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after{animation-duration:1ms !important;animation-delay:0ms !important;
+  transition-duration:1ms !important;transition-delay:0ms !important}
+:root[data-motion="reduced"] .a-row.s-hold .a-node{animation:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--honey) 32%,transparent)}
+@media (prefers-reduced-motion:reduce){
+  .a-row,.c-hero,.b-sheet,.msheet{animation:none !important}
+  .a-row.s-hold .a-node{animation:none}
+}
+
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <!-- ======================= design panel ======================= -->
+  <aside class="panel">
+    <div class="eyebrow">banbe · prototype · Schedule v1</div>
+    <h1>The Schedule, three ways</h1>
+    <p class="lede">Nobody opens a schedule for the pleasure of looking at a grid. They open it with one of four questions — what's next, when am I free, did that payment go through, and am I on time tonight — and each question wants a different screen. So here are three real answers, not three skins: a day you read top to bottom, a month you read at a glance, and a book of plans you act on.</p>
+
+    <div class="ctl">
+      <label>Option</label>
+      <div class="seg three" id="segOption">
+        <button class="on" data-opt="a">A · Day</button>
+        <button data-opt="b">B · Month</button>
+        <button data-opt="c">C · Plans</button>
+      </div>
+    </div>
+
+    <div class="optCard">
+      <div class="n"><span id="optKicker">Option A</span><b id="optName">The day spine</b></div>
+      <p id="optDesc">A single day, read down a time line. The rail is the clock, the line is the day, and the node on the line is the state of that plan.</p>
+      <dl>
+        <dt>Answers</dt><dd id="optAnswers">What's next, and what do I have to do about it</dd>
+        <dt>Best at</dt><dd id="optBest">The day you're in — the goer on the way somewhere</dd>
+        <dt>Costs</dt><dd id="optCost">You can't see a free weekend without picking through days</dd>
+      </dl>
+    </div>
+
+    <div class="ctl" style="margin-top:14px">
+      <label>Moment</label>
+      <div class="seg" id="segMoment">
+        <button class="on" data-moment="week" title="A full week: booked, held, awaiting, hosting and ended">Week</button>
+        <button data-moment="open" title="Wide open: nothing planned, only history and discover">Empty</button>
+        <button data-moment="hold" title="On the hook: a seat on hold and a payment awaiting the host">Hold</button>
+        <button data-moment="host" title="Hosting: two events you run, and a confirmed one">Host</button>
+      </div>
+    </div>
+
+    <div class="ctl" style="display:flex;gap:10px">
+      <div style="flex:1">
+        <label>Theme</label>
+        <div class="seg" id="segTheme"><button class="on" data-theme="light">Light</button><button data-theme="dark">Dark</button></div>
+      </div>
+    </div>
+    <div class="ctl">
+      <label>Motion</label>
+      <div class="seg" id="segMotion"><button class="on" data-motion="full">Full</button><button data-motion="reduced">Reduced</button></div>
+    </div>
+    <button class="replay" id="replay">Replay the entrance</button>
+
+    <div class="sect">
+      <h2>The three, side by side</h2>
+      <p class="hint">Switch the phone with the Option control; this table stays put so the trade is visible.</p>
+      <table class="cmp" id="cmpTable">
+        <thead><tr><th></th><th data-col="a">A · Day</th><th data-col="b">B · Month</th><th data-col="c">C · Plans</th></tr></thead>
+        <tbody>
+          <tr><th>Opens on</th><td data-col="a">Today, at the next thing</td><td data-col="b">The month, this week expanded</td><td data-col="c">The next plan, as a stub</td></tr>
+          <tr><th>Answers</th><td data-col="a">What's next</td><td data-col="b">When am I free</td><td data-col="c">What do I owe / hold</td></tr>
+          <tr><th>Reads as</th><td data-col="a">A vertical time line</td><td data-col="b">A printed month page</td><td data-col="c">A book of tickets</td></tr>
+          <tr><th>Strong</th><td data-col="a">State per plan, one glance</td><td data-col="b">Density and free days</td><td data-col="c">Acting on a plan</td></tr>
+          <tr><th>Weak</th><td data-col="a">Finding a free weekend</td><td data-col="b">Reading a long day</td><td data-col="c">The month at a glance</td></tr>
+          <tr><th>Scroll</th><td data-col="a">Long, one day</td><td data-col="b">Short, then a sheet</td><td data-col="c">Medium, grouped by week</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="sect">
+      <h2>The stages each one has to survive</h2>
+      <p class="hint">A plan has a life before and after it becomes a ticket. These are the stages the real Schedule already has to render (Booking/payment states, note 27/44) — set the Moment control to see them.</p>
+      <table class="cmp">
+        <thead><tr><th>Stage</th><th>What it must say</th><th>How each option does it</th></tr></thead>
+        <tbody>
+          <tr><th>1 · Open</th><td>Nothing planned. Not an error, and not a dead end.</td><td><b>A</b> the spine continues, hollow, with one action · <b>B</b> the month keeps its shape, empty days dim, one chip row · <b>C</b> a blank stub, dashed, with three ways out</td></tr>
+          <tr><th>2 · Held</th><td>A seat is yours for 21 minutes. Pay, extend, or let it go.</td><td><b>A</b> honey node + live countdown inside the card · <b>B</b> a honey ring on the day cell, so it's visible from the month · <b>C</b> a <span class="stamp hold">Hold</span> stamp on the hero and its own Pay button</td></tr>
+          <tr><th>3 · Awaiting</th><td>You paid; the host hasn't confirmed. Nothing to do but wait — say so.</td><td><b>A</b> dashed card, dashed node, "usually within an hour" · <b>B</b> dashed row in the sheet · <b>C</b> <span class="stamp await">Awaiting</span> + Message the host</td></tr>
+          <tr><th>4 · Confirmed</th><td>You have a ticket. The next useful thing is the ticket itself.</td><td><b>A</b> moss node, moss tag, Ticket action · <b>B</b> solid moss dot in the cell · <b>C</b> moss stamp and a ticket you can open</td></tr>
+          <tr><th>5 · Day-of</th><td>Where, when, how long to get there. No hunting.</td><td><b>A</b> now-line, countdown, Directions · <b>B</b> day open in the sheet with times · <b>C</b> the hero switches to "Today" and turns into the live stub</td></tr>
+          <tr><th>6 · Ended</th><td>History, not clutter. Keep it, don't lead with it.</td><td><b>A</b> grey node, 70% opacity, "Ended" · <b>B</b> the day still counts, in grey dots · <b>C</b> folded under "Ended", one tap open</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <details class="notes">
+      <summary>What the research says</summary>
+      <h3>Evidence used, and where it stops</h3>
+      <ol class="ev">
+        <li><b>Baymard measured 1,700+ hours and 311 think-aloud sessions on booking sites; a calendar that doesn't show what's inside a date makes people click blindly.</b> One participant: "I had to click on a bunch of different dates in order to figure out what date I could even go." <em>This is why B's month shows times in the open week instead of a bare number, and why every cell opens a real day.</em> <a href="https://baymard.com/research-articles/tours-and-experiences-launch" target="_blank" rel="noopener">Baymard, 2023</a></li>
+        <li><b>The same research found the picker must lead to detail, not a picture.</b> A user tapping a date that only enlarged a photo: "you'd think that you could click on it, but now it's just enlarging the photo." <em>B's sheet is content, not a preview.</em> <a href="https://baymard.com/ecommerce-design-examples/date-picker" target="_blank" rel="noopener">Baymard, date picker examples</a></li>
+        <li><b>A short list beats a calendar when there are few dates — cap it at about ten.</b> Calendars suit dates near the present; scrolling a long picker is "slow and unproductive". <em>C's ribbon is a 14-slot list, not a grid; A's strip is 7.</em> <a href="https://www.nngroup.com/articles/date-input/" target="_blank" rel="noopener">NN/g, Li 2017</a></li>
+        <li><b>Progressive disclosure: two levels, no more, and the second level must be labelled with what's inside.</b> "Designs that go beyond 2 disclosure levels typically have low usability." <em>B has exactly two: the month, then the sheet.</em> <a href="https://www.nngroup.com/articles/progressive-disclosure/" target="_blank" rel="noopener">NN/g, Nielsen 2006</a></li>
+        <li><b>Empty states have three jobs: say what the system is doing, teach, and offer a direct pathway.</b> Never show "no records" while still loading, and never a blank container. <em>Every option here has a written empty state, and none of them is a shrug.</em> <a href="https://www.nngroup.com/articles/empty-state-interface-design/" target="_blank" rel="noopener">NN/g, Kaplan 2021</a></li>
+        <li><b>Recognition beats recall: saved lists and history are cheap memory.</b> <em>C is a book of what you already committed to; A names the next thing so you don't count days.</em> <a href="https://www.nngroup.com/articles/recognition-and-recall/" target="_blank" rel="noopener">NN/g, Budiu 2024</a></li>
+        <li><b>Chunking: visually distinct, labelled groups scan faster and are remembered better than one undifferentiated stream.</b> <em>This is why days are headers in A and B, and weeks are groups in C.</em> <a href="https://www.nngroup.com/articles/chunking/" target="_blank" rel="noopener">NN/g, Moran 2016</a></li>
+        <li><b>Attention leans left: 80% of fixations landed in the left half of the screen (120+ participants, 130,000+ fixations).</b> <em>It supports a left time gutter in A — but honestly: that study is desktop eye-tracking, not mobile calendars, and nobody has published a study on time gutters. Treat it as a convention that is cheap to read, not a proven law.</em> <a href="https://www.nngroup.com/articles/horizontal-attention-leans-left/" target="_blank" rel="noopener">NN/g, Fessenden 2017</a></li>
+        <li><b>Rows are fixated hardest at their left edge (F-pattern).</b> <em>The time sits there in A; the state bar sits there in C.</em> <a href="https://www.nngroup.com/articles/f-shaped-pattern-reading-web-content/" target="_blank" rel="noopener">NN/g, Pernice 2017</a></li>
+        <li><b>Apple HIG: 44×44 pt default targets (28 pt absolute minimum), support at least 200% text growth, and replace zoom/scale motion with fades under Reduce Motion.</b> Also: reading order is top-to-bottom, leading-to-trailing, so put the most important thing high and leading. <em>Here, day cells, week cells, rows and dock slots clear 44 pt; the small pills sit at 32–36 pt with 8 pt between them, which is HIG&rsquo;s padding guidance for bezelled controls rather than a 44 pt face. The phone ships a Reduced switch.</em> <a href="https://developer.apple.com/design/human-interface-guidelines/accessibility" target="_blank" rel="noopener">Apple HIG, Accessibility</a></li>
+        <li><b>HIG's grouped list style separates groups with headers, footers and extra space</b> — the platform's own answer to day grouping. <a href="https://developer.apple.com/design/human-interface-guidelines/lists-and-tables" target="_blank" rel="noopener">Apple HIG, Lists and tables</a></li>
+        <li><b>Material 3: 48×48 dp minimum touch targets, and a modal bottom sheet opens capped at 50% of screen height.</b> <em>B's peek is 44%, and it expands to 88% only on purpose.</em> <a href="https://m3.material.io/components/bottom-sheets/guidelines" target="_blank" rel="noopener">Material 3, bottom sheets</a></li>
+        <li><b>Google Calendar itself opens on a list of upcoming events, and its "Schedule" mode is a list by day.</b> The incumbents treat the grid as a tool, not a home. <a href="https://support.google.com/calendar/answer/6110849" target="_blank" rel="noopener">Google Calendar Help</a></li>
+        <li><b>WCAG 2.2.1 (Level A): if a time limit can't be extended, you must warn before it expires and allow extension — at least 20 seconds, at least ten times.</b> <em>The hold card warns, and offers Pay and Extend, instead of quietly expiring.</em> <a href="https://www.w3.org/WAI/WCAG22/Understanding/timing-adjustable.html" target="_blank" rel="noopener">W3C WAI</a></li>
+        <li><b>Scarcity has a documented failure mode: if the countdown looks invented, trust falls.</b> <em>So the timer only exists where a real hold expires, it counts from the server's deadline, and it never invents urgency on a normal event.</em> <a href="https://www.nngroup.com/articles/scarcity-principle-ux/" target="_blank" rel="noopener">NN/g, Cardello 2014</a></li>
+        <li><b>Response times: 0.1 s feels direct, 1 s keeps flow, 10 s needs a progress indicator.</b> <em>The countdown ticks once a second and never blocks a tap.</em> <a href="https://www.nngroup.com/articles/response-times-3-important-limits/" target="_blank" rel="noopener">NN/g, Nielsen 1993</a></li>
+        <li><b>What the market does:</b> Fantastical ships a horizontal "DayTicker" plus full day/week/month views; Notion Calendar merges deadlines into the calendar; Amie merges todos and reshuffles the day. All three are vendor claims, not research — they show the direction, they don't prove it. <a href="https://flexibits.com/fantastical" target="_blank" rel="noopener">Fantastical</a> · <a href="https://www.notion.com/product/calendar" target="_blank" rel="noopener">Notion Calendar</a></li>
+      </ol>
+      <h3>What is not researched</h3>
+      <ul>
+        <li><b>No study on a mobile time gutter.</b> The left-rail argument is transfer from desktop eye-tracking, plus convention. Ship it because it's cheap, not because it's proven.</li>
+        <li><b>No documented dot cap.</b> Neither Apple nor Google says how many dots a day cell may show. Ours caps at 3 and then says how many are left — a product choice, labelled as one.</li>
+        <li><b>No HIG or Material page on calendars or agenda views.</b> Both stop at "pickers". Everything above the picker is our judgement, defended by the studies that do exist.</li>
+        <li><b>Baymard's full date-picker guideline set is paywalled.</b> The free summaries are what's quoted here.</li>
+      </ul>
+    </details>
+
+    <details class="notes">
+      <summary>States, and what each one may say</summary>
+      <h3>The six states, one colour each</h3>
+      <div class="legend">
+        <span><i class="lg-ok"></i>Confirmed — a real ticket</span>
+        <span><i class="lg-hold"></i>On hold — a deadline</span>
+        <span><i class="lg-await"></i>Awaiting host — no action</span>
+        <span><i class="lg-host"></i>You host — a job to do</span>
+        <span><i class="lg-add"></i>Added by you — this browser</span>
+        <span><i class="lg-end"></i>Ended — history</span>
+      </div>
+      <ul>
+        <li><b>Colour is never the only signal.</b> Hold is honey <em>and</em> a countdown <em>and</em> a Pay button; hosting is plum <em>and</em> the words "You host"; ended is grey <em>and</em> faded <em>and</em> says "Ended". A colour-blind reader loses nothing.</li>
+        <li><b>Each state gets the verb it deserves.</b> Held → Pay now / Extend 10 min. Awaiting → Message the host. Confirmed → Open ticket / Directions. Hosting → Run of show / Guest list. Ended → Recap. Discover → Add to banbe Schedule / Add to calendar.</li>
+        <li><b>No state borrows another's urgency.</b> Only a real hold counts down, and it counts down against the server's deadline, not a decorative one.</li>
+        <li><b>Awaiting is honest about waiting.</b> It doesn't say "confirmed pending" or invent a promise; it says the host hasn't looked yet and gives you the one useful action.</li>
+      </ul>
+    </details>
+
+    <details class="notes">
+      <summary>Motion spec</summary>
+      <div class="spec"><span>Press</span><b>110 ms · out</b></div>
+      <div class="spec"><span>Day change</span><b>180 ms · out</b></div>
+      <div class="spec"><span>Row entrance</span><b>280 ms · spring 1.04</b></div>
+      <div class="spec"><span>Stagger</span><b>40 ms per row</b></div>
+      <div class="spec"><span>Sheet peek → full</span><b>280 ms · soft</b></div>
+      <div class="spec"><span>Hold pulse</span><b>2.6 s loop · halo only</b></div>
+      <div class="spec"><span>Countdown tick</span><b>1 s · text only, no layout</b></div>
+      <div class="spec"><span>Reduce Motion</span><b>fade at 1 ms · no travel, no pulse</b></div>
+      <ul>
+        <li>Motion only ever explains a change of place. Nothing moves that you didn't touch, and nothing delays reading.</li>
+        <li>Under Reduce Motion the pulse becomes a static halo, the sheet still opens, and the countdown still ticks — because the number is information, not decoration.</li>
+        <li><code>prefers-reduced-motion</code> does the same automatically, so the OS setting is honoured without touching the switch.</li>
+      </ul>
+    </details>
+
+    <details class="notes">
+      <summary>What I'd ship</summary>
+      <h3>A, with B's month one tap away</h3>
+      <ul>
+        <li><b>Default to A.</b> The goer's real question is "what's next and what do I owe", and a day read down a time line answers it in one look, with the state on the spine before the words.</li>
+        <li><b>Keep B's month behind A's month button</b> — which is exactly what the prototype's month chip does in A. That's the honest hybrid, and it's one screen, not two products.</li>
+        <li><b>Borrow C's stamp for the hold.</b> A stamped deadline on a stub is the strongest of the three at making a payment feel like an object that can be completed — worth bringing into the ticket flow, not the schedule list.</li>
+        <li><b>What to cut from today's Schedule:</b> two mode buttons plus a month button plus a week strip plus a month toggle is four navigation controls over one list. Each option here has at most two.</li>
+        <li><b>What not to build:</b> an "overlap" claim. Events have no end time today (note 38), so the prototype says "starts within 2 hours of a plan" — never "overlaps" — until real end times exist everywhere.</li>
+      </ul>
+    </details>
+
+    <p class="foot">Prototype only: no backend, no auth, one fixed demo account. Everything is drawn from the app's real tokens and the real Schedule rules in <code>src/lib/schedulePresentation.js</code>. Photos are the project's own. Times are generated from your clock, so the demo is always "today".</p>
+  </aside>
+
+  <!-- ======================= phone ======================= -->
+  <div class="stagePhone"><div class="phoneSlot" id="phoneSlot"><div class="phoneFit" id="phoneFit">
+  <div class="phone" id="phone">
+    <div class="device" id="device">
+      <div class="island"></div>
+      <div class="status"><span id="sbTime">9:41</span>
+        <span class="sb-r">
+          <svg class="i" width="17" height="12" viewBox="0 0 17 12"><path d="M1 8v3M5 6v5M9 3.5v7.5M13 1v10"/></svg>
+          <svg class="i" width="16" height="12" viewBox="0 0 16 12"><path d="M1 5.2a10 10 0 0 1 14 0M3.4 7.6a6.6 6.6 0 0 1 9.2 0M6 10a3 3 0 0 1 4 0"/><circle cx="8" cy="11" r=".6" fill="currentColor" stroke="none"/></svg>
+          <svg class="i" width="24" height="12" viewBox="0 0 24 12"><rect x="1" y="2.5" width="19" height="7" rx="2"/><path d="M22 5v2.4"/><rect x="3" y="4.5" width="14" height="3" rx="1" fill="currentColor" stroke="none"/></svg>
+        </span>
+      </div>
+
+      <div class="screen" id="screen"></div>
+
+      <div class="dock" id="dock">
+        <button aria-label="Home"><svg viewBox="0 0 24 24"><path d="M4 10.6 12 4l8 6.6V20H4z"/><path d="M9.5 20v-5.5h5V20"/></svg></button>
+        <button aria-label="Map"><svg viewBox="0 0 24 24"><path d="M4 7.5 9.5 5l5 2.5L20 5v11.5L14.5 19l-5-2.5L4 19z"/><path d="M9.5 5v11.5M14.5 7.5V19"/></svg></button>
+        <button class="on" aria-label="Schedule, selected"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2.4"/><path d="M3.5 9.6h17M8 3v4M16 3v4"/><circle cx="8.6" cy="13.2" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="13.2" r="1" fill="currentColor" stroke="none"/></svg></button>
+        <button aria-label="Messages"><svg viewBox="0 0 24 24"><path d="M4 6.5h16v10H12l-5 3.5v-3.5H4z"/></svg></button>
+        <button aria-label="Account"><svg viewBox="0 0 24 24"><circle cx="12" cy="8.6" r="3.6"/><path d="M4.8 20c1.1-3.7 3.8-5.6 7.2-5.6s6.1 1.9 7.2 5.6"/></svg></button>
+      </div>
+      <div class="toast" id="toast"><svg class="i" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7"/></svg><span id="toastText"></span></div>
+      <div id="msheetRoot"></div>
+    </div>
+  </div>
+  </div></div></div>
+
+</div>
+
+
+<script>
+/* ==========================================================================
+   The prototype's whole brain. One data set, three renderers, one state.
+   The rules mirror src/lib/schedulePresentation.js: strongest source wins per
+   event, an expired hold is not a plan, cancelled events never appear, and an
+   event with no start time is counted instead of dropped.
+   ========================================================================== */
+(() => {
+'use strict';
+
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+/* ---------------- dates ---------------- */
+const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WDF = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const NOW = Date.now();
+const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const sameDay = (a, b) => startOfDay(a).getTime() === startOfDay(b).getTime();
+const today = startOfDay(NOW);
+const weekOf = (d) => {
+  const x = startOfDay(d);
+  const off = (x.getDay() + 6) % 7;            // Monday-first, like the Vietnamese app
+  const first = addDays(x, -off);
+  return Array.from({ length: 7 }, (_, i) => addDays(first, i));
+};
+const monthGrid = (d) => {
+  const first = new Date(d.getFullYear(), d.getMonth(), 1);
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  const rows = [];
+  let cur = weekOf(first)[0];
+  while (cur <= last) {
+    rows.push(weekOf(cur).map((x) => ({ date: x, inMonth: x.getMonth() === first.getMonth() })));
+    cur = addDays(cur, 7);
+  }
+  return rows;
+};
+const hhmm = (t) => { const d = new Date(t); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+const dayTitle = (d) => `${WDF[d.getDay()]}, ${d.getDate()} ${MON[d.getMonth()]}`;
+const dayShort = (d) => `${WD[d.getDay()]} ${d.getDate()}`;
+const monthTitle = (d) => `${MON[d.getMonth()]} ${d.getFullYear()}`;
+const dayKey = (t) => startOfDay(new Date(t)).getTime();
+
+/* ---------------- the demo account ---------------- */
+/* Times are generated from the visitor's own clock: the first plan is always about an hour and a half away, the
+   hold always has 21 real minutes left, and the rest land on readable wall-clock hours. The demo can never go stale. */
+const half = 30 * 60000;
+const slotAfter = (h) => Math.ceil((NOW + h * 3600000) / half) * half;
+const at = (offset, h, m = 0) => { const d = addDays(today, offset); d.setHours(h, m, 0, 0); return d.getTime(); };
+const HOLD_MS = 21 * 60000;
+
+const PLANS = [
+  { id: 'p1', t: 'Jazz at Lò Gạch', cat: 'Music', place: 'Lò Gạch, Quận 1', dist: '2.4 km', start: slotAfter(1.4), src: 'booked', tickets: 1, price: '250.000₫', host: 'Một Lớp', photo: 'DSCF4864' },
+  { id: 'p2', t: 'Bàn Dài · Cheese & Wine', cat: 'Supper club', place: 'Hẻm 12, Quận 3', dist: '3.1 km', start: slotAfter(2.9), src: 'holding', tickets: 2, price: '480.000₫', host: 'Bàn Dài', photo: 'DSCF2023' },
+  { id: 'p3', t: 'Life drawing at Xưởng 12', cat: 'Gallery', place: 'Xưởng 12, Quận 4', dist: '4.8 km', start: at(1, 20, 30), src: 'awaiting', tickets: 1, price: '180.000₫', host: 'Mọt Lớp', photo: 'DSCF2438' },
+  { id: 'p4', t: 'Porch Session #14', cat: 'Supper club', place: 'Nhà bạn, Thảo Điền', start: at(1, 19, 0), src: 'hosting', guests: 18, doors: '18:30', photo: 'DSCF4517', host: 'You' },
+  { id: 'p5', t: 'Gallery Walk · Quận 3', cat: 'Gallery', place: 'Ba sân, Quận 3', dist: '2.0 km', start: at(5, 18, 0), src: 'booked', tickets: 2, price: '150.000₫', host: 'Fanci', photo: 'DSCF2503' },
+  { id: 'p6', t: 'Café listening: nhạc cũ', cat: 'Music', place: 'Bệt Café, Quận 1', start: at(8, 9, 0), src: 'added', host: 'Café Note', photo: 'DSCF2836' },
+  { id: 'p8', t: 'Bàn Dài × banbe · 20 seats', cat: 'Supper club', place: 'Hẻm 12, Quận 3', start: at(3, 16, 0), src: 'hosting', guests: 20, doors: '15:30', photo: 'DSCF2060', host: 'You' },
+  { id: 'p7', t: 'Modular Rail Jam', cat: 'Music', place: 'Sân vận động, Quận 5', start: at(-2, 15, 0), src: 'ended', tickets: 1, host: 'Modular', photo: 'DSCF4550' },
+];
+const DISCOVER = [
+  { id: 'd1', t: 'Fashion Market 30', cat: 'Fashion', place: 'Chợ 30, Quận 1', dist: '1.2 km', start: slotAfter(0.7), src: 'discover', price: '120.000₫', host: 'Fanci', photo: 'DSCF6279' },
+  { id: 'd5', t: 'Sân Thượng Cinema', cat: 'Gallery', place: 'Quận 3', dist: '2.7 km', start: at(2, 19, 0), src: 'discover', price: '100.000₫', host: 'Fanci', photo: 'DSCF7459' },
+  { id: 'd2', t: 'Bún Bò Jazz Brunch', cat: 'Supper club', place: 'Nhà thờ, Quận 3', dist: '3.4 km', start: at(1, 11, 0), src: 'discover', price: '320.000₫', host: 'Bàn Dài', photo: 'DSCF6837' },
+  { id: 'd3', t: 'Hẻm Walking Tour', cat: 'Gallery', place: 'Quận 4', dist: '5.1 km', start: at(4, 8, 0), src: 'discover', price: '90.000₫', host: 'Orbit', photo: 'DSCF4880' },
+  { id: 'd4', t: 'Vinyl & Bánh Mì', cat: 'Music', place: 'Cà phê Vinyl, Quận 1', dist: '0.9 km', start: at(6, 19, 30), src: 'discover', price: '150.000₫', host: 'Café Vinyl', photo: 'DSCF7202' },
+];
+
+const MOMENTS = {
+  week: { mine: ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8'], disc: ['d1', 'd5', 'd2', 'd3', 'd4'] },
+  open: { mine: ['p7'], disc: ['d1', 'd5', 'd2', 'd3', 'd4'] },
+  hold: { mine: ['p1', 'p2', 'p3'], disc: ['d1', 'd2'] },
+  host: { mine: ['p4', 'p8', 'p5', 'p7'], disc: ['d2', 'd5'] },
+};
+
+/* ---------------- state ---------------- */
+const S = {
+  opt: 'a', moment: 'week', mode: 'mine',
+  selected: startOfDay(slotAfter(1.4)),      // open on the day of the next plan, like the real screen
+  sheetFull: false, pastOpen: false, dayFilter: null,
+  holdPaid: false, holdEnds: NOW + HOLD_MS,
+  added: new Set(),
+};
+
+const byStart = (a, b) => a.start - b.start;
+const find = (id) => PLANS.concat(DISCOVER).find((p) => p.id === id);
+const srcOf = (p) => (p.id === 'p2' && S.holdPaid ? 'booked' : p.src);
+const mineList = () => MOMENTS[S.moment].mine.map(find).filter(Boolean);
+const discList = () => MOMENTS[S.moment].disc.map(find).filter(Boolean);
+const listFor = (mode) => (mode === 'mine' ? mineList() : discList()).slice().sort(byStart);
+const onDay = (day, mode) => listFor(mode).filter((p) => sameDay(p.start, day));
+const isHold = (p) => srcOf(p) === 'holding' && S.holdEnds > NOW;
+const nextUp = () => mineList().filter((p) => srcOf(p) !== 'ended' && p.start >= NOW - 20 * 60000).sort(byStart)[0] || null;
+
+/* what a discover suggestion collides with — a real statement, never "overlaps" (events have no end time) */
+function conflict(p) {
+  const near = mineList().find((m) => srcOf(m) !== 'ended' && sameDay(m.start, p.start) && Math.abs(m.start - p.start) < 2 * 3600000);
+  return near ? `Starts within 2 hours of ${near.t}` : null;
+}
+const photo = (name) => `background-image:url('/photos/optimized/${name}.webp'),url('../../public/photos/optimized/${name}.webp')`;
+
+/* duration text: mm:ss under an hour, "1h 20m" over it */
+function durText(ms) {
+  if (ms <= 0) return '0:00';
+  const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}:${String(sec).padStart(2, '0')}`;
+}
+const inText = (ms) => (ms <= 0 ? 'now' : `in ${durText(ms)}`);
+
+/* ---------------- shared state words ---------------- */
+const STATE = {
+  booked: { stamp: 'Confirmed', cls: 'ok', node: 'booked' },
+  holding: { stamp: 'Seat on hold', cls: 'hold', node: 'hold' },
+  awaiting: { stamp: 'Awaiting host', cls: 'await', node: 'await' },
+  hosting: { stamp: 'You host', cls: 'host', node: 'host' },
+  added: { stamp: 'Added by you', cls: 'add', node: 'added' },
+  ended: { stamp: 'Ended', cls: 'end', node: 'ended' },
+  discover: { stamp: 'Discover', cls: 'disc', node: 'disc' },
+};
+
+/* ==============================================================
+   OPTION A — the day spine
+   ============================================================== */
+function aCard(p) {
+  const src = srcOf(p);
+  const st = STATE[src];
+  const hold = isHold(p);
+  const meta = [];
+  if (p.place) meta.push(p.place);
+  if (p.cat) meta.push(p.cat);
+  if (p.dist) meta.push(p.dist);
+  if (p.tickets) meta.push(p.price ? `${p.tickets} vé · ${p.price}` : `${p.tickets} vé`);
+  else if (p.price) meta.push(p.price);
+  // Spacing, not punctuation: a wrapped separator can never end up alone on a line.
+  const metaHtml = meta.map((m) => `<span>${esc(m)}</span>`).join('');
+
+  let state = `<span class="stamp ${st.cls}">${esc(st.stamp)}</span>`;
+  let acts = '';
+  let note = '';
+  if (src === 'holding' || hold) {
+    state = `<span class="a-count" data-cd="hold">${durText(S.holdEnds - Date.now())} left</span><span class="stamp hold">Seat on hold</span>`;
+    acts = `<button class="rowbtn" data-act="pay" data-id="${p.id}">Pay now</button>
+            <button class="rowbtn ghost" data-act="extend" data-id="${p.id}">Extend 10 min</button>`;
+  } else if (src === 'booked') {
+    acts = `<button class="rowbtn tiny" data-act="ticket" data-id="${p.id}">Open ticket</button>
+            <button class="rowbtn ghost tiny" data-act="dir" data-id="${p.id}">Directions</button>`;
+  } else if (src === 'awaiting') {
+    state = `<span class="stamp await">Awaiting host</span><span class="stamp await">Usually within an hour</span>`;
+    note = 'Paid · the host has not looked yet';
+    acts = `<button class="rowbtn ghost tiny" data-act="msg" data-id="${p.id}">Message the host</button>`;
+  } else if (src === 'hosting') {
+    state = `<span class="stamp host">You host</span><span class="stamp ink">${p.guests} guests</span>`;
+    note = `Doors ${p.doors} · you are the host`;
+    acts = `<button class="rowbtn tiny" data-act="ros" data-id="${p.id}">Run of show</button>
+            <button class="rowbtn ghost tiny" data-act="guests" data-id="${p.id}">Guest list</button>`;
+  } else if (src === 'added') {
+    state = `<span class="stamp add">Added by you</span><span class="stamp add">This browser only</span>`;
+    acts = `<button class="rowbtn ghost tiny" data-act="calendar" data-id="${p.id}">Add to calendar</button>`;
+  } else if (src === 'ended') {
+    acts = `<button class="rowbtn ghost tiny" data-act="recap" data-id="${p.id}">See the recap</button>`;
+  } else if (src === 'discover') {
+    const c = conflict(p);
+    note = c || '';
+    acts = `<button class="rowbtn tiny" data-act="add" data-id="${p.id}">＋ Add to banbe Schedule</button>
+            <button class="rowbtn ghost tiny" data-act="calendar" data-id="${p.id}">Calendar</button>`;
+  }
+
+  return `<div class="a-row s-${st.node}">
+    <div class="a-time">${hhmm(p.start)}<small>${esc(p.cat.split(' ')[0])}</small></div>
+    <div class="a-spine"><span class="a-node"></span></div>
+    <div class="a-card ${src === 'holding' ? 'hold' : src === 'awaiting' ? 'await' : src === 'hosting' ? 'host' : src === 'ended' ? 'ended' : src === 'discover' ? 'disc' : ''}">
+      <span class="ttl">${esc(p.t)}</span>
+      <div class="meta">${metaHtml}</div>
+      <div class="a-state">${state}</div>
+      ${note ? `<div class="a-note">${esc(note)}</div>` : ''}
+      <div class="acts">${acts}</div>
+    </div>
+  </div>`;
+}
+
+function renderA() {
+  const day = S.selected;
+  const rows = onDay(day, S.mode);
+  const mineN = onDay(day, 'mine').length, discN = onDay(day, 'discover').length;
+  const isToday = sameDay(day, NOW);
+  const nx = nextUp();
+  const week = weekOf(day);
+  const monthD = new Date(day.getFullYear(), day.getMonth(), 1);
+
+  const bits = [];
+  bits.push(`<b>${rows.length === 1 ? '1 plan' : `${rows.length} plans`}</b>`);
+  if (rows.length) bits.push(`first at ${hhmm(rows[0].start)}`);
+  if (nx && sameDay(nx.start, day)) bits.push(`next up <b>${inText(nx.start - NOW)}</b>`);
+
+
+  let inserted = false;
+  const nowLine = `<div class="a-now"><span class="dotc"></span><span data-now>Now ${hhmm(NOW)}</span><span class="ln"></span></div>`;
+  const agenda = rows.map((p) => {
+    if (isToday && !inserted && p.start >= NOW) {
+      inserted = true;
+      return nowLine + aCard(p);
+    }
+    return aCard(p);
+  }).join('');
+
+  const empty = S.mode === 'mine'
+    ? `<div class="a-row s-none" style="animation:none">
+         <div class="a-time">—</div><div class="a-spine"><span class="a-node" style="border-color:var(--rule)"></span></div>
+         <div class="a-card" style="background:transparent;border-style:dashed;box-shadow:none">
+           <span class="ttl" style="font-family:var(--serif);font-size:17px;font-weight:400">This day is wide open</span>
+           <div class="meta">Nothing booked, nothing held. Find something on this day, or look at the month.</div>
+           <div class="acts"><button class="rowbtn tiny" data-act="mode" data-v="discover">See what's on</button>
+             <button class="rowbtn ghost tiny" data-act="month">Open the month</button></div>
+         </div>
+       </div>`
+    : `<div class="a-row s-none" style="animation:none">
+         <div class="a-time">—</div><div class="a-spine"><span class="a-node" style="border-color:var(--rule)"></span></div>
+         <div class="a-card" style="background:transparent;border-style:dashed;box-shadow:none">
+           <span class="ttl" style="font-family:var(--serif);font-size:17px;font-weight:400">No public events on this day</span>
+           <div class="meta">Days with a dot have something. The nearest one is a tap away in the month.</div>
+           <div class="acts"><button class="rowbtn tiny" data-act="month">Open the month</button></div>
+         </div>
+       </div>`;
+
+  const strip = week.map((d) => {
+    const n = onDay(d, S.mode).length;
+    const h = onDay(d, 'mine').some((p) => isHold(p));
+    const cls = [
+      'a-day',
+      n ? (h ? 'has hason' : 'has') : '',
+      sameDay(d, NOW) ? 'today' : '',
+      sameDay(d, day) ? 'on' : '',
+    ].filter(Boolean).join(' ');
+    return `<button class="${cls}" data-act="day" data-day="${d.getTime()}"
+      aria-label="${dayTitle(d)}${n ? `, ${n} plans` : ''}${sameDay(d, day) ? ', selected' : ''}">
+      <span class="w">${WD[d.getDay()]}</span><b>${d.getDate()}</b><span class="dj"></span></button>`;
+  }).join('');
+
+  return `<div class="a-wrap"><div class="a-scroll">
+    <div class="a-head">
+      <div class="a-toprow">
+        <button class="a-monthbtn" data-act="month">
+          <svg class="i" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2.3"/><path d="M3.5 9.7h17M8 3v4M16 3v4"/></svg>
+          ${monthTitle(monthD)}
+          <svg class="i" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <span style="flex:1"></span>
+        ${isToday ? '' : '<button class="a-monthbtn" data-act="today">Today</button>'}
+      </div>
+      <h1 class="a-title">${WDF[day.getDay()]} <em>${day.getDate()}</em> ${MON[day.getMonth()]}</h1>
+      <p class="a-sub">${bits.map((b) => `<span class="item">${b}</span>`).join('')}</p>
+    </div>
+
+    <div class="a-sticky">
+      <div class="a-strip">${strip}</div>
+      <div class="a-modes">
+        <div class="segmini">
+          <button class="${S.mode === 'mine' ? 'on' : ''}" data-act="mode" data-v="mine">My schedule<span>${mineN}</span></button>
+          <button class="${S.mode === 'discover' ? 'on' : ''}" data-act="mode" data-v="discover">Discover<span>${discN}</span></button>
+        </div>
+        <span style="flex:1"></span>
+      </div>
+    </div>
+
+    <div class="a-agenda">${rows.length ? agenda : empty}</div>
+    <p class="a-foot">One day at a time: the strip picks the day, the month chip moves the month.<br>Events you add yourself live in this browser only.</p>
+  </div></div>`;
+}
+
+
+/* ==============================================================
+   OPTION B — the month desk
+   ============================================================== */
+const chipCls = (p) => (isHold(p) ? 'h' : srcOf(p) === 'hosting' ? 'p' : srcOf(p) === 'booked' ? 't' : '');
+
+function bRow(p) {
+  const src = srcOf(p);
+  const st = STATE[src];
+  const thumb = src === 'discover'
+    ? '<div class="b-th dash">✦</div>'
+    : `<div class="b-th ph" style="${photo(p.photo)}"></div>`;
+  const meta = [hhmm(p.start), p.place].filter(Boolean).map((m) => `<span>${esc(m)}</span>`).join('');
+  const right = isHold(p)
+    ? `<span class="a-count" data-cd="hold">${durText(S.holdEnds - Date.now())}</span>`
+    : `<span class="stamp ${st.cls}">${esc(st.stamp)}</span>`;
+  return `<div class="b-row" data-act="open" data-id="${p.id}">
+    ${thumb}
+    <span><span class="tt">${esc(p.t)}</span><span class="mm">${meta}</span></span>
+    <span class="rt">${right}${p.price ? `<span style="font-size:10px;color:var(--fg3)" class="tnum">${esc(p.price)}</span>` : ''}</span>
+  </div>`;
+}
+
+function renderB() {
+  const day = S.selected;
+  const monthD = new Date(day.getFullYear(), day.getMonth(), 1);
+  const grid = monthGrid(day);
+  const dayRows = onDay(day, S.mode);
+  const selWeekKey = weekOf(day)[0].getTime();
+  const isToday = sameDay(day, NOW);
+  const openThisWeek = weekOf(day).filter((d) => d.getTime() >= today.getTime() && onDay(d, S.mode).length === 0).length;
+
+  const headRow = weekOf(day).map((d) => `<div class="b-wk">${WD[d.getDay()]}</div>`).join('');
+
+  const weeks = grid.map((row) => {
+    const cells = row.map(({ date: d, inMonth }) => {
+      const n = onDay(d, S.mode).length;
+      const holds = onDay(d, 'mine').some(isHold);
+      const cls = ['b-cell', inMonth ? '' : 'out', sameDay(d, NOW) ? 'today' : '', sameDay(d, day) ? 'on' : '', holds ? 'holding' : ''].filter(Boolean).join(' ');
+      const dots = Array.from({ length: Math.min(n, 3) }, (_, i) => {
+        const pl = onDay(d, S.mode)[i];
+        return `<i class="${isHold(pl) ? 'h' : ''}"></i>`;
+      }).join('');
+      return `<button class="${cls}" ${n ? `data-n="${Math.min(n, 3)}"` : ''} data-act="day" data-day="${d.getTime()}"
+        aria-label="${dayTitle(d)}${n ? `, ${n} plans` : ', nothing'}${sameDay(d, day) ? ', selected' : ''}">
+        <b>${d.getDate()}</b><span class="dts">${dots}</span></button>`;
+    }).join('');
+
+    const isSelWeek = row.some((x) => x.date.getTime() === selWeekKey);
+    const band = isSelWeek ? `<div class="b-band">${weekOf(day).map((d) => {
+      const list = onDay(d, S.mode);
+      const shown = list.slice(0, 2);
+      const more = list.length - shown.length;
+      return `<div class="b-slot">${shown.map((p) => `<span class="b-chip ${chipCls(p)}">${hhmm(p.start)}</span>`).join('')}${more > 0 ? `<span class="b-chip more">+${more}</span>` : ''}</div>`;
+    }).join('')}</div>` : '';
+
+    return `<div class="b-week ${isSelWeek ? 'open' : ''}">${cells}${band}</div>`;
+  }).join('');
+
+  const empty = S.mode === 'mine'
+    ? `<div class="b-empty"><h3>Nothing on ${dayShort(day)}</h3>
+        <p>No booking, no hold, nothing you added. A free day is a good day — here is what's open nearby.</p>
+        <button class="rowbtn" data-act="mode" data-v="discover">See what's on this day</button></div>`
+    : `<div class="b-empty"><h3>No public events</h3>
+        <p>Nothing open to book on this day. Days with a dot have something, and the next one is usually within a week.</p>
+        <button class="rowbtn ghost" data-act="today">Back to today</button></div>`;
+
+  return `<div class="b-wrap">
+    <div class="b-scroll">
+      <div class="b-head">
+        <div class="l"><span class="eyeb">Your month</span>
+          <h1>${MON[monthD.getMonth()]}<small>${monthD.getFullYear()}</small></h1></div>
+        <div class="b-nav">
+          <button class="iconbtn" data-act="mstep" data-v="-1" aria-label="Previous month"><svg class="i" viewBox="0 0 24 24"><path d="m14 6-6 6 6 6"/></svg></button>
+          ${isToday ? '' : '<button class="a-monthbtn" data-act="today">Today</button>'}
+          <button class="iconbtn" data-act="mstep" data-v="1" aria-label="Next month"><svg class="i" viewBox="0 0 24 24"><path d="m10 6 6 6-6 6"/></svg></button>
+        </div>
+      </div>
+
+      <div class="b-legend">
+        <span><i></i>a plan</span>
+        <span><i class="h"></i>a hold</span>
+        <span><i class="ring"></i>needs paying</span>
+        <span>shade = how full the day is</span>
+      </div>
+      <div class="b-open">
+        <svg class="i" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7"/></svg>
+        <span>${openThisWeek ? `<b>${openThisWeek} open ${openThisWeek === 1 ? 'day' : 'days'}</b> in this week. The sheet is the day you pick.` : 'Every day left in this week has something on it.'}</span>
+      </div>
+
+      <div class="b-grid">${headRow}${weeks}</div>
+    </div>
+
+    <div class="b-sheet ${S.sheetFull ? 'full' : ''}" data-sheet>
+      <div class="b-grab" data-grab><i></i></div>
+      <div class="sh">
+        <h2>${dayShort(day)}</h2>
+        <span class="n">${dayRows.length ? `${dayRows.length} ${dayRows.length === 1 ? 'plan' : 'plans'}` : 'nothing'}</span>
+        <span class="sp"></span>
+        <div class="segmini">
+          <button class="${S.mode === 'mine' ? 'on' : ''}" data-act="mode" data-v="mine">Mine</button>
+          <button class="${S.mode === 'discover' ? 'on' : ''}" data-act="mode" data-v="discover">Discover</button>
+        </div>
+      </div>
+      <div class="b-rows">${dayRows.length ? dayRows.map(bRow).join('') : empty}</div>
+      <div class="b-sheetFoot">${S.sheetFull ? 'Pull down, or tap the handle, to go back to the month' : 'Drag the handle up for the whole day'}</div>
+    </div>
+  </div>`;
+}
+
+/* ==============================================================
+   OPTION C — the plan book
+   ============================================================== */
+const WEEK0 = weekOf(NOW)[0].getTime();
+const groupOf = (t) => {
+  if (t < today.getTime()) return 'ended';
+  if (sameDay(t, NOW)) return 'today';
+  const w = weekOf(t)[0].getTime();
+  if (w === WEEK0) return 'this';
+  if (w === addDays(new Date(WEEK0), 7).getTime()) return 'next';
+  return 'later';
+};
+const GROUP_LABEL = { today: 'Today', this: 'This week', next: 'Next week', later: 'Later', ended: 'Ended' };
+
+function cRow(p) {
+  const src = srcOf(p);
+  const st = STATE[src];
+  const thumb = src === 'discover'
+    ? '<div class="c-th dash"><svg class="i" width="16" height="16" viewBox="0 0 24 24"><path d="M12 4.5 13.9 10l5.6 1.9-5.6 1.9L12 19.5l-1.9-5.7L4.5 11.9 10.1 10Z"/></svg></div>'
+    : `<div class="c-th ph" style="${photo(p.photo)}"></div>`;
+  const bits = [hhmm(p.start)];
+  if (p.place) bits.push(p.place);
+  if (src === 'hosting') bits.push(`${p.guests} guests`);
+  const dir = p.dist && src === 'discover' ? p.dist : null;
+  return `<div class="c-row s-${st.node}" data-act="open" data-id="${p.id}">
+    <span class="bar"></span>
+    ${thumb}
+    <span>
+      <span class="tt">${esc(p.t)}</span>
+      <span class="mm">${bits.map((b) => `<span>${esc(b)}</span>`).join('')}${dir ? `<span>${esc(dir)}</span>` : ''}</span>
+    </span>
+    <span class="rt">
+      <span class="stamp ${st.cls}">${esc(st.stamp)}</span>
+      ${isHold(p) ? `<span class="a-count" data-cd="hold" style="font-size:10px">${durText(S.holdEnds - Date.now())}</span>` : ''}
+      ${src === 'discover' ? `<button class="rowbtn tiny" data-act="add" data-id="${p.id}">＋ Add</button>` : ''}
+      ${src === 'holding' ? `<button class="rowbtn tiny" data-act="pay" data-id="${p.id}">Pay</button>` : ''}
+    </span>
+  </div>`;
+}
+
+function cHero(p) {
+  const src = srcOf(p);
+  const st = STATE[src];
+  const day = new Date(p.start);
+  const live = p.start - NOW;
+  const notEnded = src !== 'ended';
+  const status = isHold(p)
+    ? `<span class="a-count" data-cd="hold" data-suf=" left to pay" style="color:var(--honey);font-weight:700">${durText(S.holdEnds - Date.now())} left to pay</span>`
+    : notEnded ? `<span style="font-size:11px;color:var(--fg2)">${inText(live)}</span>` : '<span style="font-size:11px;color:var(--fg3)">Ended</span>';
+
+  const acts = src === 'holding'
+    ? `<button class="rowbtn" data-act="pay" data-id="${p.id}">Pay now · ${esc(p.price || '')}</button><button class="rowbtn ghost" data-act="extend" data-id="${p.id}">Extend 10 min</button>`
+    : src === 'booked'
+      ? `<button class="rowbtn" data-act="ticket" data-id="${p.id}">Open ticket</button><button class="rowbtn ghost" data-act="dir" data-id="${p.id}">Directions</button>`
+      : src === 'hosting'
+        ? `<button class="rowbtn" data-act="ros" data-id="${p.id}">Run of show</button><button class="rowbtn ghost" data-act="guests" data-id="${p.id}">Guest list</button>`
+        : src === 'awaiting'
+          ? `<button class="rowbtn ghost" data-act="msg" data-id="${p.id}">Message the host</button>`
+          : src === 'ended'
+            ? `<button class="rowbtn ghost" data-act="recap" data-id="${p.id}">See the recap</button>`
+            : `<button class="rowbtn" data-act="add" data-id="${p.id}">＋ Add to banbe Schedule</button>`;
+
+  return `<div class="c-hero ${isHold(p) ? 'hold' : ''}" style="${isHold(p) ? 'border-color:color-mix(in srgb,var(--honey) 45%,var(--rule))' : ''}">
+    <div class="art">
+      <div class="ph im" style="${photo(p.photo)}"></div>
+      <div class="sh"></div>
+      <div class="dateblk"><b>${day.getDate()}</b><span>${MON[day.getMonth()].slice(0, 3)} · ${WD[day.getDay()]}</span></div>
+      <div class="nx">${src === 'ended' ? 'Last plan' : sameDay(day, NOW) ? 'Today' : 'Next up'}</div>
+    </div>
+    <div class="body">
+      <h2 class="ttl">${esc(p.t)}</h2>
+      <div class="meta">${[p.place, p.cat, p.dist].filter(Boolean).map((m) => `<span>${esc(m)}</span>`).join('')}</div>
+      <div class="cd">${status}</div>
+      <div class="c-perf"><span class="ln"></span></div>
+      <div class="c-acts" style="padding-left:0;padding-right:0">
+        <span class="stamp ${st.cls}">${esc(st.stamp)}</span>
+        ${p.tickets ? `<span style="font-size:11px;color:var(--fg2)" class="tnum">${p.tickets} vé</span>` : ''}
+        ${p.tickets && p.price ? `<span style="font-size:11px;color:var(--fg3)" class="tnum">${esc(p.price)}</span>` : ''}
+        <span style="flex:1"></span>
+      </div>
+    </div>
+    <div class="c-acts">${acts}</div>
+  </div>`;
+}
+
+function renderC() {
+  const start = startOfDay(S.selected);
+  const all = listFor(S.mode);
+  const ahead = all.filter((p) => dayKey(p.start) >= start.getTime() && srcOf(p) !== 'ended');
+  const past = all.filter((p) => srcOf(p) === 'ended').sort((a, b) => b.start - a.start);
+  const hero = ahead.find((p) => p.start >= NOW) || ahead[0] || null;
+
+  const ribbon = Array.from({ length: 14 }, (_, i) => addDays(start, i));
+  const wkCount = (d) => onDay(d, S.mode).length;
+
+  const groups = ['today', 'this', 'next', 'later'].map((g) => {
+    const rows = ahead.filter((p) => groupOf(p.start) === g);
+    if (!rows.length) return '';
+    return `<div class="c-group"><h2>${GROUP_LABEL[g]}<span class="ln"></span><span class="n">${rows.length}</span></h2>
+      ${rows.map(cRow).join('')}</div>`;
+  }).join('');
+
+  const weekN = mineList().filter((p) => groupOf(p.start) === 'this').length;
+  const nxt = mineList().filter((p) => srcOf(p) !== 'ended' && p.start >= NOW).sort(byStart)[0];
+  const headLine = S.mode === 'mine'
+    ? (weekN ? `${weekN} plan${weekN === 1 ? '' : 's'} this week` : 'A clear week')
+    : `${discList().length} events to book`;
+  const headSub = S.mode === 'mine'
+    ? (nxt ? `next up ${inText(nxt.start - NOW)}` : 'nothing left in this week')
+    : 'open now, near you';
+
+  const blank = S.mode === 'mine'
+    ? `<div class="c-blank">
+        <div class="ic"><svg class="i" width="17" height="17" viewBox="0 0 24 24"><path d="M5 7h14v13H5zM8 3v4M16 3v4M5 11h14"/></svg></div>
+        <h3>No plans from ${dayShort(start)}</h3>
+        <p>Nothing booked, nothing held, nothing you added. Three evenings are usually all it takes.</p>
+        <div class="c-chips">
+          <button data-act="mode" data-v="discover">See what's on</button>
+          <button data-act="month">Open the month</button>
+        </div>
+      </div>`
+    : `<div class="c-blank">
+        <div class="ic"><svg class="i" width="17" height="17" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 8v8M8 12h8"/></svg></div>
+        <h3>Nothing open to book yet</h3>
+        <p>New nights open on Thursdays. Add one to your schedule now and you'll keep it even before you book.</p>
+        <div class="c-chips"><button data-act="mode" data-v="mine">Back to my plans</button></div>
+      </div>`;
+
+  const pastBlock = (S.mode === 'mine' && past.length)
+    ? `<div class="c-past">
+        <button class="c-pastbtn" data-act="past"><span class="ln"></span>Ended · ${past.length}<span class="ln"></span>
+          <svg class="i" width="12" height="12" viewBox="0 0 24 24" style="transform:rotate(${S.pastOpen ? 180 : 0}deg);transition:transform .2s"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        ${S.pastOpen ? past.map(cRow).join('') : ''}
+      </div>` : '';
+
+  return `<div class="c-wrap"><div class="c-scroll">
+    <div class="c-head">
+      <div class="l">
+        <span class="eyeb">Plan book</span>
+        <h1>${esc(headLine)}</h1>
+        <div class="sub">${esc(headSub)}</div>
+      </div>
+      <button class="iconbtn" data-act="month" aria-label="Open the month">
+        <svg class="i" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2.3"/><path d="M3.5 9.7h17M8 3v4M16 3v4"/></svg>
+      </button>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:8px;padding:10px 18px 0">
+      <div class="segmini">
+        <button class="${S.mode === 'mine' ? 'on' : ''}" data-act="mode" data-v="mine">My plans</button>
+        <button class="${S.mode === 'discover' ? 'on' : ''}" data-act="mode" data-v="discover">Discover</button>
+      </div>
+      <span style="flex:1"></span>
+      ${sameDay(start, NOW) ? '' : '<button class="a-monthbtn" data-act="today">Today</button>'}
+    </div>
+
+    <div class="c-ribbon">${ribbon.map((d) => {
+      const n = wkCount(d);
+      const holds = onDay(d, 'mine').some(isHold);
+      const dots = Array.from({ length: Math.min(n, 3) }, (_, i) => `<i class="${i === 0 && holds ? 'h' : ''}"></i>`).join('');
+      return `<button class="c-mini ${sameDay(d, start) ? 'on' : ''} ${sameDay(d, NOW) ? 'today' : ''}" data-act="day" data-day="${d.getTime()}"
+        aria-label="${dayTitle(d)}${n ? `, ${n} plans` : ''}">
+        <span>${WD[d.getDay()]}</span><b>${d.getDate()}</b><span class="dj">${dots}</span></button>`;
+    }).join('')}</div>
+
+    ${hero ? cHero(hero) : ''}
+    ${ahead.length ? groups : ''}
+    ${(!ahead.length && !hero) ? blank : ''}
+    ${pastBlock}
+  </div></div>`;
+}
+
+
+/* ==============================================================
+   Wiring
+   ============================================================== */
+const RENDER = { a: renderA, b: renderB, c: renderC };
+const SPEC = {
+  a: {
+    name: 'The day spine',
+    desc: 'A single day, read down a time line. The rail is the clock, the line is the day, and the node on it is the state of that plan.',
+    answers: "What's next, and what do I have to do about it",
+    best: 'The day you are in — the goer on the way somewhere',
+    cost: "You can't see a free weekend without picking through days",
+  },
+  b: {
+    name: 'The month desk',
+    desc: 'The month is the screen and the day is a sheet over it. The grid answers "how busy"; the sheet answers "what is it".',
+    answers: 'When am I free, and what is on that day',
+    best: 'Planning a week — the host and the person with a full calendar',
+    cost: 'A busy day is only two chips wide until you open the sheet',
+  },
+  c: {
+    name: 'The plan book',
+    desc: 'No grid: your plans as stubs, in the ticket language Event Detail already speaks. The ribbon is the calendar, cut down to its only job — jump.',
+    answers: 'What do I hold, what do I owe, what needs me today',
+    best: 'Acting on a plan — paying, extending, opening a ticket',
+    cost: 'The month is a ribbon, so weekday patterns are harder to see',
+  },
+};
+
+const $optKicker = $('#optKicker'), $optName = $('#optName'), $optDesc = $('#optDesc');
+const $optAnswers = $('#optAnswers'), $optBest = $('#optBest'), $optCost = $('#optCost');
+
+function updatePanel() {
+  const sp = SPEC[S.opt];
+  $optKicker.textContent = 'Option ' + S.opt.toUpperCase();
+  $optName.textContent = sp.name;
+  $optDesc.textContent = sp.desc;
+  $optAnswers.textContent = sp.answers;
+  $optBest.textContent = sp.best;
+  $optCost.textContent = sp.cost;
+  $$('#segOption button').forEach((b) => b.classList.toggle('on', b.dataset.opt === S.opt));
+  $$('#segMoment button').forEach((b) => b.classList.toggle('on', b.dataset.moment === S.moment));
+  $$('#cmpTable [data-col]').forEach((c) => c.classList.toggle('on', c.dataset.col === S.opt));
+}
+
+function render({ keepScroll = false } = {}) {
+  const before = keepScroll ? ($('.a-scroll, .b-scroll, .c-scroll')?.scrollTop || 0) : 0;
+  $('#screen').innerHTML = RENDER[S.opt]();
+  const sc = $('.a-scroll, .b-scroll, .c-scroll');
+  if (sc) sc.scrollTop = before;
+  $('#dock').classList.toggle('under', S.opt === 'b' && S.sheetFull);
+  updatePanel();
+  tick();
+}
+
+/* ---------------- toast ---------------- */
+let toastTimer = null;
+function toast(msg) {
+  $('#toastText').textContent = msg;
+  $('#toast').classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $('#toast').classList.remove('on'), 3400);
+}
+
+/* ---------------- the month sheet (A's month chip, C's calendar button) ---------------- */
+function openMonth() {
+  const day = S.selected;
+  const monthD = new Date(day.getFullYear(), day.getMonth(), 1);
+  const grid = monthGrid(day);
+  const head = weekOf(day).map((d) => `<div class="wk">${WD[d.getDay()]}</div>`).join('');
+  const cells = grid.flat().map(({ date: d, inMonth }) => {
+    const n = onDay(d, S.mode).length;
+    const holds = onDay(d, 'mine').some(isHold);
+    const cls = ['mcell', inMonth ? '' : 'out', sameDay(d, NOW) ? 'today' : '', sameDay(d, day) ? 'on' : '', holds ? 'hold' : ''].filter(Boolean).join(' ');
+    const dots = Array.from({ length: Math.min(n, 3) }, (_, i) => {
+      const pl = onDay(d, S.mode)[i];
+      return `<i style="${isHold(pl) ? 'background:var(--honey)' : ''}"></i>`;
+    }).join('');
+    return `<button class="${cls}" data-act="day" data-close="1" data-day="${d.getTime()}"
+      aria-label="${dayTitle(d)}${n ? `, ${n} plans` : ''}"><b>${d.getDate()}</b><span class="dts">${dots}</span></button>`;
+  }).join('');
+
+  const agenda = grid.flat().filter((x) => x.inMonth).map(({ date: d }) => {
+    const rows = onDay(d, S.mode);
+    if (!rows.length) return '';
+    return `<div style="margin-top:12px"><div style="font-size:11.5px;font-weight:600;color:var(--fg3);margin-bottom:4px">${dayShort(d)}</div>
+      ${rows.map((p) => `<button class="mrow" data-act="open" data-id="${p.id}" data-close="1">
+        <span class="tnum">${hhmm(p.start)}</span><span style="flex:1">${esc(p.t)}</span>
+        <span class="stamp ${STATE[srcOf(p)].cls}">${esc(STATE[srcOf(p)].stamp)}</span></button>`).join('')}</div>`;
+  }).join('');
+
+  $('#msheetRoot').innerHTML = `<div class="mscrim" data-act="closeMonth">
+    <div class="msheet" data-act="noop" role="dialog" aria-modal="true" aria-label="${monthTitle(monthD)}">
+      <div class="mhead">
+        <button class="iconbtn" data-act="msheetStep" data-v="-1" aria-label="Previous month"><svg class="i" viewBox="0 0 24 24"><path d="m14 6-6 6 6 6"/></svg></button>
+        <h2>${monthTitle(monthD)}</h2>
+        <button class="iconbtn" data-act="msheetStep" data-v="1" aria-label="Next month"><svg class="i" viewBox="0 0 24 24"><path d="m10 6 6 6-6 6"/></svg></button>
+        <button class="iconbtn" data-act="closeMonth" aria-label="Close"><svg class="i" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+      </div>
+      <div class="mgrid">${head}${cells}</div>
+      <div class="magenda">
+        <h3>${S.mode === 'mine' ? 'Your month' : 'Open to book'} · ${grid.flat().filter((x) => x.inMonth && onDay(x.date, S.mode).length).length} days with plans</h3>
+        ${agenda || `<p style="font-size:12px;color:var(--fg3)">Nothing this month. The next week is usually fuller.</p>`}
+      </div>
+    </div>
+  </div>`;
+}
+const closeMonth = () => { $('#msheetRoot').innerHTML = ''; };
+
+/* ---------------- month stepping ---------------- */
+function stepMonth(n) {
+  const d = S.selected;
+  const last = new Date(d.getFullYear(), d.getMonth() + n + 1, 0).getDate();
+  S.selected = new Date(d.getFullYear(), d.getMonth() + n, Math.min(d.getDate(), last));
+  render();
+}
+
+/* ---------------- A + C day pick, shared ---------------- */
+const pickDay = (ms) => { S.selected = startOfDay(new Date(Number(ms))); };
+
+/* clicks — one delegated handler, so a re-render never strands a listener */
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  const act = el.dataset.act;
+  if (act === 'noop') return;
+
+  if (act === 'day') {
+    pickDay(el.dataset.day);
+    if (el.dataset.close) closeMonth();
+    // In B the month must not jump back to the top when a date is tapped under the sheet.
+    render({ keepScroll: S.opt === 'b' });
+    return;
+  }
+  if (act === 'mode') { S.mode = el.dataset.v; render({ keepScroll: S.opt === 'b' }); return; }
+  if (act === 'month') { openMonth(); return; }
+  if (act === 'closeMonth') { closeMonth(); return; }
+  if (act === 'msheetStep') { stepMonth(Number(el.dataset.v)); openMonth(); return; }
+  if (act === 'mstep') { stepMonth(Number(el.dataset.v)); return; }
+  if (act === 'today') { S.selected = today; render(); return; }
+  if (act === 'past') { S.pastOpen = !S.pastOpen; render({ keepScroll: true }); return; }
+  if (act === 'pay') {
+    if (S.holdPaid) { toast('This one is already paid and confirmed.'); return; }
+    S.holdPaid = true;
+    S.holdEnds = 0;
+    toast('Paid — the host has been told, and your seat is confirmed.');
+    render();
+    return;
+  }
+  if (act === 'extend') {
+    if (S.holdPaid) { toast('Nothing left to extend — it is confirmed.'); return; }
+    S.holdEnds += 10 * 60000;
+    toast('Hold extended by 10 minutes. You can extend it as often as you need.');
+    render();
+    return;
+  }
+  if (act === 'add') {
+    S.added.add(el.dataset.id);
+    toast('Saved to your banbe Schedule. It is not a reservation yet.');
+    render();
+    return;
+  }
+  const title = find(el.dataset.id)?.t || 'the event';
+  const words = {
+    ticket: `Opening your ticket for ${title}.`,
+    dir: `Directions to ${title}.`,
+    ros: 'Run of show — doors 18:30, 18 guests, two helpers on the door.',
+    guests: 'Guest list opens with 18 confirmed and 2 waiting.',
+    msg: 'Opening the chat with the host.',
+    recap: 'Opening the recap and the shared album.',
+    calendar: 'Calendar file downloaded. Open it to add the event to your calendar.',
+    open: `Opening ${title}.`,
+  };
+  if (words[act]) toast(words[act]);
+});
+
+/* ---------------- B's sheet: drag the handle, or tap it ---------------- */
+let drag = null, moved = false;
+window.addEventListener('pointerdown', (e) => {
+  const g = e.target.closest('[data-grab]');
+  if (!g) return;
+  drag = { y0: e.clientY, sheet: g.closest('[data-sheet]') };
+  moved = false;
+});
+window.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const dy = e.clientY - drag.y0;
+  if (Math.abs(dy) > 6) moved = true;
+  if (moved) { drag.sheet.style.transition = 'none'; drag.sheet.style.transform = `translateY(${dy}px)`; }
+});
+window.addEventListener('pointerup', (e) => {
+  if (!drag) return;
+  const dy = e.clientY - drag.y0;
+  drag.sheet.style.transition = '';
+  drag.sheet.style.transform = '';
+  const wasMoved = moved;
+  drag = null;
+  if (!wasMoved) { S.sheetFull = !S.sheetFull; render(); return; }
+  if (dy < -40) S.sheetFull = true;
+  else if (dy > 40) S.sheetFull = false;
+  else return;
+  render();
+});
+
+/* ---------------- the live things ---------------- */
+function tick() {
+  const left = S.holdEnds - Date.now();
+  $$('[data-cd="hold"]').forEach((el) => {
+    el.textContent = (left > 0 ? durText(left) : '0:00') + (el.dataset.suf || ' left');
+  });
+  $$('[data-now]').forEach((el) => { el.textContent = 'Now ' + hhmm(Date.now()); });
+  $('#sbTime').textContent = hhmm(Date.now());
+}
+setInterval(tick, 1000);
+
+/* ---------------- panel controls ---------------- */
+$$('#segOption button').forEach((b) => b.addEventListener('click', () => {
+  S.opt = b.dataset.opt;
+  S.sheetFull = false;
+  render();
+}));
+$$('#segMoment button').forEach((b) => b.addEventListener('click', () => {
+  S.moment = b.dataset.moment;
+  const l = mineList().filter((p) => srcOf(p) !== 'ended').sort(byStart);
+  S.selected = l.length ? startOfDay(l[0].start) : today;
+  S.mode = 'mine';
+  S.sheetFull = false;
+  render();
+}));
+$$('#segTheme button').forEach((b) => b.addEventListener('click', () => {
+  S.theme = b.dataset.theme;
+  document.documentElement.dataset.theme = S.theme;
+  $$('#segTheme button').forEach((x) => x.classList.toggle('on', x.dataset.theme === S.theme));
+}));
+$$('#segMotion button').forEach((b) => b.addEventListener('click', () => {
+  S.motion = b.dataset.motion;
+  document.documentElement.dataset.motion = S.motion;
+  $$('#segMotion button').forEach((x) => x.classList.toggle('on', x.dataset.motion === S.motion));
+}));
+$('#replay').addEventListener('click', () => render());
+
+/* ---------------- stage fitting ---------------- */
+function fitPhone() {
+  const slot = $('#phoneSlot');
+  const k = Math.min(1, (window.innerHeight - 96) / 866, 520 / 412);
+  slot.style.setProperty('--k', Math.max(0.56, k).toFixed(3));
+}
+window.addEventListener('resize', fitPhone);
+
+/* ---------------- boot ---------------- */
+if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  S.motion = 'reduced';
+  document.documentElement.dataset.motion = 'reduced';
+  $$('#segMotion button').forEach((x) => x.classList.toggle('on', x.dataset.motion === 'reduced'));
+}
+fitPhone();
+render();
+})();
+</script>
+</body>
+</html>
