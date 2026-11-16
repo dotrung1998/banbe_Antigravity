@@ -42,6 +42,10 @@ dist-ssr
 /apps/ios/BanbeApp.xcodeproj/
 /apps/ios/.build/
 /apps/ios/DerivedData/
+# A developer's own Apple team ID for PersonalTeamDebug device builds — never
+# commit it. Config/PersonalTeamDebug.xcconfig includes this file optionally;
+# see .claude/notes/18-ios-personal-team-signing.md.
+/apps/ios/Config/PersonalTeam.xcconfig
 
 # SweetPad's generated SourceKit-LSP build server config — machine-local
 # absolute paths, regenerated automatically per machine.

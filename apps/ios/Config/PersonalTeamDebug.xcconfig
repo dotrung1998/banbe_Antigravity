@@ -7,20 +7,24 @@
 // fail to sign over ANY capability this project currently declares that
 // isn't confirmed to work on a free/personal team.
 //
-// Development builds have to NAME the team: a command-line `xcodebuild`
-// does not fall back to whichever Apple Account Xcode happens to have
-// selected (it fails with "No Account for Team"), so without this line
-// every device build needed `DEVELOPMENT_TEAM=<id>` passed by hand. This is
-// the free/personal team registered in Xcode > Settings > Accounts on this
-// machine. Config/Team.xcconfig — the PAID team Debug/Release inherit — is
-// deliberately not included here and stays untouched (still empty until a
-// paid account exists, see .claude/notes/07-notifications.md). Another
-// developer on their own personal team overrides this one line, or passes
-// DEVELOPMENT_TEAM on the command line (command-line settings win over
-// xcconfig).
+// Development builds have to NAME the team: a command-line `xcodebuild` does
+// not fall back to whichever Apple Account Xcode happens to have selected (it
+// fails with "No Account for Team"). The team is NOT written here — it lives in
+// the gitignored Config/PersonalTeam.xcconfig beside this file, included
+// optionally below, so no developer's personal team ID is committed. Create it
+// once per Mac (Xcode > Settings > Accounts shows the ID):
+//
+//   echo "DEVELOPMENT_TEAM = XXXXXXXXXX" > Config/PersonalTeam.xcconfig
+//
+// Without that file nothing is baked in: builds started from Xcode's Run button
+// still sign with the account selected there, and Tools/run-on-device.sh prints
+// this same hint if signing fails. A command-line DEVELOPMENT_TEAM still wins
+// over the included file. Config/Team.xcconfig — the PAID team Debug/Release
+// inherit — is deliberately not included here and stays untouched (still empty
+// until a paid account exists, see .claude/notes/07-notifications.md).
 ENABLE_PUSH = NO
 CODE_SIGN_ENTITLEMENTS = BanbeApp/BanbeApp.PersonalTeam.entitlements
 CODE_SIGN_STYLE = Automatic
-// "The Trung Do (Personal Team)" — the free team this machine signs with.
-DEVELOPMENT_TEAM = XXXXXXXXXX
+// Optional, untracked: the personal team this Mac signs device builds with.
+#include? "PersonalTeam.xcconfig"
 SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) PERSONAL_TEAM_BUILD

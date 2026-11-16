@@ -130,9 +130,10 @@ targets:
       # signed-in personal Apple ID without ever touching (or colliding
       # with) the real com.banbe.ios App ID this project ships under.
       # DEVELOPMENT_TEAM is still never set here (nor per target) — the
-      # PersonalTeamDebug xcconfig names the free/personal team, since a
-      # command-line xcodebuild will not pick up the account selected in
-      # Xcode on its own. APP_DISPLAY_NAME override makes
+      # PersonalTeamDebug xcconfig optionally includes the gitignored
+      # Config/PersonalTeam.xcconfig for it, since a command-line xcodebuild
+      # will not pick up the account selected in Xcode on its own.
+      # APP_DISPLAY_NAME override makes
       # the Home Screen icon/name read "Banbe Dev" instead of the normal
       # build's "banbe" — the actual fix for "which install is this?"
       # confusion after stopping Xcode.

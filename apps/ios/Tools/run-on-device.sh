@@ -55,6 +55,15 @@ echo "▸ Device: $requested ($udid)"
 # BanbeApp.xcodeproj is generated output (not committed) and goes stale as soon as a
 # source file is added or removed, so regenerate it every time — it is fast.
 xcodegen generate >/dev/null
+
+# The team is never committed: PersonalTeamDebug includes this gitignored file optionally.
+team_file="$ios_dir/Config/PersonalTeam.xcconfig"
+if [[ ! -f "$team_file" ]]; then
+  echo "! No Config/PersonalTeam.xcconfig — create it once with your own team ID:" >&2
+  echo "    echo \"DEVELOPMENT_TEAM = <10-character team id>\" > Config/PersonalTeam.xcconfig" >&2
+  echo "  (Xcode > Settings > Accounts shows the ID.)" >&2
+fi
+
 echo "▸ Building $scheme… (the first build takes a few minutes)"
 
 derived="$ios_dir/.build/DerivedData"
