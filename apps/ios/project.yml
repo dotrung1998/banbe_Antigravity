@@ -129,9 +129,10 @@ targets:
       # can freely register/use a brand-new App ID for it under a
       # signed-in personal Apple ID without ever touching (or colliding
       # with) the real com.banbe.ios App ID this project ships under.
-      # DEVELOPMENT_TEAM is still never set here — only the bundle id
-      # differs; Automatic Signing still resolves the team from whichever
-      # Apple Account is signed into Xcode. APP_DISPLAY_NAME override makes
+      # DEVELOPMENT_TEAM is still never set here (nor per target) — the
+      # PersonalTeamDebug xcconfig names the free/personal team, since a
+      # command-line xcodebuild will not pick up the account selected in
+      # Xcode on its own. APP_DISPLAY_NAME override makes
       # the Home Screen icon/name read "Banbe Dev" instead of the normal
       # build's "banbe" — the actual fix for "which install is this?"
       # confusion after stopping Xcode.

@@ -7,12 +7,20 @@
 // fail to sign over ANY capability this project currently declares that
 // isn't confirmed to work on a free/personal team.
 //
-// DEVELOPMENT_TEAM is deliberately never set here (or anywhere in this
-// config) — Automatic Signing resolves it from whichever Apple Account is
-// signed into Xcode > Settings > Accounts at build time, which is the
-// whole point: this file works for ANY personal team, not one hard-coded
-// Team ID.
+// Development builds have to NAME the team: a command-line `xcodebuild`
+// does not fall back to whichever Apple Account Xcode happens to have
+// selected (it fails with "No Account for Team"), so without this line
+// every device build needed `DEVELOPMENT_TEAM=<id>` passed by hand. This is
+// the free/personal team registered in Xcode > Settings > Accounts on this
+// machine. Config/Team.xcconfig — the PAID team Debug/Release inherit — is
+// deliberately not included here and stays untouched (still empty until a
+// paid account exists, see .claude/notes/07-notifications.md). Another
+// developer on their own personal team overrides this one line, or passes
+// DEVELOPMENT_TEAM on the command line (command-line settings win over
+// xcconfig).
 ENABLE_PUSH = NO
 CODE_SIGN_ENTITLEMENTS = BanbeApp/BanbeApp.PersonalTeam.entitlements
 CODE_SIGN_STYLE = Automatic
+// "The Trung Do (Personal Team)" — the free team this machine signs with.
+DEVELOPMENT_TEAM = XXXXXXXXXX
 SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) PERSONAL_TEAM_BUILD

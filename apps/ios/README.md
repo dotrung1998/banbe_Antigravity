@@ -46,6 +46,14 @@ xcodebuild test -project BanbeApp.xcodeproj -scheme BanbeApp \
   -destination 'platform=iOS Simulator,name=iPhone 17'
 ```
 
+Build, install and launch on a real iPhone in one command (the
+`PersonalTeamDebug` config, so a free Apple ID is enough — pass another
+device name or a UDID as the argument):
+
+```bash
+./Tools/run-on-device.sh "TD Pro Max"
+```
+
 ## Where the content comes from
 
 The `events` table holds the rows that bookings, threads and check-ins

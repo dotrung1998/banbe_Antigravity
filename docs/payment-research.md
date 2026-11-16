@@ -64,7 +64,7 @@ Nguồn: phân tích repo chỉ đọc. Đường dẫn tính từ gốc repo. B
 
 ### 2.6 Web hay native
 - **Cả hai**: web Vite/React 19 deploy Vercel; iOS SwiftUI native (`apps/ios/BanbeApp`, bundle `com.banbe.ios`). Không có Capacitor/StoreKit/IAP.
-- iOS hiện build bằng Apple ID miễn phí (`PersonalTeamDebug`, notes/18), `DEVELOPMENT_TEAM = ""`: **chưa lên App Store**. Quy tắc Apple chưa phát sinh nhưng sẽ khi phát hành.
+- iOS hiện build bằng Apple ID miễn phí (`PersonalTeamDebug`, notes/18), `DEVELOPMENT_TEAM = XXXXXXXXXX` (Personal Team, đặt trong `Config/PersonalTeamDebug.xcconfig`); `Config/Team.xcconfig` của team trả phí vẫn để trống: **chưa lên App Store**. Quy tắc Apple chưa phát sinh nhưng sẽ khi phát hành.
 
 ### 2.7 Tiền tệ/vị trí
 - Giá/booking/refund đều đặt tên VND: `events.price_vnd`, `bookings.total_vnd`, `refund_claims.amount_vnd`, `record_bank_transaction(p_amount_vnd)`. Có `events.price_cents` (`001:77-78`) nhưng chưa RPC thanh toán nào dùng. `payment_documents.currency` mặc định 'VND'.
