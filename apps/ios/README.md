@@ -48,7 +48,9 @@ xcodebuild test -project BanbeApp.xcodeproj -scheme BanbeApp \
 
 Build, install and launch on a real iPhone in one command (the
 `PersonalTeamDebug` config, so a free Apple ID is enough — pass another
-device name or a UDID as the argument):
+device name or a UDID as the argument). It fetches and merges `origin/main`
+first, skipping that update when the tree is dirty or the fetch fails, and
+aborting a conflicted merge, so the install is always the newest code:
 
 ```bash
 ./Tools/run-on-device.sh "TD Pro Max"
