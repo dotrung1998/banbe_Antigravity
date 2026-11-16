@@ -1190,6 +1190,11 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
         /// True while the saved offset is still being re-applied; live offsets are not reported
         /// then, so the initial layout's offset 0 never overwrites the value being restored.
         private var restoring = false
+        /// Scroll-restore safety (2026-11-16): the saved offset is re-applied at most ONCE per scroll view.
+        /// A probe that re-attaches (a re-hosted background, a re-created content view) must not start the
+        /// window again — re-applying a stale offset after the person has already scrolled is exactly what
+        /// reads as "the screen jumps back to another section".
+        private var didRestore = false
         var scrollToTopToken = 0
         var scrollRequestToken = 0
         private var pinGeneration = 0
@@ -1234,6 +1239,10 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
                     // every doc comment referencing "offsetY" assume that
                     // sign, so nothing downstream needed to change.
                     observation = scrollView.observe(\.contentOffset, options: [.new]) { [weak self] sv, _ in
+                        // Scroll-restore safety (2026-11-16): once the person is driving this scroll view — a finger
+                        // down, or its momentum still running — the saved offset is abandoned for good, so it can
+                        // never re-apply itself mid- or post-swipe.
+                        self?.cancelRestoreIfUserScrolled(sv)
                         // Note 47: only a finger-driven scroll (dragging, or its momentum) may move the dock; a
                         // restored scroll position on returning to a tab used to read as "scrolled down".
                         self?.onChange?(-sv.contentOffset.y, sv.isTracking || sv.isDragging || sv.isDecelerating)
@@ -1253,9 +1262,9 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
             }
         }
 
-        /// Holds the scroll view at the top for ~0.5s (content inserted above an id-anchored
-        /// card — e.g. Home's checklist after onboarding — would otherwise push it back down),
-        /// and stops the moment the user touches it.
+        /// Holds the scroll view at the top for ~0.5s (content inserted above the reader's place —
+        /// e.g. Home's checklist after onboarding — would otherwise push it back down), and stops
+        /// the moment the user touches it.
         func pinToTop() {
             pinGeneration += 1
             restoring = false
@@ -1276,17 +1285,27 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
         }
 
         private func beginRestoreIfNeeded(_ sv: UIScrollView) {
-            guard let target = restoreOffsetY else { return }
+            guard !didRestore, let target = restoreOffsetY else { return }
+            didRestore = true
             restoring = true
             restoreStep(sv, target: target, tick: 0)
         }
 
+        /// The person took over the scroll view (dragged it, or it is still carrying their momentum):
+        /// give the saved offset up for good instead of fighting what they did.
+        private func cancelRestoreIfUserScrolled(_ sv: UIScrollView) {
+            guard restoring, sv.isTracking || sv.isDragging || sv.isDecelerating else { return }
+            restoring = false
+        }
+
         // 20 ticks x 50ms. Re-applies the target whenever the content is tall enough and the
-        // offset drifted (e.g. the id-based restore moved it), and gives up the moment the user
-        // touches the scroll view. A target at (or above) the top is a no-op.
+        // offset drifted (e.g. a lazy container still growing), and gives up the moment the user
+        // touches the scroll view — including the momentum after they lift their finger, which is
+        // what let the restore yank the content back to a stale offset right as a swipe settled.
+        // A target at (or above) the top is a no-op.
         private func restoreStep(_ sv: UIScrollView, target: CGFloat, tick: Int) {
             let topY = -sv.adjustedContentInset.top
-            if !restoring || sv.isTracking || sv.isDragging || tick >= 20 || target <= topY + 1 {
+            if !restoring || sv.isTracking || sv.isDragging || sv.isDecelerating || tick >= 20 || target <= topY + 1 {
                 restoring = false
                 return
             }

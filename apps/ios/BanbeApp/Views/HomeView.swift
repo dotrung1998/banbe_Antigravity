@@ -25,12 +25,6 @@ struct HomeView: View {
     @State private var tick = Date()
     /// Bumped each time Home becomes the visible screen; replays the reminder halo.
     @State private var reminderHaloTrigger = 0
-    // TASK 4 (2026-09-22 nineteenth follow-up) — one-shot guard so the
-    // retry below (see its own comment) only ever fires once per Home
-    // mount, never repeatedly fighting the user's own subsequent scrolling
-    // (which keeps updating `app.homeScrollAnchorID` live via
-    // `.scrollPosition(id:)`'s own two-way binding — see requirement 4).
-    @State private var didAttemptScrollRestore = false
     /// The area menu's own "Search locations…" row opens the searchable
     /// location list — a native `Menu` can't host a text field, so this is
     /// where typing a place name still works. See `LocationPickerSheet`.
@@ -93,13 +87,22 @@ struct HomeView: View {
     }
 
     var body: some View {
-        // Task 3 (2026-09-21 follow-up) — `scrollPositionID` restores the
-        // feed to roughly where the user left it on returning from Event
-        // Detail (see `ScreenScaffold`'s own doc comment for why this is
-        // id-based, not a raw pixel offset). Only the event cards below
-        // get a stable `.id(...)` — the header/banners/chips are always a
-        // small, fixed offset near the top and aren't meaningful restore
-        // targets the way "which event card was on screen" is.
+        // Scroll-restore fix (2026-11-16, owner report: "while scrolling up
+        // or down and stopping, the screen refreshes by itself and shifts to
+        // another Home section with a laggy animation") — Home used to hand
+        // `ScreenScaffold` a `scrollPositionID` as well as `restoreOffsetY`,
+        // so TWO mechanisms drove this feed's offset. `.scrollPosition(id:)`
+        // is bidirectional: it records the id SwiftUI finds at its `.center`
+        // anchor on every pass AND scrolls back to that id whenever the bound
+        // value is (re)applied — which happened on any later body pass or
+        // content reflow (photos finishing, a load landing, the id flipping
+        // nil↔card near the top). The result was the feed animating itself
+        // to centre some other card right as the swipe settled, and then the
+        // exact-offset restore below yanking it back: the "refresh + shift"
+        // with a laggy animation. Home now restores by exact offset only
+        // (`restoreOffsetY`, the same mechanism note 69 chose for Account's
+        // rows because an id anchor restores CENTRED, never exactly), so
+        // nothing re-drives this scroll view after the user's own scroll.
         // Pull-to-refresh header fix (2026-09-29 follow-up) — matches
         // Messages: `header` is now a sibling ABOVE `ScreenScaffold`, not the
         // first item inside the content it offsets during a pull, so it
@@ -124,7 +127,7 @@ struct HomeView: View {
             activeHeader.revealRegion(0)
             // L5 weekly digest: its notification asks for the "This weekend" rail (AppState.goHomeThisWeekend).
             ScrollViewReader { weekendProxy in
-            ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: homeScrollAnchorBinding, restoreOffsetY: app.homeScrollOffsetY, onScrollOffset: { app.homeScrollOffsetY = $0; HomeHeaderFade.shared.update(offsetY: $0) }, scrollToTopToken: app.homeScrollToTopToken, scrollRequest: app.homeTourScrollRequest, pullAnchorTop: app.simpleShellEnabled ? pinnedHeaderHeight : 0, onRefresh: {
+            ScreenScaffold(tracksBottomBarScroll: true, restoreOffsetY: app.homeScrollOffsetY, onScrollOffset: { app.homeScrollOffsetY = $0; HomeHeaderFade.shared.update(offsetY: $0) }, scrollToTopToken: app.homeScrollToTopToken, scrollRequest: app.homeTourScrollRequest, pullAnchorTop: app.simpleShellEnabled ? pinnedHeaderHeight : 0, onRefresh: {
                 await app.loadHomeLiveEvents()
                 await app.loadWeekendEvents()
                 await app.loadDiscoveryEvents()
@@ -301,7 +304,6 @@ struct HomeView: View {
         .onAppear {
             reminderHaloTrigger += 1
             startTickingIfNeeded()
-            retryScrollRestoreIfNeeded()
         }
         .onDisappear { tickTask?.cancel() }
         #if DEBUG
@@ -352,74 +354,6 @@ struct HomeView: View {
         .sheet(isPresented: $categorySheetOpen) {
             HomeCategorySheet(counts: makeSnapshot().categoryCounts)
                 .environmentObject(app)
-        }
-    }
-
-    /// TASK 4 (2026-09-22 nineteenth follow-up) — real root cause,
-    /// confirmed by reading `ScreenScaffold` (Components.swift): its
-    /// `.scrollPosition(id:)` restoration only works for an `.id(...)`
-    /// that's already materialized in the `LazyVStack`'s own view
-    /// hierarchy — a well-known SwiftUI limitation (this exact class of
-    /// bug is already documented once in this file's own `ScaffoldScrollProbe`
-    /// comment, for a different symptom). Returning to Home after scrolling
-    /// PAST the first screenful means the target event card's row was
-    /// never instantiated in this fresh `HomeView` instance's `LazyVStack`
-    /// at the moment `.scrollPosition(id:)` first tries to restore it, so
-    /// the restore silently no-ops. Switching away from `LazyVStack` (would
-    /// reintroduce the ~21-simultaneous-photo-download regression this file
-    /// already fixed once) or restructuring `ScreenScaffold` into a `List`
-    /// (touches Inbox/Notifications/Account too) are both too large for
-    /// this pass. Instead: re-drive the SAME binding a moment after this
-    /// view actually appears — by then `app.feed`'s async dependencies
-    /// (`loadHomeLiveEvents`, etc.) have generally settled and SwiftUI's
-    /// own layout pass has had a real chance to instantiate more of the
-    /// LazyVStack, giving the retry a real shot at finding the target id
-    /// that the very first, too-early attempt didn't. Toggled through nil
-    /// first since re-assigning a Binding<String?> to its OWN current value
-    /// wouldn't produce a change for `.scrollPosition(id:)` to react to.
-    /// TASK 3 (2026-09-22 twentieth follow-up) — real root cause of the
-    /// late/janky restore during an interactive edge-swipe back: RootView's
-    /// peek (`screenView(for: app.backTargetScreen, isPreview: true)`, see
-    /// RootView.swift) constructs a brand-new `HomeView` the instant the
-    /// user's finger moves — its `.home` case ignores `isPreview` entirely,
-    /// so this is the SAME view/onAppear path as any other Home mount. The
-    /// flat 400ms delay below was tuned for the genuine FIRST-load case,
-    /// where `app.feed` is still empty and the async loaders in `.task`
-    /// above haven't populated it yet. But on a return-from-Event-Detail
-    /// peek, `app.feed` is already populated (it's never cleared on screen
-    /// navigation — only this View struct is torn down and recreated), so
-    /// waiting 400ms here is exactly what let Home reveal at the top first
-    /// and only jump into place afterward, instead of already being correct
-    /// before the peek reveals anything. Skipping the wait whenever the
-    /// data needed to restore is already in hand fixes that without
-    /// stacking another retry on top of this one.
-    /// True when Home was last left scrolled to the very top. The id anchor is then meaningless:
-    /// `.scrollPosition(id:)` reports the first feed card (the leading id-tagged child) even at
-    /// offset 0, and restoring it would jump past "Your events"/Pulse on return.
-    private var homeWasAtTop: Bool { (app.homeScrollOffsetY ?? 0) <= 1 }
-
-    private var homeScrollAnchorBinding: Binding<String?> {
-        Binding(
-            get: { homeWasAtTop ? nil : app.homeScrollAnchorID },
-            set: { app.homeScrollAnchorID = $0 }
-        )
-    }
-
-    private func retryScrollRestoreIfNeeded() {
-        guard !didAttemptScrollRestore, !homeWasAtTop, let target = app.homeScrollAnchorID else { return }
-        didAttemptScrollRestore = true
-        if !app.feed.isEmpty {
-            app.restoreHomeScrollAnchor(nil)
-            DispatchQueue.main.async {
-                app.restoreHomeScrollAnchor(target)
-            }
-        } else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                app.restoreHomeScrollAnchor(nil)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    app.restoreHomeScrollAnchor(target)
-                }
-            }
         }
     }
 

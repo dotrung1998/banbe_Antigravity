@@ -2288,22 +2288,16 @@ final class AppState: ObservableObject {
     /// fresh rather than silently resuming an unrelated past session.
     @Published var mapExploreState: MapExploreState?
 
-    /// Home task 3 (2026-09-21 follow-up) — the feed event id nearest the
-    /// top of Home's scroll view; survives HomeView being torn down and
-    /// recreated on navigating to Event Detail and back (the same reason
-    /// `mapExploreState` isn't a plain `@State` either), via
-    /// `ScreenScaffold`'s `.scrollPosition(id:)` binding. `nil` means "no
-    /// scroll to restore" — top of the feed.
-    /// NOT @Published (2026-11-01): with `.scrollPosition(id:, anchor: .center)` it changes every time a card crosses
-    /// the middle of the screen, and publishing it re-rendered the whole app per card (Home's scroll hitches and
-    /// freezes, worst with big photo cards). It is read when Home's body is built (restore after a remount); a
-    /// programmatic restore uses `restoreHomeScrollAnchor(_:)`, which asks for that re-render.
-    var homeScrollAnchorID: String?
-    func restoreHomeScrollAnchor(_ id: String?) {
-        objectWillChange.send()
-        homeScrollAnchorID = id
-    }
-    /// Home's raw scroll offset, remembered across tab switches (see ScreenScaffold.restoreOffsetY).
+    /// Home's raw scroll offset, remembered across tab switches and across HomeView being torn down and recreated
+    /// (opening an event and coming back). ScreenScaffold re-applies it for a short settle window after Home's
+    /// scroll view appears, so the feed comes back exactly where the person left it.
+    /// Scroll-restore fix (2026-11-16) — Home restores ONLY by this exact offset now. It used to also hand
+    /// `ScreenScaffold` a `.scrollPosition(id:)` anchor (`homeScrollAnchorID`): a two-way binding that scrolls back
+    /// to whichever card SwiftUI found at its CENTRE anchor whenever it was (re)applied — on any later body pass or
+    /// content reflow — so the feed animated itself onto another card right as a swipe settled and the offset restore
+    /// then pulled it back. That is the reported "refreshes and shifts to another Home section" with a laggy
+    /// animation; see HomeView's own comment at its `ScreenScaffold` call. Home was its only reader, so the id anchor
+    /// is gone (Account still uses its own per-tab id anchors, which restore whole sections and are fine).
     /// Deliberately NOT @Published — it changes every frame while scrolling.
     var homeScrollOffsetY: CGFloat?
     /// Bumped to put Home back at the very top (a new account, or right after
@@ -2313,7 +2307,6 @@ final class AppState: ObservableObject {
     /// Forgets Home's remembered scroll and pins it to the top. A guest's
     /// pre-signup scroll position must not carry into the new account.
     func resetHomeScrollToTop() {
-        homeScrollAnchorID = nil
         homeScrollOffsetY = nil
         HomeHeaderFade.shared.update(offsetY: 0)
         homeScrollToTopToken &+= 1
