@@ -1,13 +1,13 @@
-// See all / Browse by type (v2.3, notes 81 and 85). ONE route family, two screens told apart by the URL:
+// See all / Browse by type (v2.3, notes 81, 85, 86 and 88). ONE route family, ONE kind of screen: a list of events.
 // · /see-all/<tab> — one Home tab (For You, Tonight, Weekend) as its list. The same three tabs sit under the nav, so the
 //   reader moves between tabs without going back to Home (note 85); the type chips then narrow the open tab, and its
 //   own Filters (When, Price, Seats) sit beside the count. Under the tabs a deck of host faces replaces the description
 //   (a tap lists the hosts, a host opens their real profile).
-// · /browse — Browse by type, TYPES ONLY (note 85): every type of the whole catalogue as one grid of counts and nothing
-//   else. A tile opens that type's list (/browse/<type>), whose "All" chip leads back to the grid. A search typed on the
-//   grid is the one thing that turns it into a list (every type's matches).
-// A tab screen closes its type chips with a "Browse by type" link (note 86): the catalogue's grid opens over the tab and
-// remembers it, so Back there returns to that tab instead of Home.
+// · /browse[/<type>] — Browse by type, the whole catalogue as a LIST, never a grid (note 88): every event at once, with
+//   the type chips narrowing it in place. "All" widens it back to every event. The nav row names the screen ("Browse by
+//   type"), a picked type is the content's 30px heading with its own count line, and a search reads all three.
+// A tab screen closes its type chips with a "Browse by type" link (note 86): it opens that same every-event list and
+// remembers the tab, so Back returns to the tab instead of Home.
 // The magnifier left of Map turns the title into a search field (the native keyboard, Done keeps the query as the
 // list's filter, × clears it). The list pages four rows at a time with the onboarding-style swipe signs and ends with
 // an end card. Pure view: Home.jsx passes the scope's items (the same discovery items Home uses, so there is no second
@@ -47,7 +47,7 @@ const SCOPES = ['foryou', 'tonight', 'weekend'];
  * @param {Array} p.items  the scope's discovery items, in the scope's order
  * @param {(it) => object} p.shapeRow  discovery item → EventRowV23 row
  * @param {(tab: string) => void} p.onScope  switch to another Home tab without leaving the screen
- * @param {string|null} p.from  the Home tab this grid was opened out of (Back returns to it, note 86)
+ * @param {string|null} p.from  the Home tab this Browse by type was opened out of (Back returns to it, note 86)
  * @param {() => void} p.onBrowseTypes  open Browse by type from inside a tab (note 86)
  */
 export default function Browse({ T, lang, scope, type, query, filters, items, now, areaLabel, shapeRow,
@@ -59,14 +59,15 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
   const typeName = typeDef ? { vi: typeDef.vi, en: typeDef.en } : null;
   const counts = useMemo(() => typeCounts(items), [items]);
   const typed = String(query || '').trim();
-  // A type with nothing in this scope falls back to every type (a stale link, or a tab that changed).
-  const effType = type !== 'all' && !counts[type] ? 'all' : type;
+  // A type the catalogue does not have (a stale link) falls back to every type; a real type keeps its own list even while
+  // nothing is on for it, so its chip opens an honest empty list instead of something else.
+  const known = TYPE_DEFS.some(d => d.key === type);
+  const effType = type !== 'all' && !known ? 'all' : type;
   const chips = useMemo(() => TYPE_DEFS.filter(d => counts[d.key] > 0).sort((a, b) => counts[b.key] - counts[a.key]), [counts]);
-  // Browse by type is the catalogue's types and nothing else; a search is the one thing that opens it into a list.
-  const index = scope === 'all' && effType === 'all' && !typed;
+  // No grid (note 88): Browse by type IS the list of every event, and the type chips narrow it in place.
   const { list, hidden } = useMemo(() => browseList({ items, type: effType, query, filters, now }), [items, effType, query, filters, now]);
-  const hosts = useMemo(() => (index ? [] : hostsOf(browseList({ items, type: effType, query: '', filters: null, now }).list, lang)),
-    [index, items, effType, now, lang]);
+  const hosts = useMemo(() => hostsOf(browseList({ items, type: effType, query: '', filters: null, now }).list, lang),
+    [items, effType, now, lang]);
   const rows = useMemo(() => list.map(shapeRow), [list, shapeRow]);
   const nFilters = browseFilterCount(filters);
   const others = chips.filter(d => d.key !== effType).map(d => ({ key: d.key, name: { vi: d.vi, en: d.en }, count: counts[d.key] }));
@@ -83,10 +84,12 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
 
   const titleText = effType !== 'all' && typeName ? T(typeName.vi, typeName.en)
     : tabLabel ? T(tabLabel.vi, tabLabel.en) : T('Duyệt theo loại', 'Browse by type');
-  // The screen's title lives in its content: the tab row on a tab screen, the big title on the grid. The nav row only
-  // carries what the content does not already say (the search, and the picked type).
-  const navTitle = typed ? `“${typed}” · ${titleText}`
-    : effType !== 'all' ? (tabLabel ? `${T(tabLabel.vi, tabLabel.en)} · ${titleText}` : titleText) : '';
+  // The nav row names the screen ("Browse by type") and carries a running search. On a tab screen the tab row names it,
+  // and a picked type adds itself after the tab ("Tonight · Music"); the type itself is also the content's 30px heading.
+  const navTitle = typed ? `“${typed}”`
+    : scope === 'all' ? T('Duyệt theo loại', 'Browse by type')
+      : effType !== 'all' && tabLabel && typeName ? `${T(tabLabel.vi, tabLabel.en)} · ${T(typeName.vi, typeName.en)}`
+        : '';
 
   const [finding, setFinding] = useState(false);
   const [hostsOpen, setHostsOpen] = useState(false);
@@ -98,12 +101,8 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
   const enter = reduced ? undefined : 'bbV23PushIn 0.42s cubic-bezier(.32,.72,0,1) both';
   const navBtn = { width: 44, height: 44, borderRadius: '50%', border: 'none', background: 'rgba(var(--bb-fg-rgb),0.07)', color: 'inherit', display: 'grid', placeItems: 'center', cursor: 'pointer', flex: 'none' };
 
-  // "All" on a type list at /browse returns to the grid, where a type is chosen: it therefore starts clean instead of
-  // keeping a search and filters the grid never showed (note 85).
-  const pickType = (k) => {
-    if (k === 'all' && scope === 'all') { onType('all'); onQuery(''); onFilters(null); return; }
-    onType(k);
-  };
+  // "All" is every event: the list widens in place, there is no grid in between (note 88).
+  const pickType = (k) => onType(k);
   const onEnd = (act) => {
     if (act === 'clear-filters') onFilters(null);
     else if (act === 'clear-search') { onQuery(''); setFinding(false); }
@@ -111,22 +110,19 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
     else if (act === 'map') onMap(effType);
     else if (act === 'host') onHost();
   };
-  // Back steps up one level (notes 85 and 86): a type's list returns to the grid it was chosen from, the grid returns to
-  // the Home tab it was opened out of, and a tab's list returns Home. The label says which way it goes.
-  const fromTypeList = scope === 'all' && effType !== 'all';
-  const fromTab = scope === 'all' && !fromTypeList && TAB_LABEL[from] ? from : null;
-  const backLabel = fromTypeList ? T('Mọi loại', 'All types')
-    : fromTab ? T(`Về ${TAB_LABEL[fromTab].vi}`, `Back to ${TAB_LABEL[fromTab].en}`)
-      : T('Về Trang chủ', 'Back to Home');
-  const goBack = () => { if (fromTypeList) pickType('all'); else onBack(); };
+  // Back leaves the screen (notes 86 and 88): Browse by type opened from a tab returns to that tab, everywhere else to
+  // Home. There is no grid to step up to any more. The label says which way it goes.
+  const fromTab = scope === 'all' && TAB_LABEL[from] ? from : null;
+  const backLabel = fromTab ? T(`Về ${TAB_LABEL[fromTab].vi}`, `Back to ${TAB_LABEL[fromTab].en}`)
+    : T('Về Trang chủ', 'Back to Home');
 
   return (
-    <div data-testid="browse-screen" data-scope={scope} data-type={effType} data-mode={index ? 'index' : 'list'}
+    <div data-testid="browse-screen" data-scope={scope} data-type={effType}
       style={{ minHeight: '100%', background: 'var(--bb-bg)', color: 'var(--bb-fg)', animation: enter }}>
       <style>{'@keyframes bbV23PushIn { from { transform: translateX(28%); opacity: .4; } to { transform: none; opacity: 1; } }'}</style>
       <header data-testid="browse-nav" style={{ position: 'sticky', top: 0, zIndex: 5, background: 'var(--bb-bg)', borderBottom: '1px solid var(--bb-rule)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px' }}>
-          <button type="button" onClick={goBack} aria-label={backLabel} data-testid="browse-back" style={navBtn}><Icon d={BACK} /></button>
+          <button type="button" onClick={onBack} aria-label={backLabel} data-testid="browse-back" style={navBtn}><Icon d={BACK} /></button>
           {finding ? (
             <form role="search" onSubmit={(e) => { e.preventDefault(); inputRef.current?.blur(); setFinding(false); }} style={{ flex: 1, minWidth: 0 }}>
               <input ref={inputRef} type="search" value={query} onChange={(e) => onQuery(e.target.value)} enterKeyHint="done" autoComplete="off"
@@ -166,32 +162,16 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
         )}
       </header>
 
-      {index ? (
-        <>
-          <div style={{ padding: '18px 20px 0' }}>
-            <h1 data-testid="browse-title" style={{ margin: 0, fontSize: 30, fontWeight: 400, letterSpacing: '-.02em', lineHeight: 1.1 }}>{titleText}</h1>
-            <div data-testid="browse-scope-count" style={{ fontSize: 13, opacity: 0.72, marginTop: 6 }}>
-              {[evN(items.length), areaLabel].filter(Boolean).join(' · ')}
+      <>
+        {/* On a type's list the type is the content's own title; the nav row names the screen ("Browse by type"). */}
+        {scope === 'all' && effType !== 'all' && (
+            <div style={{ padding: '18px 20px 0' }}>
+              <h1 data-testid="browse-title" style={{ margin: 0, fontSize: 30, fontWeight: 400, letterSpacing: '-.02em', lineHeight: 1.1 }}>{titleText}</h1>
+              <div data-testid="browse-scope-count" style={{ fontSize: 13, opacity: 0.72, marginTop: 6 }}>
+                {[evN(counts[effType] || 0), areaLabel].filter(Boolean).join(' · ')}
+              </div>
             </div>
-            <p style={{ fontSize: 14, opacity: 0.72, margin: '10px 0 0' }}>{T('Chọn một loại để xem những buổi đang mở.', 'Pick a type to see what is on.')}</p>
-          </div>
-          {/* Every type with an event in the catalogue, most events first, in Home's Browse by type tiles. */}
-          <div data-testid="browse-type-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, padding: '14px 20px 0' }}>
-            {chips.map(d => (
-              <button key={d.key} type="button" data-testid={`browse-grid-${d.key}`} onClick={() => pickType(d.key)}
-                style={{ padding: '14px 0 12px', border: 'none', borderRadius: 16, background: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, fontFamily: 'inherit', fontSize: 13, color: 'inherit', cursor: 'pointer' }}>
-                <span style={{ width: 52, height: 52, display: 'grid', placeItems: 'center', marginBottom: 4 }}><CategoryGlyph cat={d.key} size={28} strokeWidth={1.5} /></span>
-                <span>{T(d.vi, d.en)}</span>
-                <small data-testid={`browse-grid-count-${d.key}`} style={{ fontSize: 11.5, opacity: 0.64 }}>{evN(counts[d.key])}</small>
-              </button>
-            ))}
-          </div>
-          {chips.length === 0 && (
-            <div data-testid="browse-type-grid-empty" style={{ padding: '18px 20px 0', fontSize: 14, opacity: 0.72 }}>{T('Chưa có gì ở đây.', 'Nothing here yet.')}</div>
           )}
-        </>
-      ) : (
-        <>
           {hosts.length > 0 && (
             <div style={{ padding: '16px 20px 0' }}>
               <HostDeck hosts={hosts} onOpen={() => setHostsOpen(true)} T={T} />
@@ -215,13 +195,12 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
             </div>
           )}
 
-          {/* The way out of one tab's types to every type in the catalogue (note 86): right under the chips, in the quiet
-              link look Home uses for "See all", so it reads as somewhere to go rather than another filter. Never drawn on
-              /browse itself, which is where it leads. */}
+          {/* The way out of one tab's types to the whole catalogue (note 86): right under the chips, in the quiet link look
+              Home uses for "See all", so it reads as somewhere to go rather than another filter. It opens the every-event
+              list and Back returns to this tab. Never drawn on /browse itself, which is where it leads. */}
           {scope !== 'all' && (
             <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 20px' }}>
               <button type="button" onClick={onBrowseTypes} data-testid="browse-browse-types"
-                aria-label={T('Duyệt mọi loại sự kiện', 'Browse every event type')}
                 style={{ minHeight: 44, padding: '0 4px', border: 'none', background: 'none', color: 'inherit', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
                 <Icon d={GRID} size={16} />{T('Duyệt theo loại', 'Browse by type')}<Icon d={CHEVRON} size={13} />
               </button>
@@ -258,9 +237,8 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
                 body: { vi: 'Sự kiện mới sẽ hiện ở đây khi chủ nhà đăng.', en: 'New events show up here when hosts post them.' },
                 actions: [],
               }} />
-            )} />
-        </>
-      )}
+        )} />
+      </>
       <div style={{ height: 120 }} />
 
       {hostsOpen && (

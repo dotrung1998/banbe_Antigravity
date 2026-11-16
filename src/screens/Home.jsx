@@ -675,8 +675,8 @@ export default function Home({ browse = false }) {
     setBrowse({ browseScope: tab, browseType: keepType ? s.browseType : 'all', browseFrom: null, browseQuery: '', browseFilters: DEFAULT_FILTERS });
   };
 
-  // Note 86: from inside a tab's See all, Browse by type opens the catalogue's grid over the tab and remembers it, so
-  // Back there returns to that tab instead of Home.
+  // Note 86: from inside a tab's See all, Browse by type opens the whole catalogue's list (every event, note 88) and
+  // remembers the tab, so Back there returns to that tab instead of Home.
   const browseTypesFrom = (tab) => openBrowse({ type: 'all', scope: 'all', from: tab && tab !== 'all' ? tab : null });
 
   // Retention roadmap P1 ("Cuối tuần này") — reuses the SAME district
