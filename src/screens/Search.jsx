@@ -7,6 +7,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { takeSearchOrigin } from '../lib/searchOrigin.js';
 import { searchBarStore, useSearchBar } from '../lib/searchBarStore.js';
 import { searchBarTop } from '../components/PersistentSearchBar.jsx';
+import { SAFE_TOP } from '../lib/viewport.js';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS, bg, catalogStartMs } from '../data/events.js';
 import { paper, ink, ink2, rule, display, fieldGlass, RADIUS } from '../theme.js';
@@ -172,13 +173,17 @@ export default function Search({ overlay = false }) {
     </button>
   );
 
+  // The overlay is fixed to the window (it opens over the full-bleed Home hero), so its header must clear the
+  // status-bar strip itself; as a root screen it sits inside the scroll viewport that already starts below that inset.
+  // The persistent bar (PersistentSearchBar.jsx) draws into this slot at the same offset.
+  const topPad = overlay ? `calc(${searchBarTop()}px + ${SAFE_TOP})` : `${searchBarTop()}px`;
   return (
     <div ref={rootRef} data-screen-label="Search"
       style={leavingToMap ? { position: overlay ? 'fixed' : 'relative', inset: overlay ? 0 : undefined, zIndex: overlay ? 45 : undefined, minHeight: '100%', background: paper, color: ink, opacity: 0, transition: 'opacity 0.22s ease', pointerEvents: 'none' } : overlay
         ? { position: 'fixed', inset: 0, zIndex: 45, overflowY: 'auto', color: ink, paddingBottom: 120, animation: origin ? undefined : 'banbeFade 0.2s ease both' }
         : { minHeight: '100%', background: paper, color: ink, paddingBottom: 120, animation: origin ? undefined : 'banbeIn 0.25s ease both' }}>
       {overlay && <div data-search-backdrop aria-hidden style={{ position: 'fixed', inset: 0, background: paper, zIndex: -1 }} />}
-      <div ref={headerRef} data-search-header style={{ padding: `${searchBarTop()}px 16px 10px`, display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', top: 0, background: paper, zIndex: 2, borderBottom: `1px solid ${rule}` }}>
+      <div ref={headerRef} data-search-header style={{ padding: `${topPad} 16px 10px`, display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', top: 0, background: paper, zIndex: 2, borderBottom: `1px solid ${rule}` }}>
         {/* The persistent search bar (App.jsx) draws here: back + field. */}
         <div data-search-bar-slot aria-hidden style={{ height: 44, flex: 1 }} />
       </div>

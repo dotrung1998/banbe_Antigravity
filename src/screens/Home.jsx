@@ -672,8 +672,12 @@ export default function Home({ browse = false }) {
   // survives only where the new tab still has it (a tab can be a different slice of the catalogue).
   const browseScopeTo = (tab) => {
     const keepType = (browseTypeCounts(tabItems(tab))[s.browseType] || 0) > 0;
-    setBrowse({ browseScope: tab, browseType: keepType ? s.browseType : 'all', browseQuery: '', browseFilters: DEFAULT_FILTERS });
+    setBrowse({ browseScope: tab, browseType: keepType ? s.browseType : 'all', browseFrom: null, browseQuery: '', browseFilters: DEFAULT_FILTERS });
   };
+
+  // Note 86: from inside a tab's See all, Browse by type opens the whole catalogue's list (every event, note 88) and
+  // remembers the tab, so Back there returns to that tab instead of Home.
+  const browseTypesFrom = (tab) => openBrowse({ type: 'all', scope: 'all', from: tab && tab !== 'all' ? tab : null });
 
   // Retention roadmap P1 ("Cuối tuần này") — reuses the SAME district
   // (curArea) and category (homeFilters.cats) picks already driving the main feed
@@ -1176,6 +1180,7 @@ export default function Home({ browse = false }) {
       <Browse T={T} lang={s.lang === 'en' ? 'en' : 'vi'} scope={s.browseScope || 'all'} type={s.browseType || 'all'} query={s.browseQuery || ''}
         filters={s.browseFilters} items={browseItems || []} now={nowMs} areaLabel={areaName} shapeRow={shapeRow}
         onScope={browseScopeTo}
+        from={s.browseFrom || null} onBrowseTypes={() => browseTypesFrom(s.browseScope)}
         onType={(k) => setBrowse({ browseType: k })} onQuery={(q) => setBrowse({ browseQuery: q })}
         onFilters={(f) => setBrowse({ browseFilters: f ? toBrowseFilters(f) : DEFAULT_FILTERS })}
         onBack={backFromBrowse} onOpenEvent={goEvent} onOpenHost={(id) => openOrganizerProfile(id, 'browse')}

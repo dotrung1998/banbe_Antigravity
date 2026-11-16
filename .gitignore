@@ -101,3 +101,8 @@ dist-ssr
 
 # graphify knowledge-graph output (generated locally, rebuild with /graphify)
 /graphify-out/
+
+
+# Archives are not publishable (the web app deploy rejects .zip) and are
+# rebuildable from the files they bundle.
+*.zip

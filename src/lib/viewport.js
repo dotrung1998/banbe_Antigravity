@@ -15,3 +15,10 @@ export function getFrameBox() {
 }
 
 export const screenHeight = () => getFrameBox().height;
+
+
+// The iOS status-bar strip (index.css `body::before`) is drawn OVER the page, so anything placed from the very top of
+// the window — a full-bleed screen's own top edge, the persistent search bar, a fixed overlay — has to add this inset
+// itself, exactly as the iOS twin does (`PersistentSearchBar.swift`'s `safeAreaInsets.top + 8`). Zero on desktop, in
+// the desktop phone frame and in Safari tabs.
+export const SAFE_TOP = 'var(--bb-safe-top, env(safe-area-inset-top, 0px))';

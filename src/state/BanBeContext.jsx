@@ -647,11 +647,12 @@ const initialState = {
   // `{}` when the function isn't deployed yet — badges then simply don't show), and the Search screen query.
   homeFilters: HOME_DEFAULT_FILTERS,
   homeSort: 'soonest',
-  // Browse by type / See all (v2.3, notes 81 and 85): which list is open, its search and its own filters (When, Price,
-  // Seats). Public browsing state only, like homeFilters, so sign-out does not need to clear it. The URL says which of
-  // the two screens it is: /browse carries no scope (Browse by type, the catalogue's types) and /see-all/<tab> carries
-  // one Home tab. `all` scope + `all` type is therefore the type grid, never a list.
-  browseType: 'all', browseScope: 'all', browseQuery: '', browseFilters: HOME_DEFAULT_FILTERS,
+  // Browse by type / See all (v2.3, notes 81, 85, 86, 87 and 88): which list is open, its search and its own filters
+  // (When, Price, Seats). Public browsing state only, like homeFilters, so sign-out does not need to clear it. The URL says
+  // which screen it is: /browse[ /<type>] is the whole catalogue as one LIST (never a grid, note 88) and /see-all/<tab>
+  // carries one Home tab. `browseFrom` is the Home tab that Browse by type was opened out of, so Back returns there
+  // instead of Home (memory only, never in the URL).
+  browseType: 'all', browseScope: 'all', browseFrom: null, browseQuery: '', browseFilters: HOME_DEFAULT_FILTERS,
   homeFilterSheetOpen: false,
   eventFill: {},
   // Phase 1 Q5: the event whose approval notification the host just opened (Dashboard shows its "live" card once).
@@ -6674,15 +6675,23 @@ export function BanBeProvider({ children }) {
   // v2.3 Browse by type / See all (note 81, reworked in note 85). Opening a list from Home always starts unfiltered and
   // unsearched; the event and host profile opened from it come back here (eventBackScreen / organizerProfileBack =
   // 'browse'). `keep` (browser back/forward into the same list): keep its search and filters instead of starting fresh.
-  const openBrowse = useCallback(({ type = 'all', scope = 'all', keep = false } = {}) => set(prev => {
+  // `from` = the Home tab this Browse by type was opened out of, so Back returns there (note 86).
+  const openBrowse = useCallback(({ type = 'all', scope = 'all', keep = false, from = null } = {}) => set(prev => {
     const same = keep && prev.browseType === (type || 'all') && prev.browseScope === (scope || 'all');
     return {
       screen: 'browse', browseType: type || 'all', browseScope: scope || 'all', homeFilterSheetOpen: false,
+      browseFrom: keep ? (prev.browseFrom || null) : (from || null),
       browseQuery: same ? prev.browseQuery : '', browseFilters: same ? prev.browseFilters : HOME_DEFAULT_FILTERS,
     };
   }), [set]);
   const setBrowse = useCallback((patch) => set(prev => (typeof patch === 'function' ? patch(prev) : patch)), [set]);
-  const backFromBrowse = useCallback(() => set({ screen: 'home' }), [set]);
+  // Back out of Browse leaves the screen (notes 86 and 88): opened from a Home tab it returns to that tab, everywhere else
+  // to Home. There is no grid to step through.
+  const backFromBrowse = useCallback(() => set(prev => (
+    prev.browseScope === 'all' && prev.browseFrom
+      ? { browseScope: prev.browseFrom, browseType: 'all', browseFrom: null, browseQuery: '', browseFilters: HOME_DEFAULT_FILTERS }
+      : { screen: 'home' }
+  )), [set]);
   // Home → Map contract (Map redesign phase 3): an optional context { source, filters, query, forYou } the Map reads
   // once at open (applied filters, never geography — the Map frames its own area). The dock tab passes its click
   // event here, so only a plain object with a `source` counts.
