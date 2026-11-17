@@ -6,8 +6,7 @@
 //   ("Music · median 250k · 12 of 41 events");
 // - a CTA that says exactly what you'll get ("Show 23 events"), or which single filter to relax.
 // Edits a local draft; nothing changes on Home until the CTA is pressed. iOS twin: Views/HomeFilterSheet.swift.
-import { useEffect, useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useMemo, useState } from 'react';
 import { paper, ink, rule, display, inkButton, RADIUS } from '../../theme.js';
 import {
   applyDiscoveryFilters, optionCounts, relaxationHints, priceHistogram, median, bucketIndex,
@@ -16,6 +15,7 @@ import {
 import { formatMoneyShort } from '../../lib/eventMarket.js';
 import { CategoryGlyph, CATEGORY_DEFS } from '../../components/home/HomeDiscoveryParts.jsx';
 import AreaSheet from './AreaSheet.jsx';
+import NativeSheet from '../../components/NativeSheet.jsx';
 
 export const DATE_LABELS = {
   any: ['Mọi lúc', 'Any time'], tonight: ['Tối nay', 'Tonight'], today: ['Hôm nay', 'Today'], tomorrow: ['Ngày mai', 'Tomorrow'],
@@ -76,12 +76,6 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
   const [areaOpen, setAreaOpen] = useState(false);
   const patch = (p) => setDraft(d => normalizeFilters({ ...d, ...p }));
 
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape' && !areaOpen) onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, areaOpen]);
-
   const total = items.length;
   const resultCount = useMemo(() => applyDiscoveryFilters(items, draft, now).length, [items, draft, now]);
   const dateCounts = useMemo(() => optionCounts(items, draft, 'date', dateOptions, now), [items, draft, now, dateOptions]);
@@ -121,13 +115,11 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
     if (hints[0]) setDraft(normalizeFilters(hints[0].filters));
   };
 
-  const target = typeof document !== 'undefined' ? (document.querySelector('.bb-screen') || document.body) : null;
-  if (!target) return null;
-  return createPortal(
-    <div onClick={onClose} data-testid="home-filter-backdrop"
-      style={{ position: 'fixed', inset: 0, zIndex: 2100, background: 'rgba(12,12,12,0.45)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>
-      <div role="dialog" aria-modal="true" aria-label={title || T('Bộ lọc', 'Filters')} onClick={(e) => e.stopPropagation()} data-testid="home-filter-sheet"
-        style={{ background: paper, color: ink, borderRadius: '22px 22px 0 0', maxHeight: '88%', display: 'flex', flexDirection: 'column', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both', filter: areaOpen ? 'blur(6px) brightness(0.8)' : 'none', transition: 'filter 0.25s ease' }}>
+  return (
+    <NativeSheet open onClose={onClose} label={title || T('Bộ lọc', 'Filters')} testId="home-filter-sheet"
+      bodyTestId="home-filter-backdrop" zIndex={2100}>
+      <div
+        style={{ background: paper, color: ink, borderRadius: '22px 22px 0 0', maxHeight: '88%', width: '100%', display: 'flex', flexDirection: 'column', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both', filter: areaOpen ? 'blur(6px) brightness(0.8)' : 'none', transition: 'filter 0.25s ease' }}>
         {/* Reset on the left, close (×) on the right; equal side columns keep the title centred. */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', padding: '10px 14px 8px' }}>
           <button type="button" onClick={() => { setDraft(normalizeFilters(DEFAULT_FILTERS)); setDraftSort('soonest'); }} data-testid="home-filter-reset"
@@ -267,7 +259,6 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
       </div>
       {areaOpen && <AreaSheet embedded onDone={() => setAreaOpen(false)} />}
       {/* While the full-height location sheet is up, this sheet stays mounted behind it, blurred and dimmed. */}
-    </div>,
-    target,
+    </NativeSheet>
   );
 }

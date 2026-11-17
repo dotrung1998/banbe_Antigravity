@@ -11,9 +11,9 @@
 // Focus moves into the sheet and stays there (Tab wraps), Escape / scrim / drag-down close it, focus returns to the "+".
 // Reduce Motion: fade only.
 import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { effectiveHomeView } from '../lib/homeMode.js';
+import NativeSheet from '../components/NativeSheet.jsx';
 import { useReducedMotion } from '../lib/useReducedMotion.js';
 import { EVENTS } from '../data/events.js';
 import { ink, paper, ink2, surface2, divider, display, RADIUS } from '../theme.js';
@@ -89,22 +89,11 @@ export default function DockCreateCenter({ pressed = false }) {
   };
   const run = (fn) => { close(false); fn(); };
 
-  // Focus in on open; Escape closes; Tab wraps inside the sheet.
+  // First button focused on open; NativeSheet owns Escape, the Tab trap and focus return.
   useEffect(() => {
     if (!open) return undefined;
     const t = setTimeout(() => sheetRef.current?.querySelector('button')?.focus({ preventScroll: true }), 0);
-    const onKey = (e) => {
-      if (e.key === 'Escape') { e.preventDefault(); close(); return; }
-      if (e.key !== 'Tab' || !sheetRef.current) return;
-      const f = [...sheetRef.current.querySelectorAll('button:not([disabled])')];
-      if (!f.length) return;
-      const first = f[0], last = f[f.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => { clearTimeout(t); window.removeEventListener('keydown', onKey); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => clearTimeout(t);
   }, [open]);
   useEffect(() => { if (hiddenByOverlay && open) close(false); }, [hiddenByOverlay]); // eslint-disable-line react-hooks/exhaustive-deps
   // The open state lives in context: never leave it set behind an unmounted dock (it would pop up on the next mount).
@@ -159,13 +148,12 @@ export default function DockCreateCenter({ pressed = false }) {
   ];
 
   const sheet = open && (
-    <div onClick={() => close()} data-testid="dock-create-backdrop"
-      style={{ position: 'fixed', inset: 0, zIndex: 2100, background: 'rgba(12,12,12,0.45)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>
-      <div ref={sheetRef} role="dialog" aria-modal="true" aria-labelledby="dock-create-title" data-testid="dock-create-menu"
-        onClick={(e) => e.stopPropagation()}
+    <NativeSheet open onClose={() => close()} labelledBy="dock-create-title" testId="dock-create-menu"
+      bodyTestId="dock-create-backdrop" zIndex={2100} returnFocusTo={buttonRef.current}>
+      <div ref={sheetRef}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
         style={{
-          background: paper, color: ink, borderRadius: '22px 22px 0 0', padding: '8px 12px calc(20px + env(safe-area-inset-bottom, 0px))',
+          width: '100%', background: paper, color: ink, borderRadius: '22px 22px 0 0', padding: '8px 12px calc(20px + env(safe-area-inset-bottom, 0px))',
           maxHeight: '86%', overflowY: 'auto', boxShadow: '0 -8px 32px rgba(0,0,0,0.18)', touchAction: 'pan-y',
           transform: dragY ? `translateY(${dragY}px)` : undefined,
           animation: reduce ? 'banbeFade 0.2s ease both' : 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both',
@@ -211,10 +199,9 @@ export default function DockCreateCenter({ pressed = false }) {
           ) : goerRows.map(r => <Row key={r.testId} {...r} />)}
         </div>
       </div>
-    </div>
+    </NativeSheet>
   );
 
-  const target = typeof document !== 'undefined' ? (document.querySelector('.bb-screen') || document.body) : null;
   if (hiddenByOverlay) return null;
   return (
     <>
@@ -228,7 +215,7 @@ export default function DockCreateCenter({ pressed = false }) {
         </span>
         <span aria-hidden style={{ fontSize: 11, fontWeight: 500, opacity: 0.75 }}>{T('Tạo', 'Create')}</span>
       </button>
-      {sheet && target && createPortal(sheet, target)}
+      {sheet}
     </>
   );
 }

@@ -67,15 +67,18 @@ export function giftPdfData(base, { recipientName, ticketCode, admissionToken, c
 
 // ---- Apple Wallet ----
 
-/** iOS/iPadOS Safari or macOS Safari only: the only browsers that add a .pkpass. */
+/**
+ * iOS/iPadOS Safari or macOS Safari only: they are the only browsers that hand a .pkpass to Wallet. There is no feature
+ * for "can this browser open a pass", so this reads capabilities rather than a user-agent string:
+ *  - Apple's own WebKit engine (`navigator.vendor`);
+ *  - an Apple device — iPadOS reports a Mac platform, so touch points > 1 covers it;
+ *  - Apple Pay JS, which Safari exposes and the WebKit-based wrappers from other vendors do not.
+ */
 export function isAppleWalletBrowser() {
-  if (typeof navigator === 'undefined') return false;
-  const ua = navigator.userAgent || '';
-  if (!/Safari\//.test(ua) || !/AppleWebKit/.test(ua)) return false;
-  if (/Chrome|Chromium|CriOS|FxiOS|EdgiOS|Edg\/|OPR\/|OPiOS|Android|SamsungBrowser|DuckDuckGo/i.test(ua)) return false;
-  const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-  const mac = /Macintosh/.test(ua);
-  return ios || mac;
+  if (typeof navigator === 'undefined' || typeof window === 'undefined') return false;
+  if (navigator.vendor !== 'Apple Computer, Inc.') return false;
+  const appleDevice = (navigator.maxTouchPoints || 0) > 1 || /Mac/.test(navigator.platform || '');
+  return appleDevice && typeof window.ApplePaySession !== 'undefined';
 }
 
 export function walletErrorMessage(code, T) {

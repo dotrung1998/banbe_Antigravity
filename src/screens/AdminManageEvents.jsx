@@ -5,6 +5,7 @@ import { ChoiceChip, Button } from '../components/ui/FormControls.jsx';
 import { ADMIN_EVENT_FILTERS, ORPHAN_FILTER, STATUS_LABELS, ERRORS, en, isBlocked, blockerLine, summarize, isOrphanEvent } from '../lib/adminEvents.js';
 import { formatMoney, rowCurrency, rowTimeZone, VN_TIME_ZONE } from '../lib/eventMarket.js';
 import { loadAdminManagedEvents, loadAdminEventChecks, runAdminEventAction } from '../lib/adminEventsApi.js';
+import NativeSheet from '../components/NativeSheet.jsx';
 
 // Admin > Manage events (migrations 188 + 189, note 54). Every event, any status: search, filter, select one or many,
 // then Remove (reason required; hidden everywhere, records kept, host notified; refused while money is still in play
@@ -223,8 +224,9 @@ export default function AdminManageEvents() {
       )}
 
       {reasonFor && (
-        <div onClick={() => setReasonFor(null)} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(12,12,12,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-          <div role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()} data-testid="admin-manage-reason-sheet"
+        <NativeSheet open onClose={() => setReasonFor(null)} testId="admin-manage-reason-sheet" zIndex={60}
+          label={reasonFor === 'purge' ? T('Xoá sự kiện', 'Delete events') : T('Gỡ sự kiện', 'Remove events')}>
+          <div
             style={{ background: paper, color: ink, width: '100%', maxWidth: 480, borderRadius: '22px 22px 0 0', padding: 22, display: 'flex', flexDirection: 'column', gap: 14, animation: 'banbeSheetIn 0.3s cubic-bezier(.22,.61,.36,1) both' }}>
             <div style={display(22)}>
               {reasonFor === 'purge'
@@ -250,7 +252,7 @@ export default function AdminManageEvents() {
                 onClick={() => { const ids = reasonFor === 'purge' ? purgeIds : removeIds; const a = reasonFor; setReasonFor(null); run(a, ids, reason); }} />
             </div>
           </div>
-        </div>
+        </NativeSheet>
       )}
     </div>
   );

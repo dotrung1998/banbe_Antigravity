@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import NativeSheet from '../../components/NativeSheet.jsx';
 import { paper, ink, ink2, ink3, rule, display, block, blockInset, clay, clayBg, surface2 } from '../../theme.js';
 import { bg } from '../../data/events.js';
 
@@ -18,37 +19,19 @@ export default function EventDetailsSheet({
   onOpenEvent, onClose, reduceMotion, returnFocusTo, T,
 }) {
   const [closing, setClosing] = useState(false);
-  const panel = useRef(null);
   const closeBtn = useRef(null);
-  const opener = useRef(typeof document !== 'undefined' ? document.activeElement : null);
   const close = () => { setClosing(true); setTimeout(onClose, reduceMotion ? 0 : 220); };
-  const closeRef = useRef(close);
-  closeRef.current = close;
 
-  // Focus goes into the dialog, stays in it while it is open, and returns to the control that opened it. `returnFocusTo` is
-  // the clicked element: Safari does not focus a button on click, so document.activeElement alone would be the page body.
-  useEffect(() => {
-    closeBtn.current?.focus();
-    const onKey = (e) => {
-      if (e.key === 'Escape') { e.stopPropagation(); closeRef.current(); return; }
-      if (e.key !== 'Tab' || !panel.current) return;
-      const f = [...panel.current.querySelectorAll('button, a[href], [tabindex]:not([tabindex="-1"])')].filter(el => !el.disabled && el.offsetParent !== null);
-      if (!f.length) return;
-      // Cycle focus ourselves: WebKit's own Tab skips buttons (by default), which would drop focus onto the page behind.
-      e.preventDefault();
-      const i = f.indexOf(document.activeElement);
-      const next = i < 0 ? (e.shiftKey ? f.length - 1 : 0) : (i + (e.shiftKey ? -1 : 1) + f.length) % f.length;
-      f[next].focus();
-    };
-    window.addEventListener('keydown', onKey, true);
-    const back = returnFocusTo || opener.current;
-    return () => { window.removeEventListener('keydown', onKey, true); back?.focus?.(); };
-  }, []);
+  // showModal() supplies the focus trap, Escape and the inert page behind. We only place the initial focus on Close: the
+  // dialog itself is focused first by NativeSheet, and `returnFocusTo` (the clicked element — Safari does not focus a
+  // button on click) is handed back to it so focus returns to the trigger on close.
+  useEffect(() => { closeBtn.current?.focus(); }, []);
 
   const shown = (tiles || []).filter(t => t.value);
   return (
-    <div onClick={close} data-testid="event-details-sheet" style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(27,25,22,0.4)', display: 'flex', alignItems: 'flex-end', opacity: closing ? 0 : 1, transition: reduceMotion ? 'none' : 'opacity .22s ease' }}>
-      <div ref={panel} role="dialog" aria-modal="true" aria-labelledby="event-details-title" onClick={(e) => e.stopPropagation()}
+    <NativeSheet open onClose={close} labelledBy="event-details-title" testId="event-details-sheet"
+      zIndex={80} returnFocusTo={returnFocusTo}>
+      <div
         style={{
           width: '100%', height: '86%', background: paper, borderRadius: '30px 30px 0 0', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden',
           animation: closing ? 'none' : (reduceMotion ? 'banbeFade 0.2s ease both' : 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both'),
@@ -155,6 +138,6 @@ export default function EventDetailsSheet({
           </button>
         </div>
       </div>
-    </div>
+    </NativeSheet>
   );
 }

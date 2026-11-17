@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { supabase } from '../lib/supabase.js';
 import { paper, ink, display, fieldGlass, inkButton, alert } from '../theme.js';
+import NativeSheet from '../components/NativeSheet.jsx';
 import GlassSwitch from '../components/ui/GlassSwitch.jsx';
 
 // Admin > Test accounts (migration 159). Pick an existing account by email,
@@ -206,9 +207,10 @@ export default function AdminTestAccounts() {
           </div>
         )}
         {confirmTo !== null && (
-          <div onClick={() => !bypassBusy && setConfirmTo(null)} data-testid="admin-bypass-confirm"
-            style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'rgba(27,25,22,0.32)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', animation: 'banbeIn 0.25s cubic-bezier(.22,.61,.36,1) both' }}>
-            <div onClick={e => e.stopPropagation()} role="alertdialog" style={{ ...fieldGlass({ padding: 22, borderRadius: 26, maxWidth: 340, width: '100%', background: 'linear-gradient(168deg, rgba(255,255,255,0.7), rgba(255,255,255,0.25)), var(--bb-card)', backdropFilter: 'blur(28px) saturate(1.7)', WebkitBackdropFilter: 'blur(28px) saturate(1.7)', boxShadow: 'inset 0 1px 1px #fff, 0 24px 60px rgba(27,25,22,0.35)' }), animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
+          <NativeSheet open onClose={() => !bypassBusy && setConfirmTo(null)} testId="admin-bypass-confirm"
+            zIndex={50} align="center" pad={24} scrim="rgba(27,25,22,0.32)" blur={6}
+            label={T('Bỏ qua SMS', 'SMS bypass')}>
+            <div style={{ ...fieldGlass({ padding: 22, borderRadius: 26, maxWidth: 340, width: '100%', background: 'linear-gradient(168deg, rgba(255,255,255,0.7), rgba(255,255,255,0.25)), var(--bb-card)', backdropFilter: 'blur(28px) saturate(1.7)', WebkitBackdropFilter: 'blur(28px) saturate(1.7)', boxShadow: 'inset 0 1px 1px #fff, 0 24px 60px rgba(27,25,22,0.35)' }), animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
               <div style={{ ...display(19, { margin: 0 }) }}>
                 {confirmTo ? T('Bật bỏ qua SMS cho tất cả?', 'Bypass SMS for everyone?') : T('Tắt bỏ qua SMS?', 'Turn the SMS bypass off?')}
               </div>
@@ -224,12 +226,13 @@ export default function AdminTestAccounts() {
                 </div>
               </div>
             </div>
-          </div>
+          </NativeSheet>
         )}
         {confirmDelete && found && (
-          <div onClick={() => !deleting && setConfirmDelete(false)} data-testid="admin-delete-confirm"
-            style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'rgba(27,25,22,0.32)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', animation: 'banbeIn 0.25s cubic-bezier(.22,.61,.36,1) both' }}>
-            <div onClick={e => e.stopPropagation()} role="alertdialog" style={{ ...fieldGlass({ padding: 22, borderRadius: 26, maxWidth: 340, width: '100%', background: 'linear-gradient(168deg, rgba(255,255,255,0.7), rgba(255,255,255,0.25)), var(--bb-card)', backdropFilter: 'blur(28px) saturate(1.7)', WebkitBackdropFilter: 'blur(28px) saturate(1.7)', boxShadow: 'inset 0 1px 1px #fff, 0 24px 60px rgba(27,25,22,0.35)' }), animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
+          <NativeSheet open onClose={() => !deleting && setConfirmDelete(false)} testId="admin-delete-confirm"
+            zIndex={50} align="center" pad={24} scrim="rgba(27,25,22,0.32)" blur={6}
+            label={T('Xoá tài khoản', 'Delete account')}>
+            <div style={{ ...fieldGlass({ padding: 22, borderRadius: 26, maxWidth: 340, width: '100%', background: 'linear-gradient(168deg, rgba(255,255,255,0.7), rgba(255,255,255,0.25)), var(--bb-card)', backdropFilter: 'blur(28px) saturate(1.7)', WebkitBackdropFilter: 'blur(28px) saturate(1.7)', boxShadow: 'inset 0 1px 1px #fff, 0 24px 60px rgba(27,25,22,0.35)' }), animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
               <div style={{ ...display(19, { margin: 0 }) }}>{T('Xoá tài khoản này?', 'Delete this account?')}</div>
               <p style={{ fontSize: 12.5, lineHeight: 1.55, opacity: 0.8, margin: '8px 0 0' }}>
                 {T(`${found.email} và mọi dữ liệu gắn với tài khoản sẽ bị xoá vĩnh viễn. Không thể hoàn tác. Email này có thể đăng ký lại sau đó.`,
@@ -242,7 +245,7 @@ export default function AdminTestAccounts() {
                 </div>
               </div>
             </div>
-          </div>
+          </NativeSheet>
         )}
         {msg.text && <p style={{ fontSize: 12.5, lineHeight: 1.55, color: msg.bad ? alert : ink, margin: '14px 0 0' }} data-testid="admin-test-msg">{msg.text}</p>}
       </div>

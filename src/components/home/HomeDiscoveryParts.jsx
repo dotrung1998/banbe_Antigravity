@@ -9,8 +9,7 @@ import { bg } from '../../data/events.js';
 import { REMINDER_CSS } from '../../lib/eventReminder.js';
 import { setSearchOrigin } from '../../lib/searchOrigin.js';
 import { categoryDefs } from '../../lib/eventTypes.js';
-import { useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import NativeSheet from '../NativeSheet.jsx';
 import PhotoPager from '../PhotoPager.jsx';
 
 // ---- category glyphs: one stroke weight, line style, original drawings -------------------
@@ -89,18 +88,11 @@ export function CategoryRow({ values = [], onPick, T, keys = CATEGORY_DEFS.map(c
 /** Every category A–Z with what tapping it would show in the current area. Zero ones stay visible, dimmed. */
 export function CategorySheet({ keys, counts, values = [], onPick, onClose, T }) {
   const byKey = Object.fromEntries(CATEGORY_DEFS.map(c => [c.key, c]));
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-  const target = typeof document !== 'undefined' ? (document.querySelector('.bb-screen') || document.body) : null;
-  if (!target) return null;
-  return createPortal(
-    <div onClick={onClose} data-testid="home-category-sheet-backdrop"
-      style={{ position: 'fixed', inset: 0, zIndex: 2100, background: 'rgba(12,12,12,0.45)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>
-      <div role="dialog" aria-modal="true" aria-label={T('Tất cả danh mục', 'All categories')} onClick={(e) => e.stopPropagation()} data-testid="home-category-sheet"
-        style={{ background: 'var(--bb-bg)', color: ink, borderRadius: '22px 22px 0 0', maxHeight: '80%', display: 'flex', flexDirection: 'column', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
+  return (
+    <NativeSheet open onClose={onClose} label={T('Tất cả danh mục', 'All categories')} testId="home-category-sheet"
+      bodyTestId="home-category-sheet-backdrop" zIndex={2100}>
+      <div
+        style={{ background: 'var(--bb-bg)', color: ink, borderRadius: '22px 22px 0 0', maxHeight: '80%', width: '100%', display: 'flex', flexDirection: 'column', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', padding: '10px 14px 8px' }}>
           <span />
           <span style={{ ...display(17), textAlign: 'center' }}>{T('Tất cả danh mục', 'All categories')}</span>
@@ -129,8 +121,7 @@ export function CategorySheet({ keys, counts, values = [], onPick, onClose, T })
           })}
         </div>
       </div>
-    </div>,
-    target,
+    </NativeSheet>
   );
 }
 

@@ -4,6 +4,7 @@ import { useBanBe } from '../../state/BanBeContext.jsx';
 import { supabase } from '../../lib/supabase.js';
 import { track } from '../../lib/analytics.js';
 import { paper, ink, rule, display, alert, inkButton } from '../../theme.js';
+import NativeSheet from '../../components/NativeSheet.jsx';
 
 // Web port of apps/ios/BanbeApp/Views/ProfileShareCardView.swift. The card is
 // drawn with canvas 2D by ONE function (drawCard) used both for the on-screen
@@ -339,13 +340,6 @@ export default function ProfileShareSheet({ open, onClose, kindLabel, name, subt
   const input = { style, kindLabel, name, subtitle, detail, avatarImg, roundAvatar, qrImg, footnote };
   useCardRender(canvasRef, 2, input, open);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => { if (e.key === 'Escape') requestClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  });
-
   if (!open) return null;
 
   function requestClose() {
@@ -460,15 +454,10 @@ export default function ProfileShareSheet({ open, onClose, kindLabel, name, subt
   const canNativeShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 
   return (
-    <div
-      onClick={requestClose}
-      data-testid={`${idPrefix}-sheet`}
-      style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(27,25,22,0.5)', display: 'flex', alignItems: 'flex-end', animation: closing ? 'bbShareScrimOut 0.22s ease both' : 'banbeFade 0.22s ease both' }}
-    >
+    <NativeSheet open onClose={requestClose} label={T('Thẻ chia sẻ', 'Share card')}
+      testId={`${idPrefix}-sheet`} zIndex={70} scrim="rgba(27,25,22,0.5)">
       <style>{SHEET_CSS}</style>
       <div
-        onClick={(e) => e.stopPropagation()}
-        role="dialog" aria-modal="true" aria-label={T('Thẻ chia sẻ', 'Share card')}
         style={{
           background: paper, width: '100%', maxHeight: '94%', overflowY: 'auto', borderRadius: '18px 18px 0 0', padding: '10px 20px 28px', boxSizing: 'border-box',
           animation: closing ? 'bbShareSheetOut 0.22s cubic-bezier(.22,.61,.36,1) both' : 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both',
@@ -547,7 +536,7 @@ export default function ProfileShareSheet({ open, onClose, kindLabel, name, subt
         </div>
         <p aria-live="polite" style={{ minHeight: 16, textAlign: 'center', fontSize: 11.5, color: flash.startsWith(T('Không', 'Could not')) ? alert : ink, opacity: 0.8, margin: '10px 0 0' }}>{flash}</p>
       </div>
-    </div>
+    </NativeSheet>
   );
 }
 

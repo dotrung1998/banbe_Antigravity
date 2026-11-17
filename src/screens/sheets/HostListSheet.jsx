@@ -1,8 +1,8 @@
 // All the hosts of a Browse by type / See all list (v2.3, note 81): searchable by name (accent-insensitive), each with
 // how many of these events they host. A tap opens the REAL host profile (/org/<id>, OrganizerProfile.jsx); its Back
 // returns to the Browse list. Portals into the phone frame like the other sheets.
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useMemo, useRef, useState } from 'react';
+import NativeSheet from '../../components/NativeSheet.jsx';
 import { filterHosts } from '../../lib/browse.js';
 import { Face } from '../../components/browse/HostDeck.jsx';
 
@@ -10,18 +10,11 @@ export default function HostListSheet({ hosts, title, onPick, onClose, T }) {
   const [q, setQ] = useState('');
   const inputRef = useRef(null);
   const rows = useMemo(() => filterHosts(hosts, q), [hosts, q]);
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-  const target = typeof document !== 'undefined' ? (document.querySelector('.bb-screen') || document.body) : null;
-  if (!target) return null;
-  return createPortal(
-    <div onClick={onClose} data-testid="host-list-backdrop"
-      style={{ position: 'fixed', inset: 0, zIndex: 2100, background: 'rgba(12,12,12,0.45)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>
-      <div role="dialog" aria-modal="true" aria-labelledby="host-list-title" onClick={(e) => e.stopPropagation()} data-testid="host-list-sheet"
-        style={{ background: 'var(--bb-bg)', color: 'var(--bb-fg)', borderRadius: '22px 22px 0 0', maxHeight: '86%', display: 'flex', flexDirection: 'column', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
+  return (
+    <NativeSheet open onClose={onClose} labelledBy="host-list-title" testId="host-list-sheet"
+      bodyTestId="host-list-backdrop" zIndex={2100}>
+      <div
+        style={{ background: 'var(--bb-bg)', color: 'var(--bb-fg)', borderRadius: '22px 22px 0 0', maxHeight: '86%', width: '100%', display: 'flex', flexDirection: 'column', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 16px 6px 20px' }}>
           <div style={{ minWidth: 0 }}>
             <div id="host-list-title" style={{ fontSize: 18, fontWeight: 600 }}>{T(`${hosts.length} host`, `${hosts.length} ${hosts.length === 1 ? 'host' : 'hosts'}`)}</div>
@@ -54,7 +47,6 @@ export default function HostListSheet({ hosts, title, onPick, onClose, T }) {
           )}
         </ul>
       </div>
-    </div>,
-    target,
+    </NativeSheet>
   );
 }

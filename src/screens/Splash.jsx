@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink } from '../theme.js';
 
@@ -21,6 +21,19 @@ export default function Splash() {
   const greeting = !s.user ? T('Chào mừng bạn đến với banbe', 'Welcome to banbe')
     : given ? T(`Chào mừng trở lại, ${given}`, `Welcome back, ${given}`) : T('Chào mừng bạn trở lại', 'Welcome back');
   const iframeRef = useRef(null);
+  const hostRef = useRef(null);
+  // The logomotion lives in its own document, so it does not see this page's
+  // `--bb-bg`. An iframe whose document declares no background is painted with
+  // the UA's default white canvas, which in dark mode showed as a bright white
+  // rectangle around the white tinted artwork. Read the splash's real resolved
+  // background and hand it to the frame (the frame applies it before it paints).
+  const [frameSrc, setFrameSrc] = useState(null);
+  useLayoutEffect(() => {
+    const bg = hostRef.current && getComputedStyle(hostRef.current).backgroundColor;
+    if (!bg || bg === 'transparent' || bg === 'rgba(0, 0, 0, 0)') { setFrameSrc(null); return; }
+    const tint = resolvedTheme === 'dark' ? '&tint=%23ffffff' : '';
+    setFrameSrc(`/logomotion/logomotion2309.html?bg=${encodeURIComponent(bg)}${tint}`);
+  }, [resolvedTheme]);
 
   // Completion-gating fix (2026-09-30) — `logomotion2309.html` posts a
   // distinct `{type:"logomotion-complete"}` message (separate from its
@@ -41,6 +54,7 @@ export default function Splash() {
 
   return (
     <div
+      ref={hostRef}
       onClick={dismissSplash}
       style={{
         position: 'absolute', inset: 0, zIndex: 40, background: paper, display: 'flex', flexDirection: 'column',
@@ -48,18 +62,24 @@ export default function Splash() {
       }}
       data-screen-label="Splash"
     >
-      <iframe
-        ref={iframeRef}
-        title="banbe"
-        // Note 69: the artwork is black; in dark mode it is tinted white.
-        src={resolvedTheme === 'dark' ? '/logomotion/logomotion2309.html?tint=%23ffffff' : '/logomotion/logomotion2309.html'}
-        scrolling="no"
-        data-testid="splash-logomotion"
-        style={{
-          width: LOGOMOTION_WIDTH, height: LOGOMOTION_HEIGHT, border: 'none', display: 'block',
-          background: 'transparent', pointerEvents: 'none', animation: 'banbeIn 0.7s cubic-bezier(.22,.61,.36,1) both',
-        }}
-      />
+      {frameSrc ? (
+        <iframe
+          ref={iframeRef}
+          title="banbe"
+          // Note 69: the artwork is black; in dark mode it is tinted white. `bg` is the splash's own resolved colour,
+          // so the frame's canvas is not the UA's default white box (see the effect above).
+          src={frameSrc}
+          scrolling="no"
+          data-testid="splash-logomotion"
+          style={{
+            width: LOGOMOTION_WIDTH, height: LOGOMOTION_HEIGHT, border: 'none', display: 'block',
+            background: 'transparent', pointerEvents: 'none', animation: 'banbeIn 0.7s cubic-bezier(.22,.61,.36,1) both',
+          }}
+        />
+      ) : (
+        // One frame, before the resolved colour is read: hold the artwork's box so the greeting does not jump.
+        <div aria-hidden="true" style={{ width: LOGOMOTION_WIDTH, height: LOGOMOTION_HEIGHT, flexShrink: 0 }} />
+      )}
       <div data-testid="splash-greeting" className="bb-wel-rise" style={{ fontFamily: "var(--bb-face, 'Be Vietnam Pro'),sans-serif", fontSize: 22, fontWeight: 600, color: ink, marginTop: 18, padding: '0 32px', textAlign: 'center', animationDelay: '0.6s', animationDuration: '1s' }}>{greeting}</div>
       <span style={{ fontFamily: "var(--bb-face, 'Be Vietnam Pro'),sans-serif", fontSize: 14, fontWeight: 400, letterSpacing: '0.01em', color: ink, opacity: 0.75, marginTop: 8, animation: 'banbeFade 0.9s ease 0.9s both' }}>{T('bạn mới mỗi tuần', 'new friends every week')}</span>
     </div>

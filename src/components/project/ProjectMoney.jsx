@@ -7,6 +7,7 @@ import { formatMoney } from '../../lib/eventMarket.js';
 import { ink, ink2, ink3, clay, divider, alert } from '../../theme.js';
 import { Card, SectionHeader, Avatar, Tag, Note, Sheet, TextField, ReasonField, reasonOk, Chip, ChipRow, FieldLabel, pillButton, dangerButton } from './ProjectUI.jsx';
 import { refundRowState, teamRefundRequests, refundDelegates, teamGrantsOver } from '../../lib/projectPresentation.js';
+import NativeSheet from '../NativeSheet.jsx';
 
 export default function ProjectMoney({ p }) {
   const { openVerifications, openVerificationsRefunds, openAttendance } = useBanBe();
@@ -167,8 +168,9 @@ function Payments({ p }) {
         )}
       </div>
       {proof && (
-        <div onClick={() => setProof(null)} style={{ position: 'absolute', inset: 0, zIndex: 30, background: 'rgba(12,12,12,0.6)', display: 'flex', alignItems: 'flex-end' }}>
-          <div role="dialog" aria-modal="true" aria-label={T('Ảnh chuyển khoản', 'Transfer proof')} data-testid="project-proof" onClick={e => e.stopPropagation()}
+        <NativeSheet open onClose={() => setProof(null)} label={T('Ảnh chuyển khoản', 'Transfer proof')}
+          testId="project-proof" zIndex={30} scrim="rgba(12,12,12,0.6)">
+          <div
             style={{ background: 'var(--bb-bg)', color: ink, width: '100%', borderRadius: '22px 22px 0 0', padding: 20, boxSizing: 'border-box' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><strong>{proof.name}</strong>
               <button type="button" onClick={() => setProof(null)} aria-label="Close" data-testid="project-proof-close" style={{ width: 44, height: 44, borderRadius: '50%', border: 0, background: 'var(--bb-block-inset)', color: ink, cursor: 'pointer' }}>✕</button></div>
@@ -178,7 +180,7 @@ function Payments({ p }) {
             </div>
             <div style={{ marginTop: 10 }}><Note>{T(`Chỉ xem. Lần mở này đã được ghi lại cho Chủ sự kiện, và liên kết đóng sau ${p.LIMITS.proofUrlSeconds} giây.`, `View only. This open was recorded for the Host, and the link closes after ${p.LIMITS.proofUrlSeconds} seconds.`)}</Note></div>
           </div>
-        </div>
+        </NativeSheet>
       )}
     </div>
   );

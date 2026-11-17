@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, alert, honey, honeyBg, display, fieldGlass, inkButton } from '../theme.js';
 import HostTitleIcon from './HostTitleIcon.jsx';
+import NativeSheet from '../components/NativeSheet.jsx';
 import { metricLabel } from '../lib/reportMetricLabels.js';
 import { PROFILE_PALETTE_COLORS } from '../lib/profileTheme.js';
 import * as RP from '../lib/reportsPresentation.js';
@@ -396,17 +397,10 @@ function DetailSheet({ raw, rangeLabel, pngRangeLabel, onClose, onCsv, T }) {
   const canvasRef = useRef(null);
   const m = RP.metric(raw, T);
   const rows = RP.rows(raw, T);
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
   return (
-    <div role="dialog" aria-modal="true" aria-label={m.title} data-testid="reports-detail"
-      onClick={onClose}
-      style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.32)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{
-        width: '100%', maxWidth: 560, maxHeight: '88vh', overflowY: 'auto', background: paper, color: ink,
+    <NativeSheet open onClose={onClose} label={m.title} testId="reports-detail" zIndex={60}>
+      <div style={{
+        width: '100%', maxWidth: 560, maxHeight: '88%', overflowY: 'auto', background: paper, color: ink,
         borderRadius: '24px 24px 0 0', padding: '18px 20px 28px', boxSizing: 'border-box',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -461,7 +455,7 @@ function DetailSheet({ raw, rangeLabel, pngRangeLabel, onClose, onCsv, T }) {
           </div>
         )}
       </div>
-    </div>
+    </NativeSheet>
   );
 }
 

@@ -1,6 +1,5 @@
 // Quick settings panel from the Home avatar (v5 prototype `sheet()`): profile link, hosting switch, four shortcuts,
 // Appearance + Language segments, Notifications and Sign out. Guests get the sign-in card plus the two segments.
-import { createPortal } from 'react-dom';
 import { useEffect, useState } from 'react';
 import { accountTabs, resolveAccountTab } from '../../lib/accountTabs.js';
 import { useBanBe } from '../../state/BanBeContext.jsx';
@@ -9,6 +8,7 @@ import { notifPrefsSummary } from '../../lib/notificationPrefs.js';
 import { RowIcon } from '../../screens/Account.jsx';
 import { computeMyTicketsActionCount } from '../../lib/badges.js';
 import NotificationPrefs from '../../screens/NotificationPrefs.jsx';
+import NativeSheet from '../NativeSheet.jsx';
 
 const line = '1px solid var(--bb-divider, rgba(var(--bb-fg-rgb),.12))';
 const seg = (on) => ({ height: 30, padding: '0 11px', border: 'none', borderRadius: 999, fontFamily: 'inherit', fontSize: 12, cursor: 'pointer',
@@ -16,11 +16,6 @@ const seg = (on) => ({ height: 30, padding: '0 11px', border: 'none', borderRadi
 
 export default function QuickSheetV5({ onClose }) {
   const { state: s, set, T, pickTheme, toggleLang, goProfile, goLogin, logout, openAccountGroup, goSavedList, toggleOrganizerMode, canHost, goCreate, goDashboard, openAdminEvents } = useBanBe();
-  useEffect(() => {
-    const k = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', k);
-    return () => window.removeEventListener('keydown', k);
-  }, [onClose]);
   // A first-time host gets the Host setup sheet after the switch turns on; it sits under this panel, so step aside.
   useEffect(() => { if (s.hostSetupOpen) onClose(); }, [s.hostSetupOpen, onClose]);
   // The dock slides away while this sheet is open (iOS parity).
@@ -66,13 +61,10 @@ export default function QuickSheetV5({ onClose }) {
   }[tab];
   const tabLabel = { host: T('Tổ chức', 'Host'), personal: T('Cá nhân', 'Personal'), admin: T('Quản trị', 'Admin') };
   const row = { display: 'flex', alignItems: 'center', gap: 14, padding: '14px 0', borderBottom: line, minHeight: 56, fontSize: 15 };
-  const target = typeof document !== 'undefined' ? (document.querySelector('.bb-screen') || document.body) : null;
-  if (!target) return null;
-  return createPortal(
-    <div data-testid="home-quick-sheet" style={{ position: 'fixed', inset: 0, zIndex: 2100 }}>
-      <div onClick={onClose} aria-hidden style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.45)' }} />
-      <div role="dialog" aria-modal="true" aria-label={T('Cài đặt nhanh', 'Quick settings')}
-        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '90%', overflowY: 'auto', background: 'var(--bb-bg)', color: 'var(--bb-fg)', borderRadius: '26px 26px 0 0', padding: '10px 0 calc(14px + env(safe-area-inset-bottom, 0px))', animation: 'banbeIn .32s cubic-bezier(.22,.61,.36,1) both' }}>
+  return (
+    <NativeSheet open onClose={onClose} label={T('Cài đặt nhanh', 'Quick settings')} testId="home-quick-sheet" zIndex={2100}>
+      <div
+        style={{ width: '100%', maxHeight: '90%', overflowY: 'auto', background: 'var(--bb-bg)', color: 'var(--bb-fg)', borderRadius: '26px 26px 0 0', padding: '10px 0 calc(14px + env(safe-area-inset-bottom, 0px))', animation: 'banbeIn .32s cubic-bezier(.22,.61,.36,1) both' }}>
         <div style={{ width: 38, height: 5, borderRadius: 3, background: 'var(--bb-rule)', margin: '0 auto 12px' }} />
         {view === 'prefs' && user ? <NotificationPrefs embedded onBack={() => setView('main')} /> : (<>
         {user ? (
@@ -146,7 +138,6 @@ export default function QuickSheetV5({ onClose }) {
         )}
         </>)}
       </div>
-    </div>,
-    target,
+    </NativeSheet>
   );
 }

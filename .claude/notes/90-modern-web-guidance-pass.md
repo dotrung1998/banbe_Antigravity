@@ -97,20 +97,49 @@ the platform does not know about: **the desktop phone frame**. A top-layer box i
 before `showModal()` it writes the frame rect (`src/lib/viewport.js`) as a `clip-path` inset and insets the body
 wrapper to the same rect. On a phone those insets are 0 (frame == viewport).
 
-Migrated: `GuestPromptSheet`, `StartHostingSheet`, `ProjectUI.Sheet` (the hub's shared sheet). Each lost its own
-scrim `onClick`, Escape listener and — in StartHosting's case — a manual Tab-cycle trap and a manual return-focus
-effect.
+Migrated in the first pass: `GuestPromptSheet`, `StartHostingSheet`, `ProjectUI.Sheet` (the hub's shared sheet). Each
+lost its own scrim `onClick`, Escape listener and — in StartHosting's case — a manual Tab-cycle trap and a manual
+return-focus effect.
+
+**Rollout (second pass) — every remaining in-scope dialog is now on the primitive:**
+
+- The four named candidates: `EventDetailsSheet`, `HomeFilterSheet`, `AreaSheet` (embedded variant), `RecipeSheet`.
+  EventDetailsSheet keeps its two-phase close animation and its initial focus on Close; its Escape listener, manual
+  Tab cycle and opener `useRef` are gone (`returnFocusTo` now goes to the primitive).
+- `HostListSheet`, `LiveNowSheet`, `EventDrafts`, `ProfileShareSheet`, `DeleteAccountStaySheet`, `Following`'s unfollow
+  confirm, `Rewards`' redeem confirm, `Reports`' metric detail, `Schedule`'s month sheet, `EventDetail`'s About &
+  Included, `CreateEvent`'s long-text editor (and its clear-all confirm), `ProjectMoney`'s transfer proof,
+  `AdminManageEvents`' reason sheet, `AdminFeatures`' requires-confirm, `AdminTestAccounts`' two confirms,
+  `DockCreateCenter`, `EventOnboarding`'s types panel, `HomeDiscoveryParts.CategorySheet`, `QuickSheetV5`.
+- Nested dialogs: `AreaSheet` inside `HomeFilterSheet`, and the clear-all confirm inside the long-text editor, both
+  call `showModal()` above an already-open dialog. Escape/cancel closes the top one only and the parent keeps its
+  state (verified live, including the filter sheet surviving the location sheet's Done).
+
+Primitive additions this pass: `align`/`pad` for centred confirmations, `scrim`/`blur` for the surfaces that had their
+own scrim colour or backdrop blur, and an opener captured when the dialog opens, so focus returns to the trigger even
+when a caller does not pass `returnFocusTo` (Safari does not focus a button on click, so the browser's own restore
+would land on the page body). Cleanup now closes the element captured in the effect (`el`) rather than reading
+`dialogRef.current`: React detaches the ref before passive-effect cleanup, so the old code skipped `close()` and the
+browser's focus-to-body after removal won the race against the focus call.
 
 `role="dialog"` / `aria-modal` are kept on the native element on purpose: they are redundant, but this repo's
 Playwright specs assert them, and dropping them would be an unrelated contract change.
 
-Not migrated, on purpose:
-- `EventDetailsSheet` — has a two-phase close animation and a manual opener capture; it is the next one to move, but
-  it deserves its own pass plus its ticket spec.
-- `HomeFilterSheet`, `AreaSheet`, `RecipeSheet`, `ProjectMoney`'s proof viewer, admin confirmations — same shape, not
-  yet moved. Each is mechanical once the primitive is trusted.
-- `OnboardingTour`, `PulseViewer`, `MapListSheet`, photo viewers — drag/swipe surfaces where the current absolute
-  positioning is part of the gesture, not a modal that can be reparented to the top layer.
+Not migrated, on purpose (each is a written keep, not a silent skip):
+- `OnboardingTour` (two cards, `role="dialog" aria-modal`) — it is a **tethered spotlight**, not a sheet. Its scrim is
+  drawn with a cut-out around a real element and the card is positioned against that hole; a top-layer dialog would
+  cover the cut-out and make the element the tour is pointing at inert, which defeats the tour. It has no scrim click
+  to close and its Escape handler is part of the tour's own step machine.
+- `EventDrafts`' delete confirmation — an inline `role="alertdialog"` card *inside* the Drafts sheet: no scrim, no
+  `aria-modal`, no focus trap. It is a confirmation block in a scrolling list, not a modal overlay.
+- Anchored Escape/outside-click layers that never claimed dialog semantics: `GlassMenu`, `SortMenu`, `AreaMenu`,
+  `GiftTicketSheet`, `TicketImportSheet`, `DockCreateButton`, MapExplore's area/list panels. These are menus and
+  popovers; the Popover API is above the floor (iOS 18.3+), and turning a menu into a modal dialog would be wrong.
+- Non-embedded `AreaSheet` — an inline centred card absolutely positioned in a screen's own coordinate space (86 px
+  above the dock). It has no dialog role, no Escape listener and no trap, and moving it to the top layer would detach
+  it from the dock offset it was designed around. Its embedded sibling — the real modal — is migrated.
+- Drag/swipe surfaces (`PulseViewer`, `MapListSheet`, photo viewers) carry no dialog semantics; their absolute
+  positioning is part of the gesture and they were left alone.
 
 **`GlassMenu` was NOT moved to Popover + anchor positioning**, and this is the clearest example of the verification
 rule: Popover only reached iOS Safari in **18.3**, and CSS anchor positioning needs **Safari 27** (and is unsupported
@@ -138,8 +167,12 @@ measure properly before touching them.
   `(pointer: coarse)` + `navigator.maxTouchPoints > 0` describes a touch-first device, and correctly catches iPadOS
   desktop mode (which reports a Macintosh UA and needed a special case before). A desktop with a touchscreen stays
   desktop because its PRIMARY pointer is fine.
-- **`giftTicket.isAppleWalletBrowser()` keeps its UA check** and should: downloading a `.pkpass` genuinely only works
-  in Safari, and on iOS every browser is WebKit, so there is no honest feature to detect.
+- **`giftTicket.isAppleWalletBrowser()` no longer reads `navigator.userAgent`.** It checks Apple's WebKit
+  (`navigator.vendor`), an Apple device (`maxTouchPoints > 1` also covers iPadOS desktop mode, or a Mac platform) and
+  Apple Pay JS, which Safari exposes and the WebKit-based wrappers from other vendors do not. That is as close to a
+  capability as a `.pkpass` handler gets — there is no API for "can this browser open a Wallet pass". If a future
+  browser reports Apple's vendor and exposes Apple Pay JS without handing `.pkpass` to Wallet, the button would appear
+  and the file would download; the endpoint also returns 503 until the pass certificate is configured (note 24).
 - **`document.write` in `BanBeContext.downloadDocument` is kept.** It targets a `window.open('', '_blank')` document
   it just created, which is the one sanctioned use; a Blob URL + iframe would be a behaviour change for the print
   pipeline with no benefit.
@@ -165,14 +198,51 @@ measure properly before touching them.
 ## Verification
 
 - `npm run build` — green.
-- `npm run test:unit` — **1015/1015** green.
-- `legacy-scan src` — **31 → 4**, and the remaining 4 are exactly the two deliberate drops documented above.
-- `npx playwright test tests/public/home-v23-pager.spec.js` — 12/12 across Chromium, Firefox and WebKit.
-- Visual check of `NativeSheet` in the running app (desktop phone frame): the dialog's box is the viewport, the body
-  wrapper and the scrim clip to the frame (393×846 at 404,27), the panel sits inside it, and focus lands in the dialog.
-  The first attempt exposed a real bug — the body wrapper was viewport-wide, so a 480px panel was centred in the
-  1200px window and sliced by the phone edge; fixed by insetting the wrapper to the frame.
-- **Blocked, pre-existing:** `tests/simple-shell-home.spec.js` and the Project Hub spec both fail in `guestToHome` /
-  `openGuestShellHome` (waiting for `[data-screen-label="Home"]` as a guest). Confirmed identical on the unmodified
-  base commit with `git stash`, so it is not from this pass. The migrated sheets therefore have build/unit/visual
-  verification, but **not** spec verification. That guest-flow failure is worth its own ticket.
+- `npm run test:unit` — **1015/1015** green, no assertions changed.
+- `legacy-scan src` — **31 → 4**, and the remaining 4 are exactly the deliberate drops documented above; the second
+  pass introduced no new finding.
+- `npx playwright test tests/public/home-v23-pager.spec.js` — 12/12 across Chromium, Firefox and WebKit (first pass).
+- **Live check, desktop phone frame (1200×900 window, frame 393×846 at 403.5,27):**
+  - `HomeFilterSheet`, the nested `AreaSheet`, and `QuickSheetV5` are each a real `<dialog>` (`tagName DIALOG`,
+    `:modal`, `open`), the body wrapper measures exactly the frame, and the panel is 393 px wide with its bottom flush
+    to the frame's 873 px after the entry animation (the preview throttles animations, so the settled state was measured
+    with the animation disabled — a stuck mid-animation frame is an artifact of the preview tab being occluded).
+  - Focus lands inside the dialog on open; a background trigger cannot be focused while it is open
+    (`button.focus()` leaves focus in the dialog); closing returns focus to the trigger (`home-filters-button`,
+    `home-avatar-button`, `home-filter-area` after the nested sheet's Done).
+  - Nested: `filter-area-sheet` opens as a second modal inside the frame; Done closes only it, the filter sheet and its
+    draft survive, and focus returns to the Location row. No dialogs are left behind.
+  - Escape was verified through the dialog's `cancel` path in the preview (React `onCancel` → `preventDefault` → close),
+    which is what the platform fires for Esc and the mobile back gesture. The preview tool's synthetic key events did
+    not reach the page at all (a capture listener saw zero keydowns), so the preview cannot prove the physical key.
+    The two sheets below were therefore driven in Playwright, where real key, pointer and wheel input does reach the
+    page.
+- **`EventDetailsSheet` and `RecipeSheet`, opened live in the same frame** (temporary probe page mounting the real
+  components inside `.bb-device > .bb-screen`; probe files and screenshots removed afterwards. No app or server data
+  was changed):
+  - Both render as `DIALOG`, `open === true`, `:modal === true`; the panel is 393 px wide at the frame's x, 727.5 px
+    tall, bottom at 873 — flush with the frame, clipped by the frame rect, not centred in the 1200 px window. The entry
+    animation settles to `transform: none` here (Playwright's renderer is not occluded).
+  - `EventDetailsSheet` opens with focus on its Close button (`event-details-close`); `RecipeSheet` on its Close button.
+  - A background trigger cannot take focus (the `focus()` call leaves the close button focused). Tab walks only the
+    dialog's own controls. At the wrap boundary Chromium moves sequential focus out of the document to the browser
+    chrome (`document.activeElement` becomes `BODY`), **not** to a control behind the dialog; the next Tab returns to
+    the dialog's first control. This is native dialog behaviour, and it replaces the old hand-written wrap trap; no
+    background control is ever reached.
+  - **Background scroll measured, not assumed:** with a 2000 px scroller behind the dialog, `scrollTop` / document /
+    `scrollY` were `0 / 0 / 0` before, and `0 / 0 / 0` after a real wheel of 700 px over the scrim plus a real
+    `PageDown`. Nothing scrolled, so `NativeSheet` needed no `overscroll`/`inert` change.
+  - Real Escape closes both; focus returns to the trigger (`open-details`, `open-recipe`). Real pointer click on the
+    scrim (5 px below the frame's top edge) closes both; focus returns to the trigger.
+  - Nested: `EventDetailsSheet` opened from inside an open `NativeSheet` stacks as the second modal; Escape closes only
+    it, the parent dialog stays open, and focus returns to the trigger inside the parent; a second Escape closes the
+    parent and returns focus to its trigger.
+  - The first visual attempt exposed the focus-return bug described above and it was fixed before these runs.
+- **Spec attempts, still blocked (pre-existing):** `tests/home-quick-controls.spec.js`, `account-reports.spec.js`,
+  `ticket-redesign.spec.js` all fail in their shared guest helper (`guestToHome` / `openGuestHome` waiting for
+  `[data-screen-label="Home"]`), identical to the base commit. Driving the same sheets with the shared signed-in
+  session is also unavailable: that account is gate-blocked server-side (`account_gate_status`), so every RLS read
+  returns 403 and the app sits on its Splash. That is why `EventDetailsSheet` (normally reached from a real ticket) and
+  `RecipeSheet` (normally reached from the review step) were exercised through the temporary probe rather than their
+  product entry points. The probe and its spec were deleted; the checks above are the verification of record. The
+  guest-flow failure deserves its own ticket.

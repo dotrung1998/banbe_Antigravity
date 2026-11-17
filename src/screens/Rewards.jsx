@@ -9,6 +9,7 @@ import ConfettiBurst from '../components/ui/ConfettiBurst.jsx';
 import { track } from '../lib/analytics.js';
 import { paper, ink, rule, display, fieldGlass, alert } from '../theme.js';
 import { RowIcon } from './Account.jsx';
+import NativeSheet from '../components/NativeSheet.jsx';
 
 const REDEEM_ERRORS = {
   INSUFFICIENT_BALANCE: ['Chưa đủ xu để đổi phần thưởng này.', "You don't have enough coins for this reward yet."],
@@ -416,10 +417,9 @@ export default function Rewards() {
       )}
 
       {confirmItem && (
-        <div role="dialog" aria-modal="true" aria-label={T('Xác nhận đổi thưởng', 'Confirm redemption')} data-testid="rewards-confirm"
-          onClick={() => setConfirmCode(null)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(27,25,22,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, padding: 24 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: paper, borderRadius: 16, padding: 22, maxWidth: 340, width: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <NativeSheet open onClose={() => setConfirmCode(null)} label={T('Xác nhận đổi thưởng', 'Confirm redemption')}
+          testId="rewards-confirm" zIndex={60} align="center" pad={24}>
+          <div style={{ background: paper, borderRadius: 16, padding: 22, maxWidth: 340, width: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <span style={{ ...display(18) }}>{T('Đổi phần thưởng?', 'Redeem this reward?')}</span>
             <span style={{ fontSize: 13, lineHeight: 1.5, color: ink }}>
               {T(`Dùng ${confirmItem.price} xu để mở khoá "${nameOf(confirmItem.design_id)}". Việc này không thể hoàn tác và không đổi lại thành tiền.`,
@@ -430,7 +430,7 @@ export default function Rewards() {
               <span onClick={doRedeem} role="button" data-testid="rewards-confirm-ok" style={{ flex: 1, textAlign: 'center', padding: '12px 0', borderRadius: 12, background: ink, fontSize: 13.5, fontWeight: 600, color: paper, cursor: 'pointer' }}>{T('Đổi', 'Redeem')}</span>
             </div>
           </div>
-        </div>
+        </NativeSheet>
       )}
     </div>
   );

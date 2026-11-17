@@ -18,6 +18,7 @@ import { supabase } from '../lib/supabase.js';
 import { flagOn } from '../lib/featureFlags.js';
 import { paper, ink, display } from '../theme.js';
 import { Button } from '../components/ui/FormControls.jsx';
+import NativeSheet from '../components/NativeSheet.jsx';
 import { NO_PREFERENCE, BUDGET_TIERS, BUDGET_REGIONS, INTERESTS, AVAILABILITY, budgetTierLabel, budgetRegionDefault, normalizeForSave, prefLabel, optionEmoji } from '../lib/eventPrefs.js';
 import {
   QUESTIONS, reduce, initialState, draftStore, markGuestOnboardingSeen, payload as flowPayload, currentConsent, consentAsksSystem,
@@ -238,11 +239,6 @@ function TypesPanel({ flow, send, counts, countsReady, onClose }) {
   const [query, setQuery] = useState('');
   const inputRef = useRef(null);
   useEffect(() => { inputRef.current?.focus(); }, []);
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); onClose(); } };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
   const q = query.trim().toLowerCase();
   const all = INTERESTS.filter(o => !q || o.vi.toLowerCase().includes(q) || o.en.toLowerCase().includes(q));
   const label = (o) => (vi ? o.vi : o.en);
@@ -264,10 +260,10 @@ function TypesPanel({ flow, send, counts, countsReady, onClose }) {
     );
   };
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 5 }}>
-      <div aria-hidden onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.4)' }} />
-      <div role="dialog" aria-modal="true" aria-labelledby="onboarding-types-title" data-testid="onboarding-types"
-        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 60, maxWidth: 480, margin: '0 auto', background: paper, color: ink, borderRadius: '26px 26px 0 0', display: 'flex', flexDirection: 'column', boxShadow: '0 -10px 40px rgba(0,0,0,.2)' }}>
+    <NativeSheet open onClose={onClose} labelledBy="onboarding-types-title" testId="onboarding-types"
+      zIndex={5} scrim="rgba(0,0,0,.4)">
+      <div
+        style={{ height: 'calc(100% - 60px)', width: '100%', maxWidth: 480, background: paper, color: ink, borderRadius: '26px 26px 0 0', display: 'flex', flexDirection: 'column', boxShadow: '0 -10px 40px rgba(0,0,0,.2)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px 0' }}>
           <h2 id="onboarding-types-title" style={{ fontSize: 19, fontWeight: 600, margin: 0 }}>{T('Mọi loại sự kiện', 'All types')}</h2>
           <button type="button" data-testid="onboarding-types-done" onClick={onClose}
@@ -288,10 +284,10 @@ function TypesPanel({ flow, send, counts, countsReady, onClose }) {
             </div>
           )}
           {live.length > 0 && <>{group(T('Đang có sự kiện', 'On now'))}{live.map(row)}</>}
-          {rest.length > 0 && <>{group(T('Các loại khác, A đến Z', 'More types, A to Z'))}{rest.map(row)}</>}
+          {rest.length > 0 && <>{group(T('Các loại khác, A to Z', 'More types, A to Z'))}{rest.map(row)}</>}
         </div>
       </div>
-    </div>
+    </NativeSheet>
   );
 }
 

@@ -4,6 +4,7 @@ import { organizerAvatarPublicUrl } from '../lib/mediaUrls.js';
 import { filterFollowedHosts } from '../lib/follows.js';
 import { paper, ink, rule, display, fieldGlass, alert } from '../theme.js';
 import { RowIcon } from './Account.jsx';
+import NativeSheet from '../components/NativeSheet.jsx';
 
 // Account > Following. Reads ONLY the signed-in user's own `follows` rows (owner-only RLS) —
 // the list is never published or shown to anyone else. Each row links to the host's real
@@ -136,10 +137,9 @@ export default function Following() {
       </div>
 
       {confirmRow && (
-        <div role="dialog" aria-modal="true" aria-label={T('Xác nhận bỏ theo dõi', 'Confirm unfollow')} data-testid="following-confirm"
-          onClick={() => !busyId && setConfirmId(null)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(27,25,22,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, padding: 24 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: paper, borderRadius: 16, padding: 22, maxWidth: 340, width: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <NativeSheet open onClose={() => !busyId && setConfirmId(null)} label={T('Xác nhận bỏ theo dõi', 'Confirm unfollow')}
+          testId="following-confirm" zIndex={60} align="center" pad={24}>
+          <div style={{ background: paper, borderRadius: 16, padding: 22, maxWidth: 340, width: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <span style={{ ...display(18) }}>{T('Bỏ theo dõi?', 'Unfollow?')}</span>
             <span style={{ fontSize: 13, lineHeight: 1.5, color: ink }}>
               {confirmRow.available
@@ -153,7 +153,7 @@ export default function Following() {
               </span>
             </div>
           </div>
-        </div>
+        </NativeSheet>
       )}
     </div>
   );

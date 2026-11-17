@@ -11,6 +11,7 @@ import * as SP from '../lib/schedulePresentation.js';
 import { calendarDraft, downloadIcs, googleCalendarUrl } from '../lib/calendarExport.js';
 import { track } from '../lib/analytics.js';
 import EmptyState from '../components/ui/EmptyState.jsx';
+import NativeSheet from '../components/NativeSheet.jsx';
 
 const muted = (a) => `rgba(var(--bb-fg-rgb), ${a})`;
 const segBtn = (selected) => ({
@@ -52,15 +53,9 @@ function MonthSheet({ events, selected, firstDay, vi, T, onPick, onClose, mode, 
   const agenda = useMemo(() => SP.monthAgenda(events, month, firstDay), [events, month, firstDay]);
   const selWeek = new Set(SP.week(selected, firstDay).map(d => d.getTime()));
   const today = SP.startOfDay(new Date()).getTime();
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
   return (
-    <div role="dialog" aria-modal="true" aria-label={SP.monthTitle(month, vi)} data-testid="schedule-month" onClick={onClose}
-      style={{ position: 'fixed', inset: 0, zIndex: 2100, background: 'rgba(0,0,0,0.32)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', background: paper, color: ink, borderRadius: '24px 24px 0 0', padding: '16px 18px 28px', boxSizing: 'border-box' }}>
+    <NativeSheet open onClose={onClose} label={SP.monthTitle(month, vi)} testId="schedule-month" zIndex={2100}>
+      <div style={{ width: '100%', maxWidth: 520, maxHeight: '90%', overflowY: 'auto', background: paper, color: ink, borderRadius: '24px 24px 0 0', padding: '16px 18px 28px', boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button type="button" aria-label={T('Tháng trước', 'Previous month')} onClick={() => setMonth(m => SP.addMonths(m, -1))} style={{ ...linkBtn, width: 44, fontSize: 20 }}>‹</button>
           <h2 style={display(19, { flex: 1, margin: 0, textAlign: 'center' })}>{SP.monthTitle(month, vi)}</h2>
@@ -110,7 +105,7 @@ function MonthSheet({ events, selected, firstDay, vi, T, onPick, onClose, mode, 
           ))}
         </div>
       </div>
-    </div>
+    </NativeSheet>
   );
 }
 

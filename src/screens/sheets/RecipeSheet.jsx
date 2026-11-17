@@ -1,7 +1,7 @@
 // "Recipe for success" sheet + compact meter (note 50). Lists the 10 ingredients from src/lib/eventRecipe.js,
 // each with what to do, why (naming its evidence: "Based on N similar events" or "General banbe tip") and a
 // Fix button that jumps to the step. Informational only: it never blocks submitting. iOS: Views/RecipeSheet.swift.
-import { useEffect } from 'react';
+import NativeSheet from '../../components/NativeSheet.jsx';
 import { paper, ink, rule, display, RADIUS } from '../../theme.js';
 import { recipeCopy, recipeScore } from '../../lib/eventRecipe.js';
 
@@ -56,17 +56,12 @@ export function RecipeList({ checks, onFix, T, compact = false }) {
 }
 
 export default function RecipeSheet({ checks, hasData, n, onFix, onClose, T }) {
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
   const { good, total } = recipeScore(checks);
   return (
-    <div onClick={onClose} data-testid="create-recipe-backdrop"
-      style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(12,12,12,0.45)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>
-      <div role="dialog" aria-modal="true" aria-label={T('Công thức thành công', 'Recipe for success')} onClick={(e) => e.stopPropagation()} data-testid="create-recipe-sheet"
-        style={{ background: paper, color: ink, borderRadius: '22px 22px 0 0', maxHeight: '86%', display: 'flex', flexDirection: 'column', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
+    <NativeSheet open onClose={onClose} label={T('Công thức thành công', 'Recipe for success')}
+      testId="create-recipe-sheet" bodyTestId="create-recipe-backdrop" zIndex={60}>
+      <div
+        style={{ background: paper, color: ink, borderRadius: '22px 22px 0 0', maxHeight: '86%', width: '100%', display: 'flex', flexDirection: 'column', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
         <div style={{ padding: '18px 22px 10px', borderBottom: `1px solid ${rule}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ ...display(19) }}>{T('Công thức thành công', 'Recipe for success')}</span>
@@ -85,6 +80,6 @@ export default function RecipeSheet({ checks, hasData, n, onFix, onClose, T }) {
           <RecipeList checks={checks} onFix={(c) => { onClose(); onFix(c); }} T={T} />
         </div>
       </div>
-    </div>
+    </NativeSheet>
   );
 }

@@ -7,6 +7,7 @@ import { useBanBe } from '../../state/BanBeContext.jsx';
 import { paper, ink, rule, clay, alert, display, inkButton } from '../../theme.js';
 import { DELETE_REASONS, QUIETED_NOTIFICATION_KINDS, lossRows, retentionOffer } from '../../lib/accountRetention.js';
 import { setHostPromoConsent } from '../../lib/accountGate.js';
+import NativeSheet from '../../components/NativeSheet.jsx';
 
 const ICONS = { bookedEvents: '🎟️', hostedEvents: '🎪', savedEvents: '♡', followedHosts: '👥', coins: '⭐' };
 
@@ -71,10 +72,10 @@ export default function DeleteAccountStaySheet() {
   };
 
   return (
-    <div role="presentation" onClick={closeDeleteAccountStay}
-      style={{ position: 'fixed', inset: 0, zIndex: 95, background: 'rgba(0,0,0,0.42)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, animation: 'banbeFade .2s' }}>
-      <div role="dialog" aria-modal="true" aria-labelledby="delete-stay-title" data-testid="delete-stay-sheet" onClick={(e) => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 440, maxHeight: '92vh', overflowY: 'auto', background: paper, color: ink, borderRadius: 24, padding: '22px 20px 16px',
+    <NativeSheet open onClose={closeDeleteAccountStay} labelledBy="delete-stay-title" testId="delete-stay-sheet"
+      zIndex={95} align="center" pad={16}>
+      <div
+        style={{ width: '100%', maxWidth: 440, maxHeight: '92%', overflowY: 'auto', background: paper, color: ink, borderRadius: 24, padding: '22px 20px 16px',
           boxShadow: '0 18px 50px rgba(0,0,0,0.25)', boxSizing: 'border-box', animation: 'bbRiseIn .32s cubic-bezier(.2,.8,.2,1)' }} className="bb-rise">
         <div aria-hidden style={{ fontSize: 40, lineHeight: 1 }}>🥺</div>
         <h2 id="delete-stay-title" style={display(24, { margin: '10px 0 4px' })}>{T('Trước khi bạn đi…', 'Before you go…')}</h2>
@@ -148,6 +149,6 @@ export default function DeleteAccountStaySheet() {
           {T('Tiếp tục xoá tài khoản', 'Continue deleting my account')}
         </button>
       </div>
-    </div>
+    </NativeSheet>
   );
 }

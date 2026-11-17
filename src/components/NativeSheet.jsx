@@ -26,11 +26,16 @@ const FRAME_RADIUS = 55; // .bb-screen's border-radius in the desktop frame
  * element, but Safari does not focus a button on click, so callers pass the clicked element explicitly.
  */
 export default function NativeSheet({
-  open = true, onClose, labelledBy, label, testId, zIndex = 2300, returnFocusTo,
-  children, style, className = '',
+  open = true, onClose, labelledBy, label, testId, bodyTestId, zIndex = 2300, returnFocusTo,
+  align = 'end', pad = 0, scrim, blur = 0, children, style, className = '',
 }) {
   const dialogRef = useRef(null);
   const bodyRef = useRef(null);
+  // Who opened it, captured before showModal() moves focus. Native dialogs already restore focus, but Safari does not
+  // focus a button when it is clicked, so there the "previously focused" element is the page body; this fallback gives
+  // every caller the trigger back without each one having to wire `returnFocusTo` by hand.
+  const openerRef = useRef(null);
+  if (openerRef.current === null && typeof document !== 'undefined') openerRef.current = document.activeElement;
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const returnRef = useRef(returnFocusTo);
@@ -40,6 +45,8 @@ export default function NativeSheet({
     if (!open) return undefined;
     const el = dialogRef.current;
     if (!el || typeof el.showModal !== 'function' || el.open) return undefined;
+    // Capture at open time too, in case the trigger only lost focus between render and this effect.
+    if (!returnRef.current) openerRef.current = document.activeElement;
 
     // The phone frame, as insets from the four viewport edges.
     const box = getFrameBox();
@@ -56,9 +63,10 @@ export default function NativeSheet({
 
     el.showModal();
     return () => {
-      const d = dialogRef.current;
-      if (d?.open) d.close();
-      const back = returnRef.current;
+      // `el`, not dialogRef: React detaches the ref before this cleanup runs on unmount, and a dialog removed while still
+      // open hands focus back to the page body afterwards — which would win over the focus call below.
+      if (el.open) el.close();
+      const back = returnRef.current || openerRef.current;
       if (back?.focus) { try { back.focus({ preventScroll: true }); } catch { /* element gone */ } }
     };
   }, [open]);
@@ -77,14 +85,24 @@ export default function NativeSheet({
       // Deliberate redundancy, see the header comment: the app's specs assert these.
       role="dialog"
       aria-modal="true"
-      style={{ zIndex, ...style }}
+      style={{
+        zIndex,
+        ...(scrim ? { background: scrim } : null),
+        ...(blur ? { backdropFilter: `blur(${blur}px)`, WebkitBackdropFilter: `blur(${blur}px)` } : null),
+        ...style,
+      }}
       // Esc and the mobile back gesture: keep React's state in charge of unmounting, with its own close animation.
       onCancel={(e) => { e.preventDefault(); closeRef.current?.(); }}
       // A press on the scrim (the dialog itself, or the full-size body wrapper) dismisses. `closedby` would do this
       // natively but is Chrome/Firefox only; on Safari this is the portable path.
       onClick={(e) => { if (e.target === dialogRef.current || e.target === bodyRef.current) closeRef.current?.(); }}
     >
-      <div ref={bodyRef} className="bb-native-sheet-body">{children}</div>
+      <div
+        ref={bodyRef}
+        className="bb-native-sheet-body"
+        data-testid={bodyTestId}
+        style={{ justifyContent: align === 'center' ? 'center' : 'flex-end', padding: pad || undefined }}
+      >{children}</div>
     </dialog>,
     target,
   );

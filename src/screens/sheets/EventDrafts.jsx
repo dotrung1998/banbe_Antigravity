@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { paper, ink, rule, display, fieldSolid, alert, clay } from '../../theme.js';
 import { MAX_DRAFTS } from '../../lib/eventDrafts.js';
+import NativeSheet from '../../components/NativeSheet.jsx';
 
 const fmtSaved = (ms, EN) => new Date(ms).toLocaleString(EN ? 'en-US' : 'vi-VN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
@@ -149,12 +150,6 @@ export function EventDraftsSheet({ T, EN, drafts, onOpen, onDelete, onClose }) {
     return () => Object.values(urls).forEach(u => URL.revokeObjectURL(u));
   }, [drafts]);
 
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') requestClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  });
-
   function requestClose() {
     if (closing) return;
     setClosing(true);
@@ -162,9 +157,8 @@ export function EventDraftsSheet({ T, EN, drafts, onOpen, onDelete, onClose }) {
   }
 
   return (
-    <div onClick={requestClose} data-testid="create-drafts-sheet"
-      style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(27,25,22,0.5)', display: 'flex', alignItems: 'flex-end', animation: closing ? 'banbeFade 0.22s ease reverse both' : 'banbeFade 0.22s ease both' }}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={T('Bản nháp', 'Drafts')}
+    <NativeSheet open onClose={requestClose} label={T('Bản nháp', 'Drafts')} testId="create-drafts-sheet" zIndex={70}>
+      <div
         style={{ background: paper, color: ink, width: '100%', maxHeight: '94%', overflowY: 'auto', borderRadius: '18px 18px 0 0', padding: '10px 20px 28px', boxSizing: 'border-box',
           animation: closing ? 'banbeSheetOut 0.22s cubic-bezier(.22,.61,.36,1) both' : 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
         <div style={{ width: 36, height: 4, background: rule, borderRadius: 2, margin: '6px auto 12px' }} />
@@ -197,6 +191,6 @@ export function EventDraftsSheet({ T, EN, drafts, onOpen, onDelete, onClose }) {
           </div>
         )}
       </div>
-    </div>
+    </NativeSheet>
   );
 }

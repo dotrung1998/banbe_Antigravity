@@ -2,7 +2,7 @@
 // ranking), the one shown on Home marked in the Reduced form, each event with Open. Part of browser history like the
 // Pulse viewer: opening it pushes an entry, the browser's Back closes it. Portals into the phone frame.
 import { useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import NativeSheet from '../../components/NativeSheet.jsx';
 
 export default function LiveNowSheet({ updates, shownIndex = null, onOpenEvent, onClose, T }) {
   const pushed = useRef(false);
@@ -11,10 +11,8 @@ export default function LiveNowSheet({ updates, shownIndex = null, onOpenEvent, 
     window.history.pushState({ ...(window.history.state || {}), liveNow: true }, '', window.location.href);
     pushed.current = true;
     const onPop = () => { pushed.current = false; onClose(); };
-    const onKey = (e) => { if (e.key === 'Escape') close(); };
     window.addEventListener('popstate', onPop);
-    window.addEventListener('keydown', onKey);
-    return () => { window.removeEventListener('popstate', onPop); window.removeEventListener('keydown', onKey); };
+    return () => { window.removeEventListener('popstate', onPop); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // Closing by tap also removes the entry it pushed, so Back afterwards goes where it should. Opening an event instead
@@ -28,13 +26,11 @@ export default function LiveNowSheet({ updates, shownIndex = null, onOpenEvent, 
     onClose();
     if (after) after();
   };
-  const target = typeof document !== 'undefined' ? (document.querySelector('.bb-screen') || document.body) : null;
-  if (!target) return null;
-  return createPortal(
-    <div onClick={() => close()} data-testid="live-now-backdrop"
-      style={{ position: 'fixed', inset: 0, zIndex: 2100, background: 'rgba(12,12,12,0.45)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>
-      <div role="dialog" aria-modal="true" aria-labelledby="live-now-title" onClick={(e) => e.stopPropagation()} data-testid="live-now-sheet"
-        style={{ background: 'var(--bb-bg)', color: 'var(--bb-fg)', borderRadius: '22px 22px 0 0', maxHeight: '82%', display: 'flex', flexDirection: 'column', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
+  return (
+    <NativeSheet open onClose={() => close()} labelledBy="live-now-title" testId="live-now-sheet"
+      bodyTestId="live-now-backdrop" zIndex={2100}>
+      <div
+        style={{ background: 'var(--bb-bg)', color: 'var(--bb-fg)', borderRadius: '22px 22px 0 0', maxHeight: '82%', width: '100%', display: 'flex', flexDirection: 'column', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 16px 8px 20px' }}>
           <div>
             <div id="live-now-title" style={{ fontSize: 18, fontWeight: 600 }}>{T('Đang diễn ra', 'Live now')}</div>
@@ -69,7 +65,6 @@ export default function LiveNowSheet({ updates, shownIndex = null, onOpenEvent, 
           })}
         </ul>
       </div>
-    </div>,
-    target,
+    </NativeSheet>
   );
 }

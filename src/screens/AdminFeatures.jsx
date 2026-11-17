@@ -5,6 +5,7 @@ import GlassSwitch from '../components/ui/GlassSwitch.jsx';
 import { flagOn, onboardingVersion } from '../lib/featureFlags.js';
 import { FLAG_CATEGORIES, ONBOARDING_CONTROL, keysOf } from '../lib/featureFlagCategories.js';
 import { useReducedMotion } from '../lib/useReducedMotion.js';
+import NativeSheet from '../components/NativeSheet.jsx';
 
 // Admin > Feature switches (migration 187, note 51). One row per platform feature flag. Turning a switch off hides
 // the feature everywhere (web + iOS, signed-in and signed-out) without a release; turning it on shows it again.
@@ -354,9 +355,9 @@ export default function AdminFeatures() {
         })}
         {error && <p role="alert" data-testid="admin-features-error" style={{ fontSize: 12.5, color: alert, margin: '12px 2px 0' }}>{error}</p>}
         {pending && (
-          <div onClick={() => setPending(null)} data-testid="admin-flag-requires-dialog"
-            style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'rgba(27,25,22,0.32)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}>
-            <div onClick={e => e.stopPropagation()} role="alertdialog" aria-modal="true" aria-labelledby="admin-requires-title"
+          <NativeSheet open onClose={() => setPending(null)} labelledBy="admin-requires-title" testId="admin-flag-requires-dialog"
+            zIndex={50} align="center" pad={24} scrim="rgba(27,25,22,0.32)" blur={6}>
+            <div
               style={{ ...fieldGlass({ padding: 22, borderRadius: 26, maxWidth: 340, width: '100%', background: 'var(--bb-card)' }) }}>
               <div id="admin-requires-title" style={{ ...display(19, { margin: 0 }) }}>
                 {T(`Bật cả "${flagTitle(pending.requires, T)}"?`, `Also turn on "${flagTitle(pending.requires, T)}"?`)}
@@ -382,7 +383,7 @@ export default function AdminFeatures() {
                 </button>
               </div>
             </div>
-          </div>
+          </NativeSheet>
         )}
       </div>
     </div>

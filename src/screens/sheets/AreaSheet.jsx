@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useBanBe } from '../../state/BanBeContext.jsx';
+import NativeSheet from '../../components/NativeSheet.jsx';
 import { paper, ink, rule, dockGlass } from '../../theme.js';
 import {
   LOCATION_ALL, locationNodeLabel, locationAncestorIds, buildLocationSearchIndex, searchLocationTree,
@@ -46,12 +46,6 @@ export default function AreaSheet({ embedded = false, onDone }) {
     setLeaving(true);
     leaveTimer.current = setTimeout(() => onDone?.(), 220);
   };
-  useEffect(() => {
-    if (!embedded) return undefined;
-    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeArea(); } };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }); // eslint-disable-line react-hooks/exhaustive-deps
   const tree = locationTree;
 
   const labelOf = (node) => locationNodeLabel(node, lang);
@@ -134,14 +128,15 @@ export default function AreaSheet({ embedded = false, onDone }) {
     <span style={{ fontSize: 10.5, fontWeight: 400, color: ink, opacity: 0.55 }}>{T('khu vực quen thuộc', 'familiar area')}</span>
   );
 
-  const embeddedBackdrop = { position: 'fixed', inset: 0, zIndex: 2300, background: 'rgba(12,12,12,0.4)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: leaving ? 'banbeFade 0.22s ease reverse both' : 'banbeFade 0.2s ease both' };
   const centeredBackdrop = { position: 'absolute', inset: 0, zIndex: 21, background: 'rgba(12,12,12,0.32)', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '4px 16px 86px', boxSizing: 'border-box', animation: 'banbeFade 0.2s ease both' };
   const centeredCard = { ...dockGlass({ borderRadius: 26, background: 'color-mix(in srgb, var(--bb-bg) 92%, transparent)', border: '1px solid var(--bb-rule, rgba(var(--bb-fg-rgb), 0.12))' }), position: 'relative', padding: '22px 24px 16px', display: 'flex', flexDirection: 'column', maxHeight: '100%', minHeight: 0, boxSizing: 'border-box', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' };
   const embeddedCard = { background: paper, color: ink, borderRadius: '22px 22px 0 0', position: 'relative', padding: '18px 22px 26px', display: 'flex', flexDirection: 'column', maxHeight: '94%', height: '94%', minHeight: 0, boxSizing: 'border-box', animation: leaving ? 'banbeSheetOut 0.22s cubic-bezier(.4,0,1,1) both' : 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' };
 
-  const sheet = (
-    <div onClick={closeArea} data-testid={embedded ? 'filter-area-backdrop' : undefined} style={embedded ? embeddedBackdrop : centeredBackdrop}>
-      <div onClick={(e) => e.stopPropagation()} data-testid={embedded ? 'filter-area-sheet' : undefined} role={embedded ? 'dialog' : undefined} aria-modal={embedded ? true : undefined} style={embedded ? embeddedCard : centeredCard}>
+  // The embedded variant is a real modal (it covers the filter sheet), so it rides on NativeSheet: top layer, focus trap,
+  // Escape and backdrop come from showModal(). The inline variant is a centred card inside a screen's own coordinate
+  // space (it sits 86px above the dock), so it stays a plain absolute overlay — see note 90.
+  const panel = (
+      <div onClick={embedded ? undefined : (e) => e.stopPropagation()} data-testid={embedded ? 'filter-area-sheet' : undefined} style={embedded ? embeddedCard : centeredCard}>
         {/* Absolutely positioned (not a sibling-wrapping header row) so
             "Khu vực" stays a direct child of this sheet container —
             existing tests locate the sheet via
@@ -250,9 +245,12 @@ export default function AreaSheet({ embedded = false, onDone }) {
         </div>
         <div onClick={toggleLocation} style={{ marginTop: 14, color: ink, fontSize: 13, textAlign: 'center', padding: 8, cursor: 'pointer' }}>{locationLabel2}</div>
       </div>
-    </div>
   );
-  if (!embedded) return sheet;
-  const target = typeof document !== 'undefined' ? (document.querySelector('.bb-screen') || document.body) : null;
-  return target ? createPortal(sheet, target) : null;
+  if (!embedded) return <div onClick={closeArea} style={centeredBackdrop}>{panel}</div>;
+  return (
+    <NativeSheet open onClose={closeArea} label={T('Khu vực', 'Area')} testId="filter-area-sheet"
+      bodyTestId="filter-area-backdrop" zIndex={2300}>
+      {panel}
+    </NativeSheet>
+  );
 }

@@ -12,6 +12,24 @@
      animation." -->
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>banbe logomotion</title>
+<script>
+	/* Splash backdrop fix (2026-11-17) — this document declares no opaque
+	   background, so the browser paints the iframe's viewport with its
+	   default white canvas. Over the dark splash that showed as a white
+	   rectangle, and the dark-mode white tint made the artwork nearly
+	   invisible on it. The host (Splash.jsx) passes its resolved splash
+	   colour as ?bg=rgb(...); paint it before the body loads so the frame
+	   and the splash are one surface. Value is only ever a CSS colour the
+	   host read from its own computed style; anything else is ignored. */
+	(function () {
+		try {
+			var bg = new URLSearchParams(window.location.search).get("bg");
+			if (bg && /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%]+\))$/i.test(bg)) {
+				document.documentElement.style.backgroundColor = bg;
+			}
+		} catch (e) {}
+	})();
+</script>
 <script src="vendor/createjs.min.js"></script>
 <script src="logomotion2309.js"></script>
 <style>

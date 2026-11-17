@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncSuccessButton from '../components/ui/AsyncSuccessButton.jsx';
+import NativeSheet from '../components/NativeSheet.jsx';
 import { flushSync } from 'react-dom';
 import { ReservationCriteriaPicker } from './ReservationCriteria.jsx';
 import { criteriaSummary, normalizeCriteria, CATEGORY_EMOJI } from '../lib/eventPrefs.js';
@@ -1610,15 +1611,10 @@ function LongTextSheet({ title, value, onChange, limit, style, testId, onClose, 
   const [confirmClear, setConfirmClear] = useState(false);
   const ref = useRef(null);
   useEffect(() => { ref.current?.focus(); }, []);
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') (confirmClear ? setConfirmClear(false) : onClose()); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [confirmClear, onClose]);
   const set = (text) => onChange({ target: { value: limit ? text.slice(0, limit) : text } });
   return (
-    <div role="dialog" aria-modal="true" aria-label={title} data-testid={`create-longtext-${testId}`}
-      style={{ position: 'fixed', inset: 0, zIndex: 60, background: paper, display: 'flex', flexDirection: 'column' }}>
+    <NativeSheet open onClose={onClose} label={title} testId={`create-longtext-${testId}`} zIndex={60}>
+      <div style={{ width: '100%', height: '100%', background: paper, display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 'calc(12px + env(safe-area-inset-top)) 12px 8px' }}>
         <button type="button" onClick={() => setConfirmClear(true)} disabled={!value} data-testid="create-longtext-clear"
           style={{ minHeight: 44, padding: '0 10px', border: 'none', background: 'none', color: value ? alert : ink3, fontFamily: 'inherit', fontSize: 15, cursor: value ? 'pointer' : 'default' }}>
@@ -1636,8 +1632,9 @@ function LongTextSheet({ title, value, onChange, limit, style, testId, onClose, 
         {limit ? `${value.length}/${limit}` : value.length}
       </div>
       {confirmClear && (
-        <div onClick={() => setConfirmClear(false)} style={{ position: 'fixed', inset: 0, zIndex: 61, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'rgba(27,25,22,0.32)' }}>
-          <div onClick={e => e.stopPropagation()} role="alertdialog" aria-modal="true" aria-labelledby="create-clear-title"
+        <NativeSheet open onClose={() => setConfirmClear(false)} labelledBy="create-clear-title" zIndex={61}
+          align="center" pad={24} scrim="rgba(27,25,22,0.32)">
+          <div
             style={{ ...cardGlass({ padding: 22, maxWidth: 320, width: '100%' }), background: paper }}>
             <div id="create-clear-title" style={{ ...display(18), margin: 0 }}>{T('Xoá toàn bộ nội dung?', 'Clear all text?')}</div>
             <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
@@ -1647,9 +1644,10 @@ function LongTextSheet({ title, value, onChange, limit, style, testId, onClose, 
                 style={{ flex: 1, minHeight: 46, borderRadius: 14, border: 'none', background: alert, color: '#fff', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>{T('Xoá hết', 'Clear all')}</button>
             </div>
           </div>
-        </div>
+        </NativeSheet>
       )}
-    </div>
+      </div>
+    </NativeSheet>
   );
 }
 

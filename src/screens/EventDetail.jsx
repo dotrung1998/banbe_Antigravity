@@ -7,6 +7,7 @@ import { isBookingTicket } from '../lib/bookingTicket.js';
 import { useReservationCriteria, WhoCanReserve, CriteriaUnmetCard } from './ReservationCriteria.jsx';
 import { criteriaIsEveryone } from '../lib/eventPrefs.js';
 import FollowingBadge from '../components/FollowingBadge.jsx';
+import NativeSheet from '../components/NativeSheet.jsx';
 import EventPlanTitle, { EventPlanButtons, PlanChipsPreview } from './EventPlanActions.jsx';
 import { organizerAvatarPublicUrl } from '../lib/mediaUrls.js';
 import { reserveBarState, eventTotal, eventPrice, currencyUnavailable, clampQty, maxQty, CURRENCY_UNAVAILABLE_REASON, QTY_PRESETS, presetSelected, presetEnabled } from '../lib/reserveBar.js';
@@ -825,14 +826,9 @@ export default function EventDetail({ preview = null } = {}) {
           </div>
         );
   const includedSheetEl = includedSheetOpen && (
-        <div
-          onClick={() => setIncludedSheetOpen(false)}
-          data-testid="event-included-sheet"
-          style={{ position: 'fixed', inset: 0, background: 'rgba(27,25,22,0.5)', display: 'flex', alignItems: 'flex-end', zIndex: 70, animation: 'banbeFade 0.22s ease both' }}
-        >
+        <NativeSheet open onClose={() => setIncludedSheetOpen(false)} label={T('Giới thiệu & Bao gồm', 'About & Included')}
+          testId="event-included-sheet" zIndex={70}>
           <div
-            onClick={(e) => e.stopPropagation()}
-            role="dialog" aria-modal="true" aria-label={T('Giới thiệu & Bao gồm', 'About & Included')}
             style={{ background: paper, width: '100%', maxHeight: '94%', overflowY: 'auto', borderRadius: '18px 18px 0 0', padding: '10px 20px 28px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 20, animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}
           >
             <div style={{ width: 36, height: 4, background: rule, borderRadius: 2, margin: '6px auto 0', flex: 'none' }} />
@@ -876,7 +872,7 @@ export default function EventDetail({ preview = null } = {}) {
               </div>
             )}
           </div>
-        </div>
+        </NativeSheet>
       );
   const menuItemsEl = (<>
         {showOpenInMap && <GlassMenuItem icon={<IconMap />} onClick={() => openEventOnMap(ev)} testId="event-open-in-map">{T('Xem trên bản đồ', 'Open in map')}</GlassMenuItem>}
