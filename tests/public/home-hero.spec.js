@@ -105,7 +105,7 @@ test('Home opens on the photo hero: tabs, a card rail ending in See all, honest 
   // Sticky header: after scrolling down the wordmark, Map, avatar and search row are still at the top of the screen.
   await page.evaluate(() => { const sc = [...document.querySelectorAll('*')].find(e => e.scrollHeight > e.clientHeight + 200 && getComputedStyle(e).overflowY !== 'visible'); if (sc) sc.scrollTop = 700; });
   await page.waitForTimeout(400);
-  for (const id of ['home-title', 'home-map-button', 'home-avatar-button', 'home-search-row']) {
+  for (const id of ['home-title', 'home-avatar-button', 'home-search-row']) {
     const b = await page.getByTestId(id).boundingBox();
     expect(b.y).toBeGreaterThanOrEqual(-1); expect(b.y).toBeLessThan(200);
   }

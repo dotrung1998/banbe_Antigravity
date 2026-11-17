@@ -1,73 +1,72 @@
-# 93 · Home header: one premium band for the wordmark + search (web + iOS)
+# 93 · Home header: a Liquid-Glass nav bar instead of a floating slab (web + iOS)
 
-Status (2026-11-21): IMPLEMENTED (web + iOS). No migration, no switch. Web preview NOT published (the repo is
-over the preview build's 2000-file cap, 2001 — see Checks); iOS NOT built here.
+Status (2026-11-21): IMPLEMENTED (web + iOS). No migration, no switch. Web preview NOT published (the publisher counts
+2001 files, cap 2000 — see Checks); iOS NOT built here.
 
-## What was wrong
+## What the owner saw
 
-Owner's screenshot of the compact Home header: the wordmark sat jammed against the search pill, the pill's contents
-(placeholder half, divider, pin, area, chevron) were squeezed into ~180 px, the Map and avatar circles hugged the right
-edge with the gear badge half outside the bar, and nothing on the line shared a common centre — the logo's middle, the
-circles' middle and the pill's middle were three different heights.
+Two passes on the same band, after the owner sent a screenshot of the condensed Home header: "vẫn cục mịch" — still
+clunky. The first pass only tuned spacing; the second threw the arrangement out.
 
-Root causes:
+## Why it read as clunky
 
-1. **The wordmark box is not the wordmark.** `/banbe-wordmark.png` is 1206 × 544 with a transparent margin: the drawn
-   mark is ~76 % of the box's width and ~68 % of its height. The compact geometry spent 55 px for a logo whose drawn
-   edge was further right, so the iOS pill started at `left = 94` while the drawn mark ended at ~100: the two overlapped
-   on every phone (web: the same 6 px, since `.bb-home-head__wordmark` reserves `2.217 × height`).
-2. **One ramp for three movements.** `--hm`/`compact` drove the brand shrink, the pill's rise *and* the bar's fade
-   together, so half-way through the scroll the pill passed straight over the wordmark's lower half.
-3. **No shared centre.** The brand shrank its own way (top +6 px), the quick panel shrank another (top −12 px) and the
-   pill's box was 46 → 40 px, so the compact bar's three groups sat at 24/8/8.
-4. The compact bar was 56 px with a 20 px radius while the pill inside it was 40 px: a pill in a pill, with 8 px of
-   dead space around a 12 px inset.
+1. **Five shapes fighting on one line.** A rounded slab, a pill inside it, two glass circles and an avatar with a badge:
+   three radii (24 / 999 / 50 %) and two materials (espresso dark + paper white) inside 390 pt.
+2. **A dark floating slab over light paper.** Once scrolled the hero is gone and the band floated a near-black capsule
+   over the cream feed — an object that belongs to nothing, with a heavy shadow under it.
+3. **A split field.** Search half | divider | area half read as two controls and cost the field ~10 pt for a hairline.
+4. **A redundant shortcut.** The header's Map circle did what the dock's Map tab already does; its 48 pt was exactly the
+   room the field needed.
+5. **Three heights.** Logo middle, circle middle and pill middle were three different numbers, so the row never composed.
 
-## The design now (identical numbers both platforms)
+## The design now
 
-One floating espresso bar, 62 px tall, 12 px in from each side, radius 24, a clay cast top-left, a hairline and a soft
-shadow. Its three groups share one centre line — **y 31**, the bar's own middle:
+**At rest** (over the hero): the wordmark with the date under it as a small tracked kicker (11.5 / 600 / .14em,
+uppercase, white 64 %), the avatar top-right, and **one** search card across the second row — 52 pt, capsule, the
+theme's own paper with a rim highlight and a soft shadow, the magnifier in clay, and the area as a **chip inside the
+field** (34 pt capsule, 7 % ink): one shape to look at, two things to use.
 
-| group | compact | at rest |
-| --- | --- | --- |
-| wordmark | box 22 px tall (≈15 px drawn), left 22, top 20 | box 45 px, left 20, top 18, date under it |
-| search pill | `left 78` / `right w−120` (192 px on a 390 phone, up from ~182), y 9, 44 px tall | full second row, y 96, 46 px |
-| Map + avatar | 40 px discs, gap 6, right 26 | 42 px discs, gap 8, right 20 |
+**Condensed** (after 96 pt of scroll): the app's own **Liquid-Glass nav bar** — the v2.3 Event Detail material
+(`rgba(var(--bb-bg-rgb), .84)` + `blur(30px) saturate(1.7)`, `--bb-rt-*` under Reduce Transparency), full width, 64 pt,
+one bottom hairline, one soft shadow. iOS uses the system `.bar` material, which follows the theme and Reduce
+Transparency by itself. Inside it: the small wordmark, the same field as an **inset capsule** (6 % ink, so the bar's
+material reads through instead of a second bright surface), and the avatar.
 
-Three ramps on the one scroll progress `--hp` (= `HomeHeaderFade.progress`), in this order, so nothing can cross:
+The wordmark runs one drawing twice — white over the hero, then the theme's logo ink (dark mode's amber on iOS) — a
+cross-fade on the tail of the bar's ramp, so it is never crisp white on a paper bar.
 
-- `--hs` (0 → .5): the wordmark settles to its compact size, the date leaves, the quick panel tightens to its centre;
-- `--hx` (.35 → .6): the pill narrows from the full row to the 192 px it will keep — while it is still on row 2;
-- `--hu` (.55 → 1): the scrim hands over to the bar and the pill rises into it (96 → 9).
+Geometry (identical numbers both platforms, 390 pt): bar 64 tall at the safe-area top · field 74 in from the left and
+64 in from the right (192 → 252 pt wide) · wordmark box 40 → 20 pt tall (drawn width 88 → 44; the artwork is
+1206 × 544 with a transparent margin) · avatar 40 → 34 · at rest every group centres on y 36, in the bar on y 32.
 
-Pill: paper gradient `#FCFAF6 → #F1ECE2`, 10 % ink hairline, inset highlight + `0 10px 24px` shadow; the magnifier is
-the field's one warm accent (`--bb-clay`) and the pin stays quiet ink; the placeholder fades with the narrowing
-(`1 − 1.7 × --hx`) instead of being cut off by the divider. The avatar keeps its clay disc, a tighter 1 px gear badge
-that now sits fully inside the bar, and the Map circle gains an inset highlight and a soft shadow.
+Ramps on one scroll progress `--hp` (= `HomeHeaderFade.progress`): `--hs` 0 → .5 the brand settles · `--hx` .35 → .6 the
+field narrows to the bar's room · `--hu` .55 → 1 the bar condenses and the field rises into it · `--hb`, the wordmark's
+swap. Nothing crosses anything; Reduce Motion jumps between the two ends.
 
-`data-compact` (the final hint `display:none` / area flex swap) moved from `p > 0.8` to `p > 0.9`, where the
-placeholder's opacity has already reached 0 — no visible snap.
+**The Map shortcut left the header**, on both platforms, because Map is a dock tab. That is the one behaviour change,
+and it is what let the field grow from ~182 to ~252 pt. It can come back as a third element in the bar on request.
 
 ## Files
 
-- Web: `src/index.css` (`.bb-home-head*`, the whole block), `src/components/home/HomeShellV5.jsx` (compact threshold,
-  wordmark shadow — `filter: invert(1) drop-shadow(…)`), `src/components/PersistentSearchBar.jsx` (the glide now starts
-  from the whole paper row — `[data-testid="home-search-row"]` — not just the search half).
-- iOS: `apps/ios/BanbeApp/Views/HomeShellV5Views.swift` — `HomeHeaderFade.progress` (was `compact`), the night wash
-  hands over on the rise, `HomeHeaderCompactSurface` (62/24/12), and `HomeHeroPinnedHeader`'s brand / quickRow /
-  wordmark / glassCircleButton / avatarButton / searchRow, all derived from `shrink` / `slide` / `rise`.
-  `HomeHeroPinnedHeader.fallbackHeight` stays 142 and the rest-state geometry is unchanged apart from the quick
-  panel now centring on the wordmark (34.5 instead of 45).
+- Web: `src/index.css` (the `.bb-home-head*` block, rewritten), `src/components/home/HomeShellV5.jsx` (mark with two
+  inks, area chip, no divider, no Map button, shorter placeholder), `src/screens/Home.jsx` (drops the unused `onMap`
+  prop). `src/components/PersistentSearchBar.jsx` is unchanged: its glide still starts from `home-search-row`.
+- iOS: `apps/ios/BanbeApp/Views/HomeShellV5Views.swift` — `HomeHeaderNavBar` (was `HomeHeaderCompactSurface`),
+  `HomeHeroPinnedHeader` (`fallbackHeight` 142 → 152, `shrink` / `slide` / `rise` / `swap`, brand + `mark`, the single
+  `avatarButton`, `searchRow(tight:)` with the card layer → inset field and the area chip); the Map button and
+  `glassCircleButton` are gone.
+- Test: `tests/public/home-hero.spec.js` no longer expects `home-map-button` (it still asserts the sticky header keeps
+  `home-title`, `home-avatar-button`, `home-search-row`).
 
-Test ids and accessibility ids are untouched: `home-title`, `home-date`, `home-map-button`, `home-avatar-button`,
-`home-search-row`, `home-search-bar`, `home-area-toggle`, `home-area-label` (web) and `home.title`, `home.date`,
-`home.searchBar`, `header.area(_label)`, `home.mapButton`, `home.avatarButton` (iOS).
+Ids kept: `home-title` (now on the mark's box), `home-date`, `home-avatar-button`, `home-search-row`, `home-search-bar`,
+`home-area-toggle`, `home-area-label`; iOS `home.title`, `home.date`, `home.searchBar`, `header.area(_label)`,
+`home.avatarButton`, plus the tour targets `tour.home.headerBottom` / `tour.home.search`.
 
 ## Checks
 
-- NOT run: `vite build`, `test:unit`, Playwright, Xcode build, device. `publish_preview` refused before building —
-  "This web app has 2001 files; a published site can have at most 2000" (the repo itself is being counted, i.e. the
-  preview takes it as a plain-files site, so nothing here can be rendered through Run either).
-- Geometry was derived by hand (the table above) and every rest-state offset stays within the 142/152 px header, so
-  `tests/public/home-hero.spec.js`'s "sticky header after scrolling" (title/quick/search within y 0…200) still holds:
-  compact y is 20 / 11 / 9.
+- NOT run: `vite build`, `test:unit`, Playwright, Xcode build, device. `publish_preview` refuses before building
+  ("This web app has 2001 files; a published site can have at most 2000"), so nothing here was rendered through Run.
+- Geometry derived by hand (numbers above); the condensed groups sit at y 22 (mark) / 15 (avatar) / 10 (field), inside
+  the 152 px header, so the sticky-header assertion still holds.
+- Two details to eyeball on a device: `rgba(255,255,255,var(--bb-pill-hi))` (a CSS var inside an alpha) and the
+  `::before` card layer's paint order — above the field's own fill, under its children via explicit z-index 0 / 1.

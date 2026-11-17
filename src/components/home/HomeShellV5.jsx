@@ -1,9 +1,9 @@
 // Home from the v5 prototype (note 80), shown with the Simple Shell: one full-bleed dark hero that holds the header
-// (wordmark + date, Map, avatar), the paper search bar, the tabs (For You | Tonight | Weekend, + Hosting for hosts)
-// and the card rail; then Next up, Browse (types with counts + Find a type) and By type (one photo row per type).
-// The header condenses on scroll into one floating bar (owner 2026-11-17): a single scroll-linked progress, written to
-// CSS variables, shrinks the wordmark, drops the date and lifts the search pill beside the quick panel. The mobile
-// twin is `HomeHeroPinnedHeader` in apps/ios/BanbeApp/Views/HomeShellV5Views.swift.
+// (wordmark + date kicker, avatar), the search field with the area as a chip inside it, the tabs (For You | Tonight |
+// Weekend, + Hosting for hosts) and the card rail; then Next up, Browse (types with counts + Find a type) and By type.
+// The header condenses on scroll into the app's Liquid-Glass nav bar (owner 2026-11-17, redesigned 2026-11-21): one
+// scroll-linked progress, written to CSS variables, settles the brand, narrows the field to the bar's room and lifts it
+// into the bar. The mobile twin is `HomeHeroPinnedHeader` in apps/ios/BanbeApp/Views/HomeShellV5Views.swift.
 // Pure view over the lists Home.jsx already builds, so it adds no fetching and no filters of its own.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CategoryGlyph } from './HomeDiscoveryParts.jsx';
@@ -21,7 +21,6 @@ const BROWSE_MAX = 5;
 const Icon = ({ d, size = 20, sw = 1.5 }) => (
   <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">{d}</svg>
 );
-const MAP = <><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z" /><path d="M9 4v14M15 6v14" /></>;
 const SEARCH = <><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></>;
 const PIN = <><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></>;
 const COG = <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></>;
@@ -41,7 +40,7 @@ const initials = (name) => String(name || '').trim().split(/\s+/).filter(Boolean
  */
 export default function HomeShellV5({
   T, lang, tab, onTab, lists, items, canHost, user, dateLabel, areaLabel, areaActive = false, filtersActive = false, hasPrefs = true, onClearFilters,
-  onOpenEvent, onSeeAll, onMap, onAccount, onSearch, onArea, onFilters, filterSummary, onFindType, onPickType, onSetPrefs, onBrowseAll,
+  onOpenEvent, onSeeAll, onAccount, onSearch, onArea, onFilters, filterSummary, onFindType, onPickType, onSetPrefs, onBrowseAll,
   typeCounts, badgeDate, trStatus, children, hostBody, below, shortlist = null, seeAll = null, onBrowseType = null, browseTotal = null,
 }) {
   const rail = useRef(null);
@@ -54,8 +53,8 @@ export default function HomeShellV5({
   const [bandNight, setBandNight] = useState(true);
   const bandNightRef = useRef(true);
   const reducedMotion = useReducedMotion();
-  // The header (wordmark, Map, avatar, search) is sticky over the content. Its height never changes in layout (the
-  // compact state moves inside it), so the hero stays anchored while the shell morphs around the scroll.
+  // The header (wordmark, avatar, search field) is sticky over the content. Its height never changes in layout (the
+  // condensed state moves inside it), so the hero stays anchored while the shell morphs around the scroll.
   // Dark, readable background only once the content has scrolled under it.
   useEffect(() => {
     const el = sentinel.current;
@@ -102,8 +101,8 @@ export default function HomeShellV5({
   // the compact bar floats over the page.
   useEffect(() => { setThemeColor(bandNight); }, [bandNight]);
   useEffect(() => () => setThemeColor(false), []);
-  // Same wording as the main Home/Map search bar (HomeSearchBar).
-  const placeholder = areaActive ? T(`Tìm sự kiện gần ${areaLabel}`, `Find events near ${areaLabel}`) : T('Tìm sự kiện ở mọi nơi', 'Find events anywhere');
+  // The field says what it searches for; the area is a chip inside it, so it is not repeated here.
+  const placeholder = T('Tìm sự kiện, host, khu vực', 'Search events, hosts, areas');
   const hosting = tab === 'hosting';
   const list = hosting ? [] : (lists[tab] || []);
   const cur = list[Math.min(idx, Math.max(list.length - 1, 0))];
@@ -183,24 +182,26 @@ export default function HomeShellV5({
         <div aria-hidden className="bb-home-head__scrim" />
         <div aria-hidden className="bb-home-head__surface" />
         <div className="bb-home-head__brand">
-          <img src="/banbe-wordmark.png" alt="banbe" data-testid="home-title" crossOrigin="anonymous" className="bb-home-head__wordmark" style={{ filter: 'invert(1) drop-shadow(0 2px 6px rgba(0,0,0,.32))' }} />
+          {/* One mark, two inks: white over the hero, the theme's logo ink once the paper nav has taken over. */}
+          <span className="bb-home-head__mark" data-testid="home-title">
+            <img src="/banbe-wordmark.png" alt="banbe" crossOrigin="anonymous" className="bb-home-head__wordmark bb-home-head__wordmark--night" />
+            <img src="/banbe-wordmark.png" alt="" aria-hidden="true" crossOrigin="anonymous" className="bb-home-head__wordmark bb-home-head__wordmark--day" />
+          </span>
           <div className="bb-home-head__date" data-testid="home-date">{dateLabel}</div>
         </div>
         <div className="bb-home-head__quick">
-          <button type="button" onClick={onMap} aria-label={T('Bản đồ', 'Map')} data-testid="home-map-button" className="bb-home-head__glass"><Icon d={MAP} size={21} /></button>
           <button type="button" onClick={onAccount} aria-label={T('Tài khoản và cài đặt nhanh', 'Account and quick settings')} data-testid="home-avatar-button" className="bb-home-head__avatar">
-            <span className="bb-home-head__disc">{user ? initials(user.name) : <Icon d={<><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>} size={19} />}</span>
-            <span aria-hidden className="bb-home-head__gear"><Icon d={COG} size={11} sw={1.8} /></span>
+            <span className="bb-home-head__disc">{user ? initials(user.name) : <Icon d={<><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>} size={18} />}</span>
+            <span aria-hidden className="bb-home-head__gear"><Icon d={COG} size={10} sw={1.8} /></span>
           </button>
         </div>
         <div data-testid="home-search-row" className="bb-home-head__searchrow">
           <button type="button" onClick={onSearch} data-testid="home-search-bar" aria-label={T('Tìm sự kiện', 'Search events')} className="bb-home-head__searchbtn">
-            <Icon d={SEARCH} size={19} />
+            <Icon d={SEARCH} size={17} />
             <span className="bb-home-head__hint">{placeholder}</span>
           </button>
-          <span aria-hidden className="bb-home-head__divider" />
           <button type="button" onClick={onArea} data-testid="home-area-toggle" aria-haspopup="menu" aria-label={T(`Khu vực: ${areaLabel}. Đổi khu vực`, `Area: ${areaLabel}. Change area`)} className="bb-home-head__areabtn">
-            <Icon d={PIN} size={16} />
+            <Icon d={PIN} size={13} />
             {areaActive
               ? <span data-testid="home-area-label" className="bb-home-head__arealabel">{areaLabel}</span>
               : <span className="bb-home-head__arealabel bb-home-head__areafallback">{T('Mọi nơi', 'Everywhere')}</span>}

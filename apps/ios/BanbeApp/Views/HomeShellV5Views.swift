@@ -2,9 +2,9 @@ import SwiftUI
 import UIKit
 
 // Home from the v5 prototype (note 80), shown with the Simple Shell on Going out. Web twin:
-// src/components/home/HomeShellV5.jsx. One full-bleed dark hero holds the header (wordmark + date, Map, avatar), the
-// glass search bar with the area button, the tabs (For You | Tonight | Weekend, + Hosting when signed in) and the
-// snap card rail; below it come Browse (types with counts + Find a type) and By type (one photo row per type).
+// src/components/home/HomeShellV5.jsx. One full-bleed dark hero holds the header (wordmark + date kicker, avatar), the
+// search field with the area as a chip inside it, the tabs (For You | Tonight | Weekend, + Hosting when signed in) and
+// the snap card rail; below it come Browse (types with counts + Find a type) and By type (one photo row per type).
 // Pure views over lists HomeView already builds: no fetching and no filters of its own.
 
 /// The goer tabs of the hero. The Hosting tab is separate (`HomeHeroSection.hosting`): it is the host view of `app.homeView`.
@@ -59,24 +59,21 @@ private struct HomeHeaderNightWash: View {
     }
 }
 
-/// The espresso-glass bar the header condenses into (web: `.bb-home-head__surface`). Inset 12 pt, 62 pt tall, radius
-/// 24, a warm clay cast and a soft shadow, so the compact header floats instead of turning into a flat band.
-private struct HomeHeaderCompactSurface: View {
+/// The condensed header: the app's own Liquid-Glass nav (web: `.bb-home-head__surface`, the same material as the v2.3
+/// Event Detail nav and bar). Full width, 64 pt tall, a bottom hairline and a soft shadow, so the feed slides under a
+/// real material instead of a dark slab; `.bar` follows the theme and Reduce Transparency by itself.
+private struct HomeHeaderNavBar: View {
     let progress: Double
+    let divider: Color
     var body: some View {
         let u = CGFloat(min(1, max(0, (progress - 0.55) / 0.45)))
-        RoundedRectangle(cornerRadius: 24, style: .continuous)
-            .fill(LinearGradient(colors: [Color(hex: 0x2C251D), Color(hex: 0x13100C)], startPoint: .top, endPoint: .bottom))
-            .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(Color(hex: 0xF7F4EC).opacity(0.15), lineWidth: 1))
-            .overlay(alignment: .topLeading) {
-                RadialGradient(colors: [Color(hex: 0x9C5B3B).opacity(0.34), .clear], center: .topLeading, startRadius: 0, endRadius: 180)
-                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-            }
-            .shadow(color: Color.black.opacity(0.34), radius: 18, y: 12)
-            .padding(.horizontal, 12)
-            .frame(height: 62)
+        Rectangle()
+            .fill(.bar)
+            .overlay(alignment: .bottom) { Rectangle().fill(divider).frame(height: 1) }
+            .frame(height: 64)
+            .shadow(color: Color.black.opacity(0.10), radius: 14, y: 8)
             .opacity(u)
-            .offset(y: (1 - u) * -10)
+            .offset(y: (1 - u) * -12)
             .allowsHitTesting(false)
     }
 }
@@ -92,18 +89,19 @@ struct HomeHeroPinnedHeader: View {
 
     /// The header keeps one layout height (the pinned room the hero leaves above its tabs). Everything inside morphs;
     /// nothing above or below it moves while scrolling.
-    static let fallbackHeight: CGFloat = 142
+    static let fallbackHeight: CGFloat = 152
 
     /// The wordmark artwork's own aspect (1206 × 544 px). Its box carries a transparent margin, so the drawn mark is
     /// narrower than the box: the search field keeps its gap from the drawn edge, not from the box's.
     private static let wordmarkAspect: CGFloat = 1206.0 / 544.0
 
-    /// The morph's three ramps, value-for-value the web's `--hs` / `--hx` / `--hu` (src/index.css .bb-home-head):
-    /// the brand settles first, the field then narrows to the width the bar will give it, and only then does the bar
-    /// condense. In that order the pill can never slide through the wordmark or the quick panel.
+    /// The morph's ramps, value-for-value the web's `--hs` / `--hx` / `--hu` / `--hb` (src/index.css .bb-home-head):
+    /// the brand settles, the field narrows to the room the nav bar gives it, then the bar condenses and the field
+    /// rises into it. `swap` is the wordmark's white → logo-ink change as the paper nav takes over.
     private var shrink: CGFloat { CGFloat(min(1, max(0, fade.progress / 0.5))) }
     private var slide: CGFloat { CGFloat(min(1, max(0, (fade.progress - 0.35) / 0.25))) }
     private var rise: CGFloat { CGFloat(min(1, max(0, (fade.progress - 0.55) / 0.45))) }
+    private var swap: CGFloat { CGFloat(min(1, max(0, (rise - 0.55) / 0.35))) }
 
     private var dateLabel: String {
         let f = DateFormatter()
@@ -115,22 +113,21 @@ struct HomeHeroPinnedHeader: View {
     var body: some View {
         GeometryReader { geo in
             let w = geo.size.width
-            // Compact geometry, the web's numbers: a 62 pt bar 12 pt in from each side, the wordmark's drawn edge 7 pt
-            // left of the field (20 + 2 + 49), the field 8 pt left of the quick panel (100 in from the right).
-            let circle = 42 - 2 * shrink
-            let left = 20 + 58 * slide
-            let right = 20 + 100 * slide
+            // The web's numbers: a 64 pt nav bar, the field starting 10 pt past the wordmark's drawn edge (20 + 44) and
+            // ending 64 pt in from the right (avatar at 20, 34 wide, 10 more of air).
+            let left = 20 + 54 * slide
+            let right = 20 + 44 * slide
             ZStack(alignment: .topLeading) {
-                HomeHeaderCompactSurface(progress: fade.progress)
+                HomeHeaderNavBar(progress: fade.progress, divider: app.palette.divider)
                 brand
-                    .offset(x: 20 + 2 * shrink, y: 12 + 8 * shrink)
-                quickRow(circle: circle)
+                    .offset(x: 20, y: 16 + 6 * shrink)
+                avatarButton(size: 40 - 6 * shrink)
                     .frame(maxWidth: .infinity, alignment: .trailing)
-                    .padding(.trailing, 20 + 6 * shrink)
-                    .offset(y: 13.5 - 2.5 * shrink)
+                    .padding(.trailing, 20)
+                    .offset(y: 16 - shrink)
                 searchRow(tight: slide > 0.6)
-                    .frame(width: max(120, w - left - right), height: 46 - 2 * rise)
-                    .offset(x: left, y: 88 - 79 * rise)
+                    .frame(width: max(160, w - left - right), height: 52 - 8 * rise)
+                    .offset(x: left, y: 92 - 82 * rise)
             }
             .frame(width: w, height: Self.fallbackHeight, alignment: .topLeading)
             .background(GeometryReader { g in
@@ -148,67 +145,44 @@ struct HomeHeroPinnedHeader: View {
 
     private var brand: some View {
         let hp = CGFloat(fade.progress)
-        return VStack(alignment: .leading, spacing: 4) {
-            wordmark
-            Text(dateLabel)
-                .font(.app(size: 14))
-                .foregroundStyle(.white.opacity(0.8))
+        return VStack(alignment: .leading, spacing: 7 * (1 - shrink)) {
+            mark
+            // The date is the header's kicker: small, tracked, quiet. It leaves as the nav bar condenses.
+            Text(dateLabel.uppercased())
+                .font(.app(size: 11.5, weight: .semibold))
+                .tracking(1.4)
+                .foregroundStyle(.white.opacity(0.64))
                 .lineLimit(1)
-                .opacity(max(0, 1 - 3 * hp))
-                .offset(y: -6 * hp)
+                .opacity(max(0, 1 - 2.6 * hp))
+                .offset(y: -4 * hp)
                 .accessibilityIdentifier("home.date")
         }
     }
 
-    /// The Map + avatar quick panel. Its discs are centred on the wordmark's own middle (34.5 pt at rest, 31 when
-    /// compact — the bar's middle), so the brand, the field and the two controls read as one line instead of three
-    /// heights.
-    private func quickRow(circle: CGFloat) -> some View {
-        HStack(alignment: .center, spacing: 8 - 2 * shrink) {
-            glassCircleButton(size: circle, system: "map", label: app.T("Bản đồ", "Map"), id: "home.mapButton") {
-                Haptics.light()
-                app.goMapExploreFromHome()
-            }
-            avatarButton(size: circle)
-        }
-    }
-
-    /// The wordmark in white (the shared `BanbeLogo` follows the theme's logo ink, which is dark on a light theme).
-    /// The frame is the artwork's drawn size, not a wider box, so what the field steps around is the mark itself.
-    @ViewBuilder private var wordmark: some View {
+    /// One mark, two inks: white over the hero, the theme's logo ink (dark mode's amber) once the paper nav has taken
+    /// over. Both copies are the same template artwork drawn at the mark's own size, so what the field steps around is
+    /// the mark itself.
+    @ViewBuilder private var mark: some View {
+        let h = 40 - 20 * shrink
         if let image = UIImage(named: BanbeLogo.Kind.wordmark.rawValue) {
-            Image(uiImage: image)
-                .renderingMode(.template)
-                .resizable()
-                .scaledToFit()
-                .frame(width: Self.wordmarkAspect * (45 - 23 * shrink), height: 45 - 23 * shrink, alignment: .leading)
-                .foregroundStyle(.white)
-                .accessibilityLabel("banbe")
-                .accessibilityIdentifier("home.title")
+            ZStack(alignment: .leading) {
+                Image(uiImage: image)
+                    .renderingMode(.template).resizable().scaledToFit()
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
+                    .opacity(1 - swap)
+                Image(uiImage: image)
+                    .renderingMode(.template).resizable().scaledToFit()
+                    .foregroundStyle(app.palette.logo)
+                    .opacity(swap)
+            }
+            .frame(width: h * Self.wordmarkAspect, height: h, alignment: .leading)
+            .accessibilityLabel("banbe")
+            .accessibilityIdentifier("home.title")
         } else {
-            Text("banbe").font(BanbeTheme.display(38 - 16 * shrink)).foregroundStyle(.white)
+            Text("banbe").font(BanbeTheme.display(30 - 12 * shrink)).foregroundStyle(.white)
                 .accessibilityIdentifier("home.title")
         }
-    }
-
-    private func glassCircleButton(size: CGFloat, system: String, label: String, id: String, action: @escaping () -> Void) -> some View {
-        SwipeSafeButton(action: action) {
-            Image(systemName: system)
-                .font(.app(size: size * 0.43, weight: .regular))
-                .foregroundStyle(.white)
-                .frame(width: size, height: size)
-                .background {
-                    Circle()
-                        .fill(LinearGradient(colors: [Color(hex: 0xF7F4EC).opacity(0.24), Color(hex: 0xF7F4EC).opacity(0.10)],
-                                             startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .shadow(color: Color.black.opacity(0.18), radius: 4, y: 2)
-                }
-                .overlay(Circle().strokeBorder(Color.white.opacity(0.26), lineWidth: 1))
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
-        .accessibilityIdentifier(id)
     }
 
     /// Initials in a clay disc (a person glyph for a guest), with a small gear badge. Opens Account.
@@ -248,14 +222,15 @@ struct HomeHeroPinnedHeader: View {
 
     // MARK: search
 
-    /// One paper search field in both states (web: `.bb-home-head__searchrow`). At rest it carries the full placeholder;
-    /// compact it is the magnifier plus the chosen area, which is always readable (owner 2026-11-17). The placeholder
-    /// fades as the field narrows, and the divider follows the field's rise, so nothing snaps.
+    /// One search field in both states (web: `.bb-home-head__searchrow`). At rest it is a paper card floating on the
+    /// hero, with the full placeholder and the area as a chip inside it; condensing, the card layer goes and the field
+    /// reads as an inset capsule on the nav bar, so the bar's material shows through. The area is never a second half
+    /// of the field — one shape to look at, two things to use.
     private func searchRow(tight: Bool) -> some View {
         let place = app.area == LocationHierarchy.allID ? nil : app.currentAreaLabel
         let areaText = place ?? app.T("Mọi nơi", "Everywhere")
-        let ink = Color(hex: 0x1B1916)
-        return HStack(spacing: 0) {
+        let ink = app.palette.ink
+        return HStack(spacing: 8) {
             SwipeSafeButton {
                 Haptics.light()
                 app.openSearch(from: app.homeSearchBarFrame)
@@ -265,16 +240,16 @@ struct HomeHeroPinnedHeader: View {
                     Image(systemName: "magnifyingglass")
                         .font(.app(size: 16, weight: .semibold))
                         .foregroundStyle(app.palette.clay)
-                    // Same placeholder, size and weight as the main search bar (HomeSearchBar).
+                    // The field says what it searches for; the area is a chip inside it, so it is not repeated here.
                     if !tight {
-                        Text(app.T("Tìm sự kiện, host, khu vực, vibe…", "Search events, hosts, areas, vibes…"))
+                        Text(app.T("Tìm sự kiện, host, khu vực", "Search events, hosts, areas"))
                             .font(.app(size: 14.5)).lineLimit(1)
+                            .foregroundStyle(app.palette.ink3)
                             .opacity(max(0, 1 - 1.7 * Double(slide)))
                     }
                     Spacer(minLength: 0)
                 }
-                .foregroundStyle(ink.opacity(0.66))
-                .padding(.leading, 16 - 3 * slide).padding(.trailing, 8)
+                .padding(.leading, 18 - 4 * slide).padding(.trailing, 4)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
             }
@@ -283,33 +258,38 @@ struct HomeHeroPinnedHeader: View {
             .accessibilityLabel(app.T("Tìm sự kiện, host, khu vực", "Search events, hosts, areas"))
             .accessibilityAddTraits(.isButton)
             .accessibilityIdentifier("home.searchBar")
-            Rectangle().fill(ink.opacity(0.14)).frame(width: 1, height: 22 - 4 * rise).accessibilityHidden(true)
             Menu {
                 AreaMenuOptions { onSearchLocations() }
             } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "mappin").font(.app(size: 15, weight: .medium)).opacity(0.55)
+                HStack(spacing: 6) {
+                    Image(systemName: "mappin").font(.app(size: 13, weight: .medium)).opacity(0.8)
                     // The chosen area next to the pin (same short label as the Map and the filter summary).
-                    Text(areaText).font(.app(size: 14, weight: .medium)).lineLimit(1).truncationMode(.tail)
-                        .frame(maxWidth: tight ? 150 : 110, alignment: .leading)
+                    Text(areaText).font(.app(size: 13, weight: .semibold)).lineLimit(1).truncationMode(.tail)
+                        .frame(maxWidth: tight ? 150 : 96, alignment: .leading)
                         .accessibilityIdentifier("header.area.label")
-                    Text("▾").font(.app(size: 10)).opacity(0.55)
+                    Text("▾").font(.app(size: 9)).opacity(0.5)
                 }
                 .foregroundStyle(ink)
-                .padding(.leading, tight ? 4 : 12).padding(.trailing, 12)
-                .frame(maxHeight: .infinity)
-                .contentShape(Rectangle())
+                .padding(.horizontal, 12)
+                .frame(height: 34)
+                .background(ink.opacity(0.07), in: Capsule())
+                .contentShape(Capsule())
             }
             .accessibilityLabel(app.T("Khu vực: \(areaText). Đổi khu vực", "Area: \(areaText). Change area"))
             .accessibilityIdentifier("header.area")
+            .padding(.trailing, 5)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
-            Capsule()
-                .fill(LinearGradient(colors: [Color(hex: 0xFCFAF6), Color(hex: 0xF1ECE2)], startPoint: .top, endPoint: .bottom))
-                .shadow(color: Color.black.opacity(0.22), radius: 12, y: 8)
+            ZStack {
+                Capsule().fill(ink.opacity(0.06))
+                Capsule()
+                    .fill(app.palette.paper)
+                    .shadow(color: Color.black.opacity(0.24), radius: 14, y: 8)
+                    .opacity(1 - rise)
+            }
         }
-        .overlay(Capsule().strokeBorder(ink.opacity(0.10), lineWidth: 1))
+        .overlay(Capsule().strokeBorder(ink.opacity(0.07), lineWidth: 1))
         // The tour's spotlight is the whole bar, area pin included (web: home-search-row), not just the search half.
         .tourTarget("tour.home.search")
         .opacity(app.searchOverlayOpen ? 0 : 1)
