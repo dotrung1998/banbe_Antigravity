@@ -102,7 +102,7 @@ function DraftRow({ T, EN, draft, thumb, onOpen, onAskDelete }) {
           style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0, cursor: 'pointer' }}
         >
           <div style={{ width: 56, height: 56, flex: 'none', borderRadius: 12, background: paper, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: thumb ? 1 : 0.5 }}>
-            {thumb ? <img src={thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span aria-hidden>🖼️</span>}
+            {thumb ? <img src={thumb} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span aria-hidden>🖼️</span>}
           </div>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: 15, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name || T('Chưa đặt tên', 'Untitled event')}</div>

@@ -45,7 +45,7 @@ export default function ProjectJoin() {
       <label style={{ display: 'block', marginTop: 20, fontSize: 12, fontWeight: 700, letterSpacing: 0.6, color: ink3 }}>{T('MÃ MỜI HOẶC LIÊN KẾT', 'INVITE CODE OR LINK')}</label>
       <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
         <input value={s.projectJoinCode} onChange={e => set({ projectJoinCode: e.target.value, projectJoinPeek: null, projectJoinError: '' })} placeholder="BB-XXXX"
-          aria-label={T('Mã mời', 'Invite code')} data-testid="project-join-code" autoCapitalize="characters" autoCorrect="off" onKeyDown={e => { if (e.key === 'Enter') check(); }}
+          aria-label={T('Mã mời', 'Invite code')} data-testid="project-join-code" autoCapitalize="characters" autoCorrect="off" onKeyDown={e => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) check(); }}
           style={{ flex: 1, minWidth: 0, font: 'inherit', fontFamily: 'ui-monospace, Menlo, monospace', fontWeight: 700, fontSize: 18, padding: '12px 14px', borderRadius: 14, border: 0, background: fieldSolid, color: ink }} />
         <button type="button" onClick={check} disabled={!s.projectJoinCode.trim() || s.projectJoinLoading} data-testid="project-join-check"
           style={{ minHeight: 50, padding: '0 16px', borderRadius: 999, border: 0, background: blockInset, color: ink, fontWeight: 600, cursor: 'pointer' }}>{T('Kiểm tra', 'Check')}</button>

@@ -40,7 +40,7 @@ export default function ProjectTopics({ p, ui }) {
   // The lane filter lives in the hub, so New post can preselect it and glow while it's empty.
   const lane = ui.topicsLane || null;
   const setLane = ui.setTopicsLane;
-  const lanes = [...(snap.lanes || [])].sort((a, b) => a.position - b.position);
+  const lanes = (snap.lanes || []).toSorted((a, b) => a.position - b.position);
   const chipsRef = useRef(null);
   const [pinned, setPinned] = useState(false);
   // The chips stick under the top once the rules card has scrolled away (position: sticky); a hairline shows then.
@@ -251,7 +251,7 @@ export function ComposeSheet({ close, p, presetLane = null }) {
   const [to, setTo] = useState(null);
   const [deadline, setDeadline] = useState(ymd(p.now().getTime() + 2 * 86400e3, p.tz));
   const lanesFor = (t) => {
-    const all = [...(snap.lanes || [])].sort((a, b) => a.position - b.position);
+    const all = (snap.lanes || []).toSorted((a, b) => a.position - b.position);
     return t === 'decision' && !snap.is_host && snap.me?.role === 'lane_lead' ? all.filter(l => l.id === snap.me.lane_id) : all;
   };
   if (!type) {

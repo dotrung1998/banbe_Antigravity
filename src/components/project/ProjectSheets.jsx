@@ -35,7 +35,7 @@ function TaskSheet({ taskId, presetLane, close, p }) {
   const { snap, T } = p;
   const task = taskId ? (snap.tasks || []).find(t => t.id === taskId) : null;
   const lead = snap.me?.role === 'lane_lead' && !snap.is_host;
-  const lanes = [...(snap.lanes || [])].sort((a, b) => a.position - b.position).filter(l => !lead || l.id === snap.me?.lane_id);
+  const lanes = (snap.lanes || []).toSorted((a, b) => a.position - b.position).filter(l => !lead || l.id === snap.me?.lane_id);
   const editable = task ? p.can('task.manage', { laneId: task.lane_id }) : p.can('task.manage', { laneId: presetLane });
   const [title, setTitle] = useState(task?.title || '');
   const [laneId, setLaneId] = useState(task?.lane_id || presetLane || lanes[0]?.id || '');
@@ -119,7 +119,7 @@ function NewLaneSheet({ close, p }) {
   const [name, setName] = useState('');
   const [query, setQuery] = useState('');
   const [why, setWhy] = useState('');
-  const lanes = [...(snap.lanes || [])].sort((a, b) => a.position - b.position);
+  const lanes = (snap.lanes || []).toSorted((a, b) => a.position - b.position);
   const n = lanes.length;
   const taken = new Set(lanes.map(l => laneKey(l.name)));
   const q = laneKey(query);

@@ -1626,7 +1626,7 @@ export default function MapExplore() {
   // With a window on, the chips say how many of each area's events are inside it and the busiest-in-window come first.
   const chipsView = useMemo(() => {
     const withHits = areaChips.map(g => ({ ...g, hit: hitSet ? g.ids.reduce((n, id) => n + (hitSet.has(id) ? 1 : 0), 0) : g.ids.length }));
-    return hitSet ? [...withHits].sort((x, y) => (y.hit - x.hit) || (y.ids.length - x.ids.length)) : withHits;
+    return hitSet ? withHits.toSorted((x, y) => (y.hit - x.hit) || (y.ids.length - x.ids.length)) : withHits;
   }, [areaChips, hitSet]);
   const panelEvents = useMemo(
     () => (areaPanel ? visibleEvents.filter(e => areaPanel.keys.includes((areaInfoById.get(e.id) || areaKey(e, CITIES)).key)) : []),

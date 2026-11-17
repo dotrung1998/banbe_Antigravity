@@ -17,7 +17,10 @@ import { LongIntroPreview, SocialLinksRow } from './LongIntro.jsx';
 // lands here instead — this banner is that fallback's own visible CTA,
 // not a silent dead end. Mobile-only heuristic since a desktop visitor has
 // nothing to install.
-const isMobileBrowser = typeof navigator !== 'undefined' && /iPhone|iPad|Android/i.test(navigator.userAgent || '');
+// Capability, not user agent (Modern Web Guidance, note 90): a touch-first device has a coarse PRIMARY pointer. iPadOS
+// desktop mode reports a Macintosh UA, which the old regex missed.
+const isMobileBrowser = typeof navigator !== 'undefined' && typeof window !== 'undefined'
+  && !!window.matchMedia?.('(pointer: coarse)')?.matches && navigator.maxTouchPoints > 0;
 
 // Personal-vs-organizer hierarchy pass (2026-09-27) — this screen is now
 // PERSONAL ONLY: what anyone (signed in or not, see get_public_profile()'s
@@ -138,7 +141,7 @@ export default function PublicProfile() {
               <span aria-hidden style={{ flex: 'none', width: 80, height: 80, borderRadius: '50%', padding: 2, background: `linear-gradient(135deg, ${clay}, ${attn})`, boxSizing: 'border-box' }}>
                 <span style={{ display: 'block', width: '100%', height: '100%', borderRadius: '50%', padding: 2, background: paper, boxSizing: 'border-box' }}>
                   {p.avatar_url ? (
-                    <img src={p.avatar_url} alt="" style={{ display: 'block', width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                    <img src={p.avatar_url} alt="" decoding="async" style={{ display: 'block', width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
                   ) : (
                     <span style={{ display: 'flex', width: '100%', height: '100%', borderRadius: '50%', background: ink, color: paper, alignItems: 'center', justifyContent: 'center', fontSize: 26, fontWeight: 600 }}>{monogram}</span>
                   )}

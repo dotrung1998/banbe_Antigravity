@@ -154,7 +154,7 @@ export default function AdminTestAccounts() {
           </div>
           <GlassSwitch on={!!bypassAll} busy={bypassBusy || bypassAll === null} testId="admin-bypass-switch" onPress={() => setConfirmTo(!bypassAll)} />
         </div>
-        <input value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !busy && email.trim()) lookup(); }} placeholder="email@example.com" autoCapitalize="none" inputMode="email" enterKeyHint="search" data-testid="admin-test-email" style={fieldStyle} />
+        <input value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229 && !busy && email.trim()) lookup(); }} placeholder="email@example.com" autoCapitalize="none" inputMode="email" enterKeyHint="search" data-testid="admin-test-email" style={fieldStyle} />
 
         <input value={nameQuery} onChange={e => setNameQuery(e.target.value)} placeholder={T('Hoặc tìm theo tên hiển thị', 'Or search by display name')} data-testid="admin-test-name" style={fieldStyle} />
         {matches.length > 0 && (

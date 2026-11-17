@@ -70,7 +70,7 @@ function RespondVerifyInline({ T }) {
     <div style={{ padding: 14, border: `1px solid ${rule}`, borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="survey-respond-email-step">
       <div style={{ fontSize: 12.5, fontWeight: 600 }}>{T('Xác nhận email để gửi câu trả lời', 'Verify your email to submit')}</div>
       <input
-        type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+        type="email" autoComplete="email" inputMode="email" value={email} onChange={(e) => setEmail(e.target.value)}
         placeholder={T('Email của bạn', 'Your email')} data-testid="survey-respond-email-input"
         style={{ padding: '10px 12px', borderRadius: 8, border: `1px solid ${rule}`, fontSize: 13.5, boxSizing: 'border-box' }}
       />

@@ -130,7 +130,7 @@ export function ProjectTasks({ p, ui }) {
   const { snap, T } = p;
   const [filter, setFilter] = useState('all');
   const tasks = snap.tasks || [];
-  const lanes = [...(snap.lanes || [])].sort((a, b) => a.position - b.position);
+  const lanes = (snap.lanes || []).toSorted((a, b) => a.position - b.position);
   const shown = filter === 'mine' ? myOpenTasks(tasks, p.userId).concat(tasks.filter(t => t.status === 'done' && String(t.assignee_id || '').toLowerCase() === p.userId)) : tasks;
   // The lanes the list shows (under Mine, only lanes with my tasks): the navigator shows the same lanes and counts.
   const visible = filter === 'mine' ? lanes.filter(l => shown.some(t => t.lane_id === l.id)) : lanes;

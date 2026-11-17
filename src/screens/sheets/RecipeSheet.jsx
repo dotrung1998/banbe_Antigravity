@@ -27,7 +27,7 @@ export function RecipeMeter({ checks, onOpen, T }) {
 /** Inline list used by the sheet and by the Review step. */
 export function RecipeList({ checks, onFix, T, compact = false }) {
   const order = { missing: 0, improve: 1, good: 2 };
-  const sorted = [...checks].sort((a, b) => order[a.status] - order[b.status]);
+  const sorted = checks.toSorted((a, b) => order[a.status] - order[b.status]);
   return (
     <div data-testid="create-recipe-list" style={{ display: 'flex', flexDirection: 'column' }}>
       {sorted.map(c => {

@@ -123,7 +123,7 @@ export function MemberSheet({ memberId, close, p }) {
   const [reason, setReason] = useState('');
   if (!m) return <Sheet title={T('Thành viên', 'Member')} onClose={close}><Note>{T('Người này không còn trong dự án.', 'This person is no longer in the project.')}</Note></Sheet>;
   const finance = role === 'finance';
-  const lanes = [...(snap.lanes || [])].sort((a, b) => a.position - b.position);
+  const lanes = (snap.lanes || []).toSorted((a, b) => a.position - b.position);
   const dirty = role !== m.role || (role === 'lane_lead' && laneId !== m.lane_id) || (!finance && (money !== !!m.cap_money || checkin !== !!m.cap_checkin));
   if (removing) {
     return (
@@ -178,7 +178,7 @@ export function InviteSheet({ close, p }) {
   const host = snap.is_host === true;
   const qr = flagOn(p.s.featureFlags || {}, 'project_qr_invite');
   const roles = host ? INVITABLE_ROLES.host : INVITABLE_ROLES.manager;
-  const lanes = [...(snap.lanes || [])].sort((a, b) => a.position - b.position);
+  const lanes = (snap.lanes || []).toSorted((a, b) => a.position - b.position);
   const [role, setRole] = useState('helper');
   const [laneId, setLaneId] = useState(null);
   const [single, setSingle] = useState(true);

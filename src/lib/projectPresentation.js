@@ -39,7 +39,7 @@ export function readiness(tasks = []) {
 }
 
 export function laneProgress(lanes = [], tasks = []) {
-  return [...lanes].sort((a, b) => a.position - b.position).map(l => {
+  return lanes.toSorted((a, b) => a.position - b.position).map(l => {
     const mine = tasks.filter(t => t.lane_id === l.id);
     return { laneId: l.id, name: l.name, done: mine.filter(t => t.status === 'done').length, total: mine.length };
   });

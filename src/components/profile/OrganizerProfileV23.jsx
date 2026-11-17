@@ -73,7 +73,7 @@ export default function OrganizerProfileV23(p) {
 
       <div data-testid="organizer-profile-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '6px 20px 18px' }}>
         <span className="bb-hp-face" style={{ width: 88, height: 88, borderRadius: '50%', overflow: 'hidden', flex: 'none', boxShadow: '0 0 0 4px var(--bb-bg), 0 0 0 5.5px color-mix(in srgb, var(--bb-clay) 45%, transparent)', background: 'var(--bb-clay)', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 32, fontWeight: 600 }}>
-          {avatarSrc ? <img src={avatarSrc} alt="" data-testid="organizer-profile-avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : monogram}
+          {avatarSrc ? <img src={avatarSrc} alt="" data-testid="organizer-profile-avatar" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : monogram}
         </span>
         <h1 data-testid="organizer-profile-name" style={{ fontFamily: SERIF, fontSize: 30, fontWeight: 400, letterSpacing: '-0.02em', lineHeight: 1.1, margin: '16px 0 4px', overflowWrap: 'anywhere' }}>{org.name}</h1>
         <span style={{ fontSize: 13, color: 'var(--bb-fg-2)' }}>

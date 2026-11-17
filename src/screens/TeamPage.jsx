@@ -77,7 +77,7 @@ export default function TeamPage() {
                     style={{ ...cardGlass({ padding: 16, display: 'flex', alignItems: 'center', gap: 14, cursor: 'pointer', borderRadius: 20 }) }}
                   >
                     {memberAvatarUrl(m.avatar_url) ? (
-                      <img src={m.avatar_url} alt="" style={{ width: 56, height: 56, borderRadius: 16, objectFit: 'cover' }} />
+                      <img src={m.avatar_url} alt="" loading="lazy" decoding="async" style={{ width: 56, height: 56, borderRadius: 16, objectFit: 'cover' }} />
                     ) : (
                       <div style={{ width: 56, height: 56, borderRadius: 16, background: ink, color: paper, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700 }}>
                         {(m.display_name || m.handle || '?').trim()[0]?.toUpperCase() || '?'}

@@ -214,8 +214,70 @@ body::before {
 body {
   background: var(--bb-band, #f7f4ec);
   font-family: var(--bb-face, 'Be Vietnam Pro'), system-ui, sans-serif;
+  /* Modern Web Guidance (note 90): 100vh is the viewport at its TALLEST, so a phone whose browser chrome is showing
+     (or whose keyboard is up) pushes the last rows under it. dvh follows the real, current height; vh stays as the
+     fallback for browsers without dynamic viewport units. */
   min-height: 100vh;
+  min-height: 100dvh;
   color: var(--bb-fg);
+}
+
+/* Native UI — scrollbars, form controls, the caret, date and time pickers — follows the app's own theme instead of
+   always painting light. The theme attribute lives on .bb-stage (App.jsx), so it is declared there and on its dark
+   value; `color-scheme` above the stage keeps the page-level scrollbar in step. */
+.bb-stage { color-scheme: light; }
+[data-bb-theme="dark"] { color-scheme: dark; }
+
+/* Short standalone text takes balanced line breaks; paragraphs use the browser's prettier rag. Unsupported values
+   simply fall back to normal wrapping, so this is progressive enhancement. */
+h1, h2, h3 { text-wrap: balance; }
+p { text-wrap: pretty; }
+
+/* Native modal sheets (Modern Web Guidance pass, note 90). <dialog> + showModal() gives the top layer, focus
+   containment, page inertness, Esc / back-gesture dismissal and focus return; this only paints it. The clip-path
+   insets are the desktop phone frame (written by src/components/NativeSheet.jsx before showModal); they are all 0
+   on a phone, where the frame IS the viewport. clip-path also clips hit-testing, so the desk around the phone is
+   not clickable and cannot dismiss the sheet. */
+dialog.bb-native-sheet {
+  position: fixed;
+  inset: 0;
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  background: rgba(27, 25, 22, 0.42);
+  color: inherit;
+  clip-path: inset(var(--bb-dlg-t, 0px) var(--bb-dlg-r, 0px) var(--bb-dlg-b, 0px) var(--bb-dlg-l, 0px) round var(--bb-dlg-radius, 0px));
+  animation: banbeFade 0.2s ease both;
+}
+/* The scrim is the dialog itself, so the platform backdrop stays clear. */
+dialog.bb-native-sheet::backdrop { background: transparent; }
+/* Full-size, bottom-aligned box the panel sits in. Kept as its own node so a scrim press and a panel press are easy
+   to tell apart by target. */
+.bb-native-sheet-body {
+  position: absolute;
+  /* The frame, not the window: a 480 px panel centred in a 1200 px window would hang outside the 393 px phone and
+     get sliced by the clip-path above (found in the visual check). */
+  inset: var(--bb-dlg-t, 0px) var(--bb-dlg-r, 0px) var(--bb-dlg-b, 0px) var(--bb-dlg-l, 0px);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  dialog.bb-native-sheet { animation: none; }
+}
+
+/* Forced Colors Mode strips backgrounds, shadows and glass, which would otherwise erase the edges of every sheet and
+   dialog. Keep their boundaries drawn in the system's own colours. */
+@media (forced-colors: active) {
+  :where(dialog, [role="dialog"], [role="alertdialog"]) { border: 1px solid CanvasText; }
+  :where(button, a, [role="button"], input, textarea, select):focus-visible { outline: 2px solid CanvasText; outline-offset: 2px; }
+  [data-bb-theme], .bb-device { forced-color-adjust: auto; }
 }
 
 a {
@@ -250,6 +312,13 @@ input::placeholder, textarea::placeholder {
   box-shadow: inset 0 0 0 1px var(--bb-clay), 0 0 0 4px rgba(var(--bb-clay-rgb), 0.18) !important;
 }
 :where(input, textarea, select)[aria-invalid="true"]:not([data-bare]), .bb-focus-ring[data-state="error"] {
+  border-color: var(--bb-alert) !important;
+  box-shadow: inset 0 0 0 1px var(--bb-alert), 0 0 0 4px rgba(var(--bb-alert-rgb), 0.14) !important;
+}
+/* Native constraint validation (Modern Web Guidance, note 90): a field the BROWSER knows is invalid (type=email,
+   pattern, required) gets the same alert border with no JS — and :user-invalid only matches after the user has
+   interacted, so nothing turns red on load. Fields with business-rule errors keep using aria-invalid above. */
+:where(input, textarea, select):user-invalid:not([data-bare], [aria-invalid="true"]) {
   border-color: var(--bb-alert) !important;
   box-shadow: inset 0 0 0 1px var(--bb-alert), 0 0 0 4px rgba(var(--bb-alert-rgb), 0.14) !important;
 }
@@ -318,6 +387,7 @@ input::placeholder, textarea::placeholder {
 
 #root {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* Root-cause fix (Pulse teaser positioning pass): the "to" keyframe used
@@ -513,7 +583,7 @@ input::placeholder, textarea::placeholder {
     position: relative;
     box-sizing: border-box;
     width: 415px;
-    height: min(874px, calc(100vh - 32px));
+    height: min(874px, calc(100dvh - 32px));
     padding: 11px;
     border-radius: 66px;
     background: #1B1916;

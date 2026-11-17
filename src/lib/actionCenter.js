@@ -25,7 +25,7 @@ function msUntilSafe(iso, now) {
  * individual call already sorts its own — see buildActionCenterItems()'s
  * own call below. */
 export function sortActionCenterItems(items) {
-  return [...items].sort((a, b) => {
+  return items.toSorted((a, b) => {
     const r = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
     if (r !== 0) return r;
     const da = a.deadline ? new Date(a.deadline).getTime() : Infinity;

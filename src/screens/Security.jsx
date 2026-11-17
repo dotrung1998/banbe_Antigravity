@@ -51,7 +51,7 @@ export default function Security() {
             <input
               value={s.securityPasswordConfirm}
               onChange={securityPasswordConfirmType}
-              onKeyDown={(e) => { if (e.key === 'Enter' && canSave) saveSecurityPassword(); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229 && canSave) saveSecurityPassword(); }}
               type="password"
               autoComplete="new-password"
               placeholder={T('Nhập lại mật khẩu', 'Re-enter password')}

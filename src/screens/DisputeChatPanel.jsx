@@ -365,7 +365,7 @@ export default function DisputeChatPanel({ bookingId, refundClaimId }) {
             value={s.disputeChatDraft} onChange={disputeChatDraftType}
             placeholder={T('Nhắn gì đó…', 'Say something…')}
             data-testid="dispute-chat-input"
-            onKeyDown={(e) => { if (e.key === 'Enter' && s.disputeChatDraft.trim()) send(chatKey); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229 && s.disputeChatDraft.trim()) send(chatKey); }}
             style={{ ...fieldGlass({ padding: '10px 12px', border: 'none', flex: 1 }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }}
           />
           <div

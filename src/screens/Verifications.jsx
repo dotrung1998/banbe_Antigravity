@@ -238,6 +238,7 @@ export default function Verifications() {
                 <img
                   src={s.proofUrls[v.proof_path]}
                   alt={T('Ảnh biên lai', 'Receipt image')}
+                  loading="lazy" decoding="async"
                   data-testid="verification-proof-image"
                   style={{ width: '100%', maxHeight: 320, objectFit: 'contain', borderRadius: 10, background: 'rgba(27,25,22,0.04)' }}
                 />

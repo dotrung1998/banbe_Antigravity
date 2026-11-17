@@ -276,7 +276,7 @@ export function groupBadgesByFamily(badges) {
     g.badges.sort((a, b) => (a.tier ?? 0) - (b.tier ?? 0));
     g.earnedCount = g.badges.filter(b => b.earned).length;
     g.next = g.badges.find(b => !b.earned) || null;
-    g.top = [...g.badges].reverse().find(b => b.earned) || null;
+    g.top = g.badges.findLast(b => b.earned) || null;
   }
   return groups;
 }
@@ -340,7 +340,7 @@ export function celebrationDiff(badges, ws, celebrated) {
     if (b && b.earned && b.earned_at) items.push({ kind: 'badge', code: b.code, key: `b:${b.code}:${b.earned_at}` });
   }
   if (ws && ws.current > 0 && ws.weekStart) {
-    const m = [...WEEK_MILESTONES].reverse().find(x => ws.current >= x);
+    const m = WEEK_MILESTONES.findLast(x => ws.current >= x);
     if (m) {
       const start = new Date(`${ws.weekStart}T00:00:00Z`); start.setUTCDate(start.getUTCDate() - (ws.current - 1) * 7);
       items.push({ kind: 'weeks', weeks: m, key: `w:${m}:${start.toISOString().slice(0, 10)}` });

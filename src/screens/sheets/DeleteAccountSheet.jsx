@@ -56,7 +56,7 @@ export default function DeleteAccountSheet() {
       <input
         value={dob[key]} placeholder={ph} inputMode="numeric" autoComplete="off" data-testid={`delete-account-dob-${key}`}
         onChange={(e) => setDob({ ...dob, [key]: digitsOnly(e.target.value, max) })}
-        onKeyDown={(e) => { if (e.key === 'Enter' && !s.deleteAccountReauthBusy) submitDob(); }}
+        onKeyDown={(e) => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229 && !s.deleteAccountReauthBusy) submitDob(); }}
         style={{ ...fieldGlass({ padding: '11px 6px', fontSize: 15, color: ink, textAlign: 'center', width: '100%', boxSizing: 'border-box' }) }}
       />
     </label>

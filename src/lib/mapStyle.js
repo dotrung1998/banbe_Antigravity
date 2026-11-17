@@ -112,7 +112,9 @@ function mapColors(value, fn) {
 /** Returns a NEW style object (input untouched). `mode` is 'light' | 'dark'. */
 export function transformStyle(style, mode = 'light', provider = MAP_PROVIDER) {
   const dark = mode === 'dark';
-  const out = JSON.parse(JSON.stringify(style));
+  // structuredClone (Modern Web Guidance): the style spec is plain JSON data, so a structured clone is equivalent
+  // to the JSON round-trip here and keeps Dates/regexes/cycles intact if the spec ever carries them.
+  const out = structuredClone(style);
   const keep = new Set(provider.keepLabelLayers);
   out.layers = out.layers.filter(l => !provider.hiddenLayers.includes(l.id)).map(layer => {
     const paint = { ...(layer.paint || {}) };

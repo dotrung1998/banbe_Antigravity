@@ -130,8 +130,11 @@ export function qrKindLabel(c, T) {
   return T('Mã QR (văn bản)', 'QR (text)');
 }
 
+// Capability-based (Modern Web Guidance, note 90): a touch-first device, not a user-agent string. `pointer: coarse`
+// describes the PRIMARY pointer, so a desktop with a touchscreen (mouse/trackpad first) stays desktop, while
+// iPadOS in desktop mode — which reports a Macintosh UA — is correctly treated as mobile. The old regex needed a
+// special case for exactly that.
 export function isMobileBrowser() {
-  if (typeof navigator === 'undefined') return false;
-  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
-    || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+  if (typeof navigator === 'undefined' || typeof window === 'undefined') return false;
+  return !!window.matchMedia?.('(pointer: coarse)')?.matches && navigator.maxTouchPoints > 0;
 }

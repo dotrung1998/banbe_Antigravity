@@ -1,8 +1,8 @@
 // Contextual sign-in prompt for a guest — web twin of iOS GuestPromptSheet (note 48). Shown when a signed-out visitor
 // tries something personal (save, follow, reserve, message, like). "Continue" creates an account, "Log in" signs in,
 // "Not now" keeps browsing. Never "Sign up", never a dead end; sign-in resumes the action (lib/guestAccess.js).
-import { useEffect } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
+import NativeSheet from '../components/NativeSheet.jsx';
 import { paper, ink, display, inkButton } from '../theme.js';
 import { promptCopy, promptBenefits } from '../lib/guestAccess.js';
 
@@ -11,18 +11,11 @@ const ICON = { save: '♥', follow: '＋', reserve: '🎟', message: '💬', lik
 export default function GuestPromptSheet() {
   const { state: s, T, continueFromGuestPrompt, dismissGuestPrompt } = useBanBe();
   const prompt = s.guestPrompt;
-  useEffect(() => {
-    if (!prompt) return undefined;
-    const onKey = (e) => { if (e.key === 'Escape') dismissGuestPrompt(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [prompt, dismissGuestPrompt]);
   if (!prompt) return null;
   const copy = promptCopy(prompt.context, T);
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="guest-prompt-title" data-testid="guest-prompt" onClick={dismissGuestPrompt}
-      style={{ position: 'fixed', inset: 0, zIndex: 2300, background: 'rgba(0,0,0,0.36)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, background: paper, color: ink, borderRadius: '26px 26px 0 0', padding: '24px 22px 30px', boxSizing: 'border-box' }}>
+    <NativeSheet open onClose={dismissGuestPrompt} labelledBy="guest-prompt-title" testId="guest-prompt" zIndex={2300}>
+      <div style={{ width: '100%', maxWidth: 480, background: paper, color: ink, borderRadius: '26px 26px 0 0', padding: '24px 22px 30px', boxSizing: 'border-box' }}>
         <div aria-hidden style={{ width: 68, height: 68, borderRadius: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, background: 'linear-gradient(135deg, rgba(var(--bb-fg-rgb),0.10), rgba(var(--bb-fg-rgb),0.03))' }}>
           {ICON[prompt.context] || '★'}
         </div>
@@ -47,7 +40,7 @@ export default function GuestPromptSheet() {
           {T('Để sau', 'Not now')}
         </button>
       </div>
-    </div>
+    </NativeSheet>
   );
 }
 

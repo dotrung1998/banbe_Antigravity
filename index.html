@@ -14,7 +14,11 @@
     <title>banbe</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=Jost:wght@400;500;600&display=swap&subset=vietnamese" rel="stylesheet">
+    <!-- Be Vietnam Pro only (Modern Web Guidance pass, note 90). Jost stopped being a title face in note 83: fontPref.js
+         writes --bb-font-display from the chosen face before the first render, so the family in theme.js's fallback is
+         never reached. `subset` is not a CSS2-API parameter either (the API serves unicode-range subsets on its own),
+         and one family instead of two is a smaller render-blocking stylesheet. -->
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
   </head>
   <body>
     <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">

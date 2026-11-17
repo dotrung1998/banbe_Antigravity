@@ -316,7 +316,7 @@ export default function ChatPhotoViewer() {
           <input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') doSendReply(); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) doSendReply(); }}
             placeholder={T('Trả lời ảnh này…', 'Reply to this photo…')}
             data-testid="chat-photo-reply-input"
             style={{ flex: 1, padding: '10px 14px', borderRadius: 999, border: 'none', background: 'rgba(255,255,255,0.16)', color: '#fff', fontSize: 13.5, outline: 'none' }}

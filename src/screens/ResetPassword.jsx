@@ -24,8 +24,8 @@ export default function ResetPassword() {
         {T('Chọn một mật khẩu mới cho tài khoản banbe của bạn.', 'Choose a new password for your banbe account.')}
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 18 }}>
-        <input value={s.newPassword} onChange={newPasswordType} type="password" placeholder={T('Mật khẩu mới', 'New password')} style={fieldStyle} />
-        <input value={s.newPasswordConfirm} onChange={newPasswordConfirmType} type="password" placeholder={T('Nhập lại mật khẩu mới', 'Confirm new password')} style={fieldStyle} />
+        <input value={s.newPassword} onChange={newPasswordType} type="password" autoComplete="new-password" placeholder={T('Mật khẩu mới', 'New password')} style={fieldStyle} />
+        <input value={s.newPasswordConfirm} onChange={newPasswordConfirmType} type="password" autoComplete="new-password" placeholder={T('Nhập lại mật khẩu mới', 'Confirm new password')} style={fieldStyle} />
       </div>
       <div onClick={valid && !s.resetPasswordBusy ? submitNewPassword : undefined} style={btnStyle}>
         {s.resetPasswordBusy ? T('Đang lưu…', 'Saving…') : T('Lưu mật khẩu mới', 'Save new password')}

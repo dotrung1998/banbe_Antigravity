@@ -137,7 +137,7 @@ function PhoneEnrollment() {
             </select>
             <input
               value={number} onChange={(e) => setNumber(e.target.value)} inputMode="tel" autoComplete="tel" data-testid="gate-phone-number"
-              onKeyDown={(e) => { if (e.key === 'Enter' && !busy) send(); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229 && !busy) send(); }}
               placeholder={T('Số điện thoại', 'Phone number')} style={inputStyle({ flex: 1, minWidth: 0 })}
             />
           </div>
@@ -150,7 +150,7 @@ function PhoneEnrollment() {
           </p>
           <input
             value={code} onChange={(e) => setCode(digitsOnly(e.target.value, 6))} inputMode="numeric" autoComplete="one-time-code" placeholder="123456" data-testid="gate-phone-code"
-            onKeyDown={(e) => { if (e.key === 'Enter' && !busy && code.length === 6) verify(); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229 && !busy && code.length === 6) verify(); }}
             style={inputStyle({ textAlign: 'center', fontSize: 24, fontWeight: 600, letterSpacing: '0.2em' })}
           />
           <InkBtn label={busy ? T('Đang kiểm tra…', 'Checking…') : T('Xác minh', 'Verify')} enabled={!busy && code.length === 6} onClick={verify} testid="gate-phone-verify" />

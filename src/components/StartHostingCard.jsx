@@ -2,8 +2,8 @@
 // account-host-first-event card) and the StartHostingSheet (Home's locked Hosting segment, "+" > Host an event).
 // Twin of iOS Views/StartHostingCard.swift. One primary action; an account that can already host (`canHost`) but has
 // organizer mode off sees "Turn on hosting" instead of the first-event copy.
-import { useEffect, useRef } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
+import NativeSheet from './NativeSheet.jsx';
 import { ink, ink2, paper, display, inkButton, block } from '../theme.js';
 import { useReducedMotion } from '../lib/useReducedMotion.js';
 
@@ -42,34 +42,13 @@ export function StartHostingSheet() {
   const { state: s, T, canHost, startHosting, closeStartHosting } = useBanBe();
   const open = !!(s.startHostingOpen && s.user);
   const reduce = useReducedMotion();
-  const sheetRef = useRef(null);
-  const returnFocus = useRef(null);
-  useEffect(() => {
-    if (!open) return undefined;
-    returnFocus.current = document.activeElement;
-    const t = setTimeout(() => sheetRef.current?.querySelector('button')?.focus({ preventScroll: true }), 0);
-    const onKey = (e) => {
-      if (e.key === 'Escape') { e.preventDefault(); closeStartHosting(); return; }
-      if (e.key !== 'Tab' || !sheetRef.current) return;
-      const f = [...sheetRef.current.querySelectorAll('button:not([disabled])')];
-      if (!f.length) return;
-      const first = f[0], last = f[f.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => {
-      clearTimeout(t); window.removeEventListener('keydown', onKey);
-      try { returnFocus.current?.focus?.({ preventScroll: true }); } catch { /* element gone */ }
-    };
-  }, [open, closeStartHosting]);
   if (!open) return null;
   // `canHost` includes organizerMode, which is off here, so it means "has hosted / admin".
   return (
-    <div role="presentation" data-testid="start-hosting-backdrop" onClick={closeStartHosting}
-      style={{ position: 'fixed', inset: 0, zIndex: 2300, background: 'rgba(0,0,0,0.36)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', animation: 'banbeFade 0.2s ease both' }}>
-      <div ref={sheetRef} role="dialog" aria-modal="true" aria-labelledby="start-hosting-title" data-testid="start-hosting-sheet" onClick={(e) => e.stopPropagation()}
+    <NativeSheet open onClose={closeStartHosting} labelledBy="start-hosting-title" testId="start-hosting-sheet" zIndex={2300}>
+      <div data-testid="start-hosting-backdrop" onClick={(e) => { if (e.target === e.currentTarget) closeStartHosting(); }}
         style={{
+          position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
           width: '100%', maxWidth: 480, background: paper, color: ink, borderRadius: '26px 26px 0 0', boxSizing: 'border-box',
           padding: '20px 20px calc(24px + env(safe-area-inset-bottom, 0px))',
           animation: reduce ? 'banbeFade 0.2s ease both' : 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both',
@@ -82,6 +61,6 @@ export function StartHostingSheet() {
           {T('Để sau', 'Not now')}
         </button>
       </div>
-    </div>
+    </NativeSheet>
   );
 }

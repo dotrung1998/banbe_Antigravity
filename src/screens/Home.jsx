@@ -412,7 +412,7 @@ export default function Home({ browse = false }) {
   // `TODAY` constant, and re-deriving its order from that is out of scope
   // here). `demoted` (cancelled sinks) still applies across the WHOLE
   // merged list afterward, unchanged.
-  const realEventsSorted = useMemo(() => [...discoveryShaped].sort((a, b) => {
+  const realEventsSorted = useMemo(() => discoveryShaped.toSorted((a, b) => {
     if (!a.startsAtRaw && !b.startsAtRaw) return 0;
     if (!a.startsAtRaw) return 1;
     if (!b.startsAtRaw) return -1;
@@ -1132,7 +1132,7 @@ export default function Home({ browse = false }) {
                 style={{ ...fieldGlass({ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '11px 12px', borderRadius: 12, cursor: 'pointer' }) }}
               >
                 {card.host_avatar_url ? (
-                  <img src={card.host_avatar_url} alt="" style={{ width: 28, height: 28, borderRadius: 999, objectFit: 'cover', flexShrink: 0 }} />
+                  <img src={card.host_avatar_url} alt="" loading="lazy" decoding="async" style={{ width: 28, height: 28, borderRadius: 999, objectFit: 'cover', flexShrink: 0 }} />
                 ) : (
                   <div style={{
                     width: 28, height: 28, borderRadius: 999, background: `${ink}1a`, flexShrink: 0,

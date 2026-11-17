@@ -31,7 +31,9 @@ export default function Login() {
     if (!ready) { cancelSignInHandoff(); return { ok: false }; }
     return { ok: true };
   };
-  const onEnter = (e) => { if (e.key === 'Enter') submitBtnRef.current?.querySelector('button')?.click(); };
+  // IME-safe (Modern Web Guidance, note 90): Safari resets isComposing before the confirming Enter keydown, so
+  // keyCode 229 is the check that actually catches a composition in progress.
+  const onEnter = (e) => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) submitBtnRef.current?.querySelector('button')?.click(); };
   const [oauthBusy, setOauthBusy] = useState(false);
   const onGoogle = async () => {
     if (oauthBusy) return;

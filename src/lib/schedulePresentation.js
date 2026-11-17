@@ -57,7 +57,7 @@ export function mySchedule({ bookings = [], hostedKeys = [], addedKeys = [], eve
     // Past (ended) plans stay on their own day as history; only a cancelled event leaves the agenda.
     const e = events[key];
     if (!e || e.cancelled) continue;
-    const sorted = [...sources].sort((a, b) => rank(a) - rank(b));
+    const sorted = sources.toSorted((a, b) => rank(a) - rank(b));
     if (e.start == null) { undatedCount += 1; continue; }
     items.push({ id: key, event: e, source: sorted[0], sources: sorted });
   }

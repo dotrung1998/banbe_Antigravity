@@ -128,7 +128,7 @@ export default function PersistentSearchBar() {
             </svg>
             <input ref={(el) => searchBarStore.attachInput(el)} value={text} onChange={(e) => setText(e.target.value)}
               onFocus={() => searchBarStore.setFocused(true)} onBlur={() => searchBarStore.setFocused(false)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { fns.submit?.(text); e.currentTarget.blur(); } }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { fns.submit?.(text); e.currentTarget.blur(); } }}
               enterKeyHint="search" placeholder={h.placeholder} aria-label={mapOn ? T('Tìm sự kiện trên bản đồ', 'Search events on the map') : T('Tìm kiếm', 'Search')}
               data-testid={mapOn ? 'map-search-input' : 'search-input'} data-bare
               style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, color: ink, fontFamily: "var(--bb-face, 'Be Vietnam Pro'), sans-serif" }} />

@@ -201,7 +201,7 @@ export default function Reserve() {
               )}
               {(i > 0 || adding) && (
                 <input
-                  type="email" value={a.email || ''} onChange={(e) => setAttendeeField(i, 'email', e.target.value)}
+                  type="email" autoComplete="email" inputMode="email" value={a.email || ''} onChange={(e) => setAttendeeField(i, 'email', e.target.value)}
                   placeholder={T('Email (không bắt buộc)', 'Email (optional)')} autoComplete="off" autoCapitalize="none"
                   style={{ ...inputStyle, background: 'rgba(255,255,255,0.55)' }} data-testid={`reserve-attendee-${i}-email`}
                 />

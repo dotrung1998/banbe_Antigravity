@@ -235,7 +235,7 @@ export function categoryRowKeys(counts, keys, selected = []) {
 const foldLabel = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
 /** The "Show all" sheet: every category A–Z by its label in the current language, accent-folded. */
 export function categorySheetKeys(defs, lang) {
-  return [...defs].sort((a, b) => {
+  return defs.toSorted((a, b) => {
     const x = foldLabel(lang === 'vi' ? a.vi : a.en);
     const y = foldLabel(lang === 'vi' ? b.vi : b.en);
     return x < y ? -1 : x > y ? 1 : 0;

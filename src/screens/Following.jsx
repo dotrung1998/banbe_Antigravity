@@ -106,7 +106,7 @@ export default function Following() {
                         style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0, cursor: h.available ? 'pointer' : 'default' }}
                       >
                         {avatar ? (
-                          <img src={avatar} alt="" style={{ width: 44, height: 44, borderRadius: 11, objectFit: 'cover', flex: 'none' }} />
+                          <img src={avatar} alt="" loading="lazy" decoding="async" style={{ width: 44, height: 44, borderRadius: 11, objectFit: 'cover', flex: 'none' }} />
                         ) : (
                           <div aria-hidden="true" style={{ width: 44, height: 44, borderRadius: 11, flex: 'none', background: ink, color: paper, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, fontWeight: 700 }}>{h.available ? monogram : '–'}</div>
                         )}

@@ -1,5 +1,6 @@
 // Shared pieces of the web Event Project Hub (note 76). Same tokens as the iOS hub: done = a filled ink check (the
 // prototype's green has no token), doing = honey, blocked = alert, to do = an ink3 ring. 44 px touch targets.
+import NativeSheet from '../NativeSheet.jsx';
 import { projectPeople } from '../../lib/projectPresentation.js';
 import { paper, ink, ink2, ink3, block, blockInset, divider, fieldSolid, clay, clayBg, honey, honeyBg, alert, display } from '../../theme.js';
 
@@ -153,10 +154,10 @@ export function TaskRow({ task, p, showLane = true, onOpen }) {
 /** Bottom sheet over the hub (like the app's other web sheets). */
 export function Sheet({ title, onClose, children, testId, closeTestId = 'project-sheet-close' }) {
   return (
-    // Fixed to the screen (the hub can be taller than it) and always the tallest height, like iOS (all Project Hub
-    // sheets open full height since 2026-11-05).
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1500, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center', animation: 'banbeFade 0.2s ease both' }}>
-      <div role="dialog" aria-modal="true" aria-label={title} data-testid={testId} onClick={(e) => e.stopPropagation()}
+    // Always the tallest height, like iOS (all Project Hub sheets open full height since 2026-11-05); the native
+    // dialog makes it modal, so the hub behind it is inert and focus stays inside.
+    <NativeSheet open onClose={onClose} label={title} testId={testId} zIndex={1500}>
+      <div
         style={{ background: paper, color: ink, borderRadius: '22px 22px 0 0', height: '92%', width: '100%', maxWidth: 480, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px 6px 20px' }}>
           <strong style={{ fontSize: 16 }}>{title}</strong>
@@ -165,7 +166,7 @@ export function Sheet({ title, onClose, children, testId, closeTestId = 'project
         </div>
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '8px 20px 30px', display: 'flex', flexDirection: 'column', gap: 16 }}>{children}</div>
       </div>
-    </div>
+    </NativeSheet>
   );
 }
 
