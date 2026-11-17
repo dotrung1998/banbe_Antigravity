@@ -6,11 +6,18 @@
     <link rel="apple-touch-icon" href="/banbe-favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#f7f4ec" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <!-- No apple-mobile-web-app-status-bar-style: deprecated, and ignored since iOS 26.1 (it used to be
-         black-translucent). The Home Screen app now takes its status-bar colour from the fixed strip at the top of
-         the page (body::before in src/index.css); see that rule's comment. -->
+    <!-- Deliberately NO PWA/standalone markup: no web app manifest, no apple-mobile-web-app-capable, no
+         mobile-web-app-capable, no apple-mobile-web-app-status-bar-style.
+         iOS 26 chooses between two native layouts for a Home Screen site, and any of that markup selects the legacy
+         one: a web view frame anchored at the very top of the screen whose height still leaves out the status bar,
+         which parks a status-bar-tall (59-62pt) strip at the BOTTOM of the screen that is outside the page entirely
+         — no CSS height, safe-area inset or JS can paint it (WebKit bugs 313800 and 316008; reproduced on iOS 26.6).
+         With none of it, iOS uses the correct frame: the page starts below the opaque status bar and reaches the
+         screen's bottom edge (home indicator included, hence the env(safe-area-inset-bottom) padding on the dock in
+         App.jsx). iOS 26 opens a Home Screen site as a web app by itself, so nothing is lost there; the cost is that
+         an iOS 16-25 install would open with Safari's chrome. The status-bar colour meta is gone for the same reason
+         it was before: iOS 26.1+ ignores it and samples the fixed strip at the top of the page instead
+         (body::before in src/index.css). -->
     <title>banbe</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

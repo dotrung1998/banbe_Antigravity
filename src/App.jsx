@@ -219,10 +219,13 @@ function CreateUndoToast({ offer, aboveDock }) {
   );
 }
 
-// Room under every docked screen so its last row scrolls clear of the floating dock (was a bare 92).
+// Room under every docked screen so its last row scrolls clear of the floating dock (was a bare 92), plus the
+// home-indicator inset: in a Home Screen app the viewport now reaches the screen's bottom edge (see index.html's
+// comment on why the PWA markup is gone), so the dock and this clearance have to step over the indicator. The inset
+// is 0 in a Safari tab, where the browser's own bottom bar already takes that space, and 0 on desktop.
 // (`SAFE_TOP`, the status-bar inset as a CSS length, lives in src/lib/viewport.js — shared with the Map, the Search
 // overlay and the persistent search bar, all of which measure from the top of the window.)
-const DOCK_CLEARANCE = BAR_HEIGHT + BAR_BOTTOM_OFFSET + 18;
+const DOCK_CLEARANCE = `calc(${BAR_HEIGHT + BAR_BOTTOM_OFFSET + 18}px + env(safe-area-inset-bottom, 0px))`;
 
 // `hidden` (Map v5, note 73): the Map hides the dock at peek and mid and shows it at tall. It slides down and fades
 // (kept mounted, so it slides back instead of replaying its entrance); hidden = not focusable or tappable.
@@ -244,7 +247,7 @@ function DockRow({ collapsed, showCreate, hidden = false }) {
       aria-hidden={hidden || undefined}
       inert={hidden || collapsed || undefined}
       style={{
-        position: 'absolute', left: '50%', bottom: BAR_BOTTOM_OFFSET,
+        position: 'absolute', left: '50%', bottom: `calc(${BAR_BOTTOM_OFFSET}px + env(safe-area-inset-bottom, 0px))`,
         width: `calc(100% - ${DOCK_MARGIN * 2}px)`,
         maxWidth: DOCK_MAX_WIDTH + (showCreate ? DOCK_GAP + CREATE_SIZE : 0),
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: DOCK_GAP,

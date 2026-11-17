@@ -147,7 +147,7 @@ function LegacyDockCreateButton() {
           onPointerUp={onTrayPointerUp}
           onPointerCancel={onTrayPointerUp}
           style={{
-            position: 'fixed', left: '50%', bottom: BAR_HEIGHT + BAR_BOTTOM_OFFSET + 14,
+            position: 'fixed', left: '50%', bottom: `calc(${BAR_HEIGHT + BAR_BOTTOM_OFFSET + 14}px + env(safe-area-inset-bottom, 0px))`,
             transform: `translate(-50%, ${dragY}px)`,
             width: `calc(100% - ${DOCK_MARGIN * 2}px)`, maxWidth: 340,
             background: paper, borderRadius: 20, boxShadow: '0 12px 32px rgba(27,25,22,0.24)',
