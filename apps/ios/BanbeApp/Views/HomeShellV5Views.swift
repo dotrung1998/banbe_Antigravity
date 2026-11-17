@@ -2,9 +2,9 @@ import SwiftUI
 import UIKit
 
 // Home from the v5 prototype (note 80), shown with the Simple Shell on Going out. Web twin:
-// src/components/home/HomeShellV5.jsx. One full-bleed dark hero holds the header (wordmark + date kicker, avatar), the
-// search field with the area as a chip inside it, the tabs (For You | Tonight | Weekend, + Hosting when signed in) and
-// the snap card rail; below it come Browse (types with counts + Find a type) and By type (one photo row per type).
+// src/components/home/HomeShellV5.jsx. A pinned paper app bar (wordmark, the area chip as its middle, search / Map /
+// account, and the tabs as its second row) sits above one dark photo hero that holds the date kicker and the snap card
+// rail; below it come Browse (types with counts + Find a type) and By type (one photo row per type).
 // Pure views over lists HomeView already builds: no fetching and no filters of its own.
 
 /// The goer tabs of the hero. The Hosting tab is separate (`HomeHeroSection.hosting`): it is the host view of `app.homeView`.
@@ -16,7 +16,6 @@ enum HomeHeroTab: String, CaseIterable {
 
 private enum HeroColor {
     static let night = Color(hex: 0x16140F)
-    static let onDark = Color.white.opacity(0.58)
     static let badgeFill = Color(hex: 0xF7F4EC).opacity(0.85)
     static let badgeInk = Color(hex: 0x1B1916)
 }
@@ -29,190 +28,88 @@ private struct HeroFirstCardTourTarget: ViewModifier {
     }
 }
 
-/// The pinned header's two scroll-linked values: the night wash level (0...0.96, 1/12 steps over 40 pt) and the
-/// header morph progress (0...1, 1/20 steps over 96 pt, the web's `--hp`). The scroll callback feeds them every frame
-/// but they only publish when a step changes, so the header morphs without a per-frame re-render of the whole app.
-final class HomeHeaderFade: ObservableObject {
-    static let shared = HomeHeaderFade()
-    @Published private(set) var level: Double = 0
-    /// Morph progress (0 = wordmark + date + full search row; 1 = one floating bar). Quantised to 1/20 steps over the
-    /// first 96 pt, the same distance as the web's scroll-linked `--hp`, so both apps compact at the same rhythm.
-    @Published private(set) var progress: Double = 0
-    func update(offsetY: CGFloat) {
-        let step = (min(1, max(0, Double(offsetY) / 40)) * 12).rounded() / 12
-        if step != level { level = step }
-        let p = (min(1, max(0, Double(offsetY) / 96)) * 20).rounded() / 20
-        if p != progress { progress = p }
-    }
-}
-
-private struct HomeHeaderNightWash: View {
-    @ObservedObject var fade: HomeHeaderFade
-    /// The wash hands over to the compact bar, and only once the bar has begun to condense (the last 45 % of the
-    /// morph): until then the wordmark is still over the photo and needs the night behind it.
-    private var rise: Double { min(1, max(0, (fade.progress - 0.55) / 0.45)) }
-    var body: some View {
-        HeroColor.night
-            .opacity(fade.level * 0.96 * (1 - rise))
-            .padding(.top, -300)
-            .allowsHitTesting(false)
-    }
-}
-
-/// The condensed header: the app's own Liquid-Glass nav (web: `.bb-home-head__surface`, the same material as the v2.3
-/// Event Detail nav and bar). Full width, 64 pt tall, a bottom hairline and a soft shadow, so the feed slides under a
-/// real material instead of a dark slab; `.bar` follows the theme and Reduce Transparency by itself.
-private struct HomeHeaderNavBar: View {
-    let progress: Double
-    let divider: Color
-    var body: some View {
-        let u = CGFloat(min(1, max(0, (progress - 0.55) / 0.45)))
-        Rectangle()
-            .fill(.bar)
-            .overlay(alignment: .bottom) { Rectangle().fill(divider).frame(height: 1) }
-            .frame(height: 64)
-            .shadow(color: Color.black.opacity(0.10), radius: 14, y: 8)
-            .opacity(u)
-            .offset(y: (1 - u) * -12)
-            .allowsHitTesting(false)
-    }
-}
-
-/// Home's header from the wordmark down to the search bar, pinned above the scrolling feed (Simple Shell). The night
-/// backdrop fades in as the feed scrolls under it, so at the top the hero photo shows through and nothing seams.
+/// Home's app bar (owner 2026-11-22): ONE paper band, two rows, the same shape at rest and scrolled. It is pinned at the
+/// top of the feed and keeps its own room in the hero, so nothing slides under it at rest and the tabs can never be cut
+/// by it — the complaint about the floating band. Web twin: the `.bb-home-head*` block in src/index.css.
 struct HomeHeroPinnedHeader: View {
     @EnvironmentObject private var app: AppState
-    @ObservedObject private var fade = HomeHeaderFade.shared
+    /// The goer tab; Hosting is the other Home view (`hosting` below), selected the same way it is in the hero.
+    @Binding var tab: HomeHeroTab
     let onSearchLocations: () -> Void
     let onAvatar: () -> Void
     @Binding var height: CGFloat
 
-    /// The header keeps one layout height (the pinned room the hero leaves above its tabs). Everything inside morphs;
-    /// nothing above or below it moves while scrolling.
-    static let fallbackHeight: CGFloat = 152
+    /// The band's own height: 58 pt of controls + 44 pt of tabs. Everything inside is static — no morph, no ramp.
+    static let fallbackHeight: CGFloat = 102
 
     /// The wordmark artwork's own aspect (1206 × 544 px). Its box carries a transparent margin, so the drawn mark is
-    /// narrower than the box: the search field keeps its gap from the drawn edge, not from the box's.
+    /// narrower than the box.
     private static let wordmarkAspect: CGFloat = 1206.0 / 544.0
 
-    /// The morph's ramps, value-for-value the web's `--hs` / `--hx` / `--hu` / `--hb` (src/index.css .bb-home-head):
-    /// the brand settles, the field narrows to the room the nav bar gives it, then the bar condenses and the field
-    /// rises into it. `swap` is the wordmark's white → logo-ink change as the paper nav takes over.
-    private var shrink: CGFloat { CGFloat(min(1, max(0, fade.progress / 0.5))) }
-    private var slide: CGFloat { CGFloat(min(1, max(0, (fade.progress - 0.35) / 0.25))) }
-    private var rise: CGFloat { CGFloat(min(1, max(0, (fade.progress - 0.55) / 0.45))) }
-    private var swap: CGFloat { CGFloat(min(1, max(0, (rise - 0.55) / 0.35))) }
-
-    private var dateLabel: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: app.isEN ? "en_GB" : "vi_VN")
-        f.dateFormat = "EEEE d MMMM"
-        return f.string(from: Date())
-    }
+    /// True while Home shows the Hosting view: the same band, with the Hosting tab selected instead of a goer tab.
+    private var hosting: Bool { app.simpleShellEnabled && app.effectiveHomeView == .host }
 
     var body: some View {
-        GeometryReader { geo in
-            let w = geo.size.width
-            // The web's numbers: a 64 pt nav bar, the field starting 10 pt past the wordmark's drawn edge (20 + 44) and
-            // ending 64 pt in from the right (avatar at 20, 34 wide, 10 more of air).
-            let left = 20 + 54 * slide
-            let right = 20 + 44 * slide
-            ZStack(alignment: .topLeading) {
-                HomeHeaderNavBar(progress: fade.progress, divider: app.palette.divider)
-                brand
-                    .offset(x: 20, y: 16 + 6 * shrink)
-                avatarButton(size: 40 - 6 * shrink)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                    .padding(.trailing, 20)
-                    .offset(y: 16 - shrink)
-                searchRow(tight: slide > 0.6)
-                    .frame(width: max(160, w - left - right), height: 52 - 8 * rise)
-                    .offset(x: left, y: 92 - 82 * rise)
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                mark
+                Spacer(minLength: 6)
+                areaButton
+                Spacer(minLength: 6)
+                controls
             }
-            .frame(width: w, height: Self.fallbackHeight, alignment: .topLeading)
-            .background(GeometryReader { g in
-                Color.clear
-                    .onAppear { height = g.size.height }
-                    .onChange(of: g.size.height) { _, h in height = h }
-            })
+            .padding(.horizontal, 16)
+            .frame(height: 58)
+            .tourTarget("tour.home.search")
+            tabsRow
         }
-        .frame(height: Self.fallbackHeight)
-        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity)
+        // Paper from the very top: the band IS the screen's edge now, so the status-bar strip above it is paper too
+        // (it used to be the night hero showing through).
+        .background(app.palette.paper.ignoresSafeArea(edges: .top))
+        .overlay(alignment: .bottom) { Rectangle().fill(app.palette.divider).frame(height: 1) }
+        .background(GeometryReader { g in
+            Color.clear
+                .onAppear { height = g.size.height }
+                .onChange(of: g.size.height) { _, h in height = h }
+        })
         // Bottom edge of the pinned header: the tour keeps spotlighted sections below it.
         .tourTarget("tour.home.headerBottom")
-        .background { HomeHeaderNightWash(fade: fade) }
     }
 
-    private var brand: some View {
-        let hp = CGFloat(fade.progress)
-        return VStack(alignment: .leading, spacing: 7 * (1 - shrink)) {
-            mark
-            // The date is the header's kicker: small, tracked, quiet. It leaves as the nav bar condenses.
-            Text(dateLabel.uppercased())
-                .font(.app(size: 11.5, weight: .semibold))
-                .tracking(1.4)
-                .foregroundStyle(.white.opacity(0.64))
-                .lineLimit(1)
-                .opacity(max(0, 1 - 2.6 * hp))
-                .offset(y: -4 * hp)
-                .accessibilityIdentifier("home.date")
-        }
-    }
-
-    /// One mark, two inks: white over the hero, the theme's logo ink (dark mode's amber) once the paper nav has taken
-    /// over. Both copies are the same template artwork drawn at the mark's own size, so what the field steps around is
-    /// the mark itself.
+    /// The wordmark in the theme's logo ink. Its box is 30 pt tall (the artwork's own aspect), which draws a ~23 pt
+    /// mark — the size the design research's bars use, and small enough to leave the area chip the band's middle.
     @ViewBuilder private var mark: some View {
-        let h = 40 - 20 * shrink
         if let image = UIImage(named: BanbeLogo.Kind.wordmark.rawValue) {
-            ZStack(alignment: .leading) {
-                Image(uiImage: image)
-                    .renderingMode(.template).resizable().scaledToFit()
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
-                    .opacity(1 - swap)
-                Image(uiImage: image)
-                    .renderingMode(.template).resizable().scaledToFit()
-                    .foregroundStyle(app.palette.logo)
-                    .opacity(swap)
-            }
-            .frame(width: h * Self.wordmarkAspect, height: h, alignment: .leading)
-            .accessibilityLabel("banbe")
-            .accessibilityIdentifier("home.title")
+            Image(uiImage: image)
+                .renderingMode(.template).resizable().scaledToFit()
+                .foregroundStyle(app.palette.logo)
+                .frame(width: 30 * Self.wordmarkAspect, height: 30, alignment: .leading)
+                .accessibilityLabel("banbe")
+                .accessibilityIdentifier("home.title")
         } else {
-            Text("banbe").font(BanbeTheme.display(30 - 12 * shrink)).foregroundStyle(.white)
+            Text("banbe").font(BanbeTheme.display(24)).foregroundStyle(app.palette.logo)
                 .accessibilityIdentifier("home.title")
         }
     }
 
-    /// Initials in a clay disc (a person glyph for a guest), with a small gear badge. Opens Account.
+    /// Initials in a clay disc (a person glyph for a guest). Opens Account.
     private func avatarButton(size: CGFloat) -> some View {
         SwipeSafeButton {
             Haptics.light()
             onAvatar()
         } label: {
-            ZStack(alignment: .bottomTrailing) {
-                Group {
-                    if app.isSignedIn {
-                        Text(BottomTabBar.initials(app.displayName)).font(.app(size: size * 0.33, weight: .bold))
-                    } else {
-                        Image(systemName: "person").font(.app(size: size * 0.38, weight: .regular))
-                    }
+            Group {
+                if app.isSignedIn {
+                    Text(BottomTabBar.initials(app.displayName)).font(.app(size: size * 0.33, weight: .bold))
+                } else {
+                    Image(systemName: "person").font(.app(size: size * 0.4, weight: .regular))
                 }
-                .foregroundStyle(.white)
-                .frame(width: size, height: size)
-                .background(app.palette.clay, in: Circle())
-                .overlay(Circle().strokeBorder(Color.white.opacity(0.92), lineWidth: 1.5))
-                .shadow(color: Color.black.opacity(0.22), radius: 4, y: 2)
-                Image(systemName: "gearshape.fill")
-                    .font(.app(size: size * 0.21, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: size * 0.42, height: size * 0.42)
-                    .background(HeroColor.night, in: Circle())
-                    .overlay(Circle().strokeBorder(Color.white.opacity(0.5), lineWidth: 1))
-                    .offset(x: 1, y: 1)
             }
+            .foregroundStyle(.white)
             .frame(width: size, height: size)
+            .background(app.palette.clay, in: Circle())
+            .overlay(Circle().strokeBorder(Color.white.opacity(0.9), lineWidth: 1.5))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -220,85 +117,150 @@ struct HomeHeroPinnedHeader: View {
         .accessibilityIdentifier("home.avatarButton")
     }
 
-    // MARK: search
+    // MARK: area / controls
 
-    /// One search field in both states (web: `.bb-home-head__searchrow`). At rest it is a paper card floating on the
-    /// hero, with the full placeholder and the area as a chip inside it; condensing, the card layer goes and the field
-    /// reads as an inset capsule on the nav bar, so the bar's material shows through. The area is never a second half
-    /// of the field — one shape to look at, two things to use.
-    private func searchRow(tight: Bool) -> some View {
+    /// The area chip is the band's middle (owner 2026-11-22): one quiet capsule between the brand and the three
+    /// controls, its label truncating rather than pushing either side.
+    private var areaButton: some View {
         let place = app.area == LocationHierarchy.allID ? nil : app.currentAreaLabel
         let areaText = place ?? app.T("Mọi nơi", "Everywhere")
-        let ink = app.palette.ink
-        return HStack(spacing: 8) {
-            SwipeSafeButton {
+        return Menu {
+            AreaMenuOptions { onSearchLocations() }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "mappin").font(.app(size: 12, weight: .medium)).opacity(0.7)
+                Text(areaText).font(.app(size: 13, weight: .semibold)).lineLimit(1).truncationMode(.tail)
+                    .frame(maxWidth: 150, alignment: .leading)
+                    .accessibilityIdentifier("header.area.label")
+                Text("▾").font(.app(size: 9)).opacity(0.45)
+            }
+            .foregroundStyle(place == nil ? app.palette.ink3 : app.palette.ink)
+            .padding(.horizontal, 12)
+            .frame(height: 32)
+            .background(app.palette.ink.opacity(0.05), in: Capsule())
+            .overlay(Capsule().strokeBorder(app.palette.divider, lineWidth: 1))
+            .contentShape(Capsule())
+        }
+        .accessibilityLabel(app.T("Khu vực: \(areaText). Đổi khu vực", "Area: \(areaText). Change area"))
+        .accessibilityIdentifier("header.area")
+    }
+
+    /// Search, Map, account: three equal 40 pt circles — the cluster the owner asked for, with the area between the
+    /// brand and it instead of inside a field.
+    private var controls: some View {
+        HStack(spacing: 8) {
+            roundButton(system: "magnifyingglass", label: app.T("Tìm sự kiện", "Search events"), id: "home.searchBar",
+                        accent: true, measureFrame: true) {
                 Haptics.light()
                 app.openSearch(from: app.homeSearchBarFrame)
-            } label: {
-                HStack(spacing: 10) {
-                    // The field's one warm accent (web: --bb-clay on the magnifier only).
-                    Image(systemName: "magnifyingglass")
-                        .font(.app(size: 16, weight: .semibold))
-                        .foregroundStyle(app.palette.clay)
-                    // The field says what it searches for; the area is a chip inside it, so it is not repeated here.
-                    if !tight {
-                        Text(app.T("Tìm sự kiện, host, khu vực", "Search events, hosts, areas"))
-                            .font(.app(size: 14.5)).lineLimit(1)
-                            .foregroundStyle(app.palette.ink3)
-                            .opacity(max(0, 1 - 1.7 * Double(slide)))
-                    }
-                    Spacer(minLength: 0)
+            }
+            roundButton(system: "map", label: app.T("Bản đồ", "Map"), id: "home.mapButton") {
+                Haptics.light()
+                app.goMapExploreFromHome()
+            }
+            avatarButton(size: 40)
+        }
+    }
+
+    private func roundButton(system: String, label: String, id: String, accent: Bool = false,
+                             measureFrame: Bool = false, action: @escaping () -> Void) -> some View {
+        let button = SwipeSafeButton(action: action) {
+            Image(systemName: system)
+                .font(.app(size: 16, weight: .medium))
+                .foregroundStyle(accent ? app.palette.clay : app.palette.ink)
+                .frame(width: 40, height: 40)
+                .background(app.palette.ink.opacity(0.05), in: Circle())
+                .overlay(Circle().strokeBorder(app.palette.divider, lineWidth: 1))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityIdentifier(id)
+        // Where the search circle is on screen, so Search can start its own field right here (the glide entrance).
+        if measureFrame {
+            return button.background(GeometryReader { g in
+                Color.clear
+                    .onAppear { app.homeSearchBarFrame = g.frame(in: .global) }
+                    .onChange(of: g.frame(in: .global)) { _, f in app.homeSearchBarFrame = f }
+            })
+        }
+        return button
+    }
+
+    // MARK: tabs
+
+    /// The band's second row (owner 2026-11-22): the goer tabs and Hosting, pinned with the bar. Because they live in
+    /// the band, a tab can never be half-cut by it — the flaw in the screenshot that started this pass. This is the
+    /// web's `home-hero-tabs` / `home-hero-tab-*`.
+    private var tabsRow: some View {
+        ViewThatFits(in: .horizontal) {
+            tabsStack(spacing: 18).padding(.horizontal, 16)
+            ScrollView(.horizontal, showsIndicators: false) {
+                tabsStack(spacing: 18).padding(.horizontal, 16)
+            }
+        }
+        .frame(height: 44)
+        .rootSwipeExclusion("homeHeroTabs")
+        .accessibilityElement(children: .contain)
+        .tourTarget("tour.home.tonight")
+    }
+
+    private func tabsStack(spacing: CGFloat) -> some View {
+        HStack(spacing: spacing) {
+            ForEach(HomeHeroTab.allCases, id: \.self) { t in
+                tabButton(title: app.T(t.vi, t.en), selected: !hosting && tab == t, id: "home.hero.tab.\(t.rawValue)") {
+                    selectGoerTab(t)
                 }
-                .padding(.leading, 18 - 4 * slide).padding(.trailing, 4)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            if app.isSignedIn {
+                tabButton(title: app.T("Tổ chức", "Hosting"), selected: hosting, id: "home.hero.tab.hosting") { openHosting() }
+                    .tourTarget("tour.home.hosting")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// A goer tab: from Hosting it also returns Home to the Going out view (tab and mode stay in sync).
+    private func selectGoerTab(_ t: HomeHeroTab) {
+        if hosting {
+            Haptics.selection()
+            tab = t
+            app.homeView = .goer
+            HomeMode.stored = app.homeView
+            app.resetHomeScrollToTop()
+        } else if tab != t {
+            Haptics.selection()
+            tab = t
+        }
+    }
+
+    private func tabButton(title: String, selected: Bool, id: String, action: @escaping () -> Void) -> some View {
+        SwipeSafeButton(action: action) {
+            Text(title)
+                .font(.app(size: 15.5, weight: selected ? .semibold : .regular))
+                .foregroundStyle(selected ? app.palette.ink : app.palette.ink3)
+                .lineLimit(1).fixedSize()
+                .frame(minHeight: 44)
+                .overlay(alignment: .bottom) {
+                    Rectangle().fill(selected ? app.palette.ink : Color.clear).frame(height: 2)
+                }
                 .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(app.T("Tìm sự kiện, host, khu vực", "Search events, hosts, areas"))
-            .accessibilityAddTraits(.isButton)
-            .accessibilityIdentifier("home.searchBar")
-            Menu {
-                AreaMenuOptions { onSearchLocations() }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "mappin").font(.app(size: 13, weight: .medium)).opacity(0.8)
-                    // The chosen area next to the pin (same short label as the Map and the filter summary).
-                    Text(areaText).font(.app(size: 13, weight: .semibold)).lineLimit(1).truncationMode(.tail)
-                        .frame(maxWidth: tight ? 150 : 96, alignment: .leading)
-                        .accessibilityIdentifier("header.area.label")
-                    Text("▾").font(.app(size: 9)).opacity(0.5)
-                }
-                .foregroundStyle(ink)
-                .padding(.horizontal, 12)
-                .frame(height: 34)
-                .background(ink.opacity(0.07), in: Capsule())
-                .contentShape(Capsule())
-            }
-            .accessibilityLabel(app.T("Khu vực: \(areaText). Đổi khu vực", "Area: \(areaText). Change area"))
-            .accessibilityIdentifier("header.area")
-            .padding(.trailing, 5)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background {
-            ZStack {
-                Capsule().fill(ink.opacity(0.06))
-                Capsule()
-                    .fill(app.palette.paper)
-                    .shadow(color: Color.black.opacity(0.24), radius: 14, y: 8)
-                    .opacity(1 - rise)
-            }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
+        .accessibilityIdentifier(id)
+    }
+
+    private func openHosting() {
+        if HomeMode.hostSegmentLocked(organizerMode: app.isSignedIn && app.organizerMode) {
+            Haptics.light()
+            app.startHosting(land: .home)
+            return
         }
-        .overlay(Capsule().strokeBorder(ink.opacity(0.07), lineWidth: 1))
-        // The tour's spotlight is the whole bar, area pin included (web: home-search-row), not just the search half.
-        .tourTarget("tour.home.search")
-        .opacity(app.searchOverlayOpen ? 0 : 1)
-        // Where the bar is on screen, so Search can start its own field right here (the glide-up entrance).
-        .background(GeometryReader { g in
-            Color.clear
-                .onAppear { app.homeSearchBarFrame = g.frame(in: .global) }
-                .onChange(of: g.frame(in: .global)) { _, f in app.homeSearchBarFrame = f }
-        })
+        Haptics.selection()
+        app.homeView = .host
+        HomeMode.stored = app.homeView
+        app.resetHomeScrollToTop()
     }
 }
 
@@ -334,9 +296,10 @@ struct HomeHeroSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // The header (wordmark, Map, avatar, search) is pinned by HomeView (`HomeHeroPinnedHeader`); this keeps its room.
+            // The band (brand, area, controls and the tabs) is pinned by HomeView (`HomeHeroPinnedHeader`); this keeps
+            // its room, so the rail starts exactly under the tabs.
             Color.clear.frame(height: headerHeight)
-            tabsRow
+            dateKicker
             if hosting {
                 Color.clear.frame(height: 16)
             } else {
@@ -345,11 +308,24 @@ struct HomeHeroSection: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        // The photo and night wash reach past the top edge (status bar), so the hero is full-bleed.
+        // The photo reaches past the hero's own top edge, so nothing seams under the paper band.
         .background { backdrop.padding(.top, -240) }
         .foregroundStyle(.white)
         .onChange(of: tab) { _, _ in current = list.first?.key }
         .accessibilityIdentifier("home.hero")
+    }
+
+    /// The date is the hero's kicker now (the band keeps one row): small, tracked, quiet, over the photo.
+    private var dateKicker: some View {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: app.isEN ? "en_GB" : "vi_VN")
+        f.dateFormat = "EEEE d MMMM"
+        return Text(f.string(from: Date()).uppercased())
+            .font(.app(size: 11, weight: .semibold))
+            .tracking(1.4)
+            .foregroundStyle(.white.opacity(0.58))
+            .padding(.top, 18)
+            .accessibilityIdentifier("home.date")
     }
 
     // MARK: backdrop
@@ -371,82 +347,6 @@ struct HomeHeroSection: View {
         }
         .clipped()
         .accessibilityHidden(true)
-    }
-
-    // MARK: tabs
-
-    private var tabsRow: some View {
-        // The four tabs fit without scrolling; the scrolling copy is only the fallback at very large text sizes.
-        ViewThatFits(in: .horizontal) {
-            tabsStack(spacing: 18).padding(.horizontal, 20)
-            ScrollView(.horizontal, showsIndicators: false) {
-                tabsStack(spacing: 18).padding(.horizontal, 20)
-            }
-        }
-        .padding(.top, 18).padding(.bottom, 4)
-        .rootSwipeExclusion("homeHeroTabs")
-        .accessibilityElement(children: .contain)
-        .tourTarget("tour.home.tonight")
-    }
-
-    private func tabsStack(spacing: CGFloat) -> some View {
-        HStack(spacing: spacing) {
-            ForEach(HomeHeroTab.allCases, id: \.self) { t in
-                tabButton(title: app.T(t.vi, t.en), selected: !hosting && tab == t, id: "home.hero.tab.\(t.rawValue)") {
-                    selectGoerTab(t)
-                }
-            }
-            if app.isSignedIn {
-                // Hosting is the other Home view: with organizer mode off it opens the Start hosting invitation.
-                tabButton(title: app.T("Tổ chức", "Hosting"), selected: hosting, id: "home.hero.tab.hosting") { openHosting() }
-                    .tourTarget("tour.home.hosting")
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// A goer tab: from Hosting it also returns Home to the Going out view (tab and mode stay in sync).
-    private func selectGoerTab(_ t: HomeHeroTab) {
-        if hosting {
-            Haptics.selection()
-            tab = t
-            app.homeView = .goer
-            HomeMode.stored = app.homeView
-            app.resetHomeScrollToTop()
-        } else if tab != t {
-            Haptics.selection()
-            tab = t
-        }
-    }
-
-    private func tabButton(title: String, selected: Bool, id: String, action: @escaping () -> Void) -> some View {
-        SwipeSafeButton(action: action) {
-            Text(title)
-                .font(.app(size: 17, weight: selected ? .medium : .light))
-                .foregroundStyle(selected ? Color.white : HeroColor.onDark)
-                .lineLimit(1).fixedSize()
-                .padding(.vertical, 6)
-                .overlay(alignment: .bottom) {
-                    Rectangle().fill(selected ? Color.white : Color.clear).frame(height: 2)
-                }
-                .frame(minHeight: 44)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
-        .accessibilityIdentifier(id)
-    }
-
-    private func openHosting() {
-        if HomeMode.hostSegmentLocked(organizerMode: app.isSignedIn && app.organizerMode) {
-            Haptics.light()
-            app.startHosting(land: .home)
-            return
-        }
-        Haptics.selection()
-        app.homeView = .host
-        HomeMode.stored = app.homeView
-        app.resetHomeScrollToTop()
     }
 
     // MARK: rail

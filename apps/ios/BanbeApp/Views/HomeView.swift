@@ -127,7 +127,7 @@ struct HomeView: View {
             activeHeader.revealRegion(0)
             // L5 weekly digest: its notification asks for the "This weekend" rail (AppState.goHomeThisWeekend).
             ScrollViewReader { weekendProxy in
-            ScreenScaffold(tracksBottomBarScroll: true, restoreOffsetY: app.homeScrollOffsetY, onScrollOffset: { app.homeScrollOffsetY = $0; HomeHeaderFade.shared.update(offsetY: $0) }, scrollToTopToken: app.homeScrollToTopToken, scrollRequest: app.homeTourScrollRequest, pullAnchorTop: app.simpleShellEnabled ? pinnedHeaderHeight : 0, onRefresh: {
+            ScreenScaffold(tracksBottomBarScroll: true, restoreOffsetY: app.homeScrollOffsetY, onScrollOffset: { app.homeScrollOffsetY = $0 }, scrollToTopToken: app.homeScrollToTopToken, scrollRequest: app.homeTourScrollRequest, pullAnchorTop: app.simpleShellEnabled ? pinnedHeaderHeight : 0, onRefresh: {
                 await app.loadHomeLiveEvents()
                 await app.loadWeekendEvents()
                 await app.loadDiscoveryEvents()
@@ -241,7 +241,8 @@ struct HomeView: View {
         // The header from the wordmark to the search bar stays pinned while the feed scrolls under it.
         .overlay(alignment: .top) {
             if app.simpleShellEnabled {
-                HomeHeroPinnedHeader(onSearchLocations: { areaSearchOpen = true },
+                HomeHeroPinnedHeader(tab: $heroTab,
+                                     onSearchLocations: { areaSearchOpen = true },
                                      onAvatar: { quickSheetOpen = true },
                                      height: $pinnedHeaderHeight)
                     .revealRegion(0)

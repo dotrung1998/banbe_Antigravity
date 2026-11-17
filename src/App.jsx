@@ -409,7 +409,6 @@ function Shell() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState('');
   // Keep the indicator mounted briefly after the pull ends so it can fade/scale out instead of vanishing.
-  const heroHome = state.screen === 'home' && flagOn(state.featureFlags, 'simple_shell');
   const pullActive = pullDist > 0 || refreshing || !!refreshError;
   const [indicatorMounted, setIndicatorMounted] = useState(false);
   const [indicatorScreen, setIndicatorScreen] = useState(state.screen);
@@ -789,16 +788,16 @@ function Shell() {
     });
   };
 
-  // Full-bleed screens (2026-11-15): Home's dark hero (simple shell), Event Detail and Map draw their own top edge
-  // and keep their content under the status-bar area; every other screen starts below that inset — see the scroll
-  // viewport's own comment for why (the system's status bar and its blur are drawn over the page since iOS 26.1).
-  const fullBleed = heroHome || state.screen === 'event' || state.screen === 'mapExplore';
+  // Full-bleed screens (2026-11-15; Home left this list 2026-11-22): Event Detail and Map draw their own top edge and
+  // keep their content under the status-bar area. Home used to sit here too, with its dark hero behind the clock; its
+  // band is a paper app bar now (the tab strip lives inside it), so Home is an ordinary screen that begins below the
+  // strip — the same edge as Browse, Account and the rest, and the reason nothing can clip the top row of its band.
+  const fullBleed = state.screen === 'event' || state.screen === 'mapExplore';
 
-  // iOS style top band (note 90): the strip above the page takes the colour of the screen's own top edge — the paper of
-  // an ordinary screen, the night of a full-bleed one or a photo — instead of always being black. The full-screen dark
-  // viewers count as that edge too (a story, a photo, the post-sign-up intro), so a pale strip never sits above them.
-  // HomeShellV5 narrows it further while Home is scrolled (paper once the hero is gone); this covers every other
-  // screen, and runs after its child effect so the incoming screen's own edge wins.
+  // iOS style top band (note 90): the strip above the page takes the colour of the screen's own top edge — paper for
+  // every ordinary screen (Home included since 2026-11-22: its band is a paper app bar now), the night of a full-bleed
+  // one or a photo. The full-screen dark viewers count as that edge too (a story, a photo, the post-sign-up intro), so
+  // a pale strip never sits above them.
   const darkTop = fullBleed || !!state.photoViewer || !!state.chatPhotoViewer || !!state.storyViewer || eventOnboardingActive;
   useEffect(() => { setThemeColor(darkTop); }, [darkTop, state.screen, resolvedTheme]);
 

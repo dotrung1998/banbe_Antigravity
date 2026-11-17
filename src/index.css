@@ -193,20 +193,23 @@ html, body {
    bar follow the page. So this element is that top edge: full width, fixed at top 0. Without a real height there (the
    inset is 0 once the system sits above the page) the bar fell back to the paper canvas and the blurred white band the
    owner reported on 2026-11-15. */
+/* The strip's height lives in ONE variable (2026-11-22): `body::before` paints it and the scroll viewport in App.jsx
+   offsets by the same value, so a screen's sticky top band can never end up under the system's bar. On a coarse pointer
+   the strip is never 0 (iOS 26.1+ samples it for the status bar) and 12 px is the tested minimum, which is also what
+   used to clip the first row of a web screen's band by a few pixels. */
+:root { --bb-strip-h: var(--bb-safe-top, env(safe-area-inset-top, 0px)); }
+@media (pointer: coarse) {
+  :root { --bb-strip-h: max(var(--bb-safe-top, env(safe-area-inset-top, 0px)), 12px); }
+}
+
 body::before {
   content: '';
   position: fixed;
   top: 0; left: 0; right: 0;
-  height: var(--bb-safe-top, env(safe-area-inset-top, 0px));
+  height: var(--bb-strip-h);
   background: var(--bb-band, #f7f4ec);
   z-index: 2147483000;
   pointer-events: none;
-}
-
-/* Phones/tablets (the desktop phone frame and Safari tabs keep the rules above): never let the strip collapse to 0,
-   which is what iOS 26.1+ samples for the status bar. 12 px is the tested minimum for a solid bar without the blur. */
-@media (pointer: coarse) {
-  body::before { height: max(var(--bb-safe-top, env(safe-area-inset-top, 0px)), 12px); }
 }
 
 /* The rest of the page is painted by .bb-stage/#root over this; body is what the system samples as the page's own
@@ -884,171 +887,103 @@ input::placeholder, textarea::placeholder {
 @keyframes bbTourUp { from { transform: translateY(100%); } to { transform: none; } }
 @keyframes bbTourRing { from { transform: scale(1); opacity: .9; } to { transform: scale(1.12); opacity: 0; } }
 
-/* ── Home header, compact-on-scroll (owner 2026-11-17; redesign 2026-11-21) ──────────────────────────────────────────
-   One sticky layer of fixed height (so the hero never shifts) whose contents morph on a single scroll-linked variable,
-   --hp (0 → 1 over the first 96 px, written by HomeShellV5 with no React render per frame).
-   At rest it is the hero's own overlay: the wordmark with the date as a tracked kicker, the avatar, and one paper search
-   card with the area folded into it as a chip (no divider, no second half).
-   Condensed it is the app's Liquid-Glass nav bar (the v2.3 Event Detail material), holding the small logo, the same
-   field as an inset capsule, and the avatar. The Map shortcut left the header: Map is a dock tab (owner 2026-11-21).
-   Ramps: --hs (0 → .5) brand settles · --hx (.35 → .6) the field narrows to the bar's room · --hu (.55 → 1) the bar
-   condenses and the field rises into it · --hb the wordmark's white → logo-ink swap as the paper nav takes over.
-   The iOS twin is HomeHeroPinnedHeader in HomeShellV5Views.swift. */
+/* ── Home header: one paper app bar, two rows (owner 2026-11-22) ──────────────────────────────────────────────────────
+   Home's band is now ONE shape in both states, the pattern the design research found in Airbnb and Apple: a single bar,
+   one row of controls, the tabs as its second row, one hairline under it and no shadow until the feed slides beneath.
+   Row 1: the wordmark, the area chip as the band's middle, then three 38 px circles — search, Map, account. Row 2:
+   For You · Tonight · Weekend · Hosting.
+   It is the first element of Home's scroller (sticky, in flow), so the tabs can never be half-cut by a bar above them,
+   which is what the previous floating band did. Search is a circle now; tapping it still opens the app's one search
+   overlay, and the persistent bar glides out of the whole row (`home-search-row`). The Map shortcut is back beside it
+   (owner 2026-11-22): the three controls read as one cluster of equals.
+   iOS twin: HomeHeroPinnedHeader in apps/ios/BanbeApp/Views/HomeShellV5Views.swift. */
 @keyframes bb-home-head-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 
 .bb-home-head {
-  --hp: 0;
-  --hs: clamp(0, calc(var(--hp) / .5), 1);
-  --hx: clamp(0, calc((var(--hp) - .35) / .25), 1);
-  --hu: clamp(0, calc((var(--hp) - .55) / .45), 1);
-  --hb: clamp(0, calc((var(--hu) - .55) / .35), 1);
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  height: var(--bb-home-head-h, calc(152px + var(--bb-safe-top, env(safe-area-inset-top, 0px))));
-  color: #fff;
+  position: sticky; top: 0; z-index: 20;
+  background: var(--bb-bg);
+  border-bottom: 1px solid var(--bb-divider);
+  color: var(--bb-fg);
   pointer-events: none;
   isolation: isolate;
 }
-.bb-home-head__scrim {
-  position: absolute; left: 0; right: 0; top: 0;
-  height: calc(var(--bb-home-head-h) + 26px);
+/* Only once content has slid under it: a hair of a lift. The hairline already separates; a card shadow would not. */
+.bb-home-head[data-stuck="true"] { box-shadow: 0 6px 18px rgba(10,8,6,.05); }
+
+.bb-home-head__bar {
+  display: flex; align-items: center; gap: 10px;
+  height: 58px; padding: 0 16px; box-sizing: border-box;
   pointer-events: none;
-  /* The scrim hands over to the bar, not to the scroll: it only leaves once the bar has begun to condense. */
-  opacity: calc(1 - var(--hu));
-  background:
-    radial-gradient(130% 90% at 12% -10%, rgba(156,91,59,.30), rgba(156,91,59,0) 58%),
-    linear-gradient(180deg, rgba(20,17,13,.90) 0%, rgba(20,17,13,.66) 46%, rgba(20,17,13,.16) 80%, rgba(20,17,13,0) 100%);
+  animation: bb-home-head-in .4s cubic-bezier(.22,.61,.36,1) both;
 }
-.bb-home-head__surface {
-  /* The condensed header IS the app's own Liquid-Glass nav: the same recipe as the v2.3 Event Detail nav and bar
-     (src/components/event/v23Style.js) — the theme's paper at 84 % behind a heavy blur, one bottom hairline and a soft
-     shadow — so the feed slides under a real material instead of a dark slab. Reduce Transparency makes it opaque. */
-  position: absolute; left: 0; right: 0;
-  top: var(--bb-safe-top, 0px);
-  height: 64px; box-sizing: border-box;
-  pointer-events: none;
-  background: var(--bb-rt-bar, rgba(var(--bb-bg-rgb), .84));
-  -webkit-backdrop-filter: var(--bb-rt-blur, blur(30px) saturate(1.7));
-  backdrop-filter: var(--bb-rt-blur, blur(30px) saturate(1.7));
-  border-bottom: 1px solid var(--bb-divider);
-  box-shadow: 0 10px 30px rgba(10,8,6,.10);
-  opacity: var(--hu);
-  transform: translateY(calc((1 - var(--hu)) * -12px));
-}
-.bb-home-head__brand {
-  position: absolute; left: 20px;
-  top: calc(var(--bb-safe-top, 0px) + 16px + 6px * var(--hs));
-  pointer-events: none;
-  animation: bb-home-head-in .5s cubic-bezier(.22,.61,.36,1) both;
-}
-/* The artwork is 1206 × 544 with a transparent margin, so the box carries the artwork's own aspect: the drawn mark
-   fills 76 % of its width and 68 % of its height, and the box is what the field steps around. */
-.bb-home-head__mark {
-  display: block; position: relative;
-  height: calc(40px - 20px * var(--hs));
-  aspect-ratio: 1206 / 544;
-}
+.bb-home-head__bar > * { pointer-events: auto; }
+.bb-home-head__brand { flex: none; display: flex; align-items: center; }
+/* The artwork is 1206 × 544 with a transparent margin: a 30 px box draws a ~23 px mark. */
+.bb-home-head__mark { display: block; position: relative; height: 30px; aspect-ratio: 1206 / 544; }
 .bb-home-head__wordmark { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
-/* White over the night hero, then the theme's logo ink (dark mode's wordmark is its amber) once the paper nav has taken
-   over. The two copies cross-fade on --hb, which is the tail of the bar's own ramp, so the mark is never crisp white on
-   a paper bar. */
-.bb-home-head__wordmark--night { filter: invert(1) drop-shadow(0 2px 8px rgba(0,0,0,.35)); opacity: calc(1 - var(--hb)); }
-.bb-home-head__wordmark--day { opacity: var(--hb); }
-/* The web draws the artwork as-is (near-black ink), so on the dark theme's own bar it needs the same inversion it gets
-   over the hero — which also makes the swap invisible there, exactly like the solid hero. */
-[data-bb-theme="dark"] .bb-home-head__wordmark--day { filter: invert(1); }
-.bb-home-head__date {
-  margin-top: calc(7px * (1 - var(--hs)));
-  color: rgba(247,244,236,.64); font-size: 11.5px; font-weight: 600; line-height: 1.3; letter-spacing: .14em;
-  text-transform: uppercase; white-space: nowrap;
-  opacity: calc(1 - var(--hp) * 2.6);
-  transform: translateY(calc(var(--hp) * -4px));
+/* The artwork is near-black ink, so on the dark theme's paper it is inverted like every other mark. */
+[data-bb-theme="dark"] .bb-home-head__wordmark { filter: invert(1); }
+
+/* The area chip is the band's middle: one quiet capsule between the brand and the three controls. */
+.bb-home-head__area {
+  flex: 0 1 auto; min-width: 0; margin: 0 auto; max-width: 56%;
+  display: flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 12px; border-radius: 999px;
+  border: 1px solid var(--bb-divider);
+  background: rgba(var(--bb-fg-rgb), .05);
+  color: inherit; font-family: inherit; font-size: 13px; font-weight: 600;
+  cursor: pointer;
 }
-.bb-home-head__quick {
-  position: absolute; right: 20px;
-  /* Centred on the wordmark's own middle (36 at rest, 32 when compact = the nav bar's middle). */
-  top: calc(var(--bb-safe-top, 0px) + 16px - 1px * var(--hs));
-  display: flex; align-items: center;
-  pointer-events: none;
+.bb-home-head__area > svg { flex: none; width: 13px; height: 13px; opacity: .7; }
+
+.bb-home-head__quick { flex: none; display: flex; align-items: center; gap: 8px; }
+.bb-home-head__round {
+  flex: none; width: 40px; height: 40px; padding: 0;
+  display: grid; place-items: center; border-radius: 50%; cursor: pointer;
+  border: 1px solid var(--bb-divider);
+  background: rgba(var(--bb-fg-rgb), .05);
+  color: var(--bb-fg);
 }
-.bb-home-head__quick > * { pointer-events: auto; }
+.bb-home-head__round > svg { width: 18px; height: 18px; }
+/* The one warm accent in the band, as the magnifier was in the old field. */
+.bb-home-head__round--search > svg { color: var(--bb-clay, #9C5B3B); }
+
 .bb-home-head__avatar {
-  position: relative; flex: none;
-  width: calc(40px - 6px * var(--hs)); height: calc(40px - 6px * var(--hs));
-  border: none; border-radius: 50%; background: none; padding: 0; cursor: pointer;
+  position: relative; flex: none; width: 40px; height: 40px;
+  padding: 0; border: none; border-radius: 50%; background: none; cursor: pointer;
 }
 .bb-home-head__disc {
   display: grid; place-items: center; width: 100%; height: 100%; box-sizing: border-box;
   border-radius: 50%; background: var(--bb-clay, #9C5B3B); color: #fff;
-  font-size: calc(15px - 2px * var(--hs)); font-weight: 700; letter-spacing: .02em;
-  border: 1.5px solid rgba(255,255,255,.92); box-shadow: 0 2px 8px rgba(10,8,6,.24);
+  font-size: 13px; font-weight: 700; letter-spacing: .02em;
+  border: 1.5px solid rgba(255,255,255,.9);
 }
-.bb-home-head__gear {
-  position: absolute; right: -1px; bottom: -1px; width: calc(18px - 2px * var(--hs)); height: calc(18px - 2px * var(--hs)); box-sizing: border-box;
-  border-radius: 50%; background: #16140f; color: #fff;
-  display: grid; place-items: center; border: 1px solid rgba(255,255,255,.55);
-}
+.bb-home-head__area:focus-visible,
+.bb-home-head__round:focus-visible,
 .bb-home-head__avatar:focus-visible { outline: 2px solid var(--bb-clay, #9C5B3B); outline-offset: 3px; }
-.bb-home-head__searchrow {
-  position: absolute;
-  /* At rest the field is the whole second row: one paper card floating on the hero. It then narrows to the room the
-     nav bar leaves between the wordmark's drawn edge (20 + 44 + 10 = 74) and the avatar (64 in from the right), and
-     only after that does it rise into the bar. */
-  left: calc(20px + 54px * var(--hx));
-  right: calc(20px + 44px * var(--hx));
-  top: calc(var(--bb-safe-top, 0px) + 92px - 82px * var(--hu));
-  height: calc(52px - 8px * var(--hu));
-  display: flex; align-items: center; gap: 8px; box-sizing: border-box;
-  padding: 0 5px 0 0;
-  border-radius: 999px; color: var(--bb-fg);
-  background: rgba(var(--bb-fg-rgb), .06);
-  border: 1px solid rgba(var(--bb-fg-rgb), .07);
-  pointer-events: none;
-  animation: bb-home-head-in .5s cubic-bezier(.22,.61,.36,1) .06s both;
-}
-/* The card layer: the theme's own paper over the hero at rest, gone once the field sits inside the blurred bar — so the
-   bar's material reads through the field instead of a second, brighter surface on top of it. */
-.bb-home-head__searchrow::before {
-  content: ""; position: absolute; inset: -1px; border-radius: inherit; z-index: 0;
-  background: var(--bb-bg);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,var(--bb-pill-hi)), 0 12px 28px rgba(10,8,6,.24);
-  opacity: calc(1 - var(--hu));
+/* The tabs are the band's second row, pinned with it: a tab can never be half-cut by the bar above it. */
+.bb-home-head__tabs {
+  display: flex; align-items: stretch; gap: 18px;
+  height: 44px; padding: 0 16px;
+  overflow-x: auto; scrollbar-width: none;
   pointer-events: none;
 }
-.bb-home-head__searchrow > * { position: relative; z-index: 1; pointer-events: auto; }
-.bb-home-head__searchbtn {
-  flex: 1 1 auto; min-width: 0; height: 100%;
-  display: flex; align-items: center; gap: 10px;
-  padding: 0 4px 0 calc(18px - 4px * var(--hx));
-  border: none; background: none; color: inherit; font-family: inherit; font-size: 15px; cursor: text; text-align: left;
+.bb-home-head__tabs::-webkit-scrollbar { display: none; }
+.bb-home-head__tabs > * { pointer-events: auto; }
+.bb-home-head__tab {
+  flex: none; display: flex; align-items: center;
+  height: 44px; padding: 0 0 2px; box-sizing: border-box;
+  border: none; border-bottom: 2px solid transparent;
+  background: none; font-family: inherit; font-size: 15.5px; font-weight: 500;
+  color: var(--bb-fg-3); cursor: pointer; white-space: nowrap;
 }
-/* The magnifier is the field's one warm accent. */
-.bb-home-head__searchbtn > svg { flex: none; width: 17px; height: 17px; color: var(--bb-clay, #9C5B3B); }
-.bb-home-head__hint {
-  flex: 1 1 auto; min-width: 0; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  color: var(--bb-fg-3); font-weight: 500;
-  /* Collapses out of the flex line as the field narrows, so the room goes to the chosen area, not to an empty box. */
-  max-width: calc((1 - var(--hx)) * 100%);
-  opacity: calc(1 - var(--hx) * 1.7);
-}
-/* The area is a chip INSIDE the field: one shape to look at, two things to use (no divider, no second half). */
-.bb-home-head__areabtn {
-  flex: none; height: 34px; max-width: 52%;
-  display: flex; align-items: center; gap: 6px; padding: 0 12px;
-  color: inherit; font-family: inherit; font-weight: 600; font-size: 13px;
-  background: rgba(var(--bb-fg-rgb), .07);
-  border: none; border-radius: 999px; cursor: pointer;
-}
-.bb-home-head__areabtn > svg { flex: none; opacity: .8; }
+.bb-home-head__tab[aria-selected="true"] { color: var(--bb-fg); font-weight: 600; border-bottom-color: var(--bb-fg); }
+
 .bb-home-head__arealabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* "Everywhere" is a quiet label, not a second placeholder, so it never competes with the search words. */
-.bb-home-head__areafallback { display: inline; font-weight: 500; opacity: .7; }
-/* End of the morph: the placeholder is already invisible, so nothing visibly snaps when it leaves the line. */
-.bb-home-head[data-compact="1"] .bb-home-head__hint { display: none; }
+/* "Everywhere" is a quiet label, not a second placeholder. */
+.bb-home-head__areafallback { color: var(--bb-fg-3); font-weight: 500; }
 .bb-home-head__chev { flex: none; font-size: 9.5px; opacity: .5; }
 
-
 @media (prefers-reduced-motion: reduce) {
-  .bb-home-head__brand, .bb-home-head__searchrow { animation: none; }
+  .bb-home-head__bar { animation: none; }
 }

@@ -21,4 +21,7 @@ export const screenHeight = () => getFrameBox().height;
 // the window — a full-bleed screen's own top edge, the persistent search bar, a fixed overlay — has to add this inset
 // itself, exactly as the iOS twin does (`PersistentSearchBar.swift`'s `safeAreaInsets.top + 8`). Zero on desktop, in
 // the desktop phone frame and in Safari tabs.
-export const SAFE_TOP = 'var(--bb-safe-top, env(safe-area-inset-top, 0px))';
+// 2026-11-22: one variable owns the strip's height (`--bb-strip-h`, index.css), and the scroll viewport in App.jsx and
+// every sticky web top band offset by the same value. That is what stopped the strip from clipping the first row of a
+// web screen's band on phones whose env() inset is smaller than the strip's 12 px minimum.
+export const SAFE_TOP = 'var(--bb-strip-h, env(safe-area-inset-top, 0px))';

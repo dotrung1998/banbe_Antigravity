@@ -146,8 +146,11 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
     <div data-testid="browse-screen" data-scope={scope} data-type={effType}
       style={{ minHeight: '100%', background: 'var(--bb-bg)', color: 'var(--bb-fg)', animation: enter }}>
       <style>{'@keyframes bbV23PushIn { from { transform: translateX(28%); opacity: .4; } to { transform: none; opacity: 1; } }'}</style>
-      <header data-testid="browse-nav" style={{ position: 'sticky', top: 0, zIndex: 5, background: 'var(--bb-bg)', borderBottom: '1px solid var(--bb-rule)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px' }}>
+      {/* The web top band (2026-11-22): the same recipe as Home's new app bar — one opaque paper band, a fixed row of
+          controls, the tabs as its second row and a single hairline under both, so the band never paints over what is
+          below it: it owns its full height in the flow (58 + 44) and the content clears it with one scroll margin. */}
+      <header data-testid="browse-nav" style={{ position: 'sticky', top: 0, zIndex: 30, background: 'var(--bb-bg)', borderBottom: '1px solid var(--bb-divider)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', minHeight: 58, boxSizing: 'border-box' }}>
           <button type="button" onClick={onBack} aria-label={backLabel} data-testid="browse-back" style={navBtn}><Icon d={BACK} /></button>
           {finding ? (
             <form role="search" onSubmit={(e) => { e.preventDefault(); inputRef.current?.blur(); setFinding(false); }} style={{ flex: 1, minWidth: 0 }}>
@@ -176,14 +179,14 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
             switching tab — or opening the whole catalogue — never means going back to Home first. Browse by type is a
             tab like the others: it opens the every-event list in place and remembers this tab, so Back returns here. */}
         <div role="tablist" aria-label={T('Trang chủ', 'Home')} data-hscroll data-testid="browse-scope-tabs"
-          style={{ display: 'flex', gap: 16, overflowX: 'auto', padding: '0 20px', scrollbarWidth: 'none' }}>
+          style={{ display: 'flex', gap: 18, overflowX: 'auto', padding: '0 20px', scrollbarWidth: 'none' }}>
           {SCOPES.map(k => ({ key: k, ...TAB_LABEL[k] })).concat(TYPES_TAB).map(t => {
             const on = t.key === 'all' ? scope === 'all' : scope === t.key;
             return (
               <button key={t.key} type="button" role="tab" aria-selected={on} data-testid={`browse-scope-${t.key}`}
                 onClick={() => { if (on) return; if (t.key === 'all') onBrowseTypes(); else onScope(t.key); }}
-                style={{ flex: 'none', border: 'none', background: 'none', fontFamily: 'inherit', fontSize: 16, padding: '10px 0 8px', cursor: 'pointer',
-                  color: 'inherit', opacity: on ? 1 : 0.55, fontWeight: on ? 500 : 300, whiteSpace: 'nowrap',
+                style={{ flex: 'none', border: 'none', background: 'none', fontFamily: 'inherit', fontSize: 15.5, minHeight: 44, padding: '0 0 2px', cursor: 'pointer',
+                  color: 'inherit', opacity: on ? 1 : 0.6, fontWeight: on ? 600 : 400, whiteSpace: 'nowrap',
                   borderBottom: `2px solid ${on ? 'var(--bb-fg)' : 'transparent'}` }}>
                 {T(t.vi, t.en)}
               </button>
@@ -198,7 +201,7 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
             the weekend's or tonight's real dates, the count, the area. The hosts' faces sit on the same row, and
             Filters closes the chip row; each used to take a row of its own and push the first event far down the
             screen. The title is where a type-chip turn scrolls back to. */}
-        <div ref={scrollRef} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '18px 20px 0', scrollMarginTop: 108 }}>
+        <div ref={scrollRef} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '18px 20px 0', scrollMarginTop: 112 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <h1 data-testid="browse-title" style={{ margin: 0, fontSize: 30, fontWeight: 400, letterSpacing: '-.02em', lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{titleText}</h1>
             <div data-testid="browse-scope-count" style={{ fontSize: 13, opacity: 0.72, marginTop: 6 }}>

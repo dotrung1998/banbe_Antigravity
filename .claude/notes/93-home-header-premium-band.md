@@ -1,5 +1,8 @@
 # 93 · Home header: a Liquid-Glass nav bar instead of a floating slab (web + iOS)
 
+**SUPERSEDED by note 94 (2026-11-22).** The morphing band described below is gone: Home's band is now one static paper
+app bar with the tabs inside it. Kept as the record of what the owner rejected and why.
+
 Status (2026-11-21): IMPLEMENTED (web + iOS). No migration, no switch. Web preview NOT published (the publisher counts
 2001 files, cap 2000 — see Checks); iOS NOT built here.
 
