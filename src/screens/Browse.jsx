@@ -34,6 +34,7 @@ const BACK = <path d="m15 5-7 7 7 7" />;
 const SEARCH = <><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></>;
 const CLOSE = <path d="M6 6l12 12M18 6 6 18" />;
 const MAP = <><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z" /><path d="M9 4v14M15 6v14" /></>;
+const PERSON = <><circle cx="12" cy="8" r="3.6" /><path d="M5 20c1.3-3.6 3.9-5.3 7-5.3s5.7 1.7 7 5.3" /></>;
 const SLIDERS = <><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></>;
 
 // The Home tabs, in Home's own order and words: See all carries them so a reader changes tab in place (note 85).
@@ -50,10 +51,12 @@ const TYPES_TAB = { key: 'all', vi: 'Duyệt theo loại', en: 'Browse by type' 
  * @param {(tab: string) => void} p.onScope  switch to another Home tab without leaving the screen
  * @param {string|null} p.from  the Home tab this Browse by type was opened out of (Back returns to it, note 86)
  * @param {() => void} p.onBrowseTypes  open Browse by type from inside a tab (note 86)
+ * @param {(key: string) => void} [p.onToggleSave]  the row's heart (favorites)
+ * @param {() => void} [p.onAccount]  the nav row's Account button (2026-11-17)
  */
 export default function Browse({ T, lang, scope, type, query, filters, items, now, areaLabel, shapeRow,
   onType, onQuery, onFilters, onBack, onOpenEvent, onOpenHost, onMap, onHost, onScope = () => {}, from = null,
-  onBrowseTypes = () => {} }) {
+  onBrowseTypes = () => {}, onToggleSave = null, onAccount = null }) {
   const reduced = useReducedMotion();
   const tabLabel = scope !== 'all' ? (TAB_LABEL[scope] || null) : null;
   const typeDef = TYPE_DEFS.find(d => d.key === type) || null;
@@ -162,6 +165,11 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
             <Icon d={finding ? CLOSE : SEARCH} />
           </button>
           <button type="button" onClick={() => onMap(effType)} aria-label={T('Xem trên bản đồ', 'See on the map')} data-testid="browse-map" style={navBtn}><Icon d={MAP} /></button>
+          {/* Account sits in the corner on every screen that carries the four tabs (2026-11-17): the dock does not
+              show here, so this is the one way to Account without going back to Home first. */}
+          {onAccount && (
+            <button type="button" onClick={onAccount} aria-label={T('Tài khoản', 'Account')} data-testid="browse-account" style={navBtn}><Icon d={PERSON} /></button>
+          )}
         </div>
 
         {/* The three Home tabs and Browse by type (note 90): text over a rule, the same rhythm as Home's hero tabs, so
@@ -230,7 +238,7 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
           </div>
 
           <Pager items={rows} getKey={r => r.key} lang={lang} T={T} testId="browse-list" rowHeight={ROW_HEIGHT}
-            renderRow={r => <EventRowV23 row={r} onOpen={() => onOpenEvent(r.key)} testId={`browse-event-${r.key}`} />}
+            renderRow={r => <EventRowV23 row={r} T={T} onOpen={() => onOpenEvent(r.key)} onToggleSave={onToggleSave} testId={`browse-event-${r.key}`} />}
             renderEnd={end => <EndCard card={card} variant={end.variant} onAction={onEnd} T={T} />}
             empty={(
               <EndCard variant="solo" onAction={onEnd} T={T} card={typed ? {

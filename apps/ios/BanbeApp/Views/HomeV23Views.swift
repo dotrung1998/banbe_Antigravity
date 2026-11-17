@@ -54,9 +54,13 @@ struct EventRowV23View: View {
     @EnvironmentObject private var app: AppState
     let row: V23Row
     var idPrefix = "home.event"
+    /// Present = the row shows the Save heart (the Shortlist, See all and Browse lists). Absent = a read-only row
+    /// (a host profile's upcoming/past events).
+    var onToggleSave: (() -> Void)? = nil
     let onOpen: () -> Void
 
     var body: some View {
+        ZStack(alignment: .trailing) {
         SwipeSafeButton(action: onOpen) {
             HStack(spacing: 12) {
                 CatalogPhoto(path: row.img, height: 80, width: 80, cornerRadius: BanbeTheme.Radius.thumb)
@@ -91,7 +95,10 @@ struct EventRowV23View: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .foregroundStyle(app.palette.ink)
-            .padding(.horizontal, 20).padding(.bottom, 12)
+            .padding(.leading, 20)
+            // The heart owns 44 pt at the trailing edge; the row keeps that room so the price never sits under it.
+            .padding(.trailing, onToggleSave == nil ? 20 : 56)
+            .padding(.bottom, 12)
             .frame(height: Self.height)
             .contentShape(Rectangle())
         }
@@ -99,6 +106,28 @@ struct EventRowV23View: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isLink)
         .accessibilityIdentifier("\(idPrefix).\(row.key)")
+
+        if let onToggleSave { saveButton(onToggleSave).padding(.trailing, 8).padding(.bottom, 12) }
+        }
+        .frame(height: Self.height)
+    }
+
+    /// The row's Save heart: the same favorites write Event Detail's heart uses, filled and clay once saved.
+    private func saveButton(_ toggle: @escaping () -> Void) -> some View {
+        let saved = app.isSaved(row.key)
+        return Button {
+            toggle()
+        } label: {
+            Image(systemName: saved ? "heart.fill" : "heart")
+                .font(.app(size: 18, weight: .medium))
+                .foregroundStyle(saved ? app.palette.clay : app.palette.ink.opacity(0.55))
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(saved ? app.T("Đã lưu", "Saved") : app.T("Lưu", "Save"))
+        .accessibilityAddTraits(saved ? .isSelected : [])
+        .accessibilityIdentifier("\(idPrefix).save.\(row.key)")
     }
 }
 

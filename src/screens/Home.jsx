@@ -131,7 +131,7 @@ export default function Home({ browse = false }) {
     openPulseViewer, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, loadPulse,
     loadHomeSurveyDiscovery, loadMoreHomeSurveyDiscovery, openEventPreferences,
     openSearch, setHomeFilters, located, allowLocation, rewardsEnabled, rewardsV2Enabled, openBookingConfirmed,
-    resolvedTheme, openBrowse, setBrowse, backFromBrowse, openOrganizerProfile, openDockCreate, goSchedule,
+    resolvedTheme, openBrowse, setBrowse, backFromBrowse, openOrganizerProfile, goSchedule, goProfile,
   } = useBanBe();
 
   const s = state;
@@ -600,7 +600,7 @@ export default function Home({ browse = false }) {
     // The type's own name (eventTypeProfiles.json) in the reader's language, not the catalogue's raw label.
     const def = TYPE_DEF_BY_KEY.get(it.catKeys?.[0]);
     return {
-      key: e.key, name: e.name, img: e.img,
+      key: e.key, name: e.name, img: e.img, saved: isSaved(e.key),
       type: def ? T(def.vi, def.en) : trStatus(e.catDisplay || e.cat), when: badgeDate(it.startsAt, e.isReal ? e.tz : null),
       place: [e.isReal ? e.area : e.locationLabel, it.distanceKm != null ? `${it.distanceKm.toFixed(1).replace('.', ',')} km` : null].filter(Boolean).join(' · '),
       priceLabel: it.priceVnd === 0 ? T('Miễn phí', 'Free') : trStatus(e.price), isFree: it.priceVnd === 0,
@@ -608,7 +608,7 @@ export default function Home({ browse = false }) {
         : fill.almostFull ? { tone: 'honey', text: T(`Sắp hết · còn ${fill.left} chỗ`, `Almost full · ${fill.left} left`) } : null,
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [T, trStatus]);
+  }, [T, trStatus, isSaved]);
   // The Shortlist follows the FILTERS, not the hero tab: it is every event Home lists, narrowed by Home's filters and
   // in Home's own order (homeSort, else the feed's). The tabs above only switch the rail, so the list under it never
   // empties just because For You is open. total = before the filters.
@@ -1185,7 +1185,9 @@ export default function Home({ browse = false }) {
         onFilters={(f) => setBrowse({ browseFilters: f ? toBrowseFilters(f) : DEFAULT_FILTERS })}
         onBack={backFromBrowse} onOpenEvent={goEvent} onOpenHost={(id) => openOrganizerProfile(id, 'browse')}
         onMap={(type) => goMapExplore({ source: 'browse', filters: { ...toBrowseFilters(s.browseFilters), cats: type && type !== 'all' ? [type] : [] } })}
-        onHost={openDockCreate} />
+        // The dock (and the "+" sheet it owns) is not mounted on this screen, so "Host a night" goes straight to the
+        // shared Start hosting action: guest -> sign-in prompt, organizer mode off -> the invitation, on -> Home > Hosting.
+        onHost={() => startHosting({ land: 'home' })} onToggleSave={toggleFav} onAccount={goProfile} />
     );
   }
 
@@ -1301,7 +1303,8 @@ export default function Home({ browse = false }) {
             <div data-reveal="2">
               <LiveLine updates={live} index={Math.min(liveIndex, Math.max(0, live.length - 1))} onIndex={setLiveIndex} onOpen={() => setLiveOpen(true)} T={T} />
               <ShortlistV23 T={T} lang={s.lang === 'en' ? 'en' : 'vi'} rows={shortlist.rows} total={shortlist.total}
-                filterBadge={filterBadge} onFilters={() => set({ homeFilterSheetOpen: true })} onOpenEvent={goEvent} onAction={onShortlistAction} />
+                filterBadge={filterBadge} onFilters={() => set({ homeFilterSheetOpen: true })} onOpenEvent={goEvent} onAction={onShortlistAction}
+                onToggleSave={toggleFav} />
             </div>
           )}>
           <div data-reveal="1" data-testid="home-hero" data-hero={goerHero}>

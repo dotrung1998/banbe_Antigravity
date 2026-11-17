@@ -189,7 +189,7 @@ struct BrowseView: View {
                         }
                         .padding(.top, 12).padding(.bottom, 14)
                         V23Pager(items: rows, key: \.key, listID: "browse.list",
-                                 row: { r in EventRowV23View(row: r, idPrefix: "browse.event") { app.goEvent(r.key) } },
+                                 row: { r in EventRowV23View(row: r, idPrefix: "browse.event", onToggleSave: { app.toggleFavorite(r.key) }) { app.goEvent(r.key) } },
                                  end: { v in EndCardView(model: card, variant: v) { onEnd($0, proxy: proxy) } },
                                  empty: { EndCardView(model: emptyCard(hidden: result.hidden), variant: .solo) { onEnd($0, proxy: proxy) } })
                         Color.clear.frame(height: 120)
@@ -334,6 +334,9 @@ struct BrowseView: View {
                 if finding { app.browseQuery = ""; finding = false } else { finding = true; DispatchQueue.main.async { searchFocused = true } }
             }
             circle("map", label: app.T("Xem trên bản đồ", "See on the map"), id: "browse.map") { app.goMapExploreFromHome() }
+            // Account sits in the corner on every screen that carries the four tabs (2026-11-17): this screen does not
+            // show the dock, so this is the one way to Account without going back to Home first.
+            circle("person", label: app.T("Tài khoản", "Account"), id: "browse.account") { app.goProfile() }
         }
         .foregroundStyle(app.palette.ink)
         .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 8)
@@ -449,7 +452,9 @@ struct BrowseView: View {
         case "clear-filters": app.browseFilters = .default
         case "clear-search": app.browseQuery = ""; finding = false
         case "map": app.goMapExploreFromHome()
-        case "host": app.goCreate()
+        // The same Start hosting path the dock "+" and Home's locked Hosting use (web twin: startHosting({ land: 'home' })):
+        // guest -> sign-in prompt, organizer mode off -> the start-hosting invitation, on -> Home > Hosting.
+        case "host": app.startHosting()
         case "browse-types": app.browseOpenTypes()
         default:
             if act.hasPrefix("type:") {

@@ -17,8 +17,9 @@ export const TAB_LABEL = { foryou: { vi: 'Dành cho bạn', en: 'For You' }, ton
  * @param {number} p.total  every event Home lists, before Home's filters
  * @param {number} p.filterBadge  how many filters are on
  * @param {(act: string) => void} p.onAction  end-card and empty-state actions
+ * @param {(key: string) => void} [p.onToggleSave]  the row's heart (favorites)
  */
-export default function ShortlistV23({ T, lang, rows, total, filterBadge, onFilters, onOpenEvent, onAction }) {
+export default function ShortlistV23({ T, lang, rows, total, filterBadge, onFilters, onOpenEvent, onAction, onToggleSave }) {
   const n = rows.length;
   const filtersOn = filterBadge > 0;
   const card = shortlistEnd({ total, shown: n, filtersOn });
@@ -43,7 +44,7 @@ export default function ShortlistV23({ T, lang, rows, total, filterBadge, onFilt
         </button>
       </div>
       <Pager items={rows} getKey={r => r.key} lang={lang} T={T} testId="home-shortlist" rowHeight={ROW_HEIGHT}
-        renderRow={r => <EventRowV23 row={r} onOpen={() => onOpenEvent(r.key)} />}
+        renderRow={r => <EventRowV23 row={r} T={T} onOpen={() => onOpenEvent(r.key)} onToggleSave={onToggleSave} />}
         renderEnd={end => <EndCard card={card} variant={end.variant} onAction={onAction} T={T} />}
         empty={(
           <EndCard variant="solo" onAction={onAction} T={T} card={filtersOn ? {

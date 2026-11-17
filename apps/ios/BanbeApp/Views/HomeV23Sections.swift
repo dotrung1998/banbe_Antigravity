@@ -61,7 +61,7 @@ struct ShortlistV23View: View {
             }
             .padding(.horizontal, 20).padding(.bottom, 12)
             V23Pager(items: rows, key: \.key, listID: "home.shortlist",
-                     row: { r in EventRowV23View(row: r) { app.goEvent(r.key) } },
+                     row: { r in EventRowV23View(row: r, onToggleSave: { app.toggleFavorite(r.key) }) { app.goEvent(r.key) } },
                      end: { v in EndCardView(model: card, variant: v, onAction: onAction) },
                      empty: {
                          EndCardView(model: total > 0
