@@ -72,7 +72,8 @@ export default function PersistentSearchBar() {
     if (s.screen !== 'home' || active) return undefined;
     const measure = () => {
       const el = document.querySelector('[data-testid="home-search-bar"]');
-      const pill = el?.closest('.bb-searchbar') || el;
+      // The whole pill, not just its search half: Home's paper field is the row (home-search-row).
+      const pill = el?.closest('.bb-searchbar') || el?.closest('[data-testid="home-search-row"]') || el;
       if (pill) searchBarStore.setHomeFrame(pill.getBoundingClientRect());
     };
     const t0 = setTimeout(measure, 350);

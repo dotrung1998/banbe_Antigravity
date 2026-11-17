@@ -84,7 +84,7 @@ export default function HomeShellV5({
       if (Math.abs(p - last) < 0.004) return;
       last = p;
       head.style.setProperty('--hp', p.toFixed(3));
-      head.dataset.compact = p > 0.8 ? '1' : '0';
+      head.dataset.compact = p > 0.9 ? '1' : '0';
       const night = p < 0.92;
       if (night !== bandNightRef.current) { bandNightRef.current = night; setBandNight(night); }
     };
@@ -183,7 +183,7 @@ export default function HomeShellV5({
         <div aria-hidden className="bb-home-head__scrim" />
         <div aria-hidden className="bb-home-head__surface" />
         <div className="bb-home-head__brand">
-          <img src="/banbe-wordmark.png" alt="banbe" data-testid="home-title" crossOrigin="anonymous" className="bb-home-head__wordmark" style={{ filter: 'invert(1)' }} />
+          <img src="/banbe-wordmark.png" alt="banbe" data-testid="home-title" crossOrigin="anonymous" className="bb-home-head__wordmark" style={{ filter: 'invert(1) drop-shadow(0 2px 6px rgba(0,0,0,.32))' }} />
           <div className="bb-home-head__date" data-testid="home-date">{dateLabel}</div>
         </div>
         <div className="bb-home-head__quick">
