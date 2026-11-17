@@ -60,6 +60,11 @@ dist-ssr
 /output/ios-screenshot-catalog/
 /docs/demo-screenshots/**/*.png
 
+# iOS Flow Walkthrough (apps/ios/Tools/run-flow-walkthrough.sh) — the
+# per-step screenshots and xcresult of one FlowWalkthroughUITests run,
+# regenerated on demand, never committed.
+/output/ios-flow-walkthrough/
+
 # LOCAL TEST HARNESS — never deployed; `supabase db push` only reads
 # supabase/migrations/*.sql, so nothing here can ever be applied. Kept local
 # on purpose: it recreates the storage/auth scaffolding a bare Postgres lacks,

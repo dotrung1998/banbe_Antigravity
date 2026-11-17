@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>banbe Pay Now and Refunds v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Prototype only. Nothing here touches the app. Tokens copied from src/index.css (--bb-*). */
+:root {
+  --bg:#F7F4EC; --fg:#1B1916; --fg2:rgba(27,25,22,.74); --fg3:rgba(27,25,22,.62);
+  --rule:rgba(27,25,22,.16); --block:#EEE8DA; --field:#E6DFCE; --inset:#FBF8F1;
+  --clay:#9C5B3B; --clayBg:#EFE0D2; --moss:#4E6A30; --mossBg:#E3EAD6; --honey:#7A5410; --honeyBg:#F3E7C8;
+  --alert:#9A3E2D; --alertBg:#F3DDD6; --plum:#6B4E7C;
+  --page:#E4DED0; --panel:#FBF9F4; --scrim:rgba(12,11,9,.5);
+  --display:'Jost','Be Vietnam Pro',system-ui,sans-serif; --text:'Be Vietnam Pro',system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#0F0E0B; --fg:#F2EDE1; --fg2:rgba(242,237,225,.76); --fg3:rgba(242,237,225,.6);
+  --rule:rgba(242,237,225,.18); --block:#1A1815; --field:#24211C; --inset:#24211C;
+  --clay:#D8926C; --clayBg:#3B2A20; --moss:#A9C487; --mossBg:#26301A; --honey:#F2C46D; --honeyBg:#3A2E12;
+  --alert:#E8715B; --alertBg:#3D1F18; --plum:#BBA2D0;
+  --page:#070605; --panel:#141210; --scrim:rgba(0,0,0,.62);
+}}
+:root[data-theme="dark"] {
+  --bg:#0F0E0B; --fg:#F2EDE1; --fg2:rgba(242,237,225,.76); --fg3:rgba(242,237,225,.6);
+  --rule:rgba(242,237,225,.18); --block:#1A1815; --field:#24211C; --inset:#24211C;
+  --clay:#D8926C; --clayBg:#3B2A20; --moss:#A9C487; --mossBg:#26301A; --honey:#F2C46D; --honeyBg:#3A2E12;
+  --alert:#E8715B; --alertBg:#3D1F18; --plum:#BBA2D0;
+  --page:#070605; --panel:#141210; --scrim:rgba(0,0,0,.62);
+}
+* { box-sizing:border-box; }
+html,body { margin:0; }
+body { background:var(--page); color:var(--fg); font-family:var(--text); -webkit-font-smoothing:antialiased; font-size:15px; line-height:1.45; }
+button { font-family:inherit; cursor:pointer; color:inherit; }
+h1,h2,h3,h4,p { margin:0; }
+.disp { font-family:var(--display); font-weight:600; letter-spacing:-.02em; }
+.wrap { max-width:1320px; margin:0 auto; padding:20px 16px 56px; }
+
+/* reviewer toolbar */
+.bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px; }
+.bar h1 { font-family:var(--display); font-weight:600; font-size:22px; letter-spacing:-.02em; margin-right:auto; }
+.bar h1 small { font-family:var(--text); font-size:12px; font-weight:500; color:var(--fg3); margin-left:8px; letter-spacing:0; }
+.chipbtn { border:1px solid var(--rule); background:var(--panel); border-radius:999px; padding:8px 14px; font-size:13px; font-weight:600; min-height:36px; white-space:nowrap; }
+.chipbtn:hover { border-color:var(--fg3); }
+.chipbtn[aria-pressed="true"] { background:var(--fg); color:var(--bg); border-color:var(--fg); }
+.flows { display:flex; gap:8px; overflow-x:auto; padding:4px 0 14px; scrollbar-width:none; }
+.flows::-webkit-scrollbar { display:none; }
+.flows .chipbtn { padding:10px 16px; font-size:14px; }
+.flows .chipbtn b { font-family:var(--display); margin-right:6px; opacity:.6; }
+.roletabs { display:none; gap:8px; margin-bottom:12px; }
+
+.stage { display:grid; grid-template-columns:auto auto minmax(300px,1fr); gap:28px; align-items:start; }
+@media (max-width:1240px){ .stage { grid-template-columns:auto auto; justify-content:center; } .side { grid-column:1/-1; } }
+@media (max-width:860px){
+  .stage { grid-template-columns:1fr; justify-items:center; }
+  .roletabs { display:flex; justify-content:center; }
+  body[data-role="g"] #ph { display:none; } body[data-role="h"] #pg { display:none; }
+}
+
+/* phone */
+.phonecol { display:grid; gap:10px; justify-items:center; }
+.who { font-size:12px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--fg3); }
+.who b { color:var(--fg); }
+.phone { width:min(376px, calc(100vw - 32px)); height:790px; border-radius:48px; background:#000; padding:10px; box-shadow:0 30px 60px rgba(0,0,0,.25); position:relative; flex:none; }
+.screen { position:relative; width:100%; height:100%; border-radius:39px; overflow:hidden; background:var(--bg); }
+.status { position:absolute; top:0; left:0; right:0; height:48px; display:flex; justify-content:space-between; align-items:center; padding:6px 28px 0; font-size:15px; font-weight:600; z-index:60; pointer-events:none; }
+.island { position:absolute; top:10px; left:50%; transform:translateX(-50%); width:112px; height:32px; border-radius:20px; background:#000; z-index:61; }
+.mount { position:absolute; inset:0; }
+.view { position:absolute; inset:0; padding-top:50px; display:flex; flex-direction:column; animation:rise .3s ease both; }
+@keyframes rise { from { opacity:0; transform:translateY(8px);} to { opacity:1; transform:none; } }
+@media (prefers-reduced-motion: reduce){ .view,.sheet,.push,.pulse,.spin { animation:none !important; } }
+.nav { display:flex; align-items:center; gap:10px; padding:6px 16px 8px; min-height:48px; flex:none; }
+.nav h3 { font-family:var(--display); font-weight:600; font-size:19px; letter-spacing:-.01em; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.back { width:38px; height:38px; border-radius:19px; border:1px solid var(--rule); background:var(--block); display:grid; place-items:center; flex:none; padding:0; }
+.body { flex:1; overflow-y:auto; padding:4px 18px 18px; display:flex; flex-direction:column; gap:12px; scrollbar-width:none; }
+.body::-webkit-scrollbar { display:none; }
+.foot { flex:none; padding:10px 18px 28px; display:grid; gap:8px; border-top:1px solid var(--rule); background:var(--bg); }
+.h2 { font-family:var(--display); font-weight:600; font-size:26px; line-height:1.12; letter-spacing:-.02em; }
+.lead { color:var(--fg2); font-size:15px; }
+.fine { font-size:12.5px; color:var(--fg3); }
+.center { text-align:center; align-items:center; }
+.eyebrow { font-size:11.5px; letter-spacing:.11em; text-transform:uppercase; color:var(--fg3); font-weight:700; }
+
+.btn { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; min-height:52px; border-radius:16px; border:none; background:var(--fg); color:var(--bg); font-size:16px; font-weight:600; padding:0 14px; text-align:center; }
+.btn.sec { background:var(--block); color:var(--fg); border:1px solid var(--rule); }
+.btn.clay { background:var(--clay); color:var(--bg); }
+.btn.danger { background:transparent; color:var(--alert); border:1px solid var(--alert); }
+.btn.sm { min-height:44px; font-size:14.5px; border-radius:13px; }
+.btn:disabled { opacity:.4; cursor:default; }
+.link { background:none; border:none; font-size:14.5px; font-weight:600; color:var(--fg2); min-height:44px; padding:0 10px; text-decoration:underline; text-underline-offset:3px; }
+.two { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+
+.card { background:var(--block); border:1px solid var(--rule); border-radius:18px; padding:14px; display:grid; gap:10px; }
+.card.inset { background:var(--inset); }
+.card.moss { background:var(--mossBg); border-color:transparent; }
+.card.honey { background:var(--honeyBg); border-color:transparent; }
+.card.alert { background:var(--alertBg); border-color:transparent; }
+.card.clay { background:var(--clayBg); border-color:transparent; }
+.pill { display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:700; padding:4px 10px; border-radius:999px; white-space:nowrap; line-height:1.3; border:1px solid var(--rule); color:var(--fg2); }
+.pill.moss { background:var(--mossBg); color:var(--moss); border-color:transparent; }
+.pill.honey { background:var(--honeyBg); color:var(--honey); border-color:transparent; }
+.pill.alert { background:var(--alertBg); color:var(--alert); border-color:transparent; }
+.pill.clay { background:var(--clayBg); color:var(--clay); border-color:transparent; }
+.ev { display:flex; gap:12px; align-items:center; }
+.thumb { width:58px; height:58px; border-radius:14px; background:linear-gradient(135deg,#C98A5B,#6E3B22); flex:none; }
+.ev b { font-family:var(--display); font-size:17px; display:block; line-height:1.2; }
+.ev span { font-size:13px; color:var(--fg2); }
+.line { display:flex; gap:10px; align-items:flex-start; font-size:14px; }
+.line svg { flex:none; margin-top:2px; }
+.line.moss svg { color:var(--moss); } .line.alert svg { color:var(--alert); } .line.clay svg { color:var(--clay); } .line.honey svg { color:var(--honey); }
+.kv { display:grid; }
+.kv div { display:flex; justify-content:space-between; gap:12px; padding:9px 0; font-size:14px; align-items:center; }
+.kv div + div { border-top:1px solid var(--rule); }
+.kv span { color:var(--fg2); }
+.kv b { font-weight:600; text-align:right; display:inline-flex; align-items:center; gap:6px; }
+.kv b svg { color:var(--fg3); }
+.choice { text-align:left; border:1.5px solid var(--rule); background:var(--block); border-radius:18px; padding:14px; display:grid; gap:6px; width:100%; font-size:14px; }
+.choice b { font-family:var(--display); font-size:19px; display:flex; align-items:center; gap:8px; }
+.choice span { color:var(--fg2); }
+.choice[aria-pressed="true"] { border-color:var(--clay); background:var(--clayBg); box-shadow:inset 0 0 0 1px var(--clay); }
+.tog { display:flex; gap:12px; align-items:center; padding:12px 0; width:100%; background:none; border:none; text-align:left; font-size:14.5px; }
+.tog + .tog { border-top:1px solid var(--rule); }
+.tog div { flex:1; } .tog small { display:block; color:var(--fg2); font-size:12.5px; }
+.sw { width:46px; height:28px; border-radius:14px; background:var(--rule); position:relative; flex:none; transition:background .2s; }
+.sw::after { content:''; position:absolute; top:3px; left:3px; width:22px; height:22px; border-radius:11px; background:#fff; transition:transform .2s; box-shadow:0 1px 3px rgba(0,0,0,.3); }
+.tog[aria-pressed="true"] .sw { background:var(--moss); } .tog[aria-pressed="true"] .sw::after { transform:translateX(18px); }
+.av { width:36px; height:36px; border-radius:18px; flex:none; display:grid; place-items:center; font-weight:700; font-size:13px; color:#fff; background:linear-gradient(135deg,#8E6C8A,#3B2638); }
+.av.b { background:linear-gradient(135deg,#7E8F5A,#2F3E1E); } .av.c { background:linear-gradient(135deg,#5E7F8C,#20323A); } .av.d { background:linear-gradient(135deg,#C98A5B,#6E3B22); }
+.av.lg { width:64px; height:64px; border-radius:32px; font-size:22px; }
+.prow { display:flex; gap:10px; align-items:center; padding:10px 0; font-size:14.5px; }
+.prow + .prow { border-top:1px solid var(--rule); }
+.prow > div:not(.av) { flex:1; min-width:0; } .prow small { display:block; color:var(--fg2); font-size:12.5px; }
+.ladder { display:grid; gap:0; }
+.ladder div { display:flex; justify-content:space-between; gap:10px; font-size:13.5px; padding:8px 10px; border-radius:10px; }
+.ladder div.here { background:var(--mossBg); color:var(--moss); font-weight:700; }
+.tl { display:grid; gap:0; }
+.tl div { display:grid; grid-template-columns:24px 1fr; gap:10px; padding-bottom:16px; position:relative; font-size:14px; }
+.tl div::before { content:''; position:absolute; left:11px; top:22px; bottom:0; width:2px; background:var(--rule); }
+.tl div:last-child { padding-bottom:0; } .tl div:last-child::before { display:none; }
+.tl i { width:24px; height:24px; border-radius:12px; border:2px solid var(--rule); display:grid; place-items:center; background:var(--bg); z-index:1; color:var(--bg); }
+.tl .ok i { background:var(--moss); border-color:var(--moss); }
+.tl .now i { border-color:var(--clay); box-shadow:0 0 0 4px var(--clayBg); }
+.tl small { display:block; color:var(--fg2); font-size:12.5px; }
+.tl .todo { color:var(--fg3); }
+.qr { background:#fff; color:#111; border-radius:14px; padding:10px; display:grid; place-items:center; margin:0 auto; line-height:0; }
+.ticket { background:var(--inset); border:1px solid var(--rule); border-radius:22px; padding:18px 16px; display:grid; gap:12px; justify-items:center; text-align:center; position:relative; }
+.code { font-family:var(--display); font-weight:700; font-size:26px; letter-spacing:.14em; }
+.bigcheck { width:84px; height:84px; border-radius:42px; background:var(--moss); color:var(--bg); display:grid; place-items:center; margin:6px auto 0; }
+.spin { width:44px; height:44px; border-radius:22px; border:4px solid var(--rule); border-top-color:var(--clay); animation:spin 1s linear infinite; margin:10px auto; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.pulse { animation:pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity:.45; } }
+.push { position:absolute; top:50px; left:10px; right:10px; z-index:70; background:var(--inset); border:1px solid var(--rule); border-radius:18px; padding:10px 12px; font-size:13px; display:flex; gap:10px; align-items:center; box-shadow:0 10px 24px rgba(0,0,0,.2); animation:drop .4s ease both; }
+@keyframes drop { from { transform:translateY(-30px); opacity:0; } }
+.push i { width:30px; height:30px; border-radius:9px; background:var(--fg); color:var(--bg); display:grid; place-items:center; flex:none; font-style:normal; font-family:var(--display); font-weight:700; }
+.push + .nav { margin-top:56px; }
+.scrim { position:absolute; inset:0; background:var(--scrim); z-index:80; }
+.sheet { position:absolute; left:0; right:0; bottom:0; z-index:81; background:var(--bg); border-radius:26px 26px 0 0; padding:10px 18px 28px; display:grid; gap:12px; animation:up .28s ease both; max-height:86%; overflow-y:auto; }
+.sheet::before { content:''; width:38px; height:5px; border-radius:3px; background:var(--rule); margin:0 auto 4px; }
+@keyframes up { from { transform:translateY(40px); opacity:0; } }
+.banks { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.banks button { border:1px solid var(--rule); background:var(--block); border-radius:14px; min-height:52px; font-weight:600; font-size:14px; display:flex; align-items:center; gap:10px; padding:0 12px; }
+.banks i { width:26px; height:26px; border-radius:8px; flex:none; }
+/* mock surfaces that are not banbe */
+.chat { background:#E9EEF5; color:#0B1F3A; }
+.chat .nav h3 { font-family:system-ui; font-size:16px; }
+.bub { background:#fff; border-radius:16px 16px 16px 4px; padding:10px 12px; font-size:14.5px; max-width:86%; box-shadow:0 1px 2px rgba(0,0,0,.08); }
+.bub.me { background:#CFE4FF; align-self:flex-end; border-radius:16px 16px 4px 16px; }
+.prev { border:none; padding:0; background:#fff; border-radius:16px; overflow:hidden; max-width:86%; text-align:left; box-shadow:0 1px 2px rgba(0,0,0,.1); color:#0B1F3A; }
+.prev i { display:block; height:110px; background:linear-gradient(135deg,#C98A5B,#6E3B22); }
+.prev div { padding:10px 12px; font-size:13px; } .prev b { display:block; font-size:15px; }
+.bankapp { background:#F4F7FB; color:#0B2545; font-family:system-ui,sans-serif; }
+.bankapp .nav { background:#0B4EA2; color:#fff; padding-top:10px; padding-bottom:12px; }
+.bankapp .nav h3 { font-family:system-ui; font-size:17px; }
+.bankapp .card { background:#fff; border-color:#DCE4EF; color:#0B2545; }
+.bankapp .kv span { color:#5A6B82; } .bankapp .kv div + div { border-color:#E6ECF4; }
+.bankapp .btn { background:#0B4EA2; color:#fff; } .bankapp .foot { background:#F4F7FB; border-color:#DCE4EF; }
+.url { display:flex; align-items:center; gap:6px; background:var(--field); border-radius:12px; padding:8px 12px; font-size:13px; color:var(--fg2); margin:0 18px 6px; }
+.url b { color:var(--fg); font-weight:600; }
+.hero { height:150px; border-radius:20px; background:linear-gradient(135deg,#C98A5B,#6E3B22); display:flex; align-items:flex-end; padding:14px; color:#fff; }
+.hero b { font-family:var(--display); font-size:24px; line-height:1.1; }
+.cam { background:#0B0A08; color:#fff; }
+.cam .nav .back { background:rgba(255,255,255,.14); border-color:transparent; color:#fff; }
+.finder { margin:30px auto 0; width:230px; height:230px; border-radius:26px; border:3px solid #fff; display:grid; place-items:center; background:rgba(255,255,255,.06); padding:0; position:relative; }
+.finder::after { content:''; position:absolute; left:14px; right:14px; height:2px; background:#E8715B; top:50%; animation:sweep 1.8s ease-in-out infinite; }
+@keyframes sweep { 0%,100% { transform:translateY(-80px);} 50% { transform:translateY(80px);} }
+.stat { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.stat div { background:var(--block); border:1px solid var(--rule); border-radius:14px; padding:10px; font-size:12px; color:var(--fg2); }
+.stat b { display:block; font-family:var(--display); font-size:19px; color:var(--fg); }
+.split { display:flex; border-radius:12px; overflow:hidden; height:38px; font-size:12.5px; font-weight:700; }
+.split span { display:grid; place-items:center; }
+.split span:first-child { background:var(--clay); color:var(--bg); } .split span:last-child { background:var(--field); flex:1; }
+.bar2 { height:8px; border-radius:4px; background:var(--rule); overflow:hidden; } .bar2 i { display:block; height:100%; background:var(--moss); transition:width .3s; }
+
+/* side panel + docs */
+.side { background:var(--panel); border:1px solid var(--rule); border-radius:22px; padding:20px; display:grid; gap:16px; }
+.side h2 { font-family:var(--display); font-size:24px; letter-spacing:-.02em; line-height:1.15; }
+.side h4 { font-size:11.5px; letter-spacing:.11em; text-transform:uppercase; color:var(--fg3); margin-bottom:6px; }
+.side ul { margin:0; padding-left:18px; display:grid; gap:5px; font-size:14px; }
+.side code, .doc code { font-size:12.5px; background:var(--block); padding:1px 5px; border-radius:5px; }
+.sims { display:flex; flex-wrap:wrap; gap:6px; }
+.doc { margin-top:36px; display:grid; grid-template-columns:minmax(0,1fr); gap:28px; }
+.doc h2 { font-family:var(--display); font-size:26px; letter-spacing:-.02em; margin-bottom:10px; }
+.doc p, .doc li { font-size:14.5px; max-width:74ch; }
+.doc ul { margin:0; padding-left:18px; display:grid; gap:6px; }
+.tblwrap { overflow-x:auto; border:1px solid var(--rule); border-radius:16px; background:var(--panel); }
+table { border-collapse:collapse; width:100%; min-width:760px; font-size:13.5px; }
+th,td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--rule); vertical-align:top; }
+th { font-size:11.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--fg3); }
+tr:last-child td { border-bottom:none; }
+.grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; }
+.fact { background:var(--panel); border:1px solid var(--rule); border-radius:16px; padding:14px; font-size:14px; display:grid; gap:6px; }
+.fact b { font-family:var(--display); font-size:17px; }
+.fact a, .doc a { color:var(--clay); }
+/* v2 additions */
+.sims .chipbtn { white-space:normal; text-align:left; }
+.side { grid-template-columns:minmax(0,1fr); }
+.gstep { display:grid; grid-template-columns:30px 1fr; gap:12px; padding:12px 0; }
+.gstep + .gstep { border-top:1px solid var(--rule); }
+.gstep > i { width:30px; height:30px; border-radius:15px; border:2px solid var(--rule); display:grid; place-items:center; font-style:normal; font-weight:700; font-size:14px; color:var(--fg3); }
+.gstep.on > i { border-color:var(--clay); color:var(--clay); box-shadow:0 0 0 4px var(--clayBg); }
+.gstep.ok > i { background:var(--moss); border-color:var(--moss); color:var(--bg); }
+.gstep b { font-family:var(--display); font-size:17px; }
+.gstep .in { display:grid; gap:8px; margin-top:8px; }
+.gstep:not(.on) .in { display:none; }
+.inp { border:1.5px solid var(--clay); border-radius:14px; padding:12px 14px; font-size:16px; font-weight:600; background:var(--inset); display:flex; justify-content:space-between; align-items:center; }
+.inp small { font-weight:500; color:var(--fg3); font-size:12px; display:block; }
+.grp { display:grid; gap:6px; }
+.cmp { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+@media (max-width:520px){ .cmp { grid-template-columns:1fr; } }
+.cmp > div { background:var(--block); border-radius:14px; padding:12px; }
+.cmp > div.new { background:var(--mossBg); }
+.tl .bad i { background:var(--alert); border-color:var(--alert); } .tl .bad small { color:var(--alert); font-weight:600; }
+.tl .warn i { background:var(--honeyBg); border-color:var(--honey); }
+</style>
+</head>
+<body data-role="g">
+<div class="wrap">
+  <div class="bar">
+    <h1>Pay now and refunds, version 2 <small>interactive prototype · Vietnam · not wired to the app</small></h1>
+    <button class="chipbtn" id="reset">Restart</button>
+    <button class="chipbtn" id="theme">Light / Dark</button>
+  </div>
+  <div class="flows" id="flows"></div>
+  <div class="roletabs">
+    <button class="chipbtn" data-role="g" aria-pressed="true">Guest phone</button>
+    <button class="chipbtn" data-role="h" aria-pressed="false">Host phone</button>
+  </div>
+  <div class="stage">
+    <div class="phonecol" id="pg"><div class="who">Guest · <b>Minh Anh</b></div>
+      <div class="phone"><div class="screen"><div class="status"><span>9:41</span><span>5G ▮▮▮</span></div><div class="island"></div><div class="mount" id="mg"></div></div></div></div>
+    <div class="phonecol" id="ph"><div class="who">Host · <b>Linh Trần</b></div>
+      <div class="phone"><div class="screen"><div class="status"><span>9:41</span><span>5G ▮▮▮</span></div><div class="island"></div><div class="mount" id="mh"></div></div></div></div>
+    <aside class="side" id="side"></aside>
+  </div>
+
+  <section class="doc">
+    <div>
+      <h2>What exists today, and what each piece needs</h2>
+      <p style="margin-bottom:10px">Checked against the code, not guessed. "Today" is what the app does now.</p>
+      <div class="tblwrap"><table>
+        <tr><th>Piece</th><th>Today</th><th>Change</th><th>Size</th></tr>
+        <tr><td><b>Open the bank app first</b></td><td><code>src/lib/paymentQr.js</code> already builds a <code>dl.vietqr.io/pay</code> link. The pay screen leads with copy rows and the QR.</td><td>Screen layout only. Remember the guest's bank.</td><td>Small</td></tr>
+        <tr><td><b>No photo proof</b></td><td>"I've transferred" asks the guest for a photo (<code>submit_payment_proof</code>, <code>pay-proof</code> bucket). Hosts can attach a refund photo (<code>refund-proof</code>).</td><td>Replace the photo with an optional bank reference number. Keep old photos readable for open disputes.</td><td>Small to medium</td></tr>
+        <tr><td><b>Clear result for every bank outcome</b></td><td><code>record_bank_transaction</code> already labels a transfer <code>matched</code>, <code>amount_mismatch</code>, <code>late</code>, <code>duplicate</code>, <code>no_match</code> or <code>already_confirmed</code>. The guest never sees these words.</td><td>One guest screen per label. Create the refund automatically for money that should go back (paid too much, paid twice, late with no seat). Needs a new refund reason.</td><td>Medium, one migration</td></tr>
+        <tr><td><b>"Is this the one?" for the host</b></td><td>The host looks through their own bank app and taps Money received in Verifications.</td><td>Show the host the unmatched incoming transfer of the same amount from the feed, so they confirm with one tap.</td><td>Medium</td></tr>
+        <tr><td><b>Refund to the paying account</b></td><td><code>api/payment-webhook.js</code> keeps only the transfer id, amount and message. The payer's account is dropped. Guests pick from saved Refund accounts.</td><td>Keep the payer's bank, name and account number when the provider sends them. Offer it first, saved accounts second.</td><td>Medium. Must be tested on real feed data first.</td></tr>
+        <tr><td><b>Bank confirms the refund left</b></td><td>The webhook ignores outgoing money (<code>ignored_outgoing</code>). The host taps "mark sent" and the guest confirms, or it closes after 7 days.</td><td>Match outgoing transfers by the RF- message to <code>refund_claims</code>. Keep the manual path with a reference number when the bank is not connected.</td><td>Medium</td></tr>
+        <tr><td><b>Late refund has a consequence</b></td><td><code>goc_flag_overdue_refunds</code> flags overdue claims.</td><td>Stop a host with an overdue refund from publishing new events, and let the guest call banbe in.</td><td>Small</td></tr>
+      </table></div>
+    </div>
+    <div>
+      <h2>Decisions made</h2>
+      <ul>
+        <li><b>Decided, 16 Nov:</b> the pay screen opens the bank app first. A guest's first payment gets the guided three steps. The QR is a sheet behind "Show QR instead" on both, for paying from another phone.</li>
+        <li><b>Decided, 16 Nov:</b> photo proof is removed completely, for payments and for refunds. An optional bank reference number takes its place. Photos already uploaded stay readable until their booking or dispute is closed.</li>
+        <li><b>Decided, 16 Nov:</b> one refund rule for every event, set by banbe and written in the Terms. Hosts do not choose. The steps: 100% back more than 48 hours before, 50% from 48 to 24 hours, nothing under 24 hours (the guest can give the ticket to a friend), and 100% whenever the host cancels. A lawyer should check these against consumer-protection rules before they go into the Terms.</li>
+        <li><b>Decided, 16 Nov:</b> keep the payer's bank, name and account number from the bank feed, and offer it first for refunds. Shown masked only, to that guest and to the host for that one refund. Needs a line in the Terms (section B2). Saved refund accounts stay as the fallback when the bank does not share it.</li>
+        <li><b>Decided, 16 Nov:</b> a host with an overdue refund cannot publish a new event until it is sent. Their existing events and tickets are not touched. The guest can also ask banbe to step in.</li>
+      </ul>
+    </div>
+    <div>
+      <h2>Not verified yet</h2>
+      <ul>
+        <li>Whether Casso and PayOS send the payer's account for every bank. I believe both have fields for it and that some banks leave them empty, which is why the prototype has a "bank did not share it" path. This needs a look at real webhook data.</li>
+        <li>Whether your feed provider reports outgoing transfers for every host bank. Casso reports them as negative amounts (the webhook code says so). PayOS payment links may not.</li>
+        <li>Bank app links differ per bank and per phone. The QR and copy fields stay as the fallback in every layout.</li>
+      </ul>
+    </div>
+    <p class="fine">Sample data throughout. First version with all six options: <a href="payment-refund-options.html">payment-refund-options.html</a>.</p>
+  </section>
+</div>
+
+<script>
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const vnd = n => n.toLocaleString('vi-VN') + ' ₫';
+const P = 350000;
+const I = {
+  check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>', shield:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
+  lock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/>',
+  qr:'<rect x="4" y="4" width="6" height="6"/><rect x="14" y="4" width="6" height="6"/><rect x="4" y="14" width="6" height="6"/><path d="M14 14h2v2h-2zM18 18h2v2h-2zM18 14h2M14 18v2"/>',
+  scan:'<path d="M4 8V5a1 1 0 011-1h3M16 4h3a1 1 0 011 1v3M20 16v3a1 1 0 01-1 1h-3M8 20H5a1 1 0 01-1-1v-3M4 12h16"/>',
+  cash:'<rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="3"/>',
+  bank:'<path d="M3 10l9-6 9 6M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18"/>',
+  link:'<path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/>',
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', alert:'<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17v.5"/>',
+  user:'<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/>', back:'<path d="M15 5l-7 7 7 7"/>', chev:'<path d="M9 5l7 7-7 7"/>',
+  copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 012-2h9"/>', swap:'<path d="M7 7h12l-3-3M17 17H5l3 3"/>',
+  x:'<path d="M6 6l12 12M18 6L6 18"/>', globe:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>',
+  gift:'<rect x="4" y="9" width="16" height="11" rx="1"/><path d="M4 13h16M12 9v11M12 9c-4 0-5-5-2-5 2 0 2 3 2 5zM12 9c4 0 5-5 2-5-2 0-2 3-2 5z"/>',
+  chat:'<path d="M4 5h16v11H9l-5 4z"/>'
+};
+const ic = (n, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n]}</svg>`;
+function qrSvg(seed, size = 170) {
+  const n = 25, c = size / n; let s = seed * 9301 + 49297, r = '';
+  const rnd = () => (s = (s * 9301 + 49297) % 233280) / 233280;
+  const inF = (x, y) => (x < 8 && y < 8) || (x > n - 9 && y < 8) || (x < 8 && y > n - 9);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (!inF(x, y) && rnd() > .52) r += `<rect x="${x * c}" y="${y * c}" width="${c}" height="${c}"/>`;
+  const f = (x, y) => `<rect x="${x * c}" y="${y * c}" width="${7 * c}" height="${7 * c}"/><rect x="${(x + 1) * c}" y="${(y + 1) * c}" width="${5 * c}" height="${5 * c}" fill="#fff"/><rect x="${(x + 2) * c}" y="${(y + 2) * c}" width="${3 * c}" height="${3 * c}"/>`;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" fill="#111" role="img" aria-label="QR code">${r}${f(0, 0)}${f(n - 7, 0)}${f(0, n - 7)}</svg>`;
+}
+const qr = (size = 170, rot = false, seed = 7) => `<div class="qr" data-qr="${size}" ${rot ? 'data-rot' : ''} data-seed="${seed}"></div>`;
+/* set: data-s="pay.g=2;sh.g="   hook: data-f="lookPay" */
+const b = (label, s, cls = '', f = '') => `<button class="btn ${cls}" data-s="${s}" ${f ? `data-f="${f}"` : ''}>${label}</button>`;
+const lk = (label, s, f = '') => `<button class="link" data-s="${s}" ${f ? `data-f="${f}"` : ''}>${label}</button>`;
+const line = (icn, txt, tone = 'moss') => `<div class="line ${tone}">${ic(icn)}<span>${txt}</span></div>`;
+const pill = (txt, tone = '') => `<span class="pill ${tone}">${txt}</span>`;
+const evCard = (extra = '') => `<div class="ev"><div class="thumb"></div><div><b>Bếp Nhỏ supper club</b><span>Sat 21 Nov · 19:00 · District 3${extra}</span></div></div>`;
+const hostRow = () => `<div class="prow"><div class="av d">LT</div><div>Linh Trần ${pill(ic('shield', 12) + 'Verified host', 'moss')}<small>ID checked · bank name matches · 3 events, 0 disputes</small></div></div>`;
+function view({ nav, body, foot, sheet, push, cls = '', pre = '' }) {
+  return `<div class="view ${cls}">${push ? `<div class="push"><i>b</i><span>${push}</span></div>` : ''}${nav ? `<div class="nav">${nav.back ? `<button class="back" aria-label="Back" data-s="${nav.back}">${ic('back')}</button>` : ''}<h3>${nav.title}</h3>${nav.right || ''}</div>` : ''}${pre}<div class="body">${body}</div>${foot ? `<div class="foot">${foot}</div>` : ''}${sheet ? `<div class="scrim" data-s="${sheet.who}"></div><div class="sheet">${sheet.html}</div>` : ''}</div>`;
+}
+const ladder = here => `<div class="ladder">
+  <div class="${here === 0 ? 'here' : ''}"><span>More than 48 h before</span><span>100% back</span></div>
+  <div class="${here === 1 ? 'here' : ''}"><span>48 h to 24 h before</span><span>50% back</span></div>
+  <div class="${here === 2 ? 'here' : ''}"><span>Less than 24 h</span><span>Give to a friend</span></div>
+  <div><span>Host cancels, any time</span><span>100% back</span></div></div>`;
+const ticket = (o = {}) => `<div class="ticket">${evCard()}${qr(170, true)}<div class="fine" data-rotlabel>Code refreshes every 30 s. A screenshot will not get in.</div><div class="two" style="width:100%">${pill(o.left || '2 tickets', 'moss')}${pill(o.right || 'Paid · 700.000 ₫', 'moss')}</div></div>`;
+const looking = (title, steps, at) => `<div class="spin"></div><div class="h2 center" style="text-align:center">${title}</div><div class="card"><div class="tl">${steps.map((t, i) => `<div class="${i < at ? 'ok' : i === at ? 'now pulse' : 'todo'}"><i>${i < at ? ic('check', 14) : ''}</i><span>${t}</span></div>`).join('')}</div></div>`;
+const checkedIn = (how) => `<div class="bigcheck">${ic('check', 46)}</div><div class="h2" style="text-align:center">Checked in</div><p class="lead" style="text-align:center">19:04 · Bếp Nhỏ supper club</p>
+  <div class="ticket"><div class="eyebrow">Entry code</div><div class="code">BN·7K2·941</div><div class="fine">Unique to you. Show it if the host asks.</div></div>
+  <div class="card"><div class="kv"><div><span>Paid</span><b>${vnd(P)}</b></div><div><span>How</span><b>${how}</b></div><div><span>Receipt</span><b>Saved in Activity</b></div></div></div>`;
+/* ---------- state ---------- */
+const T2 = 2 * P;
+const INIT = {
+  pay: { g: 0, lay: 'C', sc: 'matched', step: 0, res: '' },
+  ref: { sit: 'guest', when: '10d', dest: 'payer', hostdo: 'ok', g: 0, h: 0, st: 'none', esc: false, hc: 0, n: 0 }
+};
+const S = { tab: 'pay', sh: { g: '', h: '' }, ...JSON.parse(JSON.stringify(INIT)) };
+let timers = [];
+const later = (ms, fn) => timers.push(setTimeout(() => { fn(); render(); }, ms));
+const HOOKS = {
+  lookPay() { later(2400, () => { if (S.pay.g === 3) S.pay.g = 4; }); },
+  lookRef() { later(2400, () => { if (S.ref.h === 2) { S.ref.h = 3; S.ref.st = S.ref.hostdo === 'partial' && S.ref.st !== 'part' ? 'part' : 'sent'; } }); },
+  resetPay() { const { lay, sc } = S.pay; S.pay = { ...INIT.pay, lay, sc }; S.sh = { g: '', h: '' }; },
+  resetRef() { const { sit, when, dest, hostdo } = S.ref; S.ref = { ...INIT.ref, sit, when, dest, hostdo }; S.sh = { g: '', h: '' }; }
+};
+
+/* ---------- PAY NOW ---------- */
+const SC = { matched: 'Arrives, all correct', under: 'Too little', over: 'Too much', memo: 'Wrong message', late: 'After the hold ended', dup: 'Paid twice', nofeed: 'Host bank not connected', notfound: 'Money never arrives' };
+const LAY = { C: 'First payment on banbe', A: 'Has paid before' };
+const sentAmt = sc => sc === 'under' ? 600000 : sc === 'over' ? 800000 : T2;
+const nameOk = `<div class="line moss">${ic('shield')}<span><b>Account name matches Linh's verified ID</b><br><span class="fine">You pay Linh directly. banbe never holds your money.</span></span></div>`;
+const payKv = `<div class="kv"><div><span>Bank</span><b>Vietcombank</b></div><div><span>Account</span><b>0071 000 4821 ${ic('copy', 15)}</b></div><div><span>Name</span><b>TRAN THI LINH</b></div><div><span>Amount</span><b>${vnd(T2)} ${ic('lock', 15)}</b></div><div><span>Message</span><b>BB7K2Q ${ic('lock', 15)}</b></div></div>`;
+const howNote = sc => sc === 'nofeed'
+  ? `<div class="card honey">${line('clock', '<b>Linh confirms by hand,</b> usually within 1 hour. Her bank is not linked to banbe yet.', 'honey')}</div>`
+  : `<div class="card moss">${line('check', '<b>No screenshot needed.</b> banbe reads the bank feed and issues your ticket by itself.')}</div>`;
+const bankSheet = s => s.sh.g === 'banks' ? { who: 'sh.g=', html: `<div class="h2">Choose your bank</div><p class="lead">It opens with everything filled in. You only confirm.</p><div class="banks">${[['Vietcombank', '#0B7A3E'], ['MB Bank', '#1B3FA0'], ['Techcombank', '#D8232A'], ['TPBank', '#6B2C91'], ['VPBank', '#0B8F4D'], ['ACB', '#1D4FA5'], ['BIDV', '#0E6E6E'], ['MoMo', '#A50064']].map(([n, c]) => `<button data-s="pay.g=2;sh.g="><i style="background:${c}"></i>${n}</button>`).join('')}</div><p class="fine">We remember your bank, so next time this is one tap.</p>` }
+  : s.sh.g === 'qr' ? { who: 'sh.g=', html: `<div class="h2">Scan with any bank app</div>${qr(180, false, 3)}<div class="code" style="font-size:24px;letter-spacing:0;text-align:center">${vnd(T2)}</div><p class="fine" style="text-align:center">TRAN THI LINH · Vietcombank · message BB7K2Q<br>Amount and message are inside the code.</p><div class="two">${b('Save to Photos', 'sh.g=qr', 'sec sm')}${b('Send to another phone', 'sh.g=qr', 'sec sm')}</div><button class="btn" data-s="pay.g=${s.pay.sc === 'nofeed' ? 4 : 3};sh.g=" ${s.pay.sc === 'nofeed' ? '' : 'data-f="lookPay"'}>I've paid</button>` } : null;
+
+function payGuest(s) {
+  const p = s.pay, sc = p.sc, cd = pill(ic('clock', 12) + '<span data-cd></span>', 'honey');
+  if (p.g === 0) return view({ nav: { title: 'Reserve' }, body: `<div class="card">${evCard()}</div><div class="card" style="gap:0">${hostRow()}</div>
+    <div class="card"><div class="kv"><div><span>Tickets</span><b>2 × ${vnd(P)}</b></div><div><span>Total</span><b>${vnd(T2)}</b></div><div><span>Pay by</span><b>Bank transfer to Linh</b></div></div></div>
+    <div class="card inset"><div class="eyebrow">If plans change</div>${ladder(0)}</div>`,
+    foot: `${b('Hold 2 seats · ' + vnd(T2), 'pay.g=1')}<p class="fine" style="text-align:center">Seats are held for 30 minutes while you pay.</p>` });
+  if (p.g === 1 && p.lay === 'A') return view({ nav: { title: 'Pay Linh', back: 'pay.g=0', right: cd }, body: `<div class="card">${nameOk}${payKv}</div>${howNote(sc)}`,
+    foot: `${b(ic('bank') + 'Open my bank app', 'sh.g=banks')}${b(ic('qr') + 'Show QR instead', 'sh.g=qr', 'sec sm')}`, sheet: bankSheet(s) });
+  if (p.g === 1) { const st = p.step; return view({ nav: { title: 'Pay in 3 steps', back: 'pay.g=0', right: cd }, body: `<div class="card" style="gap:0">
+      <div class="gstep ${st === 0 ? 'on' : 'ok'}"><i>${st > 0 ? ic('check', 14) : 1}</i><div><b>Check who you are paying</b><div class="in">${nameOk}<div class="kv"><div><span>Name</span><b>TRAN THI LINH</b></div><div><span>Bank</span><b>Vietcombank ··· 4821</b></div></div>${b('Yes, that is my host', 'pay.step=1', 'sm')}${lk('Something looks wrong', 'pay.step=0')}</div></div></div>
+      <div class="gstep ${st === 1 ? 'on' : ''}"><i>2</i><div><b>Pay ${vnd(T2)} in your bank app</b><div class="in"><span class="lead">We fill in the account, the amount and the message BB7K2Q. Do not change them.</span>${b(ic('bank') + 'Open my bank app', 'sh.g=banks', 'sm')}${b(ic('qr') + 'Use a QR instead', 'sh.g=qr', 'sec sm')}</div></div></div>
+      <div class="gstep"><i>3</i><div><b>${sc === 'nofeed' ? 'Linh confirms, about 1 hour' : 'We confirm it, about 1 minute'}</b></div></div></div>${st === 0 ? '' : howNote(sc)}
+      <p class="fine">Only on a guest's first payment. After that they get the short screen, with their bank remembered.</p>`, sheet: bankSheet(s) }); }
+  if (p.g === 2) return view({ cls: 'bankapp', nav: { title: 'Chuyển tiền nhanh 247', back: 'pay.g=1' }, body: `<div class="card"><div class="kv"><div><span>Người nhận</span><b>TRAN THI LINH</b></div><div><span>Ngân hàng</span><b>Vietcombank</b></div><div><span>Số tài khoản</span><b>0071 000 4821</b></div><div><span>Số tiền</span><b>${vnd(sentAmt(sc))}</b></div><div><span>Nội dung</span><b>${sc === 'memo' ? 'minh anh ck ve' : 'BB7K2Q'}</b></div></div></div>
+    <p style="font-size:12.5px;color:#5A6B82">Mock of the guest's own bank app, filled in by the banbe link. ${{ under: 'Here the guest changes the amount to 600.000 ₫.', over: 'Here the guest rounds up to 800.000 ₫.', memo: 'Here the guest retypes the message.', dup: 'Here the guest taps confirm twice and the bank sends two transfers.', late: 'Here the guest confirms 40 minutes later, after the hold ended.' }[sc] || ''}</p>`,
+    foot: `<button class="btn" data-s="pay.g=${sc === 'nofeed' ? 4 : 3}" ${sc === 'nofeed' ? '' : 'data-f="lookPay"'}>Xác nhận</button>` });
+  if (p.g === 3) return view({ nav: { title: 'Payment' }, body: looking('Looking for your transfer', ['You confirmed in your bank app', "Linh's bank reports the money", 'Amount and message match'], 1) + `<p class="fine" style="text-align:center">Usually under a minute. You can close the app, we will notify you.</p>` });
+  /* result */
+  const tick = (push, extra = '', foot = '') => view({ nav: { title: 'Your ticket' }, push, body: ticket() + extra, foot });
+  const toRef = b('Follow the refund', 'tab=ref;ref.sit=auto', 'sec', 'resetRef');
+  if (p.res === 'nf') return view({ nav: { title: 'Payment' }, body: `<div class="h2">Linh could not find it</div><p class="lead">Your seats stay held while this is sorted out.</p><div class="card">${line('chat', "A chat with Linh is open. Give your bank's reference number there.", 'clay')}${line('shield', "Not solved in 2 days: banbe steps in and decides from both banks' records.", 'moss')}</div>`, foot: b('Open chat with Linh', '', 'sec') });
+  if (sc === 'matched' || p.res === 'ok') return tick(p.res === 'ok' ? 'Linh confirmed your payment' : '<b>Paid.</b> 700.000 ₫ matched by the bank feed', line('check', p.res === 'ok' ? 'Confirmed by Linh.' : 'Confirmed automatically at 9:42. Linh did not have to do anything.'));
+  if (sc === 'over') return tick('<b>Paid.</b> You sent 100.000 ₫ too much', `<div class="card honey">${line('swap', '<b>You sent 800.000 ₫ for a 700.000 ₫ booking.</b> The extra 100.000 ₫ is already on its way back to MB Bank ··· 9917. Nothing to do.', 'honey')}</div>`, toRef);
+  if (sc === 'dup') return tick('<b>Paid.</b> A second transfer will be returned', `<div class="card honey">${line('swap', '<b>Two transfers of 700.000 ₫ arrived.</b> The first one is your ticket. The second is on its way back to MB Bank ··· 9917.', 'honey')}</div>`, toRef);
+  if (sc === 'late') return tick('<b>Paid.</b> Your seats were still free', `<div class="card honey">${line('clock', '<b>Your transfer arrived 10 minutes after the hold ended.</b> The seats were still free, so you are in. Had they gone, the whole 700.000 ₫ would have been sent back automatically.', 'honey')}</div>`);
+  if (sc === 'under') return p.res === 'top' ? tick('<b>Paid.</b> 600.000 + 100.000 ₫ matched', line('check', 'Both transfers matched. Confirmed automatically.'))
+    : view({ nav: { title: 'Payment' }, body: `<div class="h2">We received 600.000 ₫</div><p class="lead">That is 100.000 ₫ short of 700.000 ₫. Your seats are still held for <b data-cd></b>.</p>
+      <button class="choice" data-s="pay.res=top;pay.g=3" data-f="lookPay"><b>Send the missing ${vnd(100000)}</b><span>Same account, same message. We add it to what arrived.</span></button>
+      <button class="choice" data-s="tab=ref;ref.sit=auto" data-f="resetRef"><b>Keep 1 ticket</b><span>Linh sends 250.000 ₫ back to the account you paid from.</span></button>
+      <button class="choice" data-s="tab=ref;ref.sit=auto" data-f="resetRef"><b>Cancel everything</b><span>Linh sends 600.000 ₫ back. Seats are released.</span></button>` });
+  if (sc === 'memo') return p.res === 'asked' ? view({ nav: { title: 'Payment' }, body: `<div class="h2">Found a likely match</div><p class="lead">700.000 ₫ reached Linh at 9:42 from an account in your name, with a different message. We asked Linh to confirm it is yours.</p><div class="card">${line('clock', 'Linh has 1 hour. Your seats stay held.', 'clay')}</div><p class="fine pulse" style="text-align:center">Waiting for Linh. Use the host phone.</p>` })
+    : view({ nav: { title: 'Payment' }, body: `<div class="h2">We cannot match it by itself</div><p class="lead">No transfer with the message <b>BB7K2Q</b> has arrived. If you changed the message, we can still find it.</p><div class="card">${line('alert', 'Nothing is lost. Your seats are held for <b data-cd></b>.', 'honey')}</div>
+      <div class="grp"><div class="eyebrow">Helps us find it (optional)</div><div class="inp"><span>FT26315 88204<small>Reference number from your bank app</small></span>${ic('copy')}</div></div><p class="fine">A reference number can be checked with the bank. A screenshot cannot, so we do not ask for one.</p>`,
+      foot: b("I've paid, find my transfer", 'pay.res=asked') });
+  if (sc === 'nofeed') return view({ nav: { title: 'Payment' }, body: `<div class="h2">Waiting for Linh to confirm</div><p class="lead">Linh checks her bank app by hand. She has 1 hour and gets reminders. Your seats stay held.</p><div class="card"><div class="tl"><div class="ok"><i>${ic('check', 14)}</i><span>You paid ${vnd(T2)}<small>Message BB7K2Q</small></span></div><div class="now pulse"><i></i><span>Linh checks her bank<small>Reminder at 30 minutes</small></span></div><div class="todo"><i></i><span>Ticket issued</span></div></div></div>
+    <div class="grp"><div class="eyebrow">Helps Linh find it (optional)</div><div class="inp"><span>FT26315 88204<small>Reference number from your bank app</small></span>${ic('copy')}</div></div><p class="fine pulse" style="text-align:center">Use the host phone.</p>` });
+  return p.res === 'asked' ? view({ nav: { title: 'Payment' }, body: `<div class="h2">Asked Linh to check</div><p class="lead">Linh has 1 hour to look in her bank app. Your seats stay held.</p><p class="fine pulse" style="text-align:center">Waiting for Linh. Use the host phone.</p>` })
+    : view({ nav: { title: 'Payment' }, body: `<div class="h2">We have not seen it yet</div><p class="lead">Transfers between banks can take a few minutes. Your seats are held for <b data-cd></b>.</p><div class="card">${line('clock', 'We keep checking by ourselves.', 'clay')}${line('alert', 'Check in your bank app that the transfer really went through.', 'honey')}</div>`,
+      foot: `${b('Ask Linh to check', 'pay.res=asked')}${b('Pay again', 'pay.g=1', 'sec sm')}` });
+}
+function payHost(s) {
+  const p = s.pay, sc = p.sc, done = p.g === 4 && (sc === 'matched' || p.res === 'ok' || p.res === 'top' || ['over', 'dup', 'late'].includes(sc));
+  let st = '', push = '', act = '';
+  if (p.g > 0 && p.g < 4) st = ['Holding', 'honey', 'Paying now · hold ends in <span data-cd></span>'];
+  if (p.g === 4) {
+    if (done) { st = ['Paid', 'moss', p.res === 'ok' ? 'Confirmed by you' : 'Matched by bank feed · BB7K2Q']; if (p.res !== 'ok') push = `<b>+${vnd(sc === 'over' ? 800000 : T2)}</b> NGUYEN MINH ANH · matched`; }
+    else if (p.res === 'nf') st = ['Not found', 'alert', 'Chat open with Minh Anh'];
+    else if (sc === 'under') st = ['Short 100.000 ₫', 'honey', 'Received 600.000 of 700.000 ₫ · guest is choosing'];
+    else st = ['Paying', 'honey', 'Not matched yet'];
+    if (sc === 'over' || sc === 'dup') act = `<div class="card clay"><b>You owe Minh Anh ${vnd(sc === 'over' ? 100000 : T2)}</b><span class="lead">${sc === 'over' ? 'They paid 800.000 ₫ for a 700.000 ₫ booking.' : 'Two transfers arrived for one booking.'} We created the refund for you.</span>${b('Send it back', 'tab=ref;ref.sit=auto', 'sm', 'resetRef')}</div>`;
+    if (sc === 'memo' && p.res === 'asked') act = `<div class="card clay"><div class="eyebrow">Is this the one?</div><b>Minh Anh · 2 tickets · ${vnd(T2)}</b><div class="card inset"><div class="kv"><div><span>Money in</span><b>${vnd(T2)} · 9:42</b></div><div><span>From</span><b>NGUYEN MINH ANH</b></div><div><span>Message</span><b>"minh anh ck ve"</b></div></div></div><span class="fine">From your bank feed. Same amount, 2 minutes after they held seats, wrong message.</span><div class="two">${b('Yes, match it', 'pay.res=ok', 'sm')}${b('Not theirs', 'pay.res=nf', 'sec sm')}</div></div>`;
+    if ((sc === 'nofeed' && !p.res) || (sc === 'notfound' && p.res === 'asked')) act = `<div class="card clay"><b>Minh Anh says they paid ${vnd(T2)}</b><span class="lead">Message BB7K2Q · reference FT26315 88204. Look in your Vietcombank app, never at a photo. 58 minutes left.</span><div class="two">${b('Money received', 'pay.res=ok', 'sm')}${b('Not found', 'pay.res=nf', 'sec sm')}</div></div>${sc === 'nofeed' ? `<div class="card inset">${line('link', '<b>Link your bank</b> and payments confirm by themselves. Guests see "confirmed in 1 minute" instead of "about 1 hour".', 'clay')}</div>` : ''}`;
+  }
+  return view({ nav: { title: 'Bookings' }, push, body: `<div class="stat"><div><b>${done ? 10 : 9}</b>Paid</div><div><b>${done ? '4.200' : '3.500'}k</b>₫ in</div><div><b>${act ? 1 : 0}</b>Needs you</div></div>${act}
+    <div class="card" style="gap:0">${st ? `<div class="prow"><div class="av">MA</div><div>Minh Anh · 2 tickets<small>${st[2]}</small></div>${pill(st[0], st[1])}</div>` : ''}
+    <div class="prow"><div class="av b">K</div><div>Khoa · 1 ticket<small>Matched by bank feed</small></div>${pill('Paid', 'moss')}</div>
+    <div class="prow"><div class="av c">T</div><div>Thảo · 2 tickets<small>Matched by bank feed</small></div>${pill('Paid', 'moss')}</div></div>
+    <p class="fine">${sc === 'nofeed' ? 'Your bank is not linked, so each payment waits for your tap.' : 'Payments confirm themselves. You only step in when one cannot be matched.'}</p>` });
+}
+
+/* ---------- REFUNDS ---------- */
+const refAmt = r => r.sit === 'auto' ? 100000 : r.when === '30h' ? P : r.when === '20h' ? 0 : T2;
+const refSt = r => { const st = r.sit === 'auto' && r.st === 'none' ? 'owed' : r.st; return st === 'owed' && r.hostdo === 'late' ? 'overdue' : st; };
+const destOf = r => r.dest === 'payer' || r.sit !== 'guest' ? ['MB Bank ··· 9917', 'the account that paid you'] : r.dest === 'saved' ? ['Techcombank ··· 2204', "Minh Anh's saved refund account"] : ['TPBank ··· 6630', 'the account Minh Anh just added'];
+function tracker(r, first) {
+  const st = refSt(r), A = refAmt(r), d = destOf(r)[0], okI = ic('check', 14);
+  const sentish = ['sent', 'marked', 'closed', 'check'].includes(st);
+  const row2 = st === 'overdue' ? `<div class="bad"><i>${ic('alert', 13)}</i><span>Linh sends the money<small>Was due Mon 16 Nov. 1 day late.</small></span></div>`
+    : st === 'part' ? `<div class="warn now"><i></i><span>Linh sends the money<small>${vnd(600000)} of ${vnd(A)} arrived. ${vnd(A - 600000)} still owed.</small></span></div>`
+      : `<div class="${sentish ? 'ok' : 'now'}"><i>${sentish ? okI : ''}</i><span>Linh sends the money<small>${sentish ? 'Sent today 14:32' : 'Due by Mon 16 Nov (3 working days)'}</small></span></div>`;
+  const row3 = st === 'marked' ? `<div class="warn"><i></i><span>Linh says it is sent<small>Her bank is not linked. Reference FT26320 11447.</small></span></div>`
+    : `<div class="${['sent', 'closed', 'check'].includes(st) ? 'ok' : 'todo'}"><i>${['sent', 'closed', 'check'].includes(st) ? okI : ''}</i><span>Bank confirms it left Linh's account<small>${['sent', 'closed', 'check'].includes(st) ? 'Matched: amount, account and message' : 'Automatic. No photo from anyone.'}</small></span></div>`;
+  return `<div class="card"><div class="tl"><div class="ok"><i>${okI}</i><span>${first}<small>${vnd(A)} to ${d}</small></span></div>${row2}${row3}
+    <div class="${st === 'closed' ? 'ok' : sentish ? 'now' : 'todo'}"><i>${st === 'closed' ? okI : ''}</i><span>You confirm it arrived<small>${st === 'closed' ? 'Closed' : 'Or it closes by itself after 7 days'}</small></span></div></div></div>`;
+}
+function follow(r, title, first, back) {
+  const st = refSt(r), A = refAmt(r);
+  if (st === 'closed') return view({ nav: { title: 'Refund' }, body: `<div class="bigcheck">${ic('check', 46)}</div><div class="h2" style="text-align:center">Refund complete</div>${tracker(r, first)}` });
+  if (st === 'check') return view({ nav: { title: 'Refund', back: 'ref.st=sent' }, body: `<div class="h2">Let's check with both banks</div><p class="lead">Linh's bank shows ${vnd(A)} left at 14:32 for ${destOf(r)[0]}.</p><div class="card">${line('clock', 'Give it 30 minutes. Delays between banks are common.', 'clay')}${line('chat', 'Still missing? A chat with Linh opens with this record attached.', 'clay')}${line('shield', 'Not solved in 5 days: banbe reviews and decides.', 'moss')}</div>`, foot: b('Open the chat', '', 'sec') });
+  const head = { owed: ['Refund on its way', 'Linh has been told. You can follow it here.'], overdue: ['Linh is late with your refund', 'She has been reminded twice and cannot publish new events until it is sent.'], part: ['Part of your refund arrived', 'Linh has been asked for the rest.'], marked: ['Linh says she sent it', 'Her bank is not linked to banbe, so please check your own bank app.'], sent: ['Linh sent your refund', 'Check your bank app. Transfers between banks land in a few minutes.'] }[st];
+  const foot = st === 'overdue' ? (r.esc ? '' : `${b('Ask banbe to step in', 'ref.esc=true')}${b('Remind Linh again', '', 'sec sm')}`) : st === 'part' ? b('Remind Linh', '', 'sec') : st === 'owed' ? '' : `<div class="two">${b('Got it', 'ref.st=closed', 'sm')}${b('Not received', 'ref.st=check', 'sec sm')}</div>`;
+  return view({ nav: { title, back }, push: st === 'sent' ? `<b>Refund sent.</b> ${vnd(A)} to ${destOf(r)[0]}` : st === 'marked' ? 'Linh marked your refund as sent' : '', body: `<div class="h2">${head[0]}</div><p class="lead">${head[1]}</p>${tracker(r, first)}
+    ${r.esc && st === 'overdue' ? `<div class="card moss">${line('shield', '<b>banbe is on it.</b> We contact Linh today and decide within 2 working days.')}</div>` : ''}${st === 'owed' ? '<p class="fine pulse" style="text-align:center">Waiting for Linh. Use the host phone.</p>' : ''}`, foot });
+}
+function refGuest(s) {
+  const r = s.ref, A = refAmt(r);
+  if (r.sit === 'auto') return follow(r, 'My refunds', 'Created automatically: you paid 100.000 ₫ too much');
+  if (r.sit === 'host') {
+    if (r.hc < 2) return view({ nav: { title: 'Your ticket' }, body: ticket() + '<p class="fine" style="text-align:center">Cancel the event on the host phone to see what the guest gets.</p>' });
+    const rr = { ...r, st: r.st === 'none' ? 'owed' : r.st };
+    return view({ nav: { title: 'Bếp Nhỏ supper club' }, push: r.n >= 1 && r.st !== 'closed' ? '<b>Refund sent.</b> 700.000 ₫ to MB Bank ··· 9917' : r.n ? '' : 'Linh cancelled Bếp Nhỏ supper club', body: `<div class="card alert">${line('alert', '<b>Linh cancelled this event.</b> "The kitchen flooded. I am so sorry, I will host again in December."', 'alert')}</div>
+      <div class="h2">You get ${vnd(T2)} back</div><p class="lead">In full, to the account you paid from. You do not need to do anything.</p>${tracker({ ...rr, st: r.st === 'closed' ? 'closed' : r.n >= 1 ? 'sent' : refSt(rr) }, 'Event cancelled by Linh')}`,
+      foot: r.n >= 1 && r.st !== 'closed' ? `<div class="two">${b('Got it', 'ref.st=closed', 'sm')}${b('Not received', 'ref.st=closed', 'sec sm')}</div>` : r.n ? '' : lk('Use a different account', '') });
+  }
+  if (r.g === 0) return view({ nav: { title: 'Your ticket' }, body: ticket(), foot: b("Can't make it?", 'ref.g=1', 'sec') });
+  if (r.g === 1) return view({ nav: { title: "Can't make it?", back: 'ref.g=0' }, body: `<div class="card inset"><div class="eyebrow">${{ '10d': 'Today is 10 days before the event', '30h': 'The event starts in 30 hours', '20h': 'The event starts in 20 hours' }[r.when]}</div>${ladder({ '10d': 0, '30h': 1, '20h': 2 }[r.when])}</div>
+    ${A ? `<button class="choice" data-s="ref.g=2"><b>Cancel and get ${vnd(A)} back</b><span>${A === T2 ? '100% of what you paid.' : 'Half of the 700.000 ₫ you paid. Linh keeps the other half because the seats are hard to refill now.'} Linh has 3 working days to send it.</span></button>` : `<div class="card honey">${line('clock', '<b>The refund window has closed.</b> Linh has already bought the food for your seats.', 'honey')}</div>`}
+    <button class="choice" data-s=""><b>${ic('gift')} Give the tickets to a friend</b><span>Free and instant. Your QR stops working and your friend gets a new one.</span></button>
+    ${A ? '' : `<button class="choice" data-s=""><b>${ic('chat')} Ask Linh anyway</b><span>She can choose to refund you. It is her decision.</span></button>`}` });
+  if (r.g === 2) {
+    const opt = (on, t, sub) => `<button class="choice" aria-pressed="${on}"><b>${ic('bank')} ${t}</b><span>${sub}</span></button>`;
+    const body = r.dest === 'payer' ? opt(true, 'MB Bank ··· 9917', 'NGUYEN MINH ANH · the account you paid from. Nothing to type.') + opt(false, 'Another account', 'Must be in your own name.')
+      : r.dest === 'saved' ? `<p class="fine">Your bank did not share the account you paid from, so we use your saved one.</p>` + opt(true, 'Techcombank ··· 2204', 'NGUYEN MINH ANH · your default refund account') + opt(false, 'Add another account', 'Must be in your own name.')
+        : `<p class="lead">We need an account to send it to. It is saved for next time.</p><div class="grp"><div class="inp"><span>TPBank<small>Bank</small></span>${ic('chev')}</div><div class="inp"><span>0396 114 6630<small>Account number</small></span></div><div class="inp" style="border-color:var(--moss)"><span>NGUYEN MINH ANH<small>Name found by the bank. Matches your profile.</small></span><span style="color:var(--moss)">${ic('check')}</span></div></div><p class="fine">The name comes from the bank, you cannot type it. An account in someone else's name is refused.</p>`;
+    return view({ nav: { title: 'Where should it go?', back: 'ref.g=1' }, body: body + `<div class="card moss">${line('shield', '<b>banbe never asks for an OTP, a card number or a fee to give a refund.</b> If someone does, it is a scam.')}</div>`,
+      foot: b('Cancel booking and request ' + vnd(A), 'ref.g=3;ref.st=owed') });
+  }
+  return follow(r, 'Refund', 'Refund requested');
+}
+function refHost(s) {
+  const r = s.ref, st = refSt(r), A = refAmt(r), [d, dwhy] = destOf(r), owe = st === 'part' ? A - 600000 : A;
+  if (r.sit === 'host') {
+    const names = ['Minh Anh · 700.000 ₫', 'Khoa · 350.000 ₫', 'Thảo · 700.000 ₫', 'Huy · 350.000 ₫', 'Vy · 350.000 ₫', 'Nam · 700.000 ₫'];
+    if (r.hc < 2) return view({ nav: { title: 'Bếp Nhỏ supper club' }, body: `<div class="card">${evCard()}</div><div class="stat"><div><b>9</b>Tickets paid</div><div><b>3.150k</b>₫ received</div><div><b>10 d</b>To go</div></div>`, foot: b('Cancel event', 'ref.hc=1', 'danger'),
+      sheet: r.hc === 1 ? { who: 'ref.hc=0', html: `<div class="h2">Cancel for everyone?</div><div class="card alert">${line('alert', '<b>6 guests get 100% back: 3.150.000 ₫.</b> You send each refund from your bank app. We fill in every one.', 'alert')}</div><div class="card"><div class="eyebrow">Message to guests</div><span>"The kitchen flooded. I am so sorry, I will host again in December."</span></div>${line('lock', 'You cannot publish new events until these refunds are sent.', 'honey')}${b('Cancel event and start refunds', 'ref.hc=2', 'danger')}${b('Keep the event', 'ref.hc=0', 'sec sm')}` } : null });
+    const n = Math.min(r.n, 6);
+    return view({ nav: { title: 'Refund run' }, body: `<div class="h2">${n === 6 ? 'All refunds sent' : `${n} of 6 sent`}</div><div class="bar2"><i style="width:${n / 6 * 100}%"></i></div><p class="lead">${n === 6 ? 'Every guest has been paid back and told. You can publish events again.' : 'Each one opens your bank app, already filled in. The bank feed ticks it off. You can stop and continue later.'}</p>
+      <div class="card" style="gap:0">${names.map((t, i) => `<div class="prow"><div style="flex:1">${t}<small>${i < n ? 'Sent · matched by bank' : 'To the account they paid from'}</small></div>${i < n ? pill('Sent', 'moss') : i === n ? `<button class="btn sm" style="width:auto;padding:0 16px" data-s="ref.n=${n + 1}">Pay</button>` : pill('Next')}</div>`).join('')}</div>` });
+  }
+  const why = r.sit === 'auto' ? 'Minh Anh paid 800.000 ₫ for a 700.000 ₫ booking.' : `Minh Anh cancelled ${{ '10d': '10 days', '30h': '30 hours', '20h': '20 hours' }[r.when]} before.`;
+  if (r.h === 0) {
+    const card = st === 'owed' ? `<div class="card clay"><b class="disp" style="font-size:19px">Refund owed · ${vnd(A)}</b><span class="lead">${why} Due by Mon 16 Nov.</span>${b('Send refund', 'ref.h=1', 'sm')}</div>`
+      : st === 'overdue' ? `<div class="card alert"><b class="disp" style="font-size:19px">Refund overdue · ${vnd(A)}</b>${line('alert', 'Was due Mon 16 Nov. You cannot publish new events until it is sent.' + (r.esc ? ' Minh Anh has asked banbe to step in.' : ''), 'alert')}${b('Send refund now', 'ref.h=1', 'sm')}</div>`
+        : st === 'part' ? `<div class="card honey"><b class="disp" style="font-size:19px">${vnd(owe)} still owed</b><span class="lead">Your bank shows 600.000 ₫ sent of ${vnd(A)}.</span>${b('Send the rest', 'ref.h=1', 'sm')}</div>`
+          : `<div class="card">${line('check', st === 'none' ? 'No refunds owed.' : st === 'marked' ? 'Marked as sent. Waiting for Minh Anh to confirm.' : 'No refunds owed. Last one matched today 14:32.')}</div>${st === 'none' ? '<p class="fine">Cancel on the guest phone to create one.</p>' : ''}`;
+    return view({ nav: { title: 'Money' }, push: st === 'owed' && r.sit === 'guest' ? `Minh Anh cancelled. <b>Refund owed: ${vnd(A)}</b>` : '', body: card });
+  }
+  if (r.h === 1) return view({ nav: { title: 'Send refund', back: 'ref.h=0' }, body: `<div class="card"><div class="line moss">${ic('shield')}<span><b>Goes to ${dwhy}</b><br><span class="fine">${r.dest === 'payer' || r.sit !== 'guest' ? 'Taken from your bank feed. Nobody typed it, so nobody could change it.' : "The bank confirmed the name is Minh Anh's own."}</span></span></div>${qr(140, false, 9)}
+      <div class="kv"><div><span>To</span><b>NGUYEN MINH ANH</b></div><div><span>Account</span><b>${d}</b></div><div><span>Amount</span><b>${vnd(owe)} ${ic('lock', 15)}</b></div><div><span>Message</span><b>RF-BB7K2Q ${ic('lock', 15)}</b></div></div></div>`,
+    foot: r.hostdo === 'manual' ? b(ic('bank') + 'Open my bank app', 'ref.h=4') : b(ic('bank') + 'Open my bank app', 'ref.h=2', '', 'lookRef') });
+  if (r.h === 2) return view({ nav: { title: 'Send refund' }, body: looking('Watching for your transfer', ['You confirmed in your bank app', `Your bank reports money out`, "Matched to Minh Anh's refund"], 1) });
+  if (r.h === 4) return view({ nav: { title: 'Send refund', back: 'ref.h=1' }, body: `<div class="h2">Tell us the reference</div><p class="lead">Your bank is not linked to banbe, so we cannot see the transfer by ourselves.</p><div class="grp"><div class="inp"><span>FT26320 11447<small>Reference number from your bank app</small></span></div></div>
+      <p class="fine">No photo. A reference number can be checked with the bank, a picture cannot.</p><div class="card inset">${line('link', '<b>Link your bank</b> and refunds tick themselves off.', 'clay')}</div>`, foot: b("I've sent it", 'ref.st=marked;ref.h=3') });
+  return view({ nav: { title: 'Send refund' }, body: st === 'part' ? `<div class="bigcheck" style="background:var(--honeyBg);color:var(--honey)">${ic('alert', 44)}</div><div class="h2" style="text-align:center">600.000 ₫ matched</div><p class="lead" style="text-align:center">The refund is ${vnd(A)}. ${vnd(owe)} is still owed. In this simulation you changed the amount in your bank app.</p>`
+    : `<div class="bigcheck">${ic('check', 46)}</div><div class="h2" style="text-align:center">${st === 'marked' ? 'Marked as sent' : 'Sent and matched'}</div><p class="lead" style="text-align:center">${st === 'marked' ? 'Minh Anh has 7 days to confirm, then it closes by itself.' : 'Minh Anh has been told. You did not need to mark anything or attach proof.'}</p>`,
+    foot: st === 'part' ? b('Send the rest', 'ref.h=1') : b('Done', 'ref.h=0', 'sec') });
+}
+
+/* ---------- panel ---------- */
+const chips = (label, key, opts, fn) => `<div><h4>${label}</h4><div class="sims">${Object.entries(opts).map(([k, l]) => { const [a, c] = key.split('.'); return `<button class="chipbtn" aria-pressed="${S[a][c] === k}" data-s="${key}=${k}" data-f="${fn}">${l}</button>`; }).join('')}</div></div>`;
+const ul = a => `<ul>${a.map(x => `<li>${x}</li>`).join('')}</ul>`;
+const TABS = {
+  pay: { name: 'Pay now by transfer', guest: payGuest, host: payHost, panel: () => `<div><div class="eyebrow">Part 1</div><h2>A transfer that confirms itself, with an answer for everything the bank can do</h2></div>
+    <p>Pick who is paying, then pick what the bank does, and walk the guest phone through it. The host phone reacts.</p>
+    ${chips('Who is paying', 'pay.lay', LAY, 'resetPay')}${chips('What happens at the bank', 'pay.sc', SC, 'resetPay')}
+    <div class="cmp"><div><h4>Today in the app</h4>${ul(['Copy rows and a QR, the guest finds their own way to the bank app.', 'After "I\'ve transferred" the guest is asked for a photo of the transfer.', 'A wrong amount or a late transfer is labelled in the database and the guest is not told why.', 'The host looks through their bank app for each unmatched payment.'])}</div>
+    <div class="new"><h4>Proposed</h4>${ul(['One button opens the guest\'s bank with everything filled in.', 'No photo anywhere. An optional bank reference number instead.', 'One plain screen per bank outcome, and money that should go back starts going back by itself.', 'The host is shown the likely transfer and taps Yes.'])}</div></div>
+    <div><h4>Scams it closes</h4>${ul(['Fake transfer bill: there is nowhere to send one.', 'Paying the wrong person: the name is shown as matching the host\'s ID before the bank opens.', '"I paid, give me the ticket" pressure on the host: the feed or the host\'s own bank app decides.', 'Paying twice or too much is returned by a tracked refund, so nobody has to ask in chat.'])}</div>` },
+  ref: { name: 'Refunds', guest: refGuest, host: refHost, panel: () => `<div><div class="eyebrow">Part 2</div><h2>A refund both sides can follow, sent to an account nobody typed</h2></div>
+    <p>Choose the situation, then change the conditions to see each branch. Start on the guest phone, except for "Host cancels".</p>
+    ${chips('Situation', 'ref.sit', { guest: 'Guest cancels', host: 'Host cancels the event', auto: 'Paid too much (automatic)' }, 'resetRef')}
+    ${S.ref.sit === 'guest' ? chips('How long before the event', 'ref.when', { '10d': '10 days · 100%', '30h': '30 hours · 50%', '20h': '20 hours · none' }, 'resetRef') + chips('Where the refund can go', 'ref.dest', { payer: 'Bank shared the paying account', saved: 'Not shared, guest has a saved account', none: 'Not shared, no saved account' }, 'resetRef') : ''}
+    ${S.ref.sit !== 'host' ? chips('What the host does', 'ref.hostdo', { ok: 'Pays in full', late: 'Pays late', partial: 'Sends too little', manual: 'Bank not linked' }, 'resetRef') : ''}
+    <div class="cmp"><div><h4>Today in the app</h4>${ul(['Guest picks one of their saved Refund accounts.', 'Host taps "mark sent" and may attach a photo. Or one batch confirm.', 'Guest confirms, or it closes after 7 days.', 'Overdue refunds are flagged.'])}</div>
+    <div class="new"><h4>Proposed</h4>${ul(['The paying account is offered first. A new account must be in the guest\'s own name, checked by the bank.', 'The bank feed proves the money left. A reference number when the bank is not linked. No photos.', 'Same 7-day close, plus a clear screen for "part arrived" and "not received".', 'Overdue stops the host publishing and lets the guest call banbe in.'])}</div></div>
+    <div><h4>Scams it closes</h4>${ul(['Refund phishing: nothing to fill in, and the screen says banbe never asks for an OTP, card or fee.', 'Refund redirected to a stranger: only the paying account or an account in the guest\'s name.', 'Host says "I sent it" with a fake bill: only the feed moves the status to Sent.', 'Guest says "never arrived": the match shows amount, account and time.'])}</div>` }
+};
+
+/* ---------- render + events ---------- */
+const last = { g: '', h: '' };
+function put(id, key, html) { if (last[key] !== html) { $(id).innerHTML = html; last[key] = html; } }
+function render() {
+  const t = TABS[S.tab];
+  put('#mg', 'g', t.guest(S)); put('#mh', 'h', t.host(S));
+  $('#flows').innerHTML = Object.entries(TABS).map(([k, v], i) => `<button class="chipbtn" aria-pressed="${k === S.tab}" data-s="tab=${k}"><b>${i + 1}</b>${v.name}</button>`).join('');
+  $('#side').innerHTML = t.panel();
+  fill();
+}
+let rot = 0; const t0 = Date.now();
+function fill() {
+  document.querySelectorAll('[data-qr]').forEach(el => { const k = el.dataset.seed * 100 + (el.hasAttribute('data-rot') ? rot : 0); if (el.dataset.k != k) { el.innerHTML = qrSvg(k, +el.dataset.qr); el.dataset.k = k; } });
+  const left = Math.max(0, 1781 - Math.floor((Date.now() - t0) / 1000)), txt = String(Math.floor(left / 60)).padStart(2, '0') + ':' + String(left % 60).padStart(2, '0');
+  document.querySelectorAll('[data-cd]').forEach(el => el.textContent = txt);
+}
+setInterval(fill, 1000); setInterval(() => { rot++; fill(); }, 5000);
+function assign(str) {
+  str.split(';').filter(Boolean).forEach(a => {
+    const [path, raw = ''] = a.split('='), keys = path.split('.'); let o = S;
+    while (keys.length > 1) o = o[keys.shift()];
+    o[keys[0]] = raw === 'true' ? true : raw === 'false' ? false : raw !== '' && !isNaN(raw) ? +raw : raw;
+  });
+}
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-s],[data-f]'); if (!el || el.disabled) return;
+  const before = S.tab;
+  if (el.dataset.f && el.dataset.f.startsWith('reset')) { if (el.dataset.s) assign(el.dataset.s); timers.forEach(clearTimeout); timers = []; HOOKS[el.dataset.f](); }
+  else { if (el.dataset.s) assign(el.dataset.s); if (el.dataset.f) HOOKS[el.dataset.f](); }
+  if (S.tab !== before) S.sh = { g: '', h: '' };
+  render();
+});
+$('#reset').onclick = () => { timers.forEach(clearTimeout); timers = []; HOOKS[S.tab === 'pay' ? 'resetPay' : 'resetRef'](); render(); };
+$('#theme').onclick = () => { const r = document.documentElement, dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; r.dataset.theme = dark ? 'light' : 'dark'; };
+document.querySelectorAll('button[data-role]').forEach(bt => bt.onclick = () => { document.body.dataset.role = bt.dataset.role; document.querySelectorAll('button[data-role]').forEach(x => x.setAttribute('aria-pressed', x === bt)); });
+render();
+</script>
+</body>
+</html>
