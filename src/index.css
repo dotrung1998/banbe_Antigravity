@@ -883,3 +883,159 @@ input::placeholder, textarea::placeholder {
 /* Note 80: tour chapter-break sheet rise and the "tap here" ring on a do-it step (both skipped under reduced motion in JSX). */
 @keyframes bbTourUp { from { transform: translateY(100%); } to { transform: none; } }
 @keyframes bbTourRing { from { transform: scale(1); opacity: .9; } to { transform: scale(1.12); opacity: 0; } }
+
+/* ── Home header, compact-on-scroll (owner 2026-11-17) ──────────────────────────────────────────────────────────────
+   Web home's band used to be a flat near-black slab that stayed ~150 px tall once scrolled. This is one sticky layer
+   with a fixed layout height (so the hero never shifts) whose contents morph on a single scroll-linked variable, --hp
+   (0 → 1 over the first 72 px, written by HomeShellV5 with no React render per frame):
+     · at rest: a warm clay-to-night scrim over the hero, white wordmark + date, glass search pill, Map + avatar;
+     · compact: the date leaves, the wordmark shrinks, the search pill glides up between wordmark and quick panel and
+       the scrim condenses into one floating espresso-glass bar with a hairline and a soft shadow.
+   Every value below is a calc() on --hp, so there is no threshold jump; Reduce Motion jumps between the two ends. */
+@keyframes bb-home-head-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+
+.bb-home-head {
+  --hp: 0;
+  /* Compact morph, delayed until the date has left (0 → 1 over --hp .25 → 1), so the search pill never crosses the
+     wordmark or the date on its way up. */
+  --hm: clamp(0, calc((var(--hp) - .25) / .75), 1);
+  /* The wordmark finishes shrinking before the search pill arrives beside it (no crossing or clipping mid-morph). */
+  --hs: clamp(0, calc(var(--hm) * 1.9), 1);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: var(--bb-home-head-h, calc(152px + var(--bb-safe-top, env(safe-area-inset-top, 0px))));
+  color: #fff;
+  pointer-events: none;
+  isolation: isolate;
+}
+.bb-home-head__scrim {
+  position: absolute; left: 0; right: 0; top: 0;
+  height: calc(var(--bb-home-head-h) + 26px);
+  pointer-events: none;
+  opacity: calc(1 - var(--hp));
+  background:
+    radial-gradient(130% 90% at 12% -10%, rgba(156,91,59,.30), rgba(156,91,59,0) 58%),
+    linear-gradient(180deg, rgba(20,17,13,.90) 0%, rgba(20,17,13,.66) 46%, rgba(20,17,13,.16) 80%, rgba(20,17,13,0) 100%);
+}
+.bb-home-head__surface {
+  position: absolute; left: 10px; right: 10px;
+  /* Flush with the safe-area top: a floating bar with no slit above it for content to slide through. */
+  top: var(--bb-safe-top, 0px);
+  height: 56px; box-sizing: border-box; border-radius: 20px;
+  pointer-events: none;
+  border: 1px solid rgba(247,244,236,.16);
+  background:
+    radial-gradient(120% 160% at 10% -30%, rgba(156,91,59,.30), rgba(156,91,59,0) 58%),
+    linear-gradient(180deg, rgba(41,35,28,.96) 0%, rgba(21,18,14,.97) 100%);
+  box-shadow: 0 14px 34px rgba(10,8,6,.30), inset 0 1px 0 rgba(255,255,255,.10);
+  opacity: calc((var(--hm) - .45) * 2.2);
+  transform: translateY(calc((1 - var(--hm)) * -8px)) scale(calc(.97 + .03 * var(--hm)));
+  transform-origin: 50% 0;
+}
+.bb-home-head__brand {
+  position: absolute; left: 20px;
+  top: calc(var(--bb-safe-top, 0px) + 18px + 6px * var(--hs));
+  pointer-events: none;
+  animation: bb-home-head-in .5s cubic-bezier(.22,.61,.36,1) both;
+}
+.bb-home-head__wordmark { display: block; width: auto; height: calc(45px - 20px * var(--hs)); }
+.bb-home-head__date {
+  margin-top: calc(4px * (1 - var(--hm)));
+  color: rgba(247,244,236,.76); font-size: 14px; line-height: 1.35; letter-spacing: .01em; white-space: nowrap;
+  opacity: calc(1 - var(--hp) * 3);
+  transform: translateY(calc(var(--hp) * -6px));
+}
+.bb-home-head__quick {
+  position: absolute; right: calc(20px - 2px * var(--hs));
+  top: calc(var(--bb-safe-top, 0px) + 20px - 12px * var(--hs));
+  display: flex; align-items: center; gap: 8px;
+  pointer-events: none;
+}
+.bb-home-head__quick > * { pointer-events: auto; }
+.bb-home-head__glass {
+  width: calc(42px - 2px * var(--hs)); height: calc(42px - 2px * var(--hs));
+  border-radius: 50%; display: grid; place-items: center; padding: 0; cursor: pointer; color: #fff;
+  background: linear-gradient(160deg, rgba(247,244,236,.22), rgba(247,244,236,.10));
+  border: 1px solid rgba(247,244,236,.26);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.16);
+}
+.bb-home-head__avatar {
+  position: relative; flex: none;
+  width: calc(42px - 2px * var(--hs)); height: calc(42px - 2px * var(--hs));
+  border: none; border-radius: 50%; background: none; padding: 0; cursor: pointer;
+}
+.bb-home-head__disc {
+  display: grid; place-items: center; width: 100%; height: 100%; box-sizing: border-box;
+  border-radius: 50%; background: var(--bb-clay, #9C5B3B); color: #fff;
+  font-size: 14px; font-weight: 700; border: 1.5px solid rgba(255,255,255,.92);
+}
+.bb-home-head__gear {
+  position: absolute; right: -3px; bottom: -3px; width: 18px; height: 18px; box-sizing: border-box;
+  border-radius: 50%; background: #16140f; color: #fff;
+  display: grid; place-items: center; border: 1px solid rgba(255,255,255,.55);
+}
+.bb-home-head__glass:focus-visible, .bb-home-head__avatar:focus-visible { outline: 2px solid rgba(247,244,236,.9); outline-offset: 2px; }
+.bb-home-head__searchrow {
+  position: absolute;
+  /* The pill's left edge is tied to the wordmark's shrink (55 px) plus the gap it will keep at rest beside it (19 px
+     at the compact end), so it can never slide through the logo on its way up. Its right edge follows the quick
+     panel's shrink for the same reason. */
+  left: calc(20px + 55px * var(--hs) + 19px * var(--hm));
+  right: calc(20px + 94px * var(--hs));
+  top: calc(var(--bb-safe-top, 0px) + 96px - 88px * var(--hm));
+  height: calc(46px - 6px * var(--hs));
+  display: flex; align-items: center; box-sizing: border-box;
+  /* One paper field in both states: it reads as the app's own search input over the night hero at rest and over the
+     espresso bar when compact, instead of the old grey-on-grey glass. */
+  border-radius: 999px; color: #1B1916;
+  background: linear-gradient(180deg, rgba(250,247,240,.97), rgba(243,239,230,.95));
+  border: 1px solid rgba(27,25,22,.08);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.72), 0 8px 22px rgba(10,8,6,.18);
+  pointer-events: none;
+  animation: bb-home-head-in .5s cubic-bezier(.22,.61,.36,1) .06s both;
+}
+.bb-home-head__searchrow > * { pointer-events: auto; }
+.bb-home-head__searchbtn {
+  flex: 1 1 auto; min-width: 0; height: 100%;
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 8px 0 calc(16px - 2px * var(--hm));
+  border: none; background: none; color: inherit; font-family: inherit; font-size: 15px; cursor: text; text-align: left;
+}
+.bb-home-head__hint {
+  flex: 1 1 auto; min-width: 0; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: rgba(27,25,22,.68); font-weight: 500;
+  /* Collapses out of the flex line as the pill compactes, so the space goes to the chosen area, not to an empty box. */
+  max-width: calc((1 - var(--hm)) * 100%);
+  opacity: calc(1 - var(--hm) * 1.5);
+  transition: opacity .18s ease;
+}
+.bb-home-head__divider {
+  width: 1px; flex: none;
+  height: calc(22px - 4px * var(--hm));
+  background: rgba(27,25,22,.16);
+}
+.bb-home-head__areabtn {
+  flex: 0 1 auto; flex-grow: var(--hm); min-width: 42px; height: 100%;
+  max-width: calc(46% + 26% * var(--hm));
+  display: flex; align-items: center; gap: 5px; padding: 0 12px;
+  color: #1B1916; font-family: inherit; font-weight: 600;
+  font-size: calc(13.5px - .5px * var(--hm));
+  background: none; border: none; cursor: pointer;
+}
+.bb-home-head__arealabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The current area is always readable, at rest and compact (owner 2026-11-17). "Everywhere" is a quiet label, not a
+   second placeholder, so it never competes with the search words. */
+.bb-home-head__areafallback { display: inline; font-weight: 500; opacity: .72; }
+/* Compact end of the morph: the magnifier keeps a 44 px target, the chosen area takes the rest of the pill. This is
+   the last 20 % of the scroll, when the placeholder is already invisible, so nothing visibly snaps. */
+.bb-home-head[data-compact="1"] .bb-home-head__hint { display: none; }
+.bb-home-head[data-compact="1"] .bb-home-head__searchbtn { flex: 0 0 44px; padding: 0 0 0 14px; }
+.bb-home-head[data-compact="1"] .bb-home-head__areabtn { flex: 1 1 auto; max-width: none; gap: 6px; padding: 0 12px 0 2px; }
+.bb-home-head__chev { flex: none; font-size: 10px; opacity: .55; }
+
+
+@media (prefers-reduced-motion: reduce) {
+  .bb-home-head__brand, .bb-home-head__searchrow { animation: none; }
+  .bb-home-head__hint { transition: none; }
+}

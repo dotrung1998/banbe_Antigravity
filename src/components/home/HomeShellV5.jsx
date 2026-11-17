@@ -1,10 +1,14 @@
 // Home from the v5 prototype (note 80), shown with the Simple Shell: one full-bleed dark hero that holds the header
-// (wordmark + date, Map, avatar), the glass search bar, the tabs (For You | Tonight | Weekend, + Hosting for hosts)
+// (wordmark + date, Map, avatar), the paper search bar, the tabs (For You | Tonight | Weekend, + Hosting for hosts)
 // and the card rail; then Next up, Browse (types with counts + Find a type) and By type (one photo row per type).
+// The header condenses on scroll into one floating bar (owner 2026-11-17): a single scroll-linked progress, written to
+// CSS variables, shrinks the wordmark, drops the date and lifts the search pill beside the quick panel. The mobile
+// twin is `HomeHeroPinnedHeader` in apps/ios/BanbeApp/Views/HomeShellV5Views.swift.
 // Pure view over the lists Home.jsx already builds, so it adds no fetching and no filters of its own.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CategoryGlyph } from './HomeDiscoveryParts.jsx';
 import { setThemeColor } from '../../lib/themeColor.js';
+import { useReducedMotion } from '../../lib/useReducedMotion.js';
 import { categoryDefs } from '../../lib/eventTypes.js';
 import SeeAllFanCard from './SeeAllFanCard.jsx';
 
@@ -44,19 +48,14 @@ export default function HomeShellV5({
   const [idx, setIdx] = useState(0);
   const headRef = useRef(null);
   const sentinel = useRef(null);
-  const [headH, setHeadH] = useState(0);
   const [stuck, setStuck] = useState(false);
-  // The header (wordmark, Map, avatar, search) is sticky over the content; it is measured so the hero can slide under it.
-  useLayoutEffect(() => {
-    const el = headRef.current;
-    if (!el) return undefined;
-    const measure = () => setHeadH(Math.round(el.getBoundingClientRect().height));
-    measure();
-    if (typeof ResizeObserver === 'undefined') return undefined;
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+  // The status-bar band stays night through the collapse (the header is still over the hero); it turns paper only when
+  // the floating bar has fully taken over. Avoids a paper strip snapping in above a dark header at the first pixel.
+  const [bandNight, setBandNight] = useState(true);
+  const bandNightRef = useRef(true);
+  const reducedMotion = useReducedMotion();
+  // The header (wordmark, Map, avatar, search) is sticky over the content. Its height never changes in layout (the
+  // compact state moves inside it), so the hero stays anchored while the shell morphs around the scroll.
   // Dark, readable background only once the content has scrolled under it.
   useEffect(() => {
     const el = sentinel.current;
@@ -65,8 +64,43 @@ export default function HomeShellV5({
     io.observe(el);
     return () => io.disconnect();
   }, []);
-  // Status bar / Dynamic Island tint follows the hero: night while the hero is at the top, paper once scrolled past it.
-  useEffect(() => { setThemeColor(!stuck); }, [stuck]);
+  // Header morph (owner 2026-11-17): one continuous, scroll-linked progress 0 → 1 over the first 96 px. It is written
+  // straight to CSS custom properties on the header (no React render per frame) and every moving part is a `calc()` on
+  // it, so the wordmark shrinks, the date leaves, the search pill glides up between the wordmark and the quick panel
+  // and the surface condenses into one floating bar — one motion, no jump at a threshold. Reduce Motion: two states.
+  useEffect(() => {
+    const el = sentinel.current;
+    const head = headRef.current;
+    if (!el || !head) return undefined;
+    let raf = 0;
+    let last = -1;
+    const apply = () => {
+      raf = 0;
+      // Distance the feed has slid under the pinned header. Measure from the header's own top, not the viewport's,
+      // so the morph also works inside the desktop phone frame (whose scroll area starts below the fake status bar).
+      const gap = head.getBoundingClientRect().top - el.getBoundingClientRect().top;
+      const span = reducedMotion ? 0 : 96;
+      const p = span > 0 ? Math.min(1, Math.max(0, gap / span)) : (gap > 8 ? 1 : 0);
+      if (Math.abs(p - last) < 0.004) return;
+      last = p;
+      head.style.setProperty('--hp', p.toFixed(3));
+      head.dataset.compact = p > 0.8 ? '1' : '0';
+      const night = p < 0.92;
+      if (night !== bandNightRef.current) { bandNightRef.current = night; setBandNight(night); }
+    };
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(apply); };
+    apply();
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('scroll', onScroll, { capture: true });
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [reducedMotion]);
+  // Status bar / Dynamic Island tint follows the header's own edge: night while it is still the dark hero, paper once
+  // the compact bar floats over the page.
+  useEffect(() => { setThemeColor(bandNight); }, [bandNight]);
   useEffect(() => () => setThemeColor(false), []);
   // Same wording as the main Home/Map search bar (HomeSearchBar).
   const placeholder = areaActive ? T(`Tìm sự kiện gần ${areaLabel}`, `Find events near ${areaLabel}`) : T('Tìm sự kiện ở mọi nơi', 'Find events anywhere');
@@ -91,9 +125,6 @@ export default function HomeShellV5({
   };
 
   const tabs = [...TABS, ...(canHost ? [['hosting', 'Tổ chức', 'Hosting']] : [])];
-  // No live backdrop-filter here: these controls sit in the sticky header over a moving photo, and a backdrop blur
-  // is re-computed every scrolled frame. The backdrop is already blurred and darkened, so a slightly stronger fill reads the same.
-  const glass = { border: '1px solid rgba(255,255,255,.18)', background: 'rgba(255,255,255,.17)' };
 
   // By type: one row per type, most events first; a type with no event is not shown.
   const sections = useMemo(() => {
@@ -112,7 +143,7 @@ export default function HomeShellV5({
   // Browse (types with counts): above By type today; with v2.3 (note 81) it closes Home, under the Shortlist.
   const pickType = onBrowseType || onPickType;
   const browseEl = (browse.length > 0 && (
-            <div data-testid="home-browse" style={{ padding: '28px 20px 0', scrollMarginTop: headH }}>
+            <div data-testid="home-browse" style={{ padding: '28px 20px 0', scrollMarginTop: 'var(--bb-home-head-h)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                 <h3 style={h3}>{onBrowseType ? T('Duyệt theo loại', 'Browse by type') : T('Khám phá', 'Browse')}</h3>
                 {onBrowseType && (
@@ -142,52 +173,49 @@ export default function HomeShellV5({
   return (
     // v2.3 (note 81): an explicit theme ink. Without it the content below the hero inherits the body's light-theme ink,
     // which is unreadable in dark mode (an existing bug with the switch off, left as it is there).
-    <div data-testid="home-shell-v5" data-tab={tab} style={{ position: 'relative', color: shortlist ? 'var(--bb-fg)' : undefined }}>
+    <div data-testid="home-shell-v5" data-tab={tab} style={{ position: 'relative', color: shortlist ? 'var(--bb-fg)' : undefined, '--bb-home-head-h': 'calc(152px + var(--bb-safe-top, env(safe-area-inset-top, 0px)))' }}>
       {/* Pull-to-refresh: the whole screen translates down, so the gap it opens above Home must be the hero's night
           colour, not paper. This layer hangs above the content (clipped by the scroller at rest, visible only in the
           gap while pulling/holding/springing back). */}
       <div aria-hidden data-testid="home-pull-backdrop" style={{ position: 'absolute', left: 0, right: 0, bottom: '100%', height: 320, background: 'linear-gradient(180deg,#16140f,#2b2721)', pointerEvents: 'none' }} />
       <div ref={sentinel} aria-hidden style={{ height: 1, marginBottom: -1 }} />
-      <div ref={headRef} data-testid="home-sticky-header" data-stuck={stuck || undefined}
-        style={{ position: 'sticky', top: 0, zIndex: 20, color: '#fff', padding: 'calc(20px + var(--bb-safe-top, env(safe-area-inset-top, 0px))) 0 12px',
-          background: stuck ? 'rgba(22,20,15,.96)' : 'transparent',
-          boxShadow: stuck ? '0 1px 0 rgba(255,255,255,.08)' : 'none', transition: 'background .2s' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 48, padding: '0 20px' }}>
-            <div>
-              <img src="/banbe-wordmark.png" alt="banbe" data-testid="home-title" crossOrigin="anonymous" style={{ height: 45, width: 'auto', display: 'block', filter: 'invert(1)' }} />
-              <div style={{ fontSize: 14, color: 'rgba(255,255,255,.8)', marginTop: 4 }}>{dateLabel}</div>
-            </div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <button type="button" onClick={onMap} aria-label={T('Bản đồ', 'Map')} data-testid="home-map-button"
-                style={{ ...glass, width: 42, height: 42, borderRadius: '50%', display: 'grid', placeItems: 'center', color: '#fff', cursor: 'pointer', padding: 0 }}><Icon d={MAP} size={22} /></button>
-              <button type="button" onClick={onAccount} aria-label={T('Tài khoản và cài đặt nhanh', 'Account and quick settings')} data-testid="home-avatar-button"
-                style={{ position: 'relative', width: 42, height: 42, border: 'none', background: 'none', padding: 0, cursor: 'pointer' }}>
-                <span style={{ width: 42, height: 42, borderRadius: '50%', background: 'var(--bb-clay, #9C5B3B)', color: '#fff', fontSize: 14, fontWeight: 700, display: 'grid', placeItems: 'center', border: '1.5px solid rgba(255,255,255,.9)', boxSizing: 'border-box' }}>{user ? initials(user.name) : <Icon d={<><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>} size={20} />}</span>
-                <span aria-hidden style={{ position: 'absolute', right: -3, bottom: -3, width: 18, height: 18, borderRadius: '50%', background: NIGHT, color: '#fff', display: 'grid', placeItems: 'center', border: '1px solid rgba(255,255,255,.5)' }}><Icon d={COG} size={11} sw={1.8} /></span>
-              </button>
-            </div>
-          </div>
-          <div data-testid="home-search-row" style={{ display: 'flex', margin: '10px 20px 0', height: 46, borderRadius: 999, ...glass, alignItems: 'center', color: 'rgba(255,255,255,.75)', boxSizing: 'border-box' }}>
-            <button type="button" onClick={onSearch} data-testid="home-search-bar" aria-label={T('Tìm sự kiện', 'Search events')}
-              style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '0 8px 0 16px', border: 'none', background: 'none', color: 'inherit', fontFamily: 'inherit', fontSize: 15, cursor: 'text', textAlign: 'left' }}>
-              <Icon d={SEARCH} size={19} /><span style={{ flex: 1, fontSize: 14.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{placeholder}</span>
-            </button>
-            <span aria-hidden style={{ width: 1, height: 22, background: 'rgba(255,255,255,.25)', flex: 'none' }} />
-            <button type="button" onClick={onArea} data-testid="home-area-toggle" aria-haspopup="menu" aria-label={T(`Khu vực: ${areaLabel}. Đổi khu vực`, `Area: ${areaLabel}. Change area`)}
-              style={{ flex: '0 1 auto', minWidth: 44, maxWidth: '42%', height: 44, display: 'flex', alignItems: 'center', gap: 5, color: '#fff', fontFamily: 'inherit', fontSize: 13.5, fontWeight: 600, background: 'none', border: 'none', padding: '0 12px', cursor: 'pointer' }}>
-              <Icon d={PIN} size={17} />
-              {areaActive && <span data-testid="home-area-label" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{areaLabel}</span>}
-              <span aria-hidden style={{ fontSize: 10, flex: 'none' }}>▾</span>
-            </button>
-          </div>
-
+      <div ref={headRef} className="bb-home-head" data-testid="home-sticky-header" data-stuck={stuck || undefined}>
+        <div aria-hidden className="bb-home-head__scrim" />
+        <div aria-hidden className="bb-home-head__surface" />
+        <div className="bb-home-head__brand">
+          <img src="/banbe-wordmark.png" alt="banbe" data-testid="home-title" crossOrigin="anonymous" className="bb-home-head__wordmark" style={{ filter: 'invert(1)' }} />
+          <div className="bb-home-head__date" data-testid="home-date">{dateLabel}</div>
+        </div>
+        <div className="bb-home-head__quick">
+          <button type="button" onClick={onMap} aria-label={T('Bản đồ', 'Map')} data-testid="home-map-button" className="bb-home-head__glass"><Icon d={MAP} size={21} /></button>
+          <button type="button" onClick={onAccount} aria-label={T('Tài khoản và cài đặt nhanh', 'Account and quick settings')} data-testid="home-avatar-button" className="bb-home-head__avatar">
+            <span className="bb-home-head__disc">{user ? initials(user.name) : <Icon d={<><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>} size={19} />}</span>
+            <span aria-hidden className="bb-home-head__gear"><Icon d={COG} size={11} sw={1.8} /></span>
+          </button>
+        </div>
+        <div data-testid="home-search-row" className="bb-home-head__searchrow">
+          <button type="button" onClick={onSearch} data-testid="home-search-bar" aria-label={T('Tìm sự kiện', 'Search events')} className="bb-home-head__searchbtn">
+            <Icon d={SEARCH} size={19} />
+            <span className="bb-home-head__hint">{placeholder}</span>
+          </button>
+          <span aria-hidden className="bb-home-head__divider" />
+          <button type="button" onClick={onArea} data-testid="home-area-toggle" aria-haspopup="menu" aria-label={T(`Khu vực: ${areaLabel}. Đổi khu vực`, `Area: ${areaLabel}. Change area`)} className="bb-home-head__areabtn">
+            <Icon d={PIN} size={16} />
+            {areaActive
+              ? <span data-testid="home-area-label" className="bb-home-head__arealabel">{areaLabel}</span>
+              : <span className="bb-home-head__arealabel bb-home-head__areafallback">{T('Mọi nơi', 'Everywhere')}</span>}
+            <span aria-hidden className="bb-home-head__chev">▾</span>
+          </button>
+        </div>
       </div>
       <section data-testid="home-photo-hero" data-tab={tab} aria-label={T('Gợi ý nổi bật', 'Featured events')}
-        style={{ position: 'relative', overflow: 'hidden', contain: 'paint', background: NIGHT, color: '#fff', marginTop: -headH }}>
+        style={{ position: 'relative', overflow: 'hidden', contain: 'paint', background: NIGHT, color: '#fff', marginTop: 'calc(var(--bb-home-head-h) * -1)' }}>
         <div aria-hidden style={{ position: 'absolute', inset: -30, transform: 'scale(1.1) translateZ(0)', willChange: 'transform', backfaceVisibility: 'hidden',
           background: cur?.img ? `center/cover no-repeat url("${cur.img}")` : 'linear-gradient(180deg,#2b2721,#16140f)',
-          filter: cur?.img ? 'blur(18px) brightness(.45) saturate(.9)' : 'none' }} />
-        <div style={{ position: 'relative', padding: `${headH}px 0 0` }}>
+          filter: cur?.img ? 'blur(30px) brightness(.58) saturate(1.08)' : 'none' }} />
+        <div aria-hidden style={{ position: 'absolute', inset: 0, pointerEvents: 'none',
+          background: 'linear-gradient(180deg, rgba(22,20,15,.62) 0%, rgba(22,20,15,.16) 36%, rgba(22,20,15,.5) 74%, #16140f 100%)' }} />
+        <div style={{ position: 'relative', padding: 'var(--bb-home-head-h) 0 0' }}>
           <div role="tablist" data-testid="home-hero-tabs" style={{ display: 'flex', gap: 20, padding: '18px 24px 4px', overflowX: 'auto', scrollbarWidth: 'none', whiteSpace: 'nowrap' }}>
             {tabs.map(([k, vi, en]) => (
               <button key={k} type="button" role="tab" aria-selected={tab === k} data-testid={`home-hero-tab-${k}`} onClick={() => onTab(k)}
