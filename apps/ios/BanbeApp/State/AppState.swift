@@ -2308,6 +2308,7 @@ final class AppState: ObservableObject {
     /// pre-signup scroll position must not carry into the new account.
     func resetHomeScrollToTop() {
         homeScrollOffsetY = nil
+        HomeHeaderCompact.shared.reset()
         homeScrollToTopToken &+= 1
     }
     /// TASK C — same mechanism, for AccountView (see its own doc comment):

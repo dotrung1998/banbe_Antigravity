@@ -924,9 +924,13 @@ input::placeholder, textarea::placeholder {
 /* The artwork is near-black ink, so on the dark theme's paper it is inverted like every other mark. */
 [data-bb-theme="dark"] .bb-home-head__wordmark { filter: invert(1); }
 
-/* The area chip is the band's middle: one quiet capsule between the brand and the three controls. */
+/* The band's middle holds ONE thing at a time: the area chip while the tabs show, and the view + area pill once the
+   feed is moving and the tabs have folded away (owner 2026-11-22). They share one grid cell, so the bar never reflows
+   and the two can cross-fade in place. */
+.bb-home-head__mid { flex: 1 1 auto; min-width: 0; display: grid; place-items: center; }
+.bb-home-head__mid > * { grid-area: 1 / 1; }
 .bb-home-head__area {
-  flex: 0 1 auto; min-width: 0; margin: 0 auto; max-width: 56%;
+  flex: 0 1 auto; min-width: 0; max-width: 100%;
   display: flex; align-items: center; gap: 6px;
   height: 32px; padding: 0 12px; border-radius: 999px;
   border: 1px solid var(--bb-divider);
@@ -935,6 +939,26 @@ input::placeholder, textarea::placeholder {
   cursor: pointer;
 }
 .bb-home-head__area > svg { flex: none; width: 13px; height: 13px; opacity: .7; }
+
+/* The compact view pill: the open view over the area, one tap away from every view (Hosting, the separate host view,
+   included) and from the area picker. Two quiet lines, the same capsule language as the area chip. */
+.bb-home-head__context {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  max-width: 100%; height: 44px; padding: 0 12px;
+  border: 1px solid var(--bb-divider); border-radius: 999px;
+  background: rgba(var(--bb-fg-rgb), .05);
+  color: inherit; font-family: inherit; cursor: pointer;
+}
+.bb-home-head__contextview {
+  max-width: 100%; font-size: 12.5px; font-weight: 600; line-height: 1.1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.bb-home-head__contextarea {
+  max-width: 100%; display: flex; align-items: center; gap: 3px;
+  font-size: 10.5px; font-weight: 500; line-height: 1.1; color: var(--bb-fg-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.bb-home-head__contextarea > svg { flex: none; width: 10px; height: 10px; opacity: .7; }
 
 .bb-home-head__quick { flex: none; display: flex; align-items: center; gap: 8px; }
 .bb-home-head__round {
@@ -959,17 +983,22 @@ input::placeholder, textarea::placeholder {
   border: 1.5px solid rgba(255,255,255,.9);
 }
 .bb-home-head__area:focus-visible,
+.bb-home-head__context:focus-visible,
 .bb-home-head__round:focus-visible,
 .bb-home-head__avatar:focus-visible { outline: 2px solid var(--bb-clay, #9C5B3B); outline-offset: 3px; }
-/* The tabs are the band's second row, pinned with it: a tab can never be half-cut by the bar above it. */
+/* The tabs are the band's second row (For You · Tonight · Weekend · Hosting) — and the hero's own context: once the
+   feed is moving they fold up into the bar (owner 2026-11-22), giving the content those 44 pt back. The view pill in
+   the bar keeps the open view named and every view (Hosting included) one tap away. */
 .bb-home-head__tabs {
   display: flex; align-items: stretch; gap: 18px;
-  height: 44px; padding: 0 16px;
-  overflow-x: auto; scrollbar-width: none;
+  height: 44px; padding: 0 16px; box-sizing: border-box;
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
   pointer-events: none;
+  transition: height .24s cubic-bezier(.22,.61,.36,1), opacity .16s ease;
 }
 .bb-home-head__tabs::-webkit-scrollbar { display: none; }
 .bb-home-head__tabs > * { pointer-events: auto; }
+.bb-home-head[data-compact="1"] .bb-home-head__tabs { height: 0; opacity: 0; }
 .bb-home-head__tab {
   flex: none; display: flex; align-items: center;
   height: 44px; padding: 0 0 2px; box-sizing: border-box;
@@ -986,4 +1015,5 @@ input::placeholder, textarea::placeholder {
 
 @media (prefers-reduced-motion: reduce) {
   .bb-home-head__bar { animation: none; }
+  .bb-home-head__tabs { transition: none; }
 }

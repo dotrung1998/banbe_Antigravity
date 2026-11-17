@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CategoryGlyph } from './HomeDiscoveryParts.jsx';
 import { categoryDefs } from '../../lib/eventTypes.js';
+import GlassMenu, { GlassMenuItem, GlassMenuDivider } from '../GlassMenu.jsx';
 import SeeAllFanCard from './SeeAllFanCard.jsx';
 
 const NIGHT = '#16140f';
@@ -56,6 +57,31 @@ export default function HomeShellV5({
     io.observe(el);
     return () => io.disconnect();
   }, []);
+  // The band folds to ONE row once the feed is really moving (owner 2026-11-22: "when I scroll down, hide the tabs").
+  // The tabs are the hero's own context, so they leave with it — but the view pill that replaces the area chip in the
+  // middle always names the open view and lists the others, Hosting (the separate host view) included, so switching
+  // stays one tap away. Hysteresis: folds past 72 px, unfolds only back at the very top, so it never flaps mid-scroll.
+  const [compact, setCompact] = useState(false);
+  const [viewMenu, setViewMenu] = useState(false);
+  const viewPill = useRef(null);
+  const compactRef = useRef(false);
+  useEffect(() => {
+    let raf = 0;
+    const apply = () => {
+      raf = 0;
+      const sc = document.querySelector('[data-testid="app-scroll-viewport"]');
+      const top = sc ? sc.scrollTop : window.scrollY;
+      const next = compactRef.current ? top > 24 : top > 72;
+      if (next === compactRef.current) return;
+      compactRef.current = next;
+      setCompact(next);
+      if (!next) setViewMenu(false);
+    };
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(apply); };
+    apply();
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('scroll', onScroll, { capture: true }); };
+  }, []);
   const hosting = tab === 'hosting';
   const list = hosting ? [] : (lists[tab] || []);
   const cur = list[Math.min(idx, Math.max(list.length - 1, 0))];
@@ -77,6 +103,8 @@ export default function HomeShellV5({
   };
 
   const tabs = [...TABS, ...(canHost ? [['hosting', 'Tổ chức', 'Hosting']] : [])];
+  const currentTabLabel = (() => { const t = tabs.find(x => x[0] === tab); return t ? T(t[1], t[2]) : ''; })();
+  const areaText = areaActive ? areaLabel : T('Mọi nơi', 'Everywhere');
 
   // By type: one row per type, most events first; a type with no event is not shown.
   const sections = useMemo(() => {
@@ -125,30 +153,67 @@ export default function HomeShellV5({
   return (
     // v2.3 (note 81): an explicit theme ink. Without it the content below the hero inherits the body's light-theme ink,
     // which is unreadable in dark mode (an existing bug with the switch off, left as it is there).
-    <div data-testid="home-shell-v5" data-tab={tab} style={{ position: 'relative', color: shortlist ? 'var(--bb-fg)' : undefined, '--bb-home-head-h': '102px' }}>
+    <div data-testid="home-shell-v5" data-tab={tab} style={{ position: 'relative', color: shortlist ? 'var(--bb-fg)' : undefined, '--bb-home-head-h': compact ? '58px' : '102px' }}>
       {/* Pull-to-refresh: the whole screen translates down, so the gap it opens above Home must be the band's paper, not
           the hero's night. This layer hangs above the content (clipped by the scroller at rest, visible only in the gap
           while pulling/holding/springing back). */}
       <div aria-hidden data-testid="home-pull-backdrop" style={{ position: 'absolute', left: 0, right: 0, bottom: '100%', height: 320, background: 'var(--bb-bg)', pointerEvents: 'none' }} />
       <div ref={sentinel} aria-hidden style={{ height: 1, marginBottom: -1 }} />
-      {/* The band: one paper app bar, two rows. Row 1 is the app bar (wordmark | area chip | search, Map, account) and is
-          also `home-search-row`, the frame the persistent search bar glides out of and the tour's "search and area"
-          spotlight. Row 2 is the tabs, pinned with the bar, so no tab can ever be cut by it. */}
-      <div className="bb-home-head" data-testid="home-sticky-header" data-stuck={stuck || undefined}>
+      {/* The band: one paper app bar, two rows. Row 1 is the app bar (wordmark | the band's middle | search, Map, account)
+          and is also `home-search-row`, the frame the persistent search bar glides out of and the tour's "search and
+          area" spotlight. The middle holds one thing at a time: the area chip while the tabs show, and — once the feed
+          is moving and the tabs fold away — a view pill that names the open view and lists every view, Hosting (the
+          separate host view) included, plus the area. Row 2 is the tabs, which fold up into the bar on scroll. */}
+      <div className="bb-home-head" data-testid="home-sticky-header" data-stuck={stuck || undefined}
+        data-compact={compact ? '1' : undefined}>
         <div className="bb-home-head__bar" data-testid="home-search-row">
           <div className="bb-home-head__brand">
             <span className="bb-home-head__mark" data-testid="home-title">
               <img src="/banbe-wordmark.png" alt="banbe" crossOrigin="anonymous" className="bb-home-head__wordmark" />
             </span>
           </div>
-          <button type="button" onClick={onArea} data-testid="home-area-toggle" aria-haspopup="menu"
-            aria-label={T(`Khu vực: ${areaLabel}. Đổi khu vực`, `Area: ${areaLabel}. Change area`)} className="bb-home-head__area">
-            <Icon d={PIN} size={13} />
-            {areaActive
-              ? <span data-testid="home-area-label" className="bb-home-head__arealabel">{areaLabel}</span>
-              : <span className="bb-home-head__arealabel bb-home-head__areafallback">{T('Mọi nơi', 'Everywhere')}</span>}
-            <span aria-hidden className="bb-home-head__chev">▾</span>
-          </button>
+          <div className="bb-home-head__mid">
+            <button type="button" onClick={onArea} data-testid="home-area-toggle" aria-haspopup="menu" tabIndex={compact ? -1 : 0}
+              aria-hidden={compact || undefined}
+              style={{ opacity: compact ? 0 : 1, pointerEvents: compact ? 'none' : 'auto', transition: 'opacity .18s ease' }}
+              aria-label={T(`Khu vực: ${areaLabel}. Đổi khu vực`, `Area: ${areaLabel}. Change area`)} className="bb-home-head__area">
+              <Icon d={PIN} size={13} />
+              {areaActive
+                ? <span data-testid="home-area-label" className="bb-home-head__arealabel">{areaLabel}</span>
+                : <span className="bb-home-head__arealabel bb-home-head__areafallback">{T('Mọi nơi', 'Everywhere')}</span>}
+              <span aria-hidden className="bb-home-head__chev">▾</span>
+            </button>
+            <GlassMenu open={viewMenu} onOpenChange={setViewMenu} alignLeft width={250} top={52}
+              label={T('Xem và khu vực', 'View and area')} menuTestId="home-view-menu" wrapTestId="home-view-pill-wrap"
+              wrapStyle={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
+                opacity: compact ? 1 : 0, pointerEvents: compact ? 'auto' : 'none', transition: 'opacity .18s ease' }}
+              trigger={(
+                <button type="button" ref={viewPill} onClick={() => setViewMenu(v => !v)} aria-haspopup="menu" aria-expanded={viewMenu}
+                  tabIndex={compact ? 0 : -1} aria-hidden={!compact || undefined}
+                  aria-label={T(`Xem: ${currentTabLabel}. Khu vực: ${areaText}. Đổi`, `View: ${currentTabLabel}. Area: ${areaText}. Change`) }
+                  data-testid="home-view-pill" className="bb-home-head__context">
+                  <span className="bb-home-head__contextview">{currentTabLabel}</span>
+                  <span className="bb-home-head__contextarea"><Icon d={PIN} size={10} /><span>{areaText}</span></span>
+                </button>
+              )}>
+              {TABS.map(([k, vi, en]) => (
+                <GlassMenuItem key={k} testId={`home-view-${k}`} checked={!hosting && tab === k} onClick={() => onTab(k)}>{T(vi, en)}</GlassMenuItem>
+              ))}
+              {canHost && (
+                <>
+                  <GlassMenuDivider />
+                  <GlassMenuItem testId="home-view-hosting" checked={hosting} onClick={() => onTab('hosting')}>
+                    {T('Tổ chức', 'Hosting')} <small style={{ fontSize: 11.5, fontWeight: 400, opacity: 0.6 }}>{T('chế độ host', 'host view')}</small>
+                  </GlassMenuItem>
+                </>
+              )}
+              <GlassMenuDivider />
+              <GlassMenuItem testId="home-view-area" icon={<Icon d={PIN} size={16} />}
+                onClick={() => { if (viewPill.current) onArea({ currentTarget: viewPill.current }); }}>
+                {T(`Khu vực · ${areaText}`, `Area · ${areaText}`)}
+              </GlassMenuItem>
+            </GlassMenu>
+          </div>
           <div className="bb-home-head__quick">
             <button type="button" onClick={onSearch} data-testid="home-search-bar" aria-label={T('Tìm sự kiện', 'Search events')}
               className="bb-home-head__round bb-home-head__round--search"><Icon d={SEARCH} size={18} /></button>
@@ -159,10 +224,10 @@ export default function HomeShellV5({
             </button>
           </div>
         </div>
-        <div role="tablist" data-testid="home-hero-tabs" className="bb-home-head__tabs">
+        <div role="tablist" data-testid="home-hero-tabs" className="bb-home-head__tabs" aria-hidden={compact || undefined}>
           {tabs.map(([k, vi, en]) => (
             <button key={k} type="button" role="tab" aria-selected={tab === k} data-testid={`home-hero-tab-${k}`} onClick={() => onTab(k)}
-              className="bb-home-head__tab">{T(vi, en)}</button>
+              tabIndex={compact ? -1 : 0} className="bb-home-head__tab">{T(vi, en)}</button>
           ))}
         </div>
       </div>

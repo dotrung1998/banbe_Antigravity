@@ -28,19 +28,50 @@ private struct HeroFirstCardTourTarget: ViewModifier {
     }
 }
 
+/// The band folds to ONE row once the feed is really moving (owner 2026-11-22: "when I scroll down, hide the tabs").
+/// The tabs are the hero's own context, so they leave with it — but the view pill that replaces the area chip in the
+/// middle always names the open view and lists the others, Hosting (the separate host view) included, plus the area, so
+/// switching stays one tap away. Hysteresis: folds past 72 pt, unfolds only back at the very top, so it never flaps
+/// mid-scroll. Web twin: `compact` in HomeShellV5.jsx (same thresholds).
+final class HomeHeaderCompact: ObservableObject {
+    static let shared = HomeHeaderCompact()
+    @Published private(set) var isCompact = false
+
+    func update(offsetY: CGFloat) {
+        let next = isCompact ? offsetY > 24 : offsetY > 72
+        guard next != isCompact else { return }
+        if UIAccessibility.isReduceMotionEnabled {
+            isCompact = next
+        } else {
+            withAnimation(.easeInOut(duration: 0.24)) { isCompact = next }
+        }
+    }
+
+    func reset() {
+        guard isCompact else { return }
+        if UIAccessibility.isReduceMotionEnabled {
+            isCompact = false
+        } else {
+            withAnimation(.easeInOut(duration: 0.24)) { isCompact = false }
+        }
+    }
+}
+
 /// Home's app bar (owner 2026-11-22): ONE paper band, two rows, the same shape at rest and scrolled. It is pinned at the
 /// top of the feed and keeps its own room in the hero, so nothing slides under it at rest and the tabs can never be cut
 /// by it — the complaint about the floating band. Web twin: the `.bb-home-head*` block in src/index.css.
 struct HomeHeroPinnedHeader: View {
     @EnvironmentObject private var app: AppState
+    @ObservedObject private var compact = HomeHeaderCompact.shared
     /// The goer tab; Hosting is the other Home view (`hosting` below), selected the same way it is in the hero.
     @Binding var tab: HomeHeroTab
     let onSearchLocations: () -> Void
     let onAvatar: () -> Void
     @Binding var height: CGFloat
 
-    /// The band's own height: 58 pt of controls + 44 pt of tabs. Everything inside is static — no morph, no ramp.
+    /// The band at rest: 58 pt of controls + 44 pt of tabs. Folded, only the 58 pt bar is left.
     static let fallbackHeight: CGFloat = 102
+    static let barHeight: CGFloat = 58
 
     /// The wordmark artwork's own aspect (1206 × 544 px). Its box carries a transparent margin, so the drawn mark is
     /// narrower than the box.
@@ -49,33 +80,59 @@ struct HomeHeroPinnedHeader: View {
     /// True while Home shows the Hosting view: the same band, with the Hosting tab selected instead of a goer tab.
     private var hosting: Bool { app.simpleShellEnabled && app.effectiveHomeView == .host }
 
+    /// The area label the band shows ("Everywhere" when no area is chosen).
+    private var areaText: String {
+        app.area == LocationHierarchy.allID ? app.T("Mọi nơi", "Everywhere") : app.currentAreaLabel
+    }
+
+    /// The open view's name, for the folded band's pill.
+    private var viewTitle: String { hosting ? app.T("Tổ chức", "Hosting") : app.T(tab.vi, tab.en) }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
                 mark
                 Spacer(minLength: 6)
-                areaButton
+                // One middle, two states: the area chip while the tabs show, the view + area pill once they fold away.
+                ZStack {
+                    areaButton
+                        .opacity(compact.isCompact ? 0 : 1)
+                        .allowsHitTesting(!compact.isCompact)
+                        .accessibilityHidden(compact.isCompact)
+                    viewPill
+                        .opacity(compact.isCompact ? 1 : 0)
+                        .allowsHitTesting(compact.isCompact)
+                        .accessibilityHidden(!compact.isCompact)
+                }
+                .frame(maxWidth: 160)
                 Spacer(minLength: 6)
                 controls
             }
             .padding(.horizontal, 16)
-            .frame(height: 58)
+            .frame(height: Self.barHeight)
             .tourTarget("tour.home.search")
             tabsRow
+                .frame(height: compact.isCompact ? 0 : 44)
+                .opacity(compact.isCompact ? 0 : 1)
+                .clipped()
+                .accessibilityHidden(compact.isCompact)
         }
         .frame(maxWidth: .infinity)
         // Paper from the very top: the band IS the screen's edge now, so the status-bar strip above it is paper too
         // (it used to be the night hero showing through).
         .background(app.palette.paper.ignoresSafeArea(edges: .top))
         .overlay(alignment: .bottom) { Rectangle().fill(app.palette.divider).frame(height: 1) }
-        .background(GeometryReader { g in
-            Color.clear
-                .onAppear { height = g.size.height }
-                .onChange(of: g.size.height) { _, h in height = h }
-        })
+        .onAppear { height = heightForState }
+        .onChange(of: compact.isCompact) { _, _ in
+            // The hero's spacer animates with the band, so the feed takes back the 44 pt as the tabs fold in.
+            withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : .easeInOut(duration: 0.24)) { height = heightForState }
+        }
         // Bottom edge of the pinned header: the tour keeps spotlighted sections below it.
         .tourTarget("tour.home.headerBottom")
     }
+
+    /// What the band occupies in the hero's layout for the current state.
+    private var heightForState: CGFloat { compact.isCompact ? Self.barHeight : Self.fallbackHeight }
 
     /// The wordmark in the theme's logo ink. Its box is 30 pt tall (the artwork's own aspect), which draws a ~23 pt
     /// mark — the size the design research's bars use, and small enough to leave the area chip the band's middle.
@@ -119,11 +176,10 @@ struct HomeHeroPinnedHeader: View {
 
     // MARK: area / controls
 
-    /// The area chip is the band's middle (owner 2026-11-22): one quiet capsule between the brand and the three
-    /// controls, its label truncating rather than pushing either side.
+    /// The area chip is the band's middle while the tabs show (owner 2026-11-22): one quiet capsule between the brand
+    /// and the three controls, its label truncating rather than pushing either side.
     private var areaButton: some View {
         let place = app.area == LocationHierarchy.allID ? nil : app.currentAreaLabel
-        let areaText = place ?? app.T("Mọi nơi", "Everywhere")
         return Menu {
             AreaMenuOptions { onSearchLocations() }
         } label: {
@@ -143,6 +199,60 @@ struct HomeHeroPinnedHeader: View {
         }
         .accessibilityLabel(app.T("Khu vực: \(areaText). Đổi khu vực", "Area: \(areaText). Change area"))
         .accessibilityIdentifier("header.area")
+    }
+
+    /// The folded band's view pill (owner 2026-11-22): the open view over the area, opening every view — Hosting, the
+    /// separate host view, included — plus the area picker. It replaces the area chip while the tabs are folded, so the
+    /// bar always says where you are and how to move.
+    private var viewPill: some View {
+        Menu {
+            ForEach(HomeHeroTab.allCases, id: \.self) { t in
+                Button {
+                    selectGoerTab(t)
+                } label: {
+                    if !hosting && tab == t {
+                        Label(app.T(t.vi, t.en), systemImage: "checkmark")
+                    } else {
+                        Text(app.T(t.vi, t.en))
+                    }
+                }
+            }
+            if app.isSignedIn {
+                Divider()
+                Button {
+                    openHosting()
+                } label: {
+                    if hosting {
+                        Label(app.T("Tổ chức", "Hosting"), systemImage: "checkmark")
+                    } else {
+                        Label(app.T("Tổ chức · chế độ host", "Hosting · host view"), systemImage: "briefcase")
+                    }
+                }
+            }
+            Divider()
+            Menu {
+                AreaMenuOptions { onSearchLocations() }
+            } label: {
+                Label(app.T("Khu vực: \(areaText)", "Area: \(areaText)"), systemImage: "mappin.and.ellipse")
+            }
+        } label: {
+            VStack(spacing: 1) {
+                Text(viewTitle).font(.app(size: 12.5, weight: .semibold)).lineLimit(1)
+                HStack(spacing: 3) {
+                    Image(systemName: "mappin").font(.app(size: 9))
+                    Text(areaText).font(.app(size: 10.5, weight: .medium)).lineLimit(1)
+                }
+                .foregroundStyle(app.palette.ink3)
+            }
+            .frame(maxWidth: 150)
+            .padding(.horizontal, 12)
+            .frame(height: 44)
+            .background(app.palette.ink.opacity(0.05), in: Capsule())
+            .overlay(Capsule().strokeBorder(app.palette.divider, lineWidth: 1))
+            .contentShape(Capsule())
+        }
+        .accessibilityLabel(app.T("Xem: \(viewTitle). Khu vực: \(areaText). Đổi", "View: \(viewTitle). Area: \(areaText). Change"))
+        .accessibilityIdentifier("header.view")
     }
 
     /// Search, Map, account: three equal 40 pt circles — the cluster the owner asked for, with the area between the
