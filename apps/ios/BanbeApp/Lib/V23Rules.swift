@@ -19,6 +19,20 @@ struct ViEn: Equatable, Hashable {
 
 enum Pager {
     static let pageSize = 4
+    /// Tallest page: past this a page stops reading as one screen and the pager is lost below the fold.
+    static let maxPageSize = 8
+    /// The arrows, page numbers and "5–8 of 18" line under the track (44 pt numbers + padding + range), with 4 pt air.
+    static let navHeight: CGFloat = 71
+
+    /// How many rows fit below the list's top edge, so the rows AND the pager are on screen without scrolling.
+    /// `available` is the height from the list's top to the bottom of the window. Never fewer than the classic four
+    /// and never more than `maxPageSize` (same rule as the web's fittedPageSize in src/lib/pager.js).
+    static func fittedPageSize(available: CGFloat, rowHeight: CGFloat = 92, nav: CGFloat = navHeight,
+                               smallest: Int = pageSize, largest: Int = maxPageSize) -> Int {
+        guard available.isFinite, available > 0, rowHeight > 0 else { return smallest }
+        let fits = Int(((available - nav) / rowHeight).rounded(.down))
+        return Swift.max(smallest, Swift.min(largest, fits))
+    }
 
     static func paginate<T>(_ list: [T], size: Int = pageSize) -> [[T]] {
         stride(from: 0, to: list.count, by: size).map { Array(list[$0..<min($0 + size, list.count)]) }

@@ -4,8 +4,8 @@ import SwiftUI
 
 // MARK: - Shortlist
 
-/// The tab's events (For You, Tonight, Weekend) narrowed by Home's filters, four large rows a page, in the tab's own
-/// order. A short last page ends with an end card.
+/// The tab's events (For You, Tonight, Weekend) narrowed by Home's filters, four large rows a page at least (more when
+/// the screen has room, see Pager.fittedPageSize), in the tab's own order. A short last page ends with an end card.
 struct ShortlistV23View: View {
     @EnvironmentObject private var app: AppState
     let tab: HomeHeroTab

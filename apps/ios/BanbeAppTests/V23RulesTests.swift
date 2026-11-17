@@ -31,6 +31,15 @@ final class V23RulesTests: XCTestCase {
             XCTAssertEqual(r.room, c["room"] as? Int, "n \(n)")
             XCTAssertEqual(r.variant?.rawValue, c["variant"] as? String, "n \(n)")
         }
+        for c in try XCTUnwrap(root["fitted"] as? [[String: Any]]) {
+            let available = (c["available"] as? NSNumber)?.doubleValue ?? 0
+            XCTAssertEqual(Pager.fittedPageSize(available: available), c["size"] as? Int, "available \(available)")
+        }
+        // A short viewport keeps the classic four; a very tall one is capped; the row height and nav block move the fit.
+        XCTAssertEqual(Pager.fittedPageSize(available: 0), 4)
+        XCTAssertEqual(Pager.fittedPageSize(available: 4000), 8)
+        XCTAssertEqual(Pager.fittedPageSize(available: 555, rowHeight: 80), 6)
+        XCTAssertEqual(Pager.fittedPageSize(available: 555, nav: 40), 5)
     }
 
     func testPageWindowAndNav() {

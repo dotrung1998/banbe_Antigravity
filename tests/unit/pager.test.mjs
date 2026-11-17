@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { paginate, pageRange, endCardRoom, showPageNav, dropEdges, pageAt, clampPage, pageWindow, PAGE_SIZE } from '../../src/lib/pager.js';
+import { paginate, pageRange, endCardRoom, showPageNav, dropEdges, pageAt, clampPage, pageWindow, fittedPageSize, PAGE_SIZE, MAX_PAGE_SIZE } from '../../src/lib/pager.js';
 import { shortlistEnd, slimmed } from '../../src/lib/listEnd.js';
 
 const fixture = JSON.parse(readFileSync(new URL('../fixtures/pager.json', import.meta.url), 'utf8'));
@@ -10,6 +10,17 @@ const ids = n => Array.from({ length: n }, (_, i) => `e${i + 1}`);
 test('four rows a page', () => {
   assert.equal(PAGE_SIZE, 4);
   for (const c of fixture.pages) assert.deepEqual(paginate(ids(c.n)).map(p => p.length), c.sizes, `n=${c.n}`);
+});
+
+test('a page uses the rows that fit on the screen, never fewer than four or more than eight', () => {
+  assert.equal(MAX_PAGE_SIZE, 8);
+  for (const c of fixture.fitted) assert.equal(fittedPageSize({ available: c.available }), c.size, `available=${c.available}`);
+  // A short viewport still gets the classic four, and a huge one is capped.
+  assert.equal(fittedPageSize({ available: 0 }), 4);
+  assert.equal(fittedPageSize({ available: 4000 }), 8);
+  // The row height and the pager block move the fit together.
+  assert.equal(fittedPageSize({ available: 555, rowHeight: 80 }), 6);
+  assert.equal(fittedPageSize({ available: 555, nav: 40 }), 5);
 });
 
 test('range line', () => {

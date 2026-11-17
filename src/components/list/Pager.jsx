@@ -1,16 +1,18 @@
-// One pager for every v2.3 list (note 81): the Home Shortlist, Browse by type and See all. Four large rows a page on
-// their own horizontal track (the page around it never moves); the arrows and page numbers drive the same track, so a
-// tap and a swipe always agree. The ink under the numbers is a drop that FOLLOWS the swipe: it is painted from the
-// track's live scroll position, so it leaves with the finger, stretches between two numbers (leading edge ahead,
-// trailing edge behind) and settles on the new one; a tap scrolls the track, so it animates the same way. The drop is
-// a second copy of the numbers in the page colour on ink, cut to the drop's shape, so a number turns light exactly
-// where the drop covers it. Flat ink, no gloss. "5–8 of 18" says where you are (read out politely). The numbers,
-// arrows and range are the only paging signs: the edge tabs, the one-time nudge and the "Swipe to see more" line said
-// the same thing three more times and are gone. A short last page ends with an end card sized to the missing rows.
-// Reduced motion: the page turns without a slide, the drop steps from number to number.
+// One pager for every v2.3 list (note 81): the Home Shortlist, Browse by type and See all. Four large rows a page at
+// least, more when the screen has room (fittedPageSize): the rows and the pager fill the band under the list's top
+// edge instead of leaving it empty, so a page still needs no vertical scrolling. The rows sit on their own horizontal
+// track (the page around it never moves); the arrows and page numbers drive the same track, so a tap and a swipe
+// always agree. The ink under the numbers is a drop that FOLLOWS the swipe: it is painted from the track's live
+// scroll position, so it leaves with the finger, stretches between two numbers (leading edge ahead, trailing edge
+// behind) and settles on the new one; a tap scrolls the track, so it animates the same way. The drop is a second copy
+// of the numbers in the page colour on ink, cut to the drop's shape, so a number turns light exactly where the drop
+// covers it. Flat ink, no gloss. "5–8 of 18" says where you are (read out politely). The numbers, arrows and range
+// are the only paging signs: the edge tabs, the one-time nudge and the "Swipe to see more" line said the same thing
+// three more times and are gone. A short last page ends with an end card sized to the missing rows. Reduced motion:
+// the page turns without a slide, the drop steps from number to number.
 // Pure rules live in src/lib/pager.js. iOS twin: V23Pager / PagerDrop in HomeV23Views.swift.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { paginate, pageRange, endCardRoom, showPageNav, dropEdges, pageAt, clampPage, pageWindow, PAGE_SIZE } from '../../lib/pager.js';
+import { paginate, pageRange, endCardRoom, showPageNav, dropEdges, pageAt, clampPage, pageWindow, fittedPageSize, PAGE_SIZE } from '../../lib/pager.js';
 import { useReducedMotion } from '../../lib/useReducedMotion.js';
 
 const CHEV = (d) => (
@@ -37,12 +39,43 @@ const savedPages = new Map();
  */
 export default function Pager({ items, getKey, renderRow, renderEnd, empty = null, lang, T, testId, rowHeight = 92 }) {
   const reduced = useReducedMotion();
-  const pages = useMemo(() => paginate(items, PAGE_SIZE), [items]);
+  // How many rows fit under this list's own top edge (see fittedPageSize): read from the app's scrolling viewport,
+  // once per mount and on resize, never per item so a new page cannot reflow mid-swipe.
+  const rootRef = useRef(null);
+  const [size, setSize] = useState(PAGE_SIZE);
+  useLayoutEffect(() => {
+    const measure = () => {
+      const el = rootRef.current;
+      if (!el) return;
+      let sc = el.parentElement;
+      while (sc && sc !== document.body && sc !== document.documentElement) {
+        const oy = getComputedStyle(sc).overflowY;
+        if ((oy === 'auto' || oy === 'scroll') && sc.clientHeight > 0) break;
+        sc = sc.parentElement;
+      }
+      const scrolls = sc && sc !== document.body && sc !== document.documentElement;
+      const available = scrolls
+        ? sc.clientHeight - (el.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop)
+        : window.innerHeight - el.getBoundingClientRect().top;
+      setSize(fittedPageSize({ available, rowHeight }));
+    };
+    measure();
+    // One frame later: web fonts and the heading above settle their heights, and the list's top edge moves with them.
+    const raf = requestAnimationFrame(measure);
+    window.addEventListener('resize', measure);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', measure); };
+  }, [rowHeight]);
+  const pages = useMemo(() => paginate(items, size), [items, size]);
   const signature = useMemo(() => items.map(getKey).join('|'), [items, getKey]);
   const pageKey = `${testId}|${signature}`;
   const [page, setPage] = useState(() => clampPage(savedPages.get(pageKey) || 0, pages.length || 1));
   const settleTimer = useRef(0);
   useEffect(() => { savedPages.set(pageKey, page); }, [pageKey, page]);
+  // A fitted size can change the number of pages (resize, rotation): keep the open page in range.
+  useEffect(() => {
+    const at = clampPage(page, pages.length || 1);
+    if (at !== page) setPage(at);
+  }, [pages.length]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => clearTimeout(settleTimer.current), []);
   const trackRef = useRef(null);
   const numsRef = useRef(null);
@@ -141,14 +174,14 @@ export default function Pager({ items, getKey, renderRow, renderEnd, empty = nul
 
   if (!pages.length) return <div data-testid={`${testId}-empty`}>{empty}</div>;
 
-  const end = endCardRoom(pages, PAGE_SIZE);
+  const end = endCardRoom(pages, size);
   const range = pageRange(pages, page, lang);
   const nav = showPageNav(pages);
   const shown = pageWindow(page, pages.length);
   const navBtn = { width: 44, height: 44, borderRadius: '50%', border: 'none', background: 'none', color: 'inherit', display: 'grid', placeItems: 'center', cursor: 'pointer', flex: 'none' };
 
   return (
-    <div data-testid={testId} data-page={page} data-pages={pages.length}>
+    <div ref={rootRef} data-testid={testId} data-page={page} data-pages={pages.length} data-page-size={size}>
       <div ref={trackRef} data-hscroll onScroll={onScroll} data-testid={`${testId}-track`}
         style={{ display: 'flex', overflowX: 'auto', scrollSnapType: 'x mandatory', scrollbarWidth: 'none', overscrollBehaviorX: 'contain' }}>
         {pages.map((rows, i) => {

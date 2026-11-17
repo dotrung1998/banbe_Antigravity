@@ -24,5 +24,14 @@
     { "n": 7, "room": 1, "variant": "slim" },
     { "n": 6, "room": 2, "variant": "mid" },
     { "n": 5, "room": 3, "variant": "fill" }
+  ],
+  "fitted": [
+    { "available": 0, "size": 4 },
+    { "available": 300, "size": 4 },
+    { "available": 500, "size": 4 },
+    { "available": 555, "size": 5 },
+    { "available": 674, "size": 6 },
+    { "available": 900, "size": 8 },
+    { "available": 2000, "size": 8 }
   ]
 }

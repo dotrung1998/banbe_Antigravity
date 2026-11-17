@@ -174,12 +174,13 @@ struct EndCardView: View {
 
 // MARK: - Pager
 
-/// One pager for every v2.3 list: four large rows a page on their own horizontal track; the arrows and page numbers
-/// drive the same track; "5–8 of 18" says where you are. A short last page ends with an end card sized to the missing
-/// rows. The ink under the numbers is a drop that FOLLOWS the swipe: it reads the track's live scroll position, so it
-/// leaves with the finger, stretches between two numbers and settles on the new one (it used to wait for the page to
-/// land, which read as lag). The numbers, arrows and range are the only paging signs: the edge tabs, the one-time
-/// nudge and the "Swipe to see more" line said the same thing three more times and are gone.
+/// One pager for every v2.3 list: at least four large rows a page (more when the screen has room below the list, see
+/// Pager.fittedPageSize) on their own horizontal track; the arrows and page numbers drive the same track; "5–8 of 18"
+/// says where you are. A short last page ends with an end card sized to the missing rows. The ink under the numbers is
+/// a drop that FOLLOWS the swipe: it reads the track's live scroll position, so it leaves with the finger, stretches
+/// between two numbers and settles on the new one (it used to wait for the page to land, which read as lag). The
+/// numbers, arrows and range are the only paging signs: the edge tabs, the one-time nudge and the "Swipe to see more"
+/// line said the same thing three more times and are gone.
 struct V23Pager<Item, Row: View, End: View, Empty: View>: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -195,11 +196,18 @@ struct V23Pager<Item, Row: View, End: View, Empty: View>: View {
 
     @MainActor private static var savedPages: [String: Int] { get { V23PagerMemory.pages } set { V23PagerMemory.pages = newValue } }
     @State private var page: Int?
+    /// Rows that fit below this list's top edge, measured once when it is laid out (four until then).
+    @State private var pageSize = Pager.pageSize
+    /// The pager's lowest laid-out edge for this width, in window coordinates: the page's first paint, before any
+    /// scrolling, which is where the rows and the pager must both fit. Later, smaller values (the page scrolled the
+    /// pager up) never grow the page and resize the track under the finger.
+    @State private var fitTop: CGFloat = 0
+    @State private var fitWidth: CGFloat = 0
     /// The track's live position in pages. A reference the pager itself does not observe, so a swipe redraws the
     /// numbers only, never the rows.
     @State private var progress = PagerProgress()
 
-    private var pages: [[Item]] { Pager.paginate(items) }
+    private var pages: [[Item]] { Pager.paginate(items, size: pageSize) }
     private var signature: String { "\(listID)|" + items.map(key).joined(separator: "|") }
     private var current: Int { Pager.clampPage(page ?? 0, pages.count) }
 
@@ -208,7 +216,7 @@ struct V23Pager<Item, Row: View, End: View, Empty: View>: View {
             empty().accessibilityIdentifier("\(listID).empty")
         } else {
             let p = pages
-            let room = Pager.endCardRoom(sizes: p.map(\.count))
+            let room = Pager.endCardRoom(sizes: p.map(\.count), size: pageSize)
             let nav = Pager.showNav(pageCount: p.count)
             VStack(spacing: 0) {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -222,7 +230,7 @@ struct V23Pager<Item, Row: View, End: View, Empty: View>: View {
                                         .frame(maxHeight: v == .solo ? nil : .infinity)
                                 }
                             }
-                            .frame(height: nav ? CGFloat(Pager.pageSize) * rowHeight : nil, alignment: .top)
+                            .frame(height: nav ? CGFloat(pageSize) * rowHeight : nil, alignment: .top)
                             .containerRelativeFrame(.horizontal)
                             .accessibilityHidden(i != current)
                             .id(i)
@@ -243,6 +251,20 @@ struct V23Pager<Item, Row: View, End: View, Empty: View>: View {
                         .accessibilityIdentifier("\(listID).range")
                 }
             }
+            .background(PagerFitProbe { top, width in
+                // A rotation is a fresh layout: forget the old edge before reading the new one.
+                if fitWidth == 0 || abs(width - fitWidth) > 0.5 {
+                    fitWidth = width
+                    fitTop = 0
+                }
+                // Ignore a not-yet-laid-out probe (0) and keep the lowest edge this width has shown.
+                guard top > 0 else { return }
+                fitTop = max(fitTop, top)
+                // The window's bottom edge, not the safe area's: the range line still ends above the home indicator on
+                // a 6.3" phone at five rows, which is the extra row this screen has room for.
+                let available = UIScreen.main.bounds.height - fitTop - 8
+                pageSize = Pager.fittedPageSize(available: available, rowHeight: rowHeight)
+            })
             .foregroundStyle(app.palette.ink)
             .onAppear {
                 if page == nil { page = Pager.clampPage(Self.savedPages[signature] ?? 0, p.count) }
@@ -256,6 +278,10 @@ struct V23Pager<Item, Row: View, End: View, Empty: View>: View {
             .onChange(of: page) { old, new in
                 if let new { Self.savedPages[signature] = new }
                 if old != nil && old != new { Haptics.selection() }
+            }
+            .onChange(of: pageSize) { _, _ in
+                // A resize or rotation refits the page count; the open page must stay in range.
+                page = Pager.clampPage(page ?? 0, pages.count)
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier(listID)
@@ -370,6 +396,29 @@ private struct TrackProgress: ViewModifier {
             }
         } else {
             content
+        }
+    }
+}
+
+/// Reports the pager's top edge once it is laid out (and again when the width changes, i.e. rotation or a different
+/// device): the row count per page is fitted to the room below that edge. Deliberately NOT on every position change —
+/// the edge also moves when the page scrolls, and refitting mid-scroll would resize the track under the finger.
+private struct PagerFitProbe: View {
+    let onLayOut: (CGFloat, CGFloat) -> Void
+    @State private var lastWidth: CGFloat = 0
+
+    var body: some View {
+        GeometryReader { geo in
+            Color.clear
+                .onAppear {
+                    lastWidth = geo.size.width
+                    onLayOut(geo.frame(in: .global).minY, geo.size.width)
+                }
+                .onChange(of: geo.size.width) { _, w in
+                    guard abs(w - lastWidth) > 0.5 else { return }
+                    lastWidth = w
+                    onLayOut(geo.frame(in: .global).minY, w)
+                }
         }
     }
 }

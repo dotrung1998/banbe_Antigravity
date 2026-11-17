@@ -1,5 +1,6 @@
 // Home Shortlist (v2.3, note 81, switch home_v23): every event Home lists, narrowed by Home's filters, four large rows
-// a page, in Home's own order (soonest, or the chosen sort). It is INDEPENDENT of the hero tabs above: those switch the
+// a page at least (more when the screen has room, see fittedPageSize), in Home's own order (soonest, or the chosen
+// sort). It is INDEPENDENT of the hero tabs above: those switch the
 // rail only, so the list never empties (or changes) just because For You is the open tab. A short last page ends with an
 // end card (src/lib/listEnd.js).
 import Pager from '../list/Pager.jsx';

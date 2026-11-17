@@ -1,8 +1,24 @@
 // Paged lists (v2.3, note 81): the Home Shortlist and every Browse by type / See all list show four large rows a
-// page, swiped on their own track, with page numbers and a "1–4 of 8" line. Pure helpers so the component, the
-// unit tests and (later) iOS read the same rules.
+// page at least, and more when the screen has room below the list (owner 2026-11-17: the empty band under the pager
+// became rows instead of a gap). Pure helpers so the component, the unit tests and iOS read the same rules.
 
 export const PAGE_SIZE = 4;
+/** Tallest page: past this a page stops reading as one screen and the pager is lost below the fold. */
+export const MAX_PAGE_SIZE = 8;
+/** The arrows, page numbers and "5–8 of 18" line under the track (44 px numbers + padding + range), with 4 px air. */
+export const PAGER_NAV_HEIGHT = 71;
+
+/**
+ * How many rows fit below the list's top edge, so the rows AND the pager are on screen without scrolling.
+ * `available` is the height from the list's top to the bottom of the scrolling viewport. Never fewer than the
+ * classic four and never more than MAX_PAGE_SIZE, so a short trade-show phone keeps its old pages and a very tall
+ * window cannot turn the list into a wall.
+ */
+export function fittedPageSize({ available, rowHeight = 92, nav = PAGER_NAV_HEIGHT, min = PAGE_SIZE, max = MAX_PAGE_SIZE } = {}) {
+  if (!Number.isFinite(available) || available <= 0 || !(rowHeight > 0)) return min;
+  const fits = Math.floor((available - nav) / rowHeight);
+  return Math.max(min, Math.min(max, fits));
+}
 
 /** Split a list into pages of `size`. An empty list has no pages. */
 export function paginate(list, size = PAGE_SIZE) {
