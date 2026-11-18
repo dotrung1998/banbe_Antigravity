@@ -209,15 +209,6 @@ struct HomeView: View {
             }
             .task(id: app.homeWeekendScrollRequest) { await scrollToWeekendIfAsked(weekendProxy) }
             .environment(\.scaffoldClipsContent, homeClipsContent)
-            // Hero empty card "Browse all events": bring Browse / By type to the top once the cleared filter has applied.
-            .onChange(of: app.homeBrowseScrollRequest) { _, req in
-                guard req != nil else { return }
-                app.homeBrowseScrollRequest = nil
-                Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 120_000_000)
-                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.4)) { weekendProxy.scrollTo("home.tour.browse", anchor: .top) }
-                }
-            }
             // Note 64: the v3 tour's event-card step brings the first card into view (a scroll, nothing else).
             .onReceive(OnboardingTourController.shared.$scrollRequest.dropFirst()) { _ in
                 let target = OnboardingTourController.shared.scrollTarget

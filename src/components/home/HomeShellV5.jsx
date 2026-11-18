@@ -277,12 +277,20 @@ export default function HomeShellV5({
                   const areaTxt = areaLabel;
                   const narrowed = areaActive || filtersActive;
                   const changeArea = (e) => onArea?.(e);
+                  // The weekend rail is built with the same area and filters (only the date differs), so it already
+                  // knows whether "See this weekend" leads anywhere (owner 2026-11-18): an empty Tonight must not send
+                  // people to an empty Weekend and a second "Browse all events". When the weekend does have events the
+                  // current approach stands, and Browse all events rides along as the second option.
+                  const weekendHasEvents = (lists.weekend || []).length > 0;
+                  const browseAll = { cta: T('Xem tất cả sự kiện', 'Browse all events'), go: onBrowseAll };
                   const base = tab === 'foryou'
                     ? { icon: SPARK, text: T('Chưa có gợi ý. Trả lời vài câu hỏi để chúng tôi chọn sự kiện hợp với bạn.', 'No picks yet. Answer a few questions and we will pick events that fit you.'),
                         cta: T('Đặt sở thích', 'Set your preferences'), go: onSetPrefs }
                     : tab === 'tonight'
-                      ? { icon: MOON, text: T('Tối nay chưa có sự kiện nào.', 'Nothing on tonight.'), cta: T('Xem cuối tuần', 'See this weekend'), go: () => onTab('weekend') }
-                      : { icon: CAL, text: T('Cuối tuần này chưa có sự kiện nào.', 'Nothing on this weekend.'), cta: T('Xem tất cả sự kiện', 'Browse all events'), go: onBrowseAll };
+                      ? (weekendHasEvents
+                        ? { icon: MOON, text: T('Tối nay chưa có sự kiện nào.', 'Nothing on tonight.'), cta: T('Xem cuối tuần', 'See this weekend'), go: () => onTab('weekend'), more: browseAll }
+                        : { icon: MOON, text: T('Tối nay chưa có sự kiện nào.', 'Nothing on tonight.'), ...browseAll })
+                      : { icon: CAL, text: T('Cuối tuần này chưa có sự kiện nào.', 'Nothing on this weekend.'), ...browseAll };
                   let E = { ...base, area: false, clear: null, prefs: false };
                   if (narrowed && tab === 'foryou') {
                     E = { icon: SPARK, area: true, go: changeArea, cta: T('Đổi khu vực', 'Change area'), prefs: !hasPrefs,
@@ -302,6 +310,9 @@ export default function HomeShellV5({
                       <span>{E.text}</span>
                       <button type="button" data-testid={E.area && tab === 'foryou' ? 'home-hero-empty-area' : 'home-hero-empty-cta'} onClick={(e) => E.go?.(e)}
                         style={{ minHeight: 44, padding: '0 20px', borderRadius: 999, border: 'none', background: 'rgba(247,244,236,.92)', color: '#1B1916', fontFamily: 'inherit', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>{E.cta}</button>
+                      {!narrowed && E.more && (
+                        <button type="button" data-testid="home-hero-empty-more" onClick={() => E.more.go?.()} style={sec}>{E.more.cta}</button>
+                      )}
                       {E.area && tab !== 'foryou' && (
                         <button type="button" data-testid="home-hero-empty-area" onClick={changeArea} style={sec}>{T('Đổi khu vực', 'Change area')}</button>
                       )}

@@ -612,6 +612,10 @@ struct HomeHeroSection: View {
         let action: () -> Void
         let place = app.currentAreaLabel
         let narrowed = areaActive || otherFiltersActive
+        // The weekend rail is built with the same area and filters (only the date differs), so `lists` already knows
+        // whether "See this weekend" leads anywhere (owner 2026-11-18). Web twin: `weekendHasEvents` in HomeShellV5.jsx.
+        let weekendHasEvents = !(lists[.weekend] ?? []).isEmpty
+        let browseAll: () -> Void = { Haptics.selection(); app.openBrowse(type: "all", scope: "all", from: tab.rawValue) }
         switch tab {
         case .foryou:
             icon = "sparkles"
@@ -630,20 +634,21 @@ struct HomeHeroSection: View {
             icon = "moon.stars"
             text = areaActive ? app.T("Tối nay chưa có sự kiện nào ở \(place).", "Nothing on tonight in \(place).")
                               : app.T("Tối nay chưa có sự kiện nào.", "Nothing on tonight.")
-            cta = app.T("Xem cuối tuần", "See this weekend")
-            action = { Haptics.selection(); tab = .weekend }
+            if weekendHasEvents {
+                cta = app.T("Xem cuối tuần", "See this weekend")
+                action = { Haptics.selection(); tab = .weekend }
+            } else {
+                // An empty Tonight must not send people to an empty Weekend and then a second "Browse all events".
+                cta = app.T("Xem tất cả sự kiện", "Browse all events")
+                action = browseAll
+            }
         case .weekend:
             icon = "calendar"
             text = areaActive ? app.T("Cuối tuần này chưa có sự kiện nào ở \(place).", "Nothing on this weekend in \(place).")
                               : app.T("Cuối tuần này chưa có sự kiện nào.", "Nothing on this weekend.")
+            // Browse all events opens the every-event list, never the By type section on Home (owner 2026-11-18).
             cta = app.T("Xem tất cả sự kiện", "Browse all events")
-            action = {
-                Haptics.selection()
-                var f = app.homeFilters
-                f.date = "any"
-                app.setHomeFilters(f)
-                app.homeBrowseScrollRequest = UUID()
-            }
+            action = browseAll
         }
         // Narrowed by an area or filters: "Change area" leads; the original action drops to the second/third slot.
         let changeArea = narrowed && areaActive
@@ -656,11 +661,8 @@ struct HomeHeroSection: View {
                     app.filterForYou = false
                 })
             }
-            // Only the area narrows: show every event in it (the Browse list below).
-            return (app.T("Xem mọi sự kiện ở \(place)", "Show all events in \(place)"), {
-                Haptics.selection()
-                app.homeBrowseScrollRequest = UUID()
-            })
+            // Only the area narrows: show every event in it, as the real every-event list (not Home's By type rows).
+            return (app.T("Xem mọi sự kiện ở \(place)", "Show all events in \(place)"), browseAll)
         }()
         let showPrefsLink = tab == .foryou && narrowed && !app.hasForYouMatches
         func pill(_ title: String, id: String, primary: Bool, run: @escaping () -> Void) -> some View {
@@ -705,6 +707,10 @@ struct HomeHeroSection: View {
             } else {
                 pill(cta, id: "home.hero.empty.cta", primary: true, run: action)
                 if let clear { pill(clear.label, id: "home.hero.empty.clear", primary: false, run: clear.run) }
+                // When "See this weekend" does lead somewhere, Browse all events stays one tap away as well.
+                if tab == .tonight, weekendHasEvents {
+                    pill(app.T("Xem tất cả sự kiện", "Browse all events"), id: "home.hero.empty.more", primary: false, run: browseAll)
+                }
             }
         }
         .foregroundStyle(.white)

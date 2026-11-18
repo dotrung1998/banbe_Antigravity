@@ -555,8 +555,6 @@ final class AppState: ObservableObject {
     @Published var hostRecapBack: Screen = .dashboard
     /// L5 weekly digest: set when its notification opens Home; HomeView scrolls to "This weekend" once and clears it.
     @Published var homeWeekendScrollRequest: UUID?
-    /// Hero empty card "Browse all events": HomeView scrolls down to the Browse / By type section (once per request).
-    @Published var homeBrowseScrollRequest: UUID?
     /// L3 "Run it again": the original event's cover, staged by CreateEventView as the new draft's first photo (once).
     @Published var createSeedCoverImage: UIImage?
     /// Leaving a NEW event draft that has input (Back or edge swipe) offers Undo for a few seconds

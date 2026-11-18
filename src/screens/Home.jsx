@@ -1300,7 +1300,9 @@ export default function Home({ browse = false }) {
           onSearch={openSearch} onArea={openAreaMenu} onMap={openMapWithContext} onFilters={() => set({ homeFilterSheetOpen: true })} filterSummary={shellFilterSummary}
           onFindType={() => setCategorySheetOpen(true)} onPickType={shellPickType}
           onSetPrefs={() => openEventPreferences('home')}
-          onBrowseAll={() => { setHomeFilters(f => ({ ...f, date: 'any' })); setTimeout(() => (document.querySelector('[data-testid="home-browse"]') || document.querySelector('[data-testid="home-by-type"]'))?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 120); }}
+          // "Browse all events" opens the every-event list itself (owner 2026-11-18): it used to scroll Home down to
+          // the By type section, which only ever held a handful of events, never all of them.
+          onBrowseAll={() => browseTypesFrom(heroTab)}
           hostBody={<div data-reveal="1"><HostHome /><div style={{ height: 44 }} /></div>} below={surveySection}
           seeAll={v23 && heroTab !== 'hosting' ? { count: tabItems(heroTab).length, label: TAB_LABEL[heroTab] } : null}
           onBrowseType={v23 ? (k) => openBrowse({ type: k, scope: 'all' }) : null}
