@@ -1,6 +1,7 @@
 // Frosted pop-up menu — the one used by the calendar pill beside an event title (EventPlanActions.jsx), shared so
 // Event Detail's ⋯ button opens the same kind of menu (note 52). Web twin of iOS's native SwiftUI `Menu`.
-// Closes on a tap outside, on Escape, and after any item is chosen.
+// Closes on a tap outside, on Escape, on any scroll (a menu belongs to the place it was opened from, so it must not
+// hang over content the reader has scrolled to — owner 2026-11-23), and after any item is chosen.
 import { createContext, useContext, useEffect, useRef } from 'react';
 import { ink } from '../theme.js';
 
@@ -24,9 +25,20 @@ export default function GlassMenu({ open, onOpenChange, trigger, children, width
     if (!open) return undefined;
     const onDown = (e) => { if (!wrap.current?.contains(e.target)) onOpenChange(false); };
     const onKey = (e) => { if (e.key === 'Escape') onOpenChange(false); };
+    // Any scroll of the page under it (the capture pass sees the app's own scroll viewport too). Armed a beat after
+    // opening, so a browser's own scroll-into-view of the trigger can't dismiss it the instant it appears.
+    let armed = false;
+    const arm = setTimeout(() => { armed = true; }, 120);
+    const onScroll = () => { if (armed) onOpenChange(false); };
     document.addEventListener('pointerdown', onDown);
     window.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('pointerdown', onDown); window.removeEventListener('keydown', onKey); };
+    document.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    return () => {
+      clearTimeout(arm);
+      document.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('scroll', onScroll, { capture: true });
+    };
   }, [open, onOpenChange]);
   return (
     <div ref={wrap} style={{ position: 'relative', ...wrapStyle }} data-testid={wrapTestId}>

@@ -628,6 +628,18 @@ export default function Home({ browse = false }) {
   // Home actually lists (so every update can be opened). One list for the ticker, the Reduced form and Live now.
   const [liveIndex, setLiveIndex] = useState(0);
   const reducedMotion = useReducedMotion();
+  // Picking a view or an area from the folded band happens while the reader is far down the page (owner 2026-11-23: "I
+  // scroll down, choose an option, and the view does not return to the events"). Whatever the feed shows, a new tab,
+  // the host view or a new area sends it back to the top, where the events start and the band's tabs unfold again.
+  // The first render is not a change, so a restored scroll position is never overridden.
+  const feedKey = `${hostView ? 'host' : heroTab}|${curArea.key}`;
+  const feedKeyRef = useRef(feedKey);
+  useEffect(() => {
+    if (feedKeyRef.current === feedKey) return;
+    feedKeyRef.current = feedKey;
+    const sc = document.querySelector('[data-testid="app-scroll-viewport"]');
+    (sc || window).scrollTo({ top: 0, behavior: reducedMotion ? 'auto' : 'smooth' });
+  }, [feedKey, reducedMotion]);
   const [liveOpen, setLiveOpen] = useState(false);
   const live = useMemo(() => {
     if (!v23 || browse) return [];
