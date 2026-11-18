@@ -343,14 +343,15 @@ struct HomeHeroPinnedHeader: View {
         .accessibilityLabel(label)
         .accessibilityIdentifier(id)
         // Where the search circle is on screen, so Search can start its own field right here (the glide entrance).
-        if measureFrame {
-            return button.background(GeometryReader { g in
-                Color.clear
-                    .onAppear { app.homeSearchBarFrame = g.frame(in: .global) }
-                    .onChange(of: g.frame(in: .global)) { _, f in app.homeSearchBarFrame = f }
-            })
+        return button.background {
+            if measureFrame {
+                GeometryReader { g in
+                    Color.clear
+                        .onAppear { app.homeSearchBarFrame = g.frame(in: .global) }
+                        .onChange(of: g.frame(in: .global)) { _, f in app.homeSearchBarFrame = f }
+                }
+            }
         }
-        return button
     }
 
     // MARK: tabs
