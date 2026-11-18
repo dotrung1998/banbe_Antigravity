@@ -5,10 +5,12 @@
 This project's Baseline target is **Baseline Widely available**, with the app's own, stricter floor: **Safari 16.2 /
 iOS 16.2** (the oldest engine the web app already depends on, via `color-mix()`). A feature that needs Safari 17.4+, or
 one that is Chrome/Firefox only, is NOT adopted just because it is labelled Baseline — it needs a real fallback or it
-waits. Modern Web Guidance is installed at `.claude/skills/modern-web-guidance/` (`npx modern-web-guidance@latest
-legacy-scan <path> --json`, `search`, `retrieve`); read
+waits. Modern Web Guidance is installed on demand — `npx modern-web-guidance@latest` with `legacy-scan <path> --json`,
+`search`, `retrieve` — and its vendored copy is NOT kept in the repo (`/.claude/skills/modern-web-guidance/` is
+gitignored, like `impeccable`: ~200 guide files, reinstallable from `skills-lock.json`, and they pushed the web app over
+the publisher's 2000-file cap). Install it before running the pass; read
 [.claude/notes/90-modern-web-guidance-pass.md](.claude/notes/90-modern-web-guidance-pass.md) before adding a platform
-feature or re-running the pass.
+feature or re-running it.
 
 ## Ticket escrow flow — stage notes
 
