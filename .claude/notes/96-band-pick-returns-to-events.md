@@ -60,3 +60,20 @@ Two screenshots of the same area menu at two scroll positions (the page at the t
 quiet), and both middle controls — the expanded area chip and the folded view + area pill, which also carries the nested
 area submenu — carry `.id(compact.menuGeneration)`. A new identity rebuilds them, which dismisses the open menu; the
 gesture-edge guard means normal scrolling rebuilds nothing.
+
+
+## Follow-up 2 (2026-11-23): the web area menu did not close on scroll
+
+The same screenshots after the web preview was publishing again: the band's **area** menu (All locations / Vietnam / United
+States / Use my location / Search locations…) hung over the feed while it scrolled. `GlassMenu` (the folded view pill)
+already closed on any scroll, but the area menu is not a `GlassMenu` — it is `AreaMenu`, a fixed backdrop plus a card
+positioned from `areaMenuAnchor`, and it only listened for Escape and an outside tap. `SortMenu` is built the same way and
+had the same gap.
+
+Both now listen for scroll in the capture phase on `document` (the app's own scroll viewport included), armed 120 ms after
+opening so a browser's scroll-into-view of the trigger cannot dismiss them on arrival. `AreaMenu` ignores scrolls whose
+target is inside its own card: the card is capped at 70 vh and scrolls itself when a country has a long area list, and that
+is not the feed moving.
+
+Files: `src/screens/sheets/AreaMenu.jsx`, `src/screens/sheets/SortMenu.jsx`. Not verified in a browser — the preview built.
+iOS is unchanged: the band's native menus use the `menuGeneration` identity rule from the follow-up above.

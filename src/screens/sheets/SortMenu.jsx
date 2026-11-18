@@ -13,8 +13,19 @@ const MODES = ['soonest', 'nearest', 'popular', 'price'];
 export default function SortMenu({ anchor, value, canSortNearest, onPick, onAskLocation, onClose, T }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    // Same rule as AreaMenu and GlassMenu: a scroll of the feed under it dismisses the pop-over, so it can never hang
+    // over content the reader has scrolled to (owner 2026-11-23). Armed a beat after opening so a browser's own
+    // scroll-into-view of the trigger cannot dismiss it on arrival.
+    let armed = false;
+    const arm = setTimeout(() => { armed = true; }, 120);
+    const onScroll = () => { if (armed) onClose(); };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    document.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    return () => {
+      clearTimeout(arm);
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('scroll', onScroll, { capture: true });
+    };
   }, [onClose]);
 
   const target = typeof document !== 'undefined' ? (document.querySelector('.bb-screen') || document.body) : null;

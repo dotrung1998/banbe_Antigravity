@@ -2,7 +2,7 @@
 // `Menu`: a frosted card anchored under the chip, "All locations" (✓ when active), one row per country that
 // drills into its areas (with a back row and "All in X"), then the location toggle and "Search locations…",
 // which opens the full AreaSheet. Picking anything only calls pickArea, never the GPS flow.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useBanBe } from '../../state/BanBeContext.jsx';
 import { ink, paper } from '../../theme.js';
 import { LOCATION_ALL, countryLabel } from '../../lib/locationTree.js';
@@ -13,10 +13,27 @@ export default function AreaMenu() {
   const anchor = s.areaMenuAnchor || { left: 20, bottom: 120, width: 390 };
   const [path, setPath] = useState([]); // drilled-into node ids
   const close = () => set({ areaMenuOpen: false });
+  const card = useRef(null);
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') close(); };
+    // Any scroll of the feed under it dismisses the menu: it belongs to the band it was opened from, so it must not
+    // hang over content the reader has scrolled to (owner 2026-11-23, same rule as GlassMenu). A scroll inside the
+    // menu's own list is not one of those — the card can be taller than 70 % of the screen and scrolls itself.
+    // Armed a beat after opening, so a browser's own scroll-into-view of the trigger can't dismiss it on arrival.
+    let armed = false;
+    const arm = setTimeout(() => { armed = true; }, 120);
+    const onScroll = (e) => {
+      if (!armed) return;
+      if (card.current && e.target instanceof Node && card.current.contains(e.target)) return;
+      close();
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    document.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    return () => {
+      clearTimeout(arm);
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('scroll', onScroll, { capture: true });
+    };
   }); // eslint-disable-line react-hooks/exhaustive-deps
 
   const node = path.length ? locationTree.byId.get(path[path.length - 1]) : null;
@@ -35,7 +52,7 @@ export default function AreaMenu() {
 
   return (
     <div onClick={close} data-testid="area-menu-backdrop" style={{ position: 'fixed', inset: 0, zIndex: 2200 }}>
-      <div role="menu" aria-label={T('Khu vực', 'Location')} onClick={(e) => e.stopPropagation()} data-testid="area-menu"
+      <div role="menu" aria-label={T('Khu vực', 'Location')} onClick={(e) => e.stopPropagation()} data-testid="area-menu" ref={card}
         style={{ position: 'absolute', top: anchor.bottom + 6, left: Math.max(12, Math.min(anchor.left, (anchor.width || window.innerWidth) - 292)), width: 280, maxHeight: '70vh', overflowY: 'auto',
           borderRadius: 26, padding: '8px 0', color: ink,
           background: 'color-mix(in srgb, var(--bb-bg) 78%, transparent)', backdropFilter: 'blur(28px) saturate(1.6)', WebkitBackdropFilter: 'blur(28px) saturate(1.6)',
