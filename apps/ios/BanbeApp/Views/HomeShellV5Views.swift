@@ -80,6 +80,47 @@ final class HomeHeaderCompact: ObservableObject {
     }
 }
 
+/// The account's face wherever the app offers a way into Account (Home's band, Browse's nav): the real profile photo,
+/// initials when there is none, and the person glyph for a guest. One clay disc and one paper ring on both screens.
+struct AccountAvatarView: View {
+    @EnvironmentObject private var app: AppState
+    var size: CGFloat = 40
+
+    private var avatarURL: URL? { app.user?.avatarURL.flatMap { URL(string: $0) } }
+
+    /// The disc's own content when there is no usable photo: initials, or the guest glyph. Also the placeholder while
+    /// the photo loads and the fallback if it fails (expired URL, offline), so the disc is never blank.
+    @ViewBuilder private var fallback: some View {
+        if app.isSignedIn {
+            Text(BottomTabBar.initials(app.displayName)).font(.app(size: size * 0.33, weight: .bold))
+                .foregroundStyle(.white)
+        } else {
+            Image(systemName: "person").font(.app(size: size * 0.4, weight: .regular))
+                .foregroundStyle(.white)
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            if let avatarURL {
+                AsyncImage(url: avatarURL) { phase in
+                    if case .success(let image) = phase {
+                        image.resizable().scaledToFill()
+                    } else {
+                        fallback
+                    }
+                }
+            } else {
+                fallback
+            }
+        }
+        .frame(width: size, height: size)
+        .background(app.palette.clay, in: Circle())
+        .clipShape(Circle())
+        .overlay(Circle().strokeBorder(Color.white.opacity(0.9), lineWidth: 1.5))
+    }
+}
+
 /// Home's app bar (owner 2026-11-22): ONE paper band, two rows, the same shape at rest and scrolled. It is pinned at the
 /// top of the feed and keeps its own room in the hero, so nothing slides under it at rest and the tabs can never be cut
 /// by it — the complaint about the floating band. Web twin: the `.bb-home-head*` block in src/index.css.
@@ -176,24 +217,13 @@ struct HomeHeroPinnedHeader: View {
         }
     }
 
-    /// Initials in a clay disc (a person glyph for a guest). Opens Account.
+    /// The reader's own face (photo, then initials; a person glyph for a guest). Opens Account.
     private func avatarButton(size: CGFloat) -> some View {
         SwipeSafeButton {
             Haptics.light()
             onAvatar()
         } label: {
-            Group {
-                if app.isSignedIn {
-                    Text(BottomTabBar.initials(app.displayName)).font(.app(size: size * 0.33, weight: .bold))
-                } else {
-                    Image(systemName: "person").font(.app(size: size * 0.4, weight: .regular))
-                }
-            }
-            .foregroundStyle(.white)
-            .frame(width: size, height: size)
-            .background(app.palette.clay, in: Circle())
-            .overlay(Circle().strokeBorder(Color.white.opacity(0.9), lineWidth: 1.5))
-            .contentShape(Rectangle())
+            AccountAvatarView(size: size).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(app.T("Tài khoản", "Account"))

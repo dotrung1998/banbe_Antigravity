@@ -11,7 +11,7 @@ import SwiftUI
 // list in place and remembers the tab it came from, so Back returns there — the quiet link under the chips is gone. The
 // row shows on every Browse screen, so the destination it leads to still reads as the tab it is.
 // Under the nav a deck of host faces: a tap lists the hosts, a host opens their real profile. The magnifier turns the
-// title into a search field. Its own Filters (When, Price, Seats). Four rows a page with the swipe signs, then an end
+// title into a search field. Its own Filters (Location, When, Price, Seats). Four rows a page with the swipe signs, then an end
 // card. Rules: Lib/V23Rules.swift (BrowseRules, Pager, ListEnd).
 
 extension AppState {
@@ -137,14 +137,23 @@ struct BrowseView: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var finding = false
-    @State private var hostsOpen = false
-    @State private var filtersOpen = false
+    /// One route for all four Browse sheets. A single `.sheet(item:)` cannot present two at once, so a host-deck tap
+    /// and a filter tap in the same run loop resolve to one route instead of fighting over separate modifiers.
+    private enum SheetRoute: String, Identifiable, Equatable {
+        case hosts, filters, area, types
+        var id: String { rawValue }
+    }
+    @State private var sheetRoute: SheetRoute? = nil
     @FocusState private var searchFocused: Bool
     /// Bumped when the reader taps the scope tab or type chip they are already on: the list goes back to its top
     /// (owner 2026-11-23 — re-choosing the current option is never a dead tap after scrolling).
     @State private var browseTopToken = 0
 
     private var tabLabel: ViEn? { HomeHeroTab(rawValue: app.browseScope).map { ViEn($0.vi, $0.en) } }
+    /// The location picker still takes a Bool binding; it is backed by the one route so Done or a swipe clears it.
+    private var areaSheetPresented: Binding<Bool> {
+        Binding(get: { sheetRoute == .area }, set: { shown in if !shown { sheetRoute = nil } })
+    }
 
     var body: some View {
         let now = Date()
@@ -170,6 +179,7 @@ struct BrowseView: View {
         // The nav row carries the running search only: the screen's own name now lives in the heading under the tabs
         // (note 91), and a picked type is that heading too, so the nav row never repeats it.
         let navTitle = q.isEmpty ? "" : "“\(q)”"
+        // Area lives in its own two pills; the filter badge counts only what the filter sheet's Reset can clear.
         let nFilters = BrowseRules.filterCount(app.browseFilters)
 
         VStack(spacing: 0) {
@@ -186,9 +196,11 @@ struct BrowseView: View {
                         // the first event almost halfway down the screen.
                         listHead(titleText, count: result.list.count, hosts: hosts, now: now)
                             .id("browse.listTop")
+                        areaScope
                         HStack(spacing: 0) {
                             if !chips.isEmpty || app.browseScope != "all" { typeChips(chips, counts: counts, total: entries.count, selected: effType) }
                             else { Spacer(minLength: 0) }
+                            typeButton.padding(.leading, 8)
                             filtersButton(nFilters).padding(.leading, 8).padding(.trailing, 20)
                         }
                         .padding(.top, 12).padding(.bottom, 14)
@@ -207,23 +219,39 @@ struct BrowseView: View {
             }
         }
         .background(app.palette.paper.ignoresSafeArea())
-        .sheet(isPresented: $hostsOpen) {
-            HostListSheet(hosts: hosts, title: titleText, onPick: { id in
-                hostsOpen = false
-                app.openOrganizerProfile(organizerID: id, back: .browse)
-            }, onClose: { hostsOpen = false })
-            .environmentObject(app)
-        }
-        .sheet(isPresented: $filtersOpen) {
-            NavigationStack {
-                HomeFilterSheet(items: BrowseRules.list(entries, type: effType, query: app.browseQuery, filters: .default, now: now).list.map(\.item),
-                                now: now, onClose: { filtersOpen = false },
-                                mapFilters: BrowseRules.browseFilters(app.browseFilters),
-                                onApplyMap: { app.browseFilters = BrowseRules.browseFilters($0) },
-                                browseTitle: app.T("Lọc \(titleText)", "Filter \(titleText)"))
+        // A new area is a new list: return to the heading and its count instead of staying at a scroll position that
+        // belonged to the old area.
+        .onChange(of: app.area) { _, _ in browseTopToken += 1 }
+        .sheet(item: $sheetRoute) { route in
+            switch route {
+            case .hosts:
+                HostListSheet(hosts: hosts, title: titleText, onPick: { id in
+                    sheetRoute = nil
+                    app.openOrganizerProfile(organizerID: id, back: .browse)
+                }, onClose: { sheetRoute = nil })
+                .environmentObject(app)
+            case .filters:
+                NavigationStack {
+                    HomeFilterSheet(items: BrowseRules.list(entries, type: effType, query: app.browseQuery, filters: .default, now: now).list.map(\.item),
+                                    now: now, onClose: { sheetRoute = nil },
+                                    mapFilters: BrowseRules.browseFilters(app.browseFilters),
+                                    onApplyMap: { app.browseFilters = BrowseRules.browseFilters($0) },
+                                    browseTitle: app.T("Lọc \(titleText)", "Filter \(titleText)"))
+                }
+                .environmentObject(app)
+                .presentationDetents([.large])
+            case .area:
+                LocationPickerSheet(isPresented: areaSheetPresented, doneMode: true)
+                    .environmentObject(app)
+            case .types:
+                BrowseTypePicker(counts: counts, total: entries.count, selected: effType,
+                                 onPick: { key in
+                                     app.browsePickType(key)
+                                     sheetRoute = nil
+                                     browseTopToken += 1
+                                 }, onClose: { sheetRoute = nil })
+                    .environmentObject(app)
             }
-            .environmentObject(app)
-            .presentationDetents([.large])
         }
         .accessibilityIdentifier("browse.screen")
     }
@@ -301,7 +329,7 @@ struct BrowseView: View {
                     .accessibilityIdentifier("browse.scopeCount")
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            if !hosts.isEmpty { HostDeckView(hosts: hosts) { hostsOpen = true } }
+            if !hosts.isEmpty { HostDeckView(hosts: hosts) { sheetRoute = .hosts } }
         }
         .padding(.horizontal, 20).padding(.top, 18)
     }
@@ -343,8 +371,15 @@ struct BrowseView: View {
             }
             circle("map", label: app.T("Xem trên bản đồ", "See on the map"), id: "browse.map") { app.goMapExploreFromHome() }
             // Account sits in the corner on every screen that carries the four tabs (2026-11-17): this screen does not
-            // show the dock, so this is the one way to Account without going back to Home first.
-            circle("person", label: app.T("Tài khoản", "Account"), id: "browse.account") { app.goProfile() }
+            // show the dock, so this is the one way to Account without going back to Home first. The face is the
+            // reader's own (photo, then initials), not the generic person glyph the two headers used to disagree on.
+            Button { app.goProfile() } label: {
+                AccountAvatarView(size: 40)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(PressableButtonStyle())
+            .accessibilityLabel(app.T("Tài khoản", "Account"))
+            .accessibilityIdentifier("browse.account")
         }
         .foregroundStyle(app.palette.ink)
         .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 8)
@@ -356,13 +391,77 @@ struct BrowseView: View {
     private func circle(_ symbol: String, label: String, id: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol).font(.app(size: 16, weight: .medium))
-                .frame(width: 44, height: 44)
+                .frame(width: 40, height: 40)
                 .background(app.palette.ink.opacity(0.07), in: Circle())
                 .contentShape(Circle())
         }
         .buttonStyle(PressableButtonStyle())
         .accessibilityLabel(label)
         .accessibilityIdentifier(id)
+    }
+
+    // MARK: Area scope / type picker
+
+    /// Browse opens on the area the reader came from and offers the two choices explicitly: stay in this area, or
+    /// widen to every area. The filter sheet keeps the full picker for a specific area.
+    private var areaScope: some View {
+        let active = app.area != LocationHierarchy.allID
+        return HStack(spacing: 8) {
+            Button { Haptics.selection(); sheetRoute = .area } label: {
+                areaPill(active ? app.currentAreaLabel : app.T("Chọn khu vực", "Choose area"), active: active, icon: "mappin")
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(active ? .isSelected : [])
+            .accessibilityIdentifier("browse.area.current")
+
+            Button {
+                Haptics.selection()
+                // Re-choosing the option already on is never a dead tap (note 96).
+                if active { browseTopToken += 1 } else { app.pickArea(LocationHierarchy.allID) }
+            } label: {
+                areaPill(app.T("Tất cả khu vực", "All areas"), active: !active)
+            }
+            .buttonStyle(.plain)
+            .layoutPriority(1)
+            .accessibilityAddTraits(!active ? .isSelected : [])
+            .accessibilityIdentifier("browse.area.all")
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 20).padding(.top, 10)
+        .accessibilityIdentifier("browse.areaScope")
+    }
+
+    private func areaPill(_ title: String, active: Bool, icon: String? = nil) -> some View {
+        HStack(spacing: 6) {
+            if let icon { Image(systemName: icon).font(.app(size: 12, weight: .medium)) }
+            Text(title).font(.app(size: 13, weight: .semibold)).lineLimit(1).truncationMode(.tail)
+                .frame(maxWidth: 190, alignment: .leading)
+        }
+        .foregroundStyle(active ? app.palette.paper : app.palette.ink)
+        .padding(.horizontal, 13).frame(minHeight: 40)
+        .background(active ? app.palette.ink : Color.clear, in: Capsule())
+        .overlay(Capsule().strokeBorder(active ? Color.clear : app.palette.rule, lineWidth: 1))
+        .contentShape(Capsule())
+    }
+
+    /// The type chips scroll horizontally; this button opens the whole list so a type that is off-screen is still one
+    /// tap away, with its glyph and count.
+    private var typeButton: some View {
+        Button { Haptics.selection(); sheetRoute = .types } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "square.grid.2x2").font(.app(size: 14, weight: .medium))
+                Text(app.T("Loại", "Type")).font(.app(size: 13.5, weight: .semibold))
+                Image(systemName: "chevron.down").font(.app(size: 9, weight: .semibold)).opacity(0.55)
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(.horizontal, 12).frame(height: 40)
+            .background(app.palette.ink.opacity(0.07), in: Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(app.T("Chọn loại sự kiện", "Choose event type"))
+        .accessibilityIdentifier("browse.typeButton")
     }
 
     private func typeChips(_ chips: [(key: String, vi: String, en: String)], counts: [String: Int], total: Int, selected: String) -> some View {
@@ -386,7 +485,7 @@ struct BrowseView: View {
             if on { browseTopToken += 1 } else { app.browsePickType(key) }
         } label: {
             HStack(spacing: 6) {
-                if key != "all" { Image(systemName: CategoryGlyph.symbol(key)).font(.app(size: 13)) }
+                if key != "all" { Image(systemName: CategoryGlyph.symbol(key)).font(.app(size: 14)) }
                 Text(title).font(.app(size: 14, weight: .semibold))
                 Text("\(n)").font(.app(size: 14, weight: .medium)).monospacedDigit().opacity(0.7)
             }
@@ -403,9 +502,9 @@ struct BrowseView: View {
 
     /// Filters closes the chip row: an icon the size of the nav circles, with the number of filters on as a badge.
     private func filtersButton(_ n: Int) -> some View {
-        Button { filtersOpen = true } label: {
-            Image(systemName: "slider.horizontal.3").font(.app(size: 15, weight: .medium))
-                .frame(width: 44, height: 44)
+        Button { sheetRoute = .filters } label: {
+            Image(systemName: "slider.horizontal.3").font(.app(size: 16, weight: .medium))
+                .frame(width: 40, height: 40)
                 .background(app.palette.ink.opacity(0.07), in: Circle())
                 .overlay(alignment: .topTrailing) {
                     if n > 0 {
@@ -436,22 +535,33 @@ struct BrowseView: View {
                                 body: ViEn("Xoá bộ lọc để xem lại mọi thứ.", "Clear the filters to see everything again."),
                                 actions: [.init(act: "clear-filters", label: ViEn("Xoá bộ lọc", "Clear filters"), primary: true, testId: "browse.emptyClear")])
         }
-        // An empty list is never a dead end (note 91): the card offers the next real step — another tab, the whole
-        // catalogue, the map, hosting — the same way the end cards do.
+        // An empty list is never a dead end (note 91): the card offers the next real step — another area, another tab,
+        // the whole catalogue, the map, hosting — the same way the end cards do. An area with nothing on gets "All areas"
+        // first, so the reader is not stuck in a narrower area.
+        let areaAll: EndCardModel.Action? = app.area == LocationHierarchy.allID ? nil
+            : .init(act: "area:all", label: ViEn("Xem mọi khu vực", "All areas"), primary: true, testId: "browse.emptyAllAreas")
+        func withArea(_ list: [EndCardModel.Action]) -> [EndCardModel.Action] {
+            guard let areaAll = areaAll else { return list }
+            return [areaAll] + list.map { item in
+                var next = item
+                next.primary = false
+                return next
+            }
+        }
         let actions: [EndCardModel.Action]
         if app.browseScope == "all" {
-            actions = app.browseType != "all"
+            actions = withArea(app.browseType != "all"
                 ? [.init(act: "type:all", label: ViEn("Xem mọi loại", "See every type"), primary: true),
                    .init(act: "map", label: ViEn("Mở bản đồ", "Open the map"))]
                 : [.init(act: "map", label: ViEn("Mở bản đồ", "Open the map"), primary: true),
-                   .init(act: "host", label: ViEn("Tổ chức một buổi", "Host a night"))]
+                   .init(act: "host", label: ViEn("Tổ chức một buổi", "Host a night"))])
         } else if app.browseScope == "weekend" {
-            actions = [.init(act: "type:all", label: ViEn("Xem mọi loại", "See every type"), primary: true),
-                       .init(act: "map", label: ViEn("Mở bản đồ", "Open the map"))]
+            actions = withArea([.init(act: "type:all", label: ViEn("Xem mọi loại", "See every type"), primary: true),
+                                .init(act: "map", label: ViEn("Mở bản đồ", "Open the map"))])
         } else {
-            actions = [.init(act: "scope:weekend", label: ViEn("Xem cuối tuần", "See this weekend"), primary: true),
-                       .init(act: "browse-types", label: ViEn("Duyệt theo loại", "Browse by type")),
-                       .init(act: "map", label: ViEn("Mở bản đồ", "Open the map"))]
+            actions = withArea([.init(act: "scope:weekend", label: ViEn("Xem cuối tuần", "See this weekend"), primary: true),
+                                .init(act: "browse-types", label: ViEn("Duyệt theo loại", "Browse by type")),
+                                .init(act: "map", label: ViEn("Mở bản đồ", "Open the map"))])
         }
         return EndCardModel(kind: "empty", eyebrow: ViEn("Sắp có", "Coming up"), title: ViEn("Chưa có gì ở đây.", "Nothing here yet."),
                             body: ViEn("Sự kiện mới sẽ hiện ở đây khi chủ nhà đăng. Trong lúc chờ, thử một chỗ khác.",
@@ -463,6 +573,7 @@ struct BrowseView: View {
         switch act {
         case "clear-filters": app.browseFilters = .default
         case "clear-search": app.browseQuery = ""; finding = false
+        case "area:all": app.pickArea(LocationHierarchy.allID)
         case "map": app.goMapExploreFromHome()
         // The same Start hosting path the dock "+" and Home's locked Hosting use (web twin: startHosting({ land: 'home' })):
         // guest -> sign-in prompt, organizer mode off -> the start-hosting invitation, on -> Home > Hosting.
@@ -653,5 +764,77 @@ struct HostListSheet: View {
         .presentationDetents([.large])
         .presentationBackground(app.palette.paper)
         .accessibilityIdentifier("hostList.sheet")
+    }
+}
+
+/// Every type in the catalogue, with its glyph and live count: the reliable way to change type when the horizontal
+/// chip strip has scrolled a choice off-screen. Zero-count types stay listed (muted) because picking one still opens
+/// its honest empty list (note 87).
+private struct BrowseTypePicker: View {
+    @EnvironmentObject private var app: AppState
+    let counts: [String: Int]
+    let total: Int
+    let selected: String
+    let onPick: (String) -> Void
+    let onClose: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 0) {
+                    row(key: "all", title: app.T("Tất cả", "All"), n: total)
+                    ForEach(EventTypes.categoryDefs(), id: \.key) { d in
+                        row(key: d.key, title: app.T(d.vi, d.en), n: counts[d.key] ?? 0)
+                    }
+                }
+                .padding(.horizontal, 20).padding(.bottom, 24)
+            }
+            .background(app.palette.paper.ignoresSafeArea())
+            .navigationTitle(app.T("Loại sự kiện", "Event type"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: onClose) {
+                        Image(systemName: "xmark").font(.app(size: 15, weight: .semibold))
+                    }
+                    .accessibilityLabel(app.T("Đóng", "Close"))
+                    .accessibilityIdentifier("browse.typeClose")
+                }
+            }
+        }
+        .tint(app.palette.ink)
+        .foregroundStyle(app.palette.ink)
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(app.palette.paper)
+        .accessibilityIdentifier("browse.typeSheet")
+    }
+
+    private func row(key: String, title: String, n: Int) -> some View {
+        let on = selected == key
+        return Button {
+            Haptics.selection()
+            onPick(key)
+        } label: {
+            HStack(spacing: 12) {
+                Group {
+                    if key == "all" { Image(systemName: "square.grid.2x2") }
+                    else { Image(systemName: CategoryGlyph.symbol(key)) }
+                }
+                .font(.app(size: 16))
+                .frame(width: 22)
+                Text(title).font(.app(size: 16))
+                Spacer(minLength: 8)
+                Text("\(n)").font(.app(size: 13)).monospacedDigit().opacity(0.6)
+                Image(systemName: "checkmark").font(.app(size: 14, weight: .semibold)).opacity(on ? 1 : 0)
+            }
+            .foregroundStyle(app.palette.ink.opacity(key != "all" && n == 0 ? 0.55 : 1))
+            .frame(minHeight: 52)
+            .overlay(alignment: .bottom) { Rectangle().fill(app.palette.rule).frame(height: 1) }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
+        .accessibilityIdentifier("browse.typeOption.\(key)")
     }
 }

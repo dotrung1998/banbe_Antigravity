@@ -8,6 +8,7 @@
 // Pure view over the lists Home.jsx already builds, so it adds no fetching and no filters of its own.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CategoryGlyph } from './HomeDiscoveryParts.jsx';
+import AccountAvatar from '../AccountAvatar.jsx';
 import { categoryDefs } from '../../lib/eventTypes.js';
 import GlassMenu, { GlassMenuItem, GlassMenuDivider } from '../GlassMenu.jsx';
 import SeeAllFanCard from './SeeAllFanCard.jsx';
@@ -29,8 +30,6 @@ const SPARK = <><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.
 const MOON = <path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z" />;
 const CAL = <><rect x="3.5" y="5" width="17" height="15" rx="2" /><path d="M3.5 10h17M8 3v4M16 3v4" /></>;
 const SLIDERS = <><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></>;
-
-const initials = (name) => String(name || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '·';
 
 /**
  * @param {object} p
@@ -222,7 +221,7 @@ export default function HomeShellV5({
             <button type="button" onClick={onMap} data-testid="home-map-button" aria-label={T('Bản đồ', 'Map')}
               className="bb-home-head__round"><Icon d={MAP} size={18} /></button>
             <button type="button" onClick={onAccount} aria-label={T('Tài khoản và cài đặt nhanh', 'Account and quick settings')} data-testid="home-avatar-button" className="bb-home-head__avatar">
-              <span className="bb-home-head__disc">{user ? initials(user.name) : <Icon d={<><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>} size={17} />}</span>
+              <AccountAvatar name={user?.name || user?.email?.split('@')[0]} avatarUrl={user?.avatarUrl} />
             </button>
           </div>
         </div>

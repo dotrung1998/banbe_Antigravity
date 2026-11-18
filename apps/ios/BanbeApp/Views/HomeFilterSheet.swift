@@ -25,7 +25,7 @@ struct HomeFilterSheet: View {
     var mapExtras: AnyView? = nil
     /// For You on/off for this screen (Home's or the Map's own); nil hides the row. Shown in both modes.
     var forYou: Binding<Bool>? = nil
-    /// v2.3 Browse (note 81): the sheet filters that list (When, Price, Seats) through `onApplyMap`, without the Map's
+    /// v2.3 Browse (note 81): the sheet filters that list (Location, When, Price, Seats) through `onApplyMap`, without the Map's
     /// own copy and with no sort.
     var browseTitle: String? = nil
     private var mapMode: Bool { onApplyMap != nil && browseTitle == nil }

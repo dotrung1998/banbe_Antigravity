@@ -215,7 +215,7 @@ test('search: the magnifier turns the title into a field, Done keeps the query, 
   await expect(page.getByTestId('browse-count')).toHaveText(before || '');
 });
 
-test('own Filters: When, Price, Seats only, with a badge and a live count', async ({ page }) => {
+test('own Filters: Location, When, Price and Seats, with a badge and a live count', async ({ page }) => {
   await mockSupabase(page);
   await guestOpen(page, '/browse/music');
   await expect(page.getByTestId('browse-screen')).toBeVisible({ timeout: 20000 });
@@ -223,7 +223,7 @@ test('own Filters: When, Price, Seats only, with a badge and a live count', asyn
   const sheet = page.getByTestId('home-filter-sheet');
   await expect(sheet).toHaveAttribute('aria-label', 'Filter Music');
   await expect(sheet.locator('[data-testid^="home-filter-cat-"]')).toHaveCount(0);
-  await expect(page.getByTestId('home-filter-area')).toHaveCount(0);
+  await expect(page.getByTestId('home-filter-area')).toBeVisible();
   await expect(page.getByTestId('home-sort-soonest')).toHaveCount(0);
   await page.getByTestId('home-filter-free').click();
   const apply = page.getByTestId('home-filter-apply');
@@ -232,6 +232,41 @@ test('own Filters: When, Price, Seats only, with a badge and a live count', asyn
   await apply.click();
   await expect(page.getByTestId('browse-filter-badge')).toHaveText('1');
   await expect(page.getByTestId('browse-count')).toHaveText(new RegExp(`^${n} event`));
+});
+
+test('Browse exposes the area scope and a complete type picker', async ({ page }) => {
+  await mockSupabase(page);
+  await guestOpen(page, '/browse');
+  await expect(page.getByTestId('browse-screen')).toBeVisible({ timeout: 20000 });
+  await expect(page.getByTestId('browse-area-scope')).toBeVisible();
+  await expect(page.getByTestId('browse-area-all')).toHaveAttribute('aria-pressed', 'true');
+  await page.getByTestId('browse-area-current').click();
+  await expect(page.getByTestId('area-sheet-current')).toBeVisible();
+  await page.getByTestId('area-sheet-close').click();
+  await page.getByTestId('browse-type-button').click();
+  await expect(page.getByTestId('browse-type-sheet')).toBeVisible();
+  await page.getByTestId('browse-type-option-music').click();
+  await expect(page.getByTestId('browse-type-sheet')).toHaveCount(0);
+  await expect(page).toHaveURL(/\/browse\/music$/);
+  await expect(page.getByTestId('browse-title')).toHaveText('Music');
+});
+
+test('an empty area offers All areas and returns to the whole catalogue', async ({ page }) => {
+  await mockSupabase(page);
+  await guestOpen(page, '/browse');
+  await expect(page.getByTestId('browse-screen')).toBeVisible({ timeout: 20000 });
+  await page.getByTestId('browse-area-current').click();
+  await expect(page.getByTestId('area-sheet-tree')).toBeVisible();
+  // The US root is always in the tree even with zero events, so this is a real empty-area selection.
+  await page.getByTestId('area-node:loc:US').click();
+  await expect(page.getByTestId('area-sheet-current')).toContainText('United States');
+  await page.getByTestId('area-sheet-close').click();
+  await expect(page.getByTestId('browse-area-all')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByTestId('browse-empty-all-areas')).toBeVisible();
+  await page.getByTestId('browse-empty-all-areas').click();
+  await expect(page.getByTestId('browse-area-all')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('browse-empty-all-areas')).toHaveCount(0);
+  await expect(page.getByTestId('browse-count')).not.toHaveText(/^0 /);
 });
 
 test('paging signs: numbers, arrows and the range only; no edge tabs, no swipe cue', async ({ page }) => {

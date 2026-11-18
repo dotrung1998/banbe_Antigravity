@@ -9,6 +9,7 @@ import { RowIcon } from '../../screens/Account.jsx';
 import { computeMyTicketsActionCount } from '../../lib/badges.js';
 import NotificationPrefs from '../../screens/NotificationPrefs.jsx';
 import NativeSheet from '../NativeSheet.jsx';
+import AccountAvatar from '../AccountAvatar.jsx';
 
 const line = '1px solid var(--bb-divider, rgba(var(--bb-fg-rgb),.12))';
 const seg = (on) => ({ height: 30, padding: '0 11px', border: 'none', borderRadius: 999, fontFamily: 'inherit', fontSize: 12, cursor: 'pointer',
@@ -23,7 +24,6 @@ export default function QuickSheetV5({ onClose }) {
   const go = (fn) => () => { onClose(); fn(); };
   const user = s.user;
   const name = user ? (user.name || (user.email ? user.email.split('@')[0] : T('Bạn', 'You'))) : '';
-  const ini = name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
   // The same Hosting mode switch as Account (organizer mode itself, not the Home view), so the switch and the
   // Host tab below can never disagree. Turning it on selects the Host tab, like the prototype.
   const hostOn = !!s.organizerMode;
@@ -70,7 +70,9 @@ export default function QuickSheetV5({ onClose }) {
         {user ? (
           <>
             <button type="button" onClick={go(goProfile)} data-testid="quick-account" style={{ display: 'flex', alignItems: 'center', gap: 16, width: '100%', padding: '8px 20px 0', border: 'none', background: 'none', color: 'inherit', font: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
-              <span style={{ flex: 'none', width: 64, height: 64, borderRadius: '50%', background: 'var(--bb-clay, #9C5B3B)', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 22, fontWeight: 500 }}>{ini}</span>
+              <span style={{ flex: 'none', width: 64, height: 64, display: 'block' }}>
+                <AccountAvatar name={name} avatarUrl={user.avatarUrl} size={64} />
+              </span>
               <span style={{ flex: 1 }}>
                 <span style={{ display: 'block', fontSize: 20, fontWeight: 300 }}>{name}</span>
                 <span style={{ display: 'inline-block', marginTop: 6, fontSize: 13, borderBottom: '1px solid var(--bb-rule)' }}>{T('Tài khoản', 'Account')} ›</span>

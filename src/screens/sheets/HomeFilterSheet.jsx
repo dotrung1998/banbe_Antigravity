@@ -65,7 +65,7 @@ const Section = ({ title, right, children }) => (
 // the CTA are over the events IN THE MAP AREA (the caller passes those `items`), so "Show N" is the resulting list.
 const MAP_DATE_OPTIONS = ['any', 'today', 'tomorrow', 'weekend'];
 
-// `browseMode` (v2.3 Browse by type / See all, note 81): the same sheet titled "Filter Music", with When, Price and Seats
+// `browseMode` (v2.3 Browse by type / See all, note 81): the same sheet titled "Filter Music", with Location, When, Price and Seats
 // only (the type chips already choose the type, and the list keeps its own order), over that list's `items`.
 export default function HomeFilterSheet({ items, filters, sort, onApply, onClose, T, now, canSortNearest, areaLabel, simpleShell = false, mapMode = false, forYou = null, browseMode = false, title = null }) {
   const dateOptions = mapMode ? MAP_DATE_OPTIONS : DATE_OPTIONS;
@@ -142,12 +142,14 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
               <div style={{ fontSize: 12.5, opacity: 0.65 }}>{T('Chỉ hiện sự kiện hợp với sở thích của bạn.', 'Only events that match your preferences.')}</div>
             </Section>
           )}
-          {!browseMode && <Section title={T('Khu vực', 'Location')}>
+          {/* Browse keeps Location too (owner 2026-11-30): its list is already scoped to the area, and the area was
+              the one filter the screen could not change. */}
+          <Section title={T('Khu vực', 'Location')}>
             <button type="button" onClick={() => setAreaOpen(true)} data-testid="home-filter-area"
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minHeight: 44, border: `1px solid ${rule}`, borderRadius: RADIUS.tile, background: 'none', color: ink, fontFamily: 'inherit', fontSize: 14, padding: '0 14px', cursor: 'pointer' }}>
               <span>{areaLabel || T('Mọi nơi', 'Everywhere')}</span><span aria-hidden="true">›</span>
             </button>
-          </Section>}
+          </Section>
 
           {/* On the Map these pills drive the day window (the time bar): they dim, never remove. */}
           <Section title={T('Khi nào', 'When')}>

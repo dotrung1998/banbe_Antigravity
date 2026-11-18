@@ -1,7 +1,7 @@
 // See all / Browse by type (v2.3, notes 81, 85, 86, 88 and 90). ONE route family, ONE kind of screen: a list of events.
 // · /see-all/<tab> — one Home tab (For You, Tonight, Weekend) as its list. The same three tabs sit under the nav, so the
 //   reader moves between tabs without going back to Home (note 85); the type chips then narrow the open tab, and its
-//   own Filters (When, Price, Seats) sit beside the count. Under the tabs a deck of host faces replaces the description
+//   own Filters (Location, When, Price, Seats) sit beside the count. Under the tabs a deck of host faces replaces the description
 //   (a tap lists the hosts, a host opens their real profile).
 // · /browse[/<type>] — Browse by type, the whole catalogue as a LIST, never a grid (note 88): every event at once, with
 //   the type chips narrowing it in place. "All" widens it back to every event. The nav row names the screen ("Browse by
@@ -20,13 +20,16 @@ import EventRowV23, { ROW_HEIGHT } from '../components/list/EventRowV23.jsx';
 import HostDeck from '../components/browse/HostDeck.jsx';
 import HostListSheet from './sheets/HostListSheet.jsx';
 import HomeFilterSheet from './sheets/HomeFilterSheet.jsx';
+import AccountAvatar from '../components/AccountAvatar.jsx';
+import NativeSheet from '../components/NativeSheet.jsx';
 import { CategoryGlyph } from '../components/home/HomeDiscoveryParts.jsx';
-import { browseList, typeCounts, hostsOf, browseEnd, browseFilters, browseFilterCount, browseDatesLabel } from '../lib/browse.js';
+import { browseList, typeCounts, hostsOf, browseEnd, browseFilters, browseFilterCount, browseDatesLabel, withAllAreasAction } from '../lib/browse.js';
 import { categoryDefs } from '../lib/eventTypes.js';
 import { useReducedMotion } from '../lib/useReducedMotion.js';
 import { TAB_LABEL } from '../components/home/ShortlistV23.jsx';
 
 const TYPE_DEFS = categoryDefs();
+const TYPE_OPTIONS = [{ key: 'all', vi: 'Tất cả', en: 'All' }, ...TYPE_DEFS];
 const Icon = ({ d, size = 20 }) => (
   <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{d}</svg>
 );
@@ -34,8 +37,9 @@ const BACK = <path d="m15 5-7 7 7 7" />;
 const SEARCH = <><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></>;
 const CLOSE = <path d="M6 6l12 12M18 6 6 18" />;
 const MAP = <><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z" /><path d="M9 4v14M15 6v14" /></>;
-const PERSON = <><circle cx="12" cy="8" r="3.6" /><path d="M5 20c1.3-3.6 3.9-5.3 7-5.3s5.7 1.7 7 5.3" /></>;
 const SLIDERS = <><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></>;
+const PIN = <><path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11Z" /><circle cx="12" cy="10" r="2.5" /></>;
+const GRID = <><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><rect x="14" y="14" width="6" height="6" rx="1" /></>;
 
 // The Home tabs, in Home's own order and words: See all carries them so a reader changes tab in place (note 85).
 const SCOPES = ['foryou', 'tonight', 'weekend'];
@@ -53,10 +57,18 @@ const TYPES_TAB = { key: 'all', vi: 'Duyệt theo loại', en: 'Browse by type' 
  * @param {() => void} p.onBrowseTypes  open Browse by type from inside a tab (note 86)
  * @param {(key: string) => void} [p.onToggleSave]  the row's heart (favorites)
  * @param {() => void} [p.onAccount]  the nav row's Account button (2026-11-17)
+ * @param {string} [p.areaKey]  the active location's key; an area change returns the list to its heading
+ * @param {boolean} [p.areaActive]  a location narrower than "all" is on
+ * @param {() => void} [p.onChooseArea]  open the location picker (and stay on this screen)
+ * @param {() => void} [p.onAllAreas]  widen the list to every location
+ * @param {string} [p.accountName]  the signed-in reader's name, for the avatar's initials fallback
+ * @param {string} [p.accountAvatarUrl]  the reader's profile photo, shown in the nav instead of a person glyph
  */
 export default function Browse({ T, lang, scope, type, query, filters, items, now, areaLabel, shapeRow,
   onType, onQuery, onFilters, onBack, onOpenEvent, onOpenHost, onMap, onHost, onScope = () => {}, from = null,
-  onBrowseTypes = () => {}, onToggleSave = null, onAccount = null }) {
+  onBrowseTypes = () => {}, onToggleSave = null, onAccount = null,
+  areaKey = '', areaActive = false, onChooseArea = () => {}, onAllAreas = () => {},
+  accountName = '', accountAvatarUrl = '' }) {
   const reduced = useReducedMotion();
   const tabLabel = scope !== 'all' ? (TAB_LABEL[scope] || null) : null;
   const typeDef = TYPE_DEFS.find(d => d.key === type) || null;
@@ -84,6 +96,14 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
     fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer',
     border: on ? 'none' : '1px solid var(--bb-rule)', background: on ? 'var(--bb-fg)' : 'none', color: on ? 'var(--bb-bg)' : 'inherit',
   });
+  // The area scope's two choices are quieter than the type chips but still a 40 pt target; the label truncates rather
+  // than pushing the second choice off a narrow screen.
+  const areaPill = (on) => ({
+    display: 'inline-flex', alignItems: 'center', gap: 6, height: 40, maxWidth: '100%', minWidth: 0, padding: '0 12px', borderRadius: 999,
+    border: on ? '1px solid transparent' : '1px solid var(--bb-rule)', background: on ? 'var(--bb-fg)' : 'none',
+    color: on ? 'var(--bb-bg)' : 'inherit', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+  });
+  const areaPillLabel = { overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 };
 
   const titleText = effType !== 'all' && typeName ? T(typeName.vi, typeName.en)
     : tabLabel ? T(tabLabel.vi, tabLabel.en) : T('Duyệt theo loại', 'Browse by type');
@@ -91,9 +111,9 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
   // and a picked type is that heading too, so the nav row never repeats it.
   const navTitle = typed ? `“${typed}”` : '';
 
-  // An empty list is never a dead end (note 91): the card offers the next real step — another tab, the whole catalogue,
-  // the map, hosting — the same way the end cards do.
-  const emptyActions = scope === 'all' && effType !== 'all'
+  // An empty list is never a dead end (note 91): the card offers the next real step — another area, another tab, the
+  // whole catalogue, the map, hosting — the same way the end cards do. An area with nothing on gets "All areas" first.
+  const emptyActions = withAllAreasAction(scope === 'all' && effType !== 'all'
     ? [
       { act: 'type:all', primary: true, testId: 'browse-empty-all-types', label: { vi: 'Xem mọi loại', en: 'See every type' } },
       { act: 'map', testId: 'browse-empty-map', label: { vi: 'Mở bản đồ', en: 'Open the map' } },
@@ -112,23 +132,40 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
           { act: 'scope:weekend', primary: true, testId: 'browse-empty-weekend', label: { vi: 'Xem cuối tuần', en: 'See this weekend' } },
           { act: 'browse-types', testId: 'browse-empty-browse-types', label: { vi: 'Duyệt theo loại', en: 'Browse by type' } },
           { act: 'map', testId: 'browse-empty-map', label: { vi: 'Mở bản đồ', en: 'Open the map' } },
-        ];
+        ], areaActive);
 
   const dates = browseDatesLabel(scope, now, lang);
   const [finding, setFinding] = useState(false);
   const [hostsOpen, setHostsOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [typesOpen, setTypesOpen] = useState(false);
   const inputRef = useRef(null);
   const scrollRef = useRef(null);
   useEffect(() => { if (finding) inputRef.current?.focus({ preventScroll: true }); }, [finding]);
+  // A new area is a new list: go back to the heading where its count and type chips are, instead of leaving the
+  // reader at a scroll position that belonged to the old area.
+  const areaSeen = useRef(areaKey);
+  useEffect(() => {
+    if (areaSeen.current === areaKey) return;
+    areaSeen.current = areaKey;
+    scrollRef.current?.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
+  }, [areaKey, reduced]);
   // Pushed in over Home from the right (Reduced: no slide).
   const enter = reduced ? undefined : 'bbV23PushIn 0.42s cubic-bezier(.32,.72,0,1) both';
-  const navBtn = { width: 44, height: 44, borderRadius: '50%', border: 'none', background: 'rgba(var(--bb-fg-rgb),0.07)', color: 'inherit', display: 'grid', placeItems: 'center', cursor: 'pointer', flex: 'none' };
+  // Same 40 pt circle as Home's band (note 94): one control language across the two screens.
+  const navBtn = { width: 40, height: 40, borderRadius: '50%', border: '1px solid var(--bb-divider)', background: 'rgba(var(--bb-fg-rgb),0.07)', color: 'inherit', display: 'grid', placeItems: 'center', cursor: 'pointer', flex: 'none' };
 
   // "All" is every event: the list widens in place, there is no grid in between (note 88).
   const pickType = (k) => onType(k);
+  // Choosing the option already on is never a dead tap (note 96): "All areas" returns to the heading even when the
+  // whole catalogue is already showing.
+  const goAllAreas = () => {
+    if (areaActive) { onAllAreas(); return; }
+    scrollRef.current?.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
+  };
   const onEnd = (act) => {
     if (act === 'clear-filters') onFilters(null);
+    else if (act === 'area:all') onAllAreas();
     else if (act === 'clear-search') { onQuery(''); setFinding(false); }
     else if (act.startsWith('type:')) { pickType(act.slice(5)); scrollRef.current?.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' }); }
     else if (act === 'map') onMap(effType);
@@ -151,7 +188,7 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
           below it: it owns its full height in the flow (58 + 44) and the content clears it with one scroll margin. */}
       <header data-testid="browse-nav" style={{ position: 'sticky', top: 0, zIndex: 30, background: 'var(--bb-bg)', borderBottom: '1px solid var(--bb-divider)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', minHeight: 58, boxSizing: 'border-box' }}>
-          <button type="button" onClick={onBack} aria-label={backLabel} data-testid="browse-back" style={navBtn}><Icon d={BACK} /></button>
+          <button type="button" onClick={onBack} aria-label={backLabel} data-testid="browse-back" style={navBtn}><Icon d={BACK} size={18} /></button>
           {finding ? (
             <form role="search" onSubmit={(e) => { e.preventDefault(); inputRef.current?.blur(); setFinding(false); }} style={{ flex: 1, minWidth: 0 }}>
               <input ref={inputRef} type="search" value={query} onChange={(e) => onQuery(e.target.value)} enterKeyHint="done" autoComplete="off"
@@ -165,13 +202,17 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
           <button type="button" data-testid="browse-search" style={navBtn}
             onClick={() => { if (finding) { onQuery(''); setFinding(false); } else setFinding(true); }}
             aria-label={finding ? T('Xoá tìm kiếm', 'Clear search') : T('Tìm trong các sự kiện này', 'Search these events')}>
-            <Icon d={finding ? CLOSE : SEARCH} />
+            <Icon d={finding ? CLOSE : SEARCH} size={18} />
           </button>
-          <button type="button" onClick={() => onMap(effType)} aria-label={T('Xem trên bản đồ', 'See on the map')} data-testid="browse-map" style={navBtn}><Icon d={MAP} /></button>
+          <button type="button" onClick={() => onMap(effType)} aria-label={T('Xem trên bản đồ', 'See on the map')} data-testid="browse-map" style={navBtn}><Icon d={MAP} size={18} /></button>
           {/* Account sits in the corner on every screen that carries the four tabs (2026-11-17): the dock does not
-              show here, so this is the one way to Account without going back to Home first. */}
+              show here, so this is the one way to Account without going back to Home first. The face is the reader's
+              own (photo, then initials), not the generic person glyph the two headers used to disagree on. */}
           {onAccount && (
-            <button type="button" onClick={onAccount} aria-label={T('Tài khoản', 'Account')} data-testid="browse-account" style={navBtn}><Icon d={PERSON} /></button>
+            <button type="button" onClick={onAccount} aria-label={T('Tài khoản', 'Account')} data-testid="browse-account"
+              className="bb-home-head__avatar" style={{ width: 40, height: 40 }}>
+              <AccountAvatar name={accountName} avatarUrl={accountAvatarUrl} />
+            </button>
           )}
         </div>
 
@@ -212,10 +253,24 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
             <div data-testid="browse-scope-count" style={{ fontSize: 13, opacity: 0.72, marginTop: 6 }}>
               {dates ? <span data-testid="browse-dates">{dates} · </span> : null}
               <span data-testid="browse-count"><b>{list.length}</b> {T('sự kiện', list.length === 1 ? 'event' : 'events')}</span>
-              {areaLabel ? ` · ${areaLabel}` : ''}
             </div>
           </div>
           {hosts.length > 0 && <HostDeck hosts={hosts} onOpen={() => setHostsOpen(true)} T={T} />}
+        </div>
+
+        {/* Area is a scope choice, not a hidden filter (owner 2026-11-30): Browse opens on the area the reader came
+            from and offers "All areas" in one tap, instead of printing the area with no way to change it. The filter
+            sheet keeps a Location section too, so any specific area is still reachable. */}
+        <div data-testid="browse-area-scope" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '10px 20px 0' }}>
+          <button type="button" data-testid="browse-area-current" aria-pressed={areaActive} onClick={onChooseArea}
+            style={areaPill(areaActive)}>
+            <Icon d={PIN} size={13} />
+            <span style={areaPillLabel}>{areaActive ? areaLabel : T('Chọn khu vực', 'Choose area')}</span>
+          </button>
+          <button type="button" data-testid="browse-area-all" aria-pressed={!areaActive} onClick={goAllAreas}
+            style={areaPill(!areaActive)}>
+            <span>{T('Tất cả khu vực', 'All areas')}</span>
+          </button>
         </div>
 
           <div style={{ display: 'flex', alignItems: 'center', padding: '12px 0 14px' }}>
@@ -240,11 +295,19 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
                 })}
               </div>
             ) : <div style={{ flex: 1 }} />}
+            {/* Type opens the complete list, so a type that is off-screen in the chip strip is still one tap away. */}
+            <button type="button" onClick={() => setTypesOpen(true)} data-testid="browse-type-button"
+              aria-haspopup="dialog" aria-label={T('Chọn loại sự kiện', 'Choose event type')}
+              style={{ ...navBtn, width: 'auto', display: 'inline-flex', gap: 6, padding: '0 12px', borderRadius: 999, fontSize: 13.5, fontWeight: 600, margin: '0 0 0 8px' }}>
+              <Icon d={GRID} size={15} />
+              <span>{T('Loại', 'Type')}</span>
+              <span aria-hidden="true" style={{ fontSize: 10, opacity: 0.55 }}>▾</span>
+            </button>
             {/* Filters closes the chip row: an icon the size of the nav circles, the number of filters on as a badge. */}
             <button type="button" onClick={() => setFiltersOpen(true)} data-testid="browse-filters-button"
               aria-label={nFilters ? T(`Bộ lọc, đang bật ${nFilters}`, `Filters, ${nFilters} on`) : T('Bộ lọc', 'Filters')}
               style={{ ...navBtn, position: 'relative', margin: '0 20px 0 8px' }}>
-              <Icon d={SLIDERS} size={17} />
+              <Icon d={SLIDERS} size={18} />
               {nFilters > 0 && <span data-testid="browse-filter-badge" style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, padding: '0 4px', boxSizing: 'border-box', borderRadius: 999, background: 'var(--bb-fg)', color: 'var(--bb-bg)', boxShadow: '0 0 0 2px var(--bb-bg)', fontSize: 11, fontWeight: 700, display: 'grid', placeItems: 'center' }}>{nFilters}</span>}
             </button>
           </div>
@@ -277,9 +340,42 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
         <HostListSheet hosts={hosts} title={titleText} T={T} onClose={() => setHostsOpen(false)} onPick={(id) => { setHostsOpen(false); onOpenHost(id); }} />
       )}
       {filtersOpen && (
-        <HomeFilterSheet browseMode title={T(`Lọc ${titleText}`, `Filter ${titleText}`)} T={T} now={now}
+        <HomeFilterSheet browseMode title={T(`Lọc ${titleText}`, `Filter ${titleText}`)} T={T} now={now} areaLabel={areaLabel}
           items={browseList({ items, type: effType, query, filters: null, now }).list} filters={browseFilters(filters)} sort="soonest"
           onApply={(draft) => { onFilters(draft); setFiltersOpen(false); }} onClose={() => setFiltersOpen(false)} />
+      )}
+      {typesOpen && (
+        <NativeSheet open onClose={() => setTypesOpen(false)} label={T('Loại sự kiện', 'Event type')}
+          testId="browse-type-sheet" bodyTestId="browse-type-backdrop">
+          <div style={{ background: 'var(--bb-bg)', color: 'var(--bb-fg)', width: '100%', maxHeight: '82%', display: 'flex', flexDirection: 'column', borderRadius: '22px 22px 0 0' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', padding: '10px 14px 8px' }}>
+              <span aria-hidden="true" />
+              <span style={{ fontSize: 17, fontWeight: 600 }}>{T('Loại sự kiện', 'Event type')}</span>
+              <button type="button" onClick={() => setTypesOpen(false)} aria-label={T('Đóng', 'Close')} data-testid="browse-type-close"
+                style={{ justifySelf: 'end', width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'rgba(var(--bb-fg-rgb),0.07)', color: 'inherit', fontSize: 18, cursor: 'pointer' }}>×</button>
+            </div>
+            <div style={{ overflowY: 'auto', paddingBottom: 20 }}>
+              {TYPE_OPTIONS.map(d => {
+                const on = effType === d.key;
+                const n = d.key === 'all' ? items.length : (counts[d.key] || 0);
+                return (
+                  <button key={d.key} type="button" data-testid={`browse-type-option-${d.key}`} aria-pressed={on}
+                    onClick={() => {
+                      pickType(d.key);
+                      setTypesOpen(false);
+                      scrollRef.current?.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
+                    }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', minHeight: 52, padding: '0 20px', border: 'none', borderTop: '1px solid var(--bb-divider)', background: 'none', color: 'inherit', fontFamily: 'inherit', fontSize: 16, textAlign: 'left', cursor: 'pointer', opacity: d.key !== 'all' && n === 0 ? 0.55 : 1 }}>
+                    {d.key === 'all' ? <Icon d={GRID} size={18} /> : <CategoryGlyph cat={d.key} size={18} strokeWidth={1.6} />}
+                    <span style={{ flex: 1 }}>{T(d.vi, d.en)}</span>
+                    <span style={{ fontSize: 13, opacity: 0.6, fontVariantNumeric: 'tabular-nums' }}>{n}</span>
+                    <span aria-hidden="true" style={{ width: 16, textAlign: 'center', opacity: on ? 1 : 0 }}>✓</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </NativeSheet>
       )}
     </div>
   );

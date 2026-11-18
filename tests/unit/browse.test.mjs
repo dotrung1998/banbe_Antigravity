@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ofType, typeCounts, matchesQuery, browseList, browseFilters, browseFilterCount, hostsOf, deckLine, deckFaces, rotateHosts, tintIndex, filterHosts, browseEnd, browseDatesLabel } from '../../src/lib/browse.js';
+import { ofType, typeCounts, matchesQuery, browseList, browseFilters, browseFilterCount, hostsOf, deckLine, deckFaces, rotateHosts, tintIndex, filterHosts, browseEnd, browseDatesLabel, withAllAreasAction } from '../../src/lib/browse.js';
 
 const now = Date.UTC(2026, 10, 13, 5, 0);
 const day = 864e5;
@@ -39,6 +39,21 @@ test('Browse filters never filter by category, and the list says how many the fi
   assert.equal(r.hidden, 1);
   assert.equal(browseFilterCount({ free: true, seatsLeft: true, cats: ['music'] }), 2);
   assert.equal(browseFilterCount(null), 0);
+});
+
+test('an empty area leads with All areas and keeps the other next steps', () => {
+  const base = [
+    { act: 'map', label: { vi: 'Mở bản đồ', en: 'Open the map' }, primary: true },
+    { act: 'host', label: { vi: 'Tổ chức', en: 'Host' } },
+  ];
+  assert.equal(withAllAreasAction(base, false), base);
+  const widened = withAllAreasAction(base, true);
+  assert.deepEqual(widened.map(a => a.act), ['area:all', 'map', 'host']);
+  assert.equal(widened[0].primary, true);
+  assert.equal(widened[0].testId, 'browse-empty-all-areas');
+  assert.equal(widened[1].primary, false);
+  assert.equal(widened[2].primary, false);
+  assert.equal(base[0].primary, true); // the input is not mutated
 });
 
 test('host deck: busiest first, real hosts only, names line and +N', () => {

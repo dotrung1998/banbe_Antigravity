@@ -27,9 +27,6 @@ struct QuickSheetView: View {
         let n = u.displayName.trimmingCharacters(in: .whitespaces)
         return n.isEmpty ? app.T("Bạn", "You") : n
     }
-    private var initials: String {
-        name.split(separator: " ").prefix(2).compactMap { $0.first.map(String.init) }.joined().uppercased()
-    }
     /// The same Hosting mode switch as Account (organizer mode itself, not the Home view), so the switch and the
     /// Host tab can never disagree.
     private var hostOn: Bool { app.organizerMode }
@@ -204,10 +201,7 @@ struct QuickSheetView: View {
         VStack(spacing: 0) {
             Button { onClose(); app.goProfile() } label: {
                 HStack(spacing: 16) {
-                    Text(initials)
-                        .font(.app(size: 22, weight: .medium)).foregroundStyle(.white)
-                        .frame(width: 64, height: 64)
-                        .background(app.palette.clay, in: Circle())
+                    AccountAvatarView(size: 64)
                     VStack(alignment: .leading, spacing: 6) {
                         Text(name).font(BanbeTheme.display(20)).lineLimit(1)
                         Text(app.T("Tài khoản", "Account") + " ›").font(.app(size: 13))

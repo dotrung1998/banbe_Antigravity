@@ -120,7 +120,7 @@ export function BrowseScreen() { return <Home browse />; }
 
 export default function Home({ browse = false }) {
   const {
-    state, set, T, trStatus, stripKm, curArea, isSaved, isGoing, toggleFav,
+    state, set, T, trStatus, stripKm, curArea, pickArea, isSaved, isGoing, toggleFav,
     goEvent, pickFilter, clearFilters, toggleHomeFilter, goMapExplore, toggleLang, toggleTheme, setHomeView, startHosting,
     becomeHost, switchToHost,
     canHost, loadPaymentBookings, loadVerifications, loadOrganizerHoldingSummary, loadHomeLiveEvents,
@@ -1184,6 +1184,9 @@ export default function Home({ browse = false }) {
     return (
       <Browse T={T} lang={s.lang === 'en' ? 'en' : 'vi'} scope={s.browseScope || 'all'} type={s.browseType || 'all'} query={s.browseQuery || ''}
         filters={s.browseFilters} items={browseItems || []} now={nowMs} areaLabel={areaName} shapeRow={shapeRow}
+        areaKey={curArea.key} areaActive={curArea.key !== 'all'}
+        onChooseArea={() => set({ areaAsking: true })} onAllAreas={() => pickArea('all')}
+        accountName={s.user?.name || s.user?.email?.split('@')[0] || ''} accountAvatarUrl={s.user?.avatarUrl || ''}
         onScope={browseScopeTo}
         from={s.browseFrom || null} onBrowseTypes={() => browseTypesFrom(s.browseScope)}
         onType={(k) => setBrowse({ browseType: k })} onQuery={(q) => setBrowse({ browseQuery: q })}

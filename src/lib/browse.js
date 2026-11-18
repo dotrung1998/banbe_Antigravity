@@ -156,6 +156,18 @@ export function browseEnd({ type, typeName, list, hidden, query, others }) {
 }
 
 /**
+ * The empty list's next steps. With an area on, widen it first: "All areas" becomes the primary action and every
+ * existing next step stays available, demoted. Without an area the list is returned untouched.
+ */
+export function withAllAreasAction(actions, areaActive) {
+  if (!areaActive) return actions;
+  return [
+    { act: 'area:all', primary: true, testId: 'browse-empty-all-areas', label: L('Xem mọi khu vực', 'All areas') },
+    ...actions.map(a => ({ ...a, primary: false })),
+  ];
+}
+
+/**
  * What a tab's dates really are, for the line under its title: the weekend's days (the same Friday 17:00 to Sunday
  * window the Weekend tab filters on), today's date for Tonight, null for the other lists. iOS twin: BrowseDates.label.
  */
