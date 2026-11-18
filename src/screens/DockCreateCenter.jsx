@@ -205,15 +205,13 @@ export default function DockCreateCenter({ pressed = false }) {
   if (hiddenByOverlay) return null;
   return (
     <>
+      {/* Prototype v2's centre "+": one 52 px clay circle, no label. */}
       <button ref={buttonRef} type="button" onClick={() => setOpen(v => !v)} data-testid="dock-create-button"
         aria-label={T('Tạo mới', 'Create')} aria-haspopup="dialog" aria-expanded={open}
         className={pressed ? 'bb-press bb-dock-create-pressed' : 'bb-press'} data-pressed={pressed ? 'true' : undefined}
-        style={{ width: 66, maxWidth: '100%', height: 62, border: 'none', padding: 0, cursor: 'pointer', background: 'none', color: ink, font: 'inherit',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, flex: 'none' }}>
-        <span style={{ width: 26, height: 26, margin: '-1px 0', borderRadius: '50%', background: ink, color: paper, display: 'grid', placeItems: 'center' }}>
-          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" fill="none" /></svg>
-        </span>
-        <span aria-hidden style={{ fontSize: 11, fontWeight: 500, opacity: 0.75 }}>{T('Tạo', 'Create')}</span>
+        style={{ width: 52, maxWidth: '100%', height: 52, border: 'none', padding: 0, borderRadius: '50%', cursor: 'pointer',
+          background: 'var(--bb-clay, #9C5B3B)', color: '#fff', display: 'grid', placeItems: 'center', flex: 'none' }}>
+        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" /></svg>
       </button>
       {sheet}
     </>

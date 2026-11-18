@@ -1350,6 +1350,7 @@ export default function Home({ browse = false }) {
           hostBody={<div data-reveal="1"><HostHome /><div style={{ height: 44 }} /></div>} below={surveySection}
           seeAll={v23 && curTab !== 'hosting' ? { count: tabItems(curTab).length, label: TAB_LABEL[curTab] } : null}
           searchActive={!!udQuery}
+          unifiedChrome={ud}
           unifiedBrowse={ud ? (
             <UnifiedTypeGrid counts={shellTypeCounts} selected={homeFilters.cats?.[0] || null} total={categoryCountMap.all ?? shownItems.length}
               onPick={(k) => pickFilter(homeFilters.cats?.[0] === k ? 'all' : k)} onClear={() => pickFilter('all')}
@@ -1359,16 +1360,15 @@ export default function Home({ browse = false }) {
           browseTotal={v23 ? applyDiscoveryFilters(discoveryItems, DEFAULT_FILTERS, nowMs).filter(it => !it.ev.cancelled).length : null}
           shortlist={shortlist && (
             <div data-reveal="2">
-              <LiveLine updates={live} index={Math.min(liveIndex, Math.max(0, live.length - 1))} onIndex={setLiveIndex} onOpen={() => setLiveOpen(true)} T={T} />
-              {ud && (udQuery || udOwned > 0) && (
-                <UnifiedStateBar parts={udParts} count={shortlist.rows.length} onMap={openMapWithContext} onClear={clearUnified} T={T} />
-              )}
               <ShortlistV23 T={T} lang={s.lang === 'en' ? 'en' : 'vi'} rows={shortlist.rows} total={shortlist.total}
                 filterBadge={ud ? udOwned : filterBadge} onFilters={() => set({ homeFilterSheetOpen: true })} onOpenEvent={goEvent} onAction={onShortlistAction}
                 onToggleSave={toggleFav} />
               {ud && shortlist.rows.length > 0 && (
                 <UnifiedMapBanner count={shortlist.rows.length} areaLabel={curArea.key !== 'all' ? areaName : ''} onOpen={openMapWithContext} T={T} />
               )}
+              <p style={{ margin: '28px 0 0', textAlign: 'center', fontSize: 12, color: 'var(--bb-fg-3)' }}>
+                banbe · {T('chọn một buổi, gặp vài người', 'pick an evening, meet a few people')}
+              </p>
             </div>
           )}>
           <div data-reveal="1" data-testid="home-hero" data-hero={goerHero}>
@@ -1381,6 +1381,11 @@ export default function Home({ browse = false }) {
             {goerHero === 'checklist' && <ActivationChecklistCard />}
             {goerHero === 'guest' && <GuestBrowseBanner />}
             {goerHero === 'none' && savedUpcomingEl}
+            {/* Prototype v2 order: the live line and the shared-state bar sit between the hero and Browse by type. */}
+            <LiveLine updates={live} index={Math.min(liveIndex, Math.max(0, live.length - 1))} onIndex={setLiveIndex} onOpen={() => setLiveOpen(true)} T={T} />
+            {ud && shortlist && (udQuery || udOwned > 0) && (
+              <UnifiedStateBar parts={udParts} count={shortlist.rows.length} onMap={openMapWithContext} onClear={clearUnified} T={T} />
+            )}
           </div>
         </HomeShellV5>
         {quickOpen && <QuickSheetV5 onClose={() => setQuickOpen(false)} />}

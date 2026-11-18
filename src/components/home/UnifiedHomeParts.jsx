@@ -26,7 +26,7 @@ const evN = (n, T) => T(`${n} sự kiện`, `${n} ${n === 1 ? 'event' : 'events'
 /** "“jazz” · Âm nhạc · Tối nay · 3 sự kiện" + Map + clear. Shown while a query or an owned filter is on. */
 export function UnifiedStateBar({ parts, count, onMap, onClear, T }) {
   return (
-    <div data-testid="home-state-bar" style={{ margin: '16px 20px 0', minHeight: 52, display: 'flex', alignItems: 'center', gap: 10, padding: '6px 6px 6px 14px', borderRadius: 999, background: 'var(--bb-block)' }}>
+    <div data-testid="home-state-bar" style={{ margin: '16px 16px 0', minHeight: 52, display: 'flex', alignItems: 'center', gap: 10, padding: '6px 6px 6px 14px', borderRadius: 999, background: 'var(--bb-block)' }}>
       <span style={{ color: 'var(--bb-clay)', display: 'grid' }}><Icon d={SYNC} size={17} /></span>
       <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {parts.map((p, i) => <span key={i}>{i ? ' · ' : ''}<b style={{ fontWeight: p.strong ? 600 : 400 }}>{p.text}</b></span>)}
@@ -55,7 +55,7 @@ export function UnifiedTypeGrid({ counts, selected, total, onPick, onClear, onOp
     <div data-testid="home-browse" data-unified="1" style={{ padding: '28px 20px 0', scrollMarginTop: 'var(--bb-home-head-h)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <h3 style={{ fontSize: 19, fontWeight: 400, margin: 0, letterSpacing: '-.01em' }}>{T('Duyệt theo loại', 'Browse by type')}</h3>
-        {selected && (
+        {total > 0 && (
           <button type="button" data-testid="home-browse-all" onClick={onClear}
             style={{ minHeight: 44, padding: '0 4px', border: 'none', background: 'none', color: 'inherit', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
             {T('Xem tất cả', 'See all')} <b>{total}</b>

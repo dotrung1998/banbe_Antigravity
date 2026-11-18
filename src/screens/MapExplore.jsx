@@ -2064,11 +2064,15 @@ export default function MapExplore() {
       </div>
 
       {/* The bottom stack: my location and "List · N", right above the dock. */}
-      <div style={{ position: 'absolute', right: 16, bottom: dockClear + fabBottom - stackDrop, transition: reduceMotion() ? 'none' : 'bottom 0.25s ease', zIndex: 3, display: 'flex', alignItems: 'center', gap: 8, visibility: listOpen || areaPanel || showPreview ? 'hidden' : 'visible' }}>
+      {/* Prototype v2's bottom row: zoom left, "Danh sách · N" centred, locate right. */}
+      <div style={{ position: 'absolute', bottom: dockClear + fabBottom - stackDrop, transition: reduceMotion() ? 'none' : 'bottom 0.25s ease', zIndex: 3, display: 'flex', alignItems: 'center', gap: 8, visibility: listOpen || areaPanel || showPreview ? 'hidden' : 'visible',
+        ...(ud ? { left: 0, right: 0, justifyContent: 'center', padding: '0 16px' } : { right: 16 }) }}>
         <div role="button" tabIndex={0} onClick={recenterOnUser} data-testid="map-compass" aria-label={T('Vị trí của tôi', 'My location')}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); recenterOnUser(); } }}
-          style={{ ...photoPill({ position: 'static', borderRadius: '50%' }), width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, opacity: compassOpacity }}>
-          🧭
+          style={{ ...photoPill({ position: 'static', borderRadius: '50%' }), width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, opacity: compassOpacity, ...(ud ? { position: 'absolute', right: 16 } : null) }}>
+          {ud ? (
+            <svg aria-hidden="true" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="1.5" /></svg>
+          ) : '🧭'}
         </div>
         <button ref={listButtonRef} type="button" onClick={openList} data-testid="map-list-button" aria-hidden={emptyOnly || undefined} tabIndex={emptyOnly ? -1 : undefined}
           aria-label={hitSet

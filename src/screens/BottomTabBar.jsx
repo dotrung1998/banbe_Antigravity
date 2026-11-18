@@ -212,10 +212,11 @@ export default function BottomTabBar({ collapsed }) {
   const tabDefs = useMemo(() => [
     { key: 'home', icon: 'home', onClick: goHome, label: T('Trang chính', 'Home'), testId: 'tab-home', badge: 0, badgeCapped: false },
     { key: 'mapExplore', icon: 'map', onClick: goMapExplore, label: T('Bản đồ', 'Map'), testId: 'tab-map', badge: 0, badgeCapped: false },
-    { key: 'schedule', icon: 'schedule', onClick: goSchedule, label: T('Lịch', 'Schedule'), testId: 'tab-schedule', badge: 0, badgeCapped: false },
+    // Prototype v2's dock: the calendar carries the Saved count in a clay capsule (Schedule reads Saved from the server).
+    { key: 'schedule', icon: 'schedule', onClick: goSchedule, label: T('Lịch', 'Schedule'), testId: 'tab-schedule', badge: simpleShell ? (s.favorites || []).length : 0, badgeCapped: false, tone: 'clay' },
     { key: 'inbox', icon: 'inbox', onClick: goInbox, label: simpleShell ? T('Hoạt động', 'Activity') : T('Tin nhắn', 'Messages'), testId: 'tab-inbox', badge: (s.unreadMessages || 0) + (simpleShell ? (s.unreadNotifications || 0) : 0), badgeCapped: false },
     { key: 'profile', icon: 'profile', onClick: goProfile, label: T('Tài khoản', 'Account'), testId: 'tab-profile', badge: accountBadge, badgeCapped: true, badgeCap: 99 },
-  ], [goHome, goMapExplore, goSchedule, goInbox, goProfile, T, s.unreadMessages, s.unreadNotifications, simpleShell, accountBadge]);
+  ], [goHome, goMapExplore, goSchedule, goInbox, goProfile, T, s.unreadMessages, s.unreadNotifications, simpleShell, accountBadge, s.favorites]);
   const items = useMemo(() => dockSlots(simpleShell)
     .map(k => (k === CREATE_SLOT ? { key: CREATE_SLOT, isCreate: true } : tabDefs.find(t => t.key === k))), [simpleShell, tabDefs]);
   const highlightKey = dockHighlightFor(s.screen, simpleShell);
@@ -562,20 +563,21 @@ export default function BottomTabBar({ collapsed }) {
       onPointerUp={endDrag}
       onPointerCancel={cancelDrag}
       style={{
-        // Static surface that follows light/dark (no glass), like iOS.
+        // Static surface that follows light/dark (no glass), like iOS. Simple Shell mirrors prototype v2's dock:
+        // 338 × 62, 5 px inset, a hairline border and one soft lift (docs/prototype/unified-home-map-prototype-v2.html).
         background: 'var(--bb-surface-1)',
-        border: '1px solid rgba(var(--bb-fg-rgb), 0.06)',
-        boxShadow: '0 6px 14px rgba(0,0,0,0.16)',
+        border: `1px solid ${simpleShell ? 'var(--bb-divider)' : 'rgba(var(--bb-fg-rgb), 0.06)'}`,
+        boxShadow: simpleShell ? '0 10px 30px rgba(27,25,22,.14)' : '0 6px 14px rgba(0,0,0,0.16)',
         position: 'relative',
         // TASK 1 (2026-10-05 fix pass) — flex child of DockRow (App.jsx)
         // now, not a self-positioned/self-sized element — `flex: 1 1 auto`
         // + `minWidth: 0` is what lets it actually shrink below
         // `DOCK_MAX_WIDTH` when the row (dock + gap + "+" button) doesn't
         // fit the viewport, instead of clipping/overflowing.
-        flex: '1 1 auto', minWidth: 0, maxWidth: DOCK_MAX_WIDTH,
+        flex: '1 1 auto', minWidth: 0, maxWidth: simpleShell ? 338 : DOCK_MAX_WIDTH,
         borderRadius: 999,
-        height: BAR_HEIGHT,
-        padding: '0 6px', boxSizing: 'border-box',
+        height: simpleShell ? 62 : BAR_HEIGHT,
+        padding: simpleShell ? 5 : '0 6px', boxSizing: 'border-box',
         display: 'flex', justifyContent: 'space-around', alignItems: 'center',
         touchAction: 'none',
         // BUG (2026-10-06 fix pass) — the shrink-on-scroll `transform:
@@ -638,7 +640,7 @@ export default function BottomTabBar({ collapsed }) {
           ref={highlightRef}
           data-testid="dock-highlight"
           style={{
-            position: 'absolute', top: 4, bottom: 4, left: 0, borderRadius: 999,
+            position: 'absolute', top: simpleShell ? 5 : 4, bottom: simpleShell ? 5 : 4, left: 0, borderRadius: 999,
             // Web "black blob" bug (2026-09-28 dock pass) — this used to be
             // solid `background: ink` at full element opacity: since the
             // ACTIVE tab's own icon is also drawn in `ink`, an opaque ink
@@ -649,11 +651,13 @@ export default function BottomTabBar({ collapsed }) {
             // this bug). `zIndex: 0` (explicit, not relied-on `auto`) plus
             // each tab item's own `zIndex: 1` below is what keeps this
             // element BEHIND the icons regardless of DOM order.
-            background: 'linear-gradient(180deg, #FFFFFF, rgba(255,255,255,0.9))', opacity: 0, pointerEvents: 'none', zIndex: 0,
+            background: simpleShell ? 'var(--bb-fg)' : 'linear-gradient(180deg, #FFFFFF, rgba(255,255,255,0.9))', opacity: 0, pointerEvents: 'none', zIndex: 0,
             // Glows while the dock is held (iOS: clay halo).
-            boxShadow: holding
-              ? '0 0 14px rgba(var(--bb-clay-rgb, 190,110,70), 0.65), 0 0 0 1.5px rgba(var(--bb-clay-rgb, 190,110,70), 0.9)'
-              : '0 2px 8px rgba(27,25,22,0.18), 0 0 0 1px rgba(var(--bb-fg-rgb), 0.06)',
+            boxShadow: simpleShell
+              ? 'none'
+              : holding
+                ? '0 0 14px rgba(var(--bb-clay-rgb, 190,110,70), 0.65), 0 0 0 1.5px rgba(var(--bb-clay-rgb, 190,110,70), 0.9)'
+                : '0 2px 8px rgba(27,25,22,0.18), 0 0 0 1px rgba(var(--bb-fg-rgb), 0.06)',
             willChange: 'transform',
           }}
         />
@@ -678,14 +682,14 @@ export default function BottomTabBar({ collapsed }) {
             aria-selected={activeIndex === i}
             aria-current={activeIndex === i ? 'page' : undefined}
             style={{
-              position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
+              position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: simpleShell ? 0 : 3,
               flex: '1 1 0', minWidth: 44, minHeight: 44, height: '100%', zIndex: 1,
             }}
           >
-            <div style={{ position: 'relative', width: ICON_SIZE, height: ICON_SIZE, opacity: activeIndex === i ? 1 : 0.72, ...(activeIndex === i ? { color: '#1B1916' } : null) }}>
+            <div style={{ position: 'relative', width: simpleShell ? 23 : ICON_SIZE, height: simpleShell ? 23 : ICON_SIZE, opacity: activeIndex === i ? 1 : 0.72 }}>
               {item.key === 'profile' && s.user
-                ? <span aria-hidden style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--bb-clay, #9C5B3B)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'grid', placeItems: 'center' }}>{String(s.user.name || s.user.email || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()}</span>
-                : ICONS[item.icon](activeIndex === i ? '#1B1916' : ink, activeIndex === i)}
+                ? <span aria-hidden style={{ width: simpleShell ? 26 : 24, height: simpleShell ? 26 : 24, borderRadius: '50%', background: 'var(--bb-clay, #9C5B3B)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'grid', placeItems: 'center' }}>{String(s.user.name || s.user.email || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()}</span>
+                : ICONS[item.icon](activeIndex === i && simpleShell ? 'var(--bb-bg)' : activeIndex === i ? '#1B1916' : ink, activeIndex === i && !simpleShell)}
               {item.badge > 0 && (() => {
                 const cap = item.badgeCap ?? 9;
                 const displayText = item.badgeCapped && item.badge > cap ? `${cap}+` : String(item.badge);
@@ -701,7 +705,7 @@ export default function BottomTabBar({ collapsed }) {
                     title={String(item.badge)}
                     style={{
                       position: 'absolute', top: -5, right: -7, minWidth: 14, height: 14, padding: displayText.length > 1 ? '0 4px' : '0 3px',
-                      borderRadius: 999, background: alert, color: 'var(--bb-on-alert)', fontSize: 9, fontWeight: 700,
+                      borderRadius: 999, background: item.tone === 'clay' ? 'var(--bb-clay, #9C5B3B)' : alert, color: item.tone === 'clay' ? '#fff' : 'var(--bb-on-alert)', fontSize: 9, fontWeight: 700,
                       lineHeight: '14px', textAlign: 'center', whiteSpace: 'nowrap',
                     }}
                   >
@@ -710,7 +714,10 @@ export default function BottomTabBar({ collapsed }) {
                 );
               })()}
             </div>
-            <span aria-hidden style={{ fontSize: 11, lineHeight: 1.1, fontWeight: activeIndex === i ? 700 : 500, opacity: activeIndex === i ? 1 : 0.75, color: activeIndex === i ? '#1B1916' : ink }}>{item.label}</span>
+            {/* Prototype v2's dock is icon-only; the label stays as the aria-label above. */}
+            {!simpleShell && (
+              <span aria-hidden style={{ fontSize: 11, lineHeight: 1.1, fontWeight: activeIndex === i ? 700 : 500, opacity: activeIndex === i ? 1 : 0.75, color: activeIndex === i ? '#1B1916' : ink }}>{item.label}</span>
+            )}
           </div>
         )))}
     </div>

@@ -47,9 +47,9 @@ export function MapCarousel({ events, selectedId, onOpen, seatsOf, isHit, T, sty
           <div key={ev.id} role="listitem" style={{ flex: 'none', display: 'flex' }}>
             <button type="button" data-card={ev.id} data-testid={`map-mcard-${ev.id}`} aria-pressed={sel} onClick={() => onOpen(ev.id)}
               aria-label={T(`${ev.name}, xem trước`, `${ev.name}, preview`)} data-dim={isHit(ev.id) ? undefined : 'true'}
-              style={{ width: 'min(292px, calc(100vw - 56px))', height: 96, scrollSnapAlign: 'center', display: 'flex', gap: 12, alignItems: 'center', padding: '8px 12px 8px 8px', boxSizing: 'border-box', borderRadius: 18, background: paper, border: `1px solid ${rule}`, color: ink, textAlign: 'left', fontFamily: 'inherit', cursor: 'pointer',
+              style={{ width: 'min(292px, calc(100vw - 56px))', height: 104, scrollSnapAlign: 'center', display: 'flex', gap: 12, alignItems: 'center', padding: '10px 14px 10px 10px', boxSizing: 'border-box', borderRadius: 18, background: paper, border: `1px solid ${rule}`, color: ink, textAlign: 'left', fontFamily: 'inherit', cursor: 'pointer',
                 boxShadow: sel ? `0 0 0 2px var(--bb-fg), 0 4px 14px rgba(27,25,22,0.18)` : '0 4px 14px rgba(27,25,22,0.16)', opacity: isHit(ev.id) ? 1 : MAP_DIM.rowOpacity, transition: 'box-shadow 0.2s ease, opacity 0.2s ease' }}>
-              <span aria-hidden="true" style={{ width: 78, height: 78, flex: 'none', borderRadius: RADIUS.thumb, background: ev.img ? `center / cover no-repeat url("${ev.img}")` : block }} />
+              <span aria-hidden="true" style={{ width: 84, height: 84, flex: 'none', borderRadius: RADIUS.thumb, background: ev.img ? `center / cover no-repeat url("${ev.img}")` : block }} />
               <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
                 <span style={kickStyle}>{kickOf(ev, T)}</span>
                 <span style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.25, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{ev.name}</span>
@@ -94,7 +94,7 @@ export function MapPreview({ ev, distance, seatsOf, onBack, onDetails, onReserve
           {T('Danh sách', 'List')}
         </button>
       </div>
-      <h3 ref={headRef} tabIndex={-1} data-testid="map-preview-title" style={{ margin: '2px 0 6px', outline: 'none', ...display(23, { letterSpacing: '-0.015em', lineHeight: 1.15 }) }}>{ev.name}</h3>
+      <h3 ref={headRef} tabIndex={-1} data-testid="map-preview-title" style={{ margin: '2px 0 6px', outline: 'none', ...display(24, { fontWeight: 300, letterSpacing: '-0.015em', lineHeight: 1.15 }) }}>{ev.name}</h3>
       {blurb && <p style={{ margin: '0 0 10px', fontSize: 13.5, lineHeight: 1.5, color: ink2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{blurb}</p>}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
         {ev.area && <span style={tag}>{ev.area}</span>}

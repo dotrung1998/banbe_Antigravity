@@ -27,10 +27,12 @@ export default function ShortlistV23({ T, lang, rows, total, filterBadge, onFilt
     <section data-testid="home-shortlist-section" aria-labelledby="home-shortlist-title" style={{ paddingTop: 28 }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, padding: '0 20px 12px' }}>
         <div style={{ minWidth: 0 }}>
-          <h3 id="home-shortlist-title" style={{ fontSize: 19, fontWeight: 400, margin: 0, letterSpacing: '-.01em' }}>{T('Chọn lọc', 'Shortlist')}</h3>
+          <h3 id="home-shortlist-title" style={{ fontSize: 19, fontWeight: 400, margin: 0, letterSpacing: '-.01em' }}>{T('Gần bạn', 'Near you')}</h3>
           <button type="button" onClick={onFilters} data-testid="home-filter-summary"
-            style={{ display: 'block', margin: '4px 0 0', padding: 0, border: 'none', background: 'none', color: 'inherit', fontFamily: 'inherit', fontSize: 13, opacity: 0.72, cursor: 'pointer', textAlign: 'left' }}>
-            {filtersOn && total > n ? T(`${n} trên ${total} sự kiện`, `${n} of ${total} events`) : T(`${n} sự kiện`, `${n} ${n === 1 ? 'event' : 'events'}`)}
+            style={{ display: 'block', margin: '4px 0 0', padding: 0, border: 'none', background: 'none', color: 'var(--bb-fg-2)', fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer', textAlign: 'left' }}>
+            {filtersOn && total > n
+              ? T(`${n} trên ${total} sự kiện · gần nhất trước`, `${n} of ${total} events · soonest first`)
+              : T(`${n} sự kiện · gần nhất trước`, `${n} ${n === 1 ? 'event' : 'events'} · soonest first`)}
           </button>
         </div>
         <button type="button" onClick={onFilters} data-testid="home-filters-button"

@@ -73,3 +73,23 @@ control hidden), Filters badge = `ownedFilterCount`. Back from Event Detail rest
   map area and change the results).
 - Web Map on MapKit JS (when enabled) does not pan the selected pin into view (no projection).
 - The Shortlist heading stays "Chọn lọc" (prototype said "Gần bạn", but the list is soonest-first, not nearest).
+
+## Prototype v2 parity pass (web), 2026-11-18
+
+Owner ran the web app with migration 221 applied and said it did not exactly mirror
+`docs/prototype/unified-home-map-prototype-v2.html`; asked for all of it, dock included. Web only.
+
+- **Home order** now follows the prototype: hero → live line → shared state bar → Browse by type →
+  "Gần bạn" list → map banner → footer line. (Browse by type used to render above the live line and the
+  state bar, and the Shortlist was titled "Chọn lọc".)
+- **Band**: while `unified_discovery` is on, the third circle is the quick-settings gear (it opens the same
+  quick sheet); the account avatar lives in the dock's slot, as in the prototype.
+- **Dock** (Simple Shell): icon-only 338 × 62 pill, ink active capsule with a paper glyph, clay 52 px centre
+  "+" with no label, 26 px account initials, Saved count in a clay capsule on the calendar, labels removed
+  for sighted users (the aria-label keeps the name). Legacy (switch-off) dock unchanged.
+- **Shortlist**: heading "Gần bạn" / "Near you" with "N sự kiện · gần nhất trước"; Browse by type always
+  shows "Xem tất cả N".
+- **Map**: bottom row is zoom left, "Danh sách · N" centred, locate right (target glyph, not the compass
+  emoji); carousel cards 292 × 104 with an 84 px thumb; preview title 24 px light.
+- Checks: `npm run build` green, `npm run test:unit` 1022/1022. Web app not visually compared in this VM
+  (no browser/deps for Playwright); a device pass is still the owner's check.

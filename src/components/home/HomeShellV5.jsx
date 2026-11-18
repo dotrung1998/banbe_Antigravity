@@ -30,6 +30,7 @@ const SPARK = <><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.
 const MOON = <path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z" />;
 const CAL = <><rect x="3.5" y="5" width="17" height="15" rx="2" /><path d="M3.5 10h17M8 3v4M16 3v4" /></>;
 const SLIDERS = <><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></>;
+const GEAR = <><circle cx="12" cy="12" r="3.2" /><path d="M19.4 15a1.7 1.7 0 0 0 .33 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.87.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.33-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.87-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.14.38.36.72.66 1 .3.28.66.48 1.04.58H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51.42Z" /></>;
 
 /**
  * @param {object} p
@@ -44,7 +45,7 @@ export default function HomeShellV5({
   typeCounts, badgeDate, trStatus, children, hostBody, below, shortlist = null, seeAll = null, onBrowseType = null, browseTotal = null,
   // Note 99 (switch unified_discovery): Browse by type that filters Home in place replaces the grid below, and the
   // search circle carries a dot while the shared query is on.
-  unifiedBrowse = null, searchActive = false,
+  unifiedBrowse = null, searchActive = false, unifiedChrome = false,
 }) {
   const rail = useRef(null);
   const [idx, setIdx] = useState(0);
@@ -226,9 +227,17 @@ export default function HomeShellV5({
             </button>
             <button type="button" onClick={onMap} data-testid="home-map-button" aria-label={T('Bản đồ', 'Map')}
               className="bb-home-head__round"><Icon d={MAP} size={18} /></button>
-            <button type="button" onClick={onAccount} aria-label={T('Tài khoản và cài đặt nhanh', 'Account and quick settings')} data-testid="home-avatar-button" className="bb-home-head__avatar">
-              <AccountAvatar name={user?.name || user?.email?.split('@')[0]} avatarUrl={user?.avatarUrl} />
-            </button>
+            {unifiedChrome ? (
+              // Prototype v2 (unified discovery): the band's third circle is the quick-settings gear; the account
+              // itself lives in the dock's avatar slot. Same action either way (the quick sheet).
+              <button type="button" onClick={onAccount} aria-label={T('Cài đặt nhanh', 'Quick settings')} data-testid="home-avatar-button" className="bb-home-head__round">
+                <Icon d={GEAR} size={18} />
+              </button>
+            ) : (
+              <button type="button" onClick={onAccount} aria-label={T('Tài khoản và cài đặt nhanh', 'Account and quick settings')} data-testid="home-avatar-button" className="bb-home-head__avatar">
+                <AccountAvatar name={user?.name || user?.email?.split('@')[0]} avatarUrl={user?.avatarUrl} />
+              </button>
+            )}
           </div>
         </div>
         <div role="tablist" data-testid="home-hero-tabs" className="bb-home-head__tabs" aria-hidden={compact || undefined}>
@@ -344,9 +353,9 @@ export default function HomeShellV5({
       {hosting ? hostBody : (
         <>
           {children}
-          {!shortlist && browseEl}
+          {/* Prototype v2 order: Browse by type sits above the Shortlist, whatever the list's shape. */}
+          {browseEl}
           {shortlist}
-          {shortlist && browseEl}
           {!shortlist && (<>
           <div data-testid="home-by-type" style={{ padding: '28px 20px 0' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
