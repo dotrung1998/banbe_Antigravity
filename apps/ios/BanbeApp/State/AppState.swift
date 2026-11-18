@@ -578,9 +578,6 @@ final class AppState: ObservableObject {
     /// therefore the type grid, never a list.
     @Published var browseType = "all"
     @Published var browseScope = "all"
-    /// The Home tab the type grid was opened out of (note 86), "" = opened from Home. Back on the grid returns to that
-    /// tab instead of Home. Memory only: no URL carries it.
-    @Published var browseFrom = ""
     @Published var browseQuery = ""
     @Published var browseFilters = HomeDiscovery.Filters.default
     /// Search opened from Home is an OVERLAY on top of Home (RootView), not a screen switch: Home stays mounted, so

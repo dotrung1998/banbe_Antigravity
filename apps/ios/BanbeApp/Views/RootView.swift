@@ -370,6 +370,10 @@ struct RootView: View {
         if screen == .welcome || screen == .login {
             return AuthMotion.transition(forward: app.authNavForward, reduceMotion: reduceMotion)
         }
+        // Home ↔ Browse (owner 2026-11-18): the two screens carry the same top bar and the same top-right cluster, so
+        // Browse fades in under it instead of the push/pop slide — the controls never travel. Home fades back in via
+        // the `dockTabSwitch` branch below, which `backFromBrowse()` sets.
+        if screen == .browse { return .opacity }
         // Note 53: switching tabs from the dock: the new tab just fades in (the old one leaves at once), like a
         // native tab bar, instead of two full screens sliding past each other.
         if app.dockTabSwitch && BottomTabBar.visibleScreens.contains(screen) { return .opacity }

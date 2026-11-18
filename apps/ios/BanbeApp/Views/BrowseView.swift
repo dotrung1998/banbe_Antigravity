@@ -8,43 +8,37 @@ import SwiftUI
 // · a scope is See all for one Home tab, with Home's same three tabs right under the nav so the reader switches tab in
 //   place (note 85), type chips counted inside that tab, then the list.
 // Browse by type is the row's FOURTH TAB (note 90), alongside For You, Tonight and Weekend: it opens the every-event
-// list in place and remembers the tab it came from, so Back returns there — the quiet link under the chips is gone. The
-// row shows on every Browse screen, so the destination it leads to still reads as the tab it is.
-// Under the nav a deck of host faces: a tap lists the hosts, a host opens their real profile. The magnifier turns the
-// title into a search field. Its own Filters (Location, When, Price, Seats). Four rows a page with the swipe signs, then an end
-// card. Rules: Lib/V23Rules.swift (BrowseRules, Pager, ListEnd).
+// list in place, and its tab row keeps the tab it came from as context. Back always leaves Browse for Home in one step
+// (owner 2026-11-18): Home and Browse are one tab, so Back never steps through Browse's own tabs to get home.
+// Under the nav a deck of host faces: a tap lists the hosts, a host opens their real profile. The magnifier opens the
+// same search screen Home's does. Its own Filters (Location, When, Price, Seats). Four rows a page with the swipe signs,
+// then an end card. Rules: Lib/V23Rules.swift (BrowseRules, Pager, ListEnd).
 
 extension AppState {
-    func openBrowse(type: String = "all", scope: String = "all", keep: Bool = false, from: String? = nil) {
+    func openBrowse(type: String = "all", scope: String = "all", keep: Bool = false) {
         let t = type.isEmpty ? "all" : type, sc = scope.isEmpty ? "all" : scope
         let same = keep && browseType == t && browseScope == sc
         browseType = t
         browseScope = sc
-        // `from` = the Home tab Browse by type is opened out of, so Back returns there (note 86).
-        if !keep { browseFrom = from ?? "" }
         if !same { browseQuery = ""; browseFilters = .default }
         homeFilterSheetOpen = false
+        // Home and Browse share one top bar, so they cross-fade rather than slide past each other (RootView).
+        dockTabSwitch = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self.dockTabSwitch = false }
         screen = .browse
     }
 
-    /// Back leaves the screen (notes 86 and 88): Browse by type opened from a tab returns to that tab, everywhere else to
-    /// Home. There is no grid to step up to any more.
+    /// Back leaves Browse for Home, always (owner 2026-11-18): Home and Browse are one tab, so Back returns to the Home
+    /// screen in one step instead of stepping back through Browse's own scope tabs.
     func backFromBrowse() {
-        if browseScope == "all", !browseFrom.isEmpty {
-            browseScope = browseFrom
-            browseType = "all"
-            browseFrom = ""
-            browseQuery = ""
-            browseFilters = .default
-            return
-        }
+        // The same quick cross-fade: the shared top-right cluster stays exactly where it is.
+        dockTabSwitch = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self.dockTabSwitch = false }
         screen = .home
     }
 
-    /// Browse by type from inside one tab's See all (notes 86 and 88): it opens the whole catalogue as one list of every
-    /// event, and remembers the tab in `browseFrom` so Back returns there instead of Home.
+    /// Browse by type from inside one tab's See all: it opens the whole catalogue as one list of every event.
     func browseOpenTypes() {
-        browseFrom = browseScope == "all" ? "" : browseScope
         browseScope = "all"
         browseType = "all"
         browseQuery = ""
@@ -59,7 +53,6 @@ extension AppState {
         guard sc != browseScope else { return }
         let counts = browseTypeCounts(scope: sc)
         browseScope = sc
-        browseFrom = ""
         browseQuery = ""
         browseFilters = .default
         if browseType != "all" && (counts[browseType] ?? 0) == 0 { browseType = "all" }
@@ -136,15 +129,13 @@ extension AppState {
 struct BrowseView: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var finding = false
-    /// One route for all four Browse sheets. A single `.sheet(item:)` cannot present two at once, so a host-deck tap
+    /// One route for all five Browse sheets. A single `.sheet(item:)` cannot present two at once, so a host-deck tap
     /// and a filter tap in the same run loop resolve to one route instead of fighting over separate modifiers.
     private enum SheetRoute: String, Identifiable, Equatable {
-        case hosts, filters, area, types
+        case hosts, filters, area, types, quick
         var id: String { rawValue }
     }
     @State private var sheetRoute: SheetRoute? = nil
-    @FocusState private var searchFocused: Bool
     /// Bumped when the reader taps the scope tab or type chip they are already on: the list goes back to its top
     /// (owner 2026-11-23 — re-choosing the current option is never a dead tap after scrolling).
     @State private var browseTopToken = 0
@@ -167,24 +158,20 @@ struct BrowseView: View {
         let chips = typeDefs.filter { (counts[$0.key] ?? 0) > 0 }.sorted { (counts[$0.key] ?? 0) > (counts[$1.key] ?? 0) }
         // No grid (note 88): Browse by type IS the list of every event, and the type chips narrow it in place.
         let result = BrowseRules.list(entries, type: effType, query: app.browseQuery, filters: app.browseFilters, now: now)
-        let q = app.browseQuery.trimmingCharacters(in: .whitespaces)
         let hosts: [BrowseRules.Host] =
             BrowseRules.hosts(BrowseRules.list(entries, type: effType, query: "", filters: .default, now: now).list)
         let rows = result.list.compactMap { en in byKey[en.key].map { app.v23Row($0, item: en.item, now: now) } }
         let typeName = chips.first { $0.key == effType }.map { ViEn($0.vi, $0.en) } ?? HomeDiscovery.categories.first { $0.key == effType }.map { ViEn($0.vi, $0.en) }
         let others = chips.filter { $0.key != effType }.map { ListEnd.OtherType(key: $0.key, name: ViEn($0.vi, $0.en), count: counts[$0.key] ?? 0) }
         let card = ListEnd.browseEnd(type: effType, typeName: effType == "all" ? nil : typeName, count: result.list.count,
-                                     hidden: result.hidden, query: app.browseQuery, others: others)
+                                     hidden: result.hidden, others: others)
         let titleText = (effType != "all" ? typeName?.t(app.isEN) : nil) ?? tabLabel?.t(app.isEN) ?? app.T("Duyệt theo loại", "Browse by type")
-        // The nav row carries the running search only: the screen's own name now lives in the heading under the tabs
-        // (note 91), and a picked type is that heading too, so the nav row never repeats it.
-        let navTitle = q.isEmpty ? "" : "“\(q)”"
         // Area lives in its own two pills; the filter badge counts only what the filter sheet's Reset can clear.
         let nFilters = BrowseRules.filterCount(app.browseFilters)
 
         VStack(spacing: 0) {
             // The tab row closes the header now that it shows on every Browse screen (note 90).
-            nav(navTitle, hairline: false)
+            nav
             scopeTabs
             ScrollViewReader { proxy in
                 ScrollView {
@@ -251,6 +238,10 @@ struct BrowseView: View {
                                      browseTopToken += 1
                                  }, onClose: { sheetRoute = nil })
                     .environmentObject(app)
+            case .quick:
+                // The same Quick settings panel Home's gear opens (owner 2026-11-18).
+                QuickSheetView(onClose: { sheetRoute = nil })
+                    .environmentObject(app)
             }
         }
         .accessibilityIdentifier("browse.screen")
@@ -259,9 +250,9 @@ struct BrowseView: View {
     // MARK: Home's tabs
 
     /// Home's three tabs and Browse by type. Text over a rule, never a pill, so this row can't be mistaken for the
-    /// type chips' filter row below it. The fourth tab (note 90) opens the whole catalogue's list in place and
-    /// remembers this tab in `browseFrom`, so Back returns here; the row shows on every Browse screen, with the tab
-    /// selected on the every-event list.
+    /// type chips' filter row below it. The fourth tab (note 90) opens the whole catalogue's list in place; the row
+    /// shows on every Browse screen, with the tab selected on the every-event list. Back always goes Home (owner
+    /// 2026-11-18), so the tab it came from only keeps its context, it is never a Back destination.
     private var scopeTabs: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 16) {
@@ -336,68 +327,31 @@ struct BrowseView: View {
 
     // MARK: parts
 
-    /// Back leaves the screen (notes 86 and 88): Browse by type opened from a tab returns to that tab, everywhere else
-    /// to Home. There is no grid to step up to any more. The label says which way it goes.
-    private var backLabel: String {
-        if app.browseScope == "all", let tab = HomeHeroTab(rawValue: app.browseFrom) {
-            return app.T("Về \(tab.vi)", "Back to \(tab.en)")
-        }
-        return app.T("Về Trang chủ", "Back to Home")
-    }
+    /// Always Home now (owner 2026-11-18): Home and Browse are one tab, so Back never loops through Browse's own tabs.
+    private var backLabel: String { app.T("Về Trang chủ", "Back to Home") }
 
-    private func nav(_ title: String, hairline: Bool = true) -> some View {
+    /// One row, the same 58 pt bar and 16 pt edges as Home's (owner 2026-11-18): the top-right cluster is the same three
+    /// controls, in the same place, with the same styling on both screens, so moving between Home and Browse never
+    /// shifts or restyles it — the screens cross-fade underneath it. Search opens the same search Home's magnifier
+    /// does; the gear opens the same Quick settings sheet Home's gear does.
+    private var nav: some View {
         HStack(spacing: 8) {
-            circle("chevron.left", label: backLabel, id: "browse.back") { app.backFromBrowse() }
-            if finding {
-                TextField(app.T("Tìm trong các sự kiện này", "Search these events"), text: $app.browseQuery)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .submitLabel(.done)
-                    .focused($searchFocused)
-                    .onSubmit { finding = false }
-                    .font(.app(size: 16))
-                    .padding(.horizontal, 14).frame(minHeight: 44)
-                    .background(app.palette.field, in: Capsule())
-                    .overlay(Capsule().stroke(app.palette.rule, lineWidth: 1))
-                    .accessibilityIdentifier("browse.searchInput")
-            } else {
-                Text(title).font(.app(size: 16, weight: .semibold)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityIdentifier("browse.navTitle")
+            HeaderCircleButton(system: "chevron.left", label: backLabel, id: "browse.back") { app.backFromBrowse() }
+            Spacer(minLength: 0)
+            HeaderCircleButton(system: "magnifyingglass", label: app.T("Tìm sự kiện", "Search events"), id: "browse.search",
+                               accent: true, measureFrame: true) {
+                app.openSearch(from: app.homeSearchBarFrame)
             }
-            circle(finding ? "xmark" : "magnifyingglass",
-                   label: finding ? app.T("Xoá tìm kiếm", "Clear search") : app.T("Tìm trong các sự kiện này", "Search these events"),
-                   id: "browse.search") {
-                if finding { app.browseQuery = ""; finding = false } else { finding = true; DispatchQueue.main.async { searchFocused = true } }
+            HeaderCircleButton(system: "map", label: app.T("Bản đồ", "Map"), id: "browse.map") { app.goMapExploreFromHome() }
+            HeaderCircleButton(system: "gearshape.fill", label: app.T("Cài đặt nhanh", "Quick settings"), id: "browse.quick") {
+                sheetRoute = .quick
             }
-            circle("map", label: app.T("Xem trên bản đồ", "See on the map"), id: "browse.map") { app.goMapExploreFromHome() }
-            // Account sits in the corner on every screen that carries the four tabs (2026-11-17): this screen does not
-            // show the dock, so this is the one way to Account without going back to Home first. The face is the
-            // reader's own (photo, then initials), not the generic person glyph the two headers used to disagree on.
-            Button { app.goProfile() } label: {
-                AccountAvatarView(size: 40)
-                    .contentShape(Circle())
-            }
-            .buttonStyle(PressableButtonStyle())
-            .accessibilityLabel(app.T("Tài khoản", "Account"))
-            .accessibilityIdentifier("browse.account")
         }
         .foregroundStyle(app.palette.ink)
-        .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 8)
+        .padding(.horizontal, 16)
+        .frame(height: 58)
         .background(app.palette.paper)
-        // The rule closes the whole header: under the scope tabs when they show, under the nav row otherwise.
-        .overlay(alignment: .bottom) { if hairline { Rectangle().fill(app.palette.rule).frame(height: 1) } }
-    }
-
-    private func circle(_ symbol: String, label: String, id: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol).font(.app(size: 16, weight: .medium))
-                .frame(width: 40, height: 40)
-                .background(app.palette.ink.opacity(0.07), in: Circle())
-                .contentShape(Circle())
-        }
-        .buttonStyle(PressableButtonStyle())
-        .accessibilityLabel(label)
-        .accessibilityIdentifier(id)
+        .accessibilityIdentifier("browse.nav")
     }
 
     // MARK: Area scope / type picker
@@ -527,13 +481,6 @@ struct BrowseView: View {
     }
 
     private func emptyCard(hidden: Int) -> EndCardModel {
-        let q = app.browseQuery.trimmingCharacters(in: .whitespaces)
-        if !q.isEmpty {
-            return EndCardModel(kind: "empty", eyebrow: ViEn("Tìm kiếm", "Search"),
-                                title: ViEn("Không có sự kiện nào khớp “\(q)”.", "No events match “\(q)”."),
-                                body: ViEn("Thử tên khác, một khu vực hoặc một loại sự kiện.", "Try another name, an area or a type."),
-                                actions: [.init(act: "clear-search", label: ViEn("Xoá tìm kiếm", "Clear search"), primary: true, testId: "browse.emptyClear")])
-        }
         if hidden > 0 {
             return EndCardModel(kind: "empty", eyebrow: ViEn("Bộ lọc", "Filters"),
                                 title: ViEn("Không có sự kiện nào khớp bộ lọc.", "None of these match your filters."),
@@ -577,7 +524,6 @@ struct BrowseView: View {
     private func onEnd(_ act: String, proxy: ScrollViewProxy) {
         switch act {
         case "clear-filters": app.browseFilters = .default
-        case "clear-search": app.browseQuery = ""; finding = false
         case "area:all": app.pickArea(LocationHierarchy.allID)
         case "map": app.goMapExploreFromHome()
         // The same Start hosting path the dock "+" and Home's locked Hosting use (web twin: startHosting({ land: 'home' })):

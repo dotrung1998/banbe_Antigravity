@@ -120,9 +120,8 @@ enum ListEnd {
     struct OtherType: Equatable { let key: String; let name: ViEn; let count: Int }
 
     /// End card for a Browse list (no "Notify me": no backend).
-    static func browseEnd(type: String, typeName: ViEn?, count n: Int, hidden: Int, query: String, others: [OtherType]) -> EndCardModel {
-        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if q.isEmpty && hidden > 0 {
+    static func browseEnd(type: String, typeName: ViEn?, count n: Int, hidden: Int, others: [OtherType]) -> EndCardModel {
+        if hidden > 0 {
             return EndCardModel(
                 kind: "filters",
                 eyebrow: ViEn("Đang hiện \(n) trên \(n + hidden)", "\(n) of \(n + hidden) shown"),
@@ -130,17 +129,6 @@ enum ListEnd {
                     : ViEn("Còn \(hidden) sự kiện nằm ngay ngoài bộ lọc.", "\(hidden) more are just outside your filters."),
                 body: ViEn("Nới một bộ lọc là chúng quay lại, mọi thứ khác giữ nguyên.", "Loosen one and they come straight back, nothing else changes."),
                 actions: [.init(act: "clear-filters", label: ViEn("Hiện cả \(n + hidden)", "Show all \(n + hidden)"), primary: true)])
-        }
-        if !q.isEmpty {
-            var acts: [EndCardModel.Action] = [.init(act: "clear-search", label: ViEn("Xoá tìm kiếm", "Clear search"), primary: true)]
-            if type != "all" { acts.append(.init(act: "type:all", label: ViEn("Tìm mọi loại", "Search every type"))) }
-            return EndCardModel(
-                kind: "search",
-                eyebrow: ViEn("\(n) kết quả cho “\(q)”", "\(n) \(n == 1 ? "match" : "matches") for “\(q)”"),
-                title: ViEn("Chưa đúng ý? Thử tên host, khu vực hoặc món ăn.", "Not quite it? Try a host, an area or a dish."),
-                body: type == "all" ? ViEn("Tìm theo tên sự kiện, host, khu vực và loại.", "Search reads titles, hosts, areas and types.")
-                    : ViEn("Bạn đang tìm trong \(typeName?.vi ?? "").", "You are searching \(typeName?.en ?? "") only."),
-                actions: acts)
         }
         if type == "all" {
             return EndCardModel(

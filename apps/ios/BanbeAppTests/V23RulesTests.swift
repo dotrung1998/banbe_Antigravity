@@ -61,13 +61,11 @@ final class V23RulesTests: XCTestCase {
         XCTAssertNil(f.slimmed.body)
         let t = ListEnd.shortlistEnd(tab: "tonight", tabLabel: ViEn("Tối nay", "Tonight"), total: 3, shown: 3, filtersOn: false)
         XCTAssertEqual(t.title.en, "That’s tonight. The good seats go first.")
-        let ty = ListEnd.browseEnd(type: "gallery", typeName: ViEn("Phòng tranh", "Gallery"), count: 9, hidden: 0, query: "",
+        let ty = ListEnd.browseEnd(type: "gallery", typeName: ViEn("Phòng tranh", "Gallery"), count: 9, hidden: 0,
                                    others: [.init(key: "fashion", name: ViEn("Thời trang", "Fashion"), count: 8)])
         XCTAssertEqual(ty.title.vi, "Vẫn tò mò? Thời trang có 8 sự kiện.")
         XCTAssertEqual(ty.actions.map(\.act), ["type:fashion", "type:all"])
-        let s = ListEnd.browseEnd(type: "all", typeName: nil, count: 1, hidden: 0, query: "bep", others: [])
-        XCTAssertEqual(s.eyebrow?.en, "1 match for “bep”")
-        for c in [f, t, ty, s] { for p in [c.title, c.body].compactMap({ $0 }) { XCTAssertFalse("\(p.vi) \(p.en)".contains("—")) } }
+        for c in [f, t, ty] { for p in [c.title, c.body].compactMap({ $0 }) { XCTAssertFalse("\(p.vi) \(p.en)".contains("—")) } }
     }
 
     // MARK: Browse

@@ -3,8 +3,8 @@ import UIKit
 
 // Home from the v5 prototype (note 80), shown with the Simple Shell on Going out. Web twin:
 // src/components/home/HomeShellV5.jsx. A pinned paper app bar (wordmark, the area chip as its middle, search / Map /
-// account, and the tabs as its second row) sits above one dark photo hero that holds the date kicker and the snap card
-// rail; below it come Browse (types with counts + Find a type) and By type (one photo row per type).
+// quick settings, and the tabs as its second row) sits above one dark photo hero that holds the date kicker and the
+// snap card rail; below it come Browse (types with counts + Find a type) and By type (one photo row per type).
 // Pure views over lists HomeView already builds: no fetching and no filters of its own.
 
 /// The goer tabs of the hero. The Hosting tab is separate (`HomeHeroSection.hosting`): it is the host view of `app.homeView`.
@@ -80,8 +80,47 @@ final class HomeHeaderCompact: ObservableObject {
     }
 }
 
-/// The account's face wherever the app offers a way into Account (Home's band, Browse's nav): the real profile photo,
-/// initials when there is none, and the person glyph for a guest. One clay disc and one paper ring on both screens.
+/// One 40 pt circle in a screen's top bar (owner 2026-11-18): the same glyph size, fill, hairline and hit target on Home
+/// and Browse, so the top-right cluster is one control in one place across the two screens and only fades, never moves,
+/// when the screen changes. Search is the clay accent; Map and the settings gear are ink. The gear is the same
+/// `gearshape.fill` badge Quick settings wears inside the sheet.
+struct HeaderCircleButton: View {
+    @EnvironmentObject private var app: AppState
+    let system: String
+    let label: String
+    let id: String
+    var accent: Bool = false
+    /// Search only: publishes where this circle is, so Search can start its own field right here (the glide entrance).
+    var measureFrame: Bool = false
+    let action: () -> Void
+
+    var body: some View {
+        let button = SwipeSafeButton(action: { Haptics.light(); action() }) {
+            Image(systemName: system)
+                .font(.app(size: 16, weight: .medium))
+                .foregroundStyle(accent ? app.palette.clay : app.palette.ink)
+                .frame(width: 40, height: 40)
+                .background(app.palette.ink.opacity(0.05), in: Circle())
+                .overlay(Circle().strokeBorder(app.palette.divider, lineWidth: 1))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityIdentifier(id)
+        return button.background {
+            if measureFrame {
+                GeometryReader { g in
+                    Color.clear
+                        .onAppear { app.homeSearchBarFrame = g.frame(in: .global) }
+                        .onChange(of: g.frame(in: .global)) { _, f in app.homeSearchBarFrame = f }
+                }
+            }
+        }
+    }
+}
+
+/// The account's face wherever the app offers a way into Account (the dock, Quick settings, the Account screens): the
+/// real profile photo, initials when there is none, and the person glyph for a guest. One clay disc and one paper ring.
 struct AccountAvatarView: View {
     @EnvironmentObject private var app: AppState
     var size: CGFloat = 40
@@ -217,19 +256,6 @@ struct HomeHeroPinnedHeader: View {
         }
     }
 
-    /// The reader's own face (photo, then initials; a person glyph for a guest). Opens Account.
-    private func avatarButton(size: CGFloat) -> some View {
-        SwipeSafeButton {
-            Haptics.light()
-            onAvatar()
-        } label: {
-            AccountAvatarView(size: size).contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(app.T("Tài khoản", "Account"))
-        .accessibilityIdentifier("home.avatarButton")
-    }
-
     // MARK: area / controls
 
     /// The area chip is the band's middle while the tabs show (owner 2026-11-22): one quiet capsule between the brand
@@ -311,45 +337,30 @@ struct HomeHeroPinnedHeader: View {
         .accessibilityIdentifier("header.view")
     }
 
-    /// Search, Map, account: three equal 40 pt circles — the cluster the owner asked for, with the area between the
-    /// brand and it instead of inside a field.
+    /// Search, Map, quick settings: three equal 40 pt circles — the cluster the owner asked for, with the area between
+    /// the brand and it instead of inside a field. The settings gear (not the avatar) opens Quick settings, and it is the
+    /// same badge the sheet itself shows over the account row.
     private var controls: some View {
         HStack(spacing: 8) {
-            roundButton(system: "magnifyingglass", label: app.T("Tìm sự kiện", "Search events"), id: "home.searchBar",
-                        accent: true, measureFrame: true) {
-                Haptics.light()
+            HeaderCircleButton(system: "magnifyingglass", label: app.T("Tìm sự kiện", "Search events"), id: "home.searchBar",
+                               accent: true, measureFrame: true) {
                 app.openSearch(from: app.homeSearchBarFrame)
             }
-            roundButton(system: "map", label: app.T("Bản đồ", "Map"), id: "home.mapButton") {
-                Haptics.light()
+            // Note 99: a clay dot while a search is narrowing Home (the query outlives the Search screen).
+            .overlay(alignment: .topTrailing) {
+                if app.unifiedDiscoveryEnabled && !app.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Circle().fill(app.palette.clay).frame(width: 9, height: 9)
+                        .overlay(Circle().stroke(app.palette.paper, lineWidth: 1.5))
+                        .offset(x: 1, y: -1)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
+            HeaderCircleButton(system: "map", label: app.T("Bản đồ", "Map"), id: "home.mapButton") {
                 app.goMapExploreFromHome()
             }
-            avatarButton(size: 40)
-        }
-    }
-
-    private func roundButton(system: String, label: String, id: String, accent: Bool = false,
-                             measureFrame: Bool = false, action: @escaping () -> Void) -> some View {
-        let button = SwipeSafeButton(action: action) {
-            Image(systemName: system)
-                .font(.app(size: 16, weight: .medium))
-                .foregroundStyle(accent ? app.palette.clay : app.palette.ink)
-                .frame(width: 40, height: 40)
-                .background(app.palette.ink.opacity(0.05), in: Circle())
-                .overlay(Circle().strokeBorder(app.palette.divider, lineWidth: 1))
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
-        .accessibilityIdentifier(id)
-        // Where the search circle is on screen, so Search can start its own field right here (the glide entrance).
-        return button.background {
-            if measureFrame {
-                GeometryReader { g in
-                    Color.clear
-                        .onAppear { app.homeSearchBarFrame = g.frame(in: .global) }
-                        .onChange(of: g.frame(in: .global)) { _, f in app.homeSearchBarFrame = f }
-                }
+            HeaderCircleButton(system: "gearshape.fill", label: app.T("Cài đặt nhanh", "Quick settings"), id: "home.quickButton") {
+                onAvatar()
             }
         }
     }
@@ -441,7 +452,7 @@ struct HomeHeroSection: View {
     let onSeeAll: (HomeHeroTab) -> Void
     /// "Search locations…" in the area menu (HomeView owns that sheet).
     let onSearchLocations: () -> Void
-    /// Avatar tap: opens the quick-settings sheet (HomeView owns it).
+    /// The gear's tap: opens the quick-settings sheet (HomeView owns it).
     let onAvatar: () -> Void
     /// Height of the pinned header above (measured by HomeView), left empty at the top of the hero.
     var headerHeight: CGFloat = HomeHeroPinnedHeader.fallbackHeight
@@ -493,6 +504,8 @@ struct HomeHeroSection: View {
             .font(.app(size: 11, weight: .semibold))
             .tracking(1.4)
             .foregroundStyle(.white.opacity(0.58))
+            // The same 24 pt the rail's cards start on: the kicker used to sit flush against the screen edge.
+            .padding(.horizontal, 24)
             .padding(.top, 18)
             .accessibilityIdentifier("home.date")
     }
@@ -646,7 +659,7 @@ struct HomeHeroSection: View {
         // The weekend rail is built with the same area and filters (only the date differs), so `lists` already knows
         // whether "See this weekend" leads anywhere (owner 2026-11-18). Web twin: `weekendHasEvents` in HomeShellV5.jsx.
         let weekendHasEvents = !(lists[.weekend] ?? []).isEmpty
-        let browseAll: () -> Void = { Haptics.selection(); app.openBrowse(type: "all", scope: "all", from: tab.rawValue) }
+        let browseAll: () -> Void = { Haptics.selection(); app.openBrowse(type: "all", scope: "all") }
         switch tab {
         case .foryou:
             icon = "sparkles"
