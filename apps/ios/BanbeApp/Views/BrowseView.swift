@@ -411,6 +411,9 @@ struct BrowseView: View {
                 areaPill(active ? app.currentAreaLabel : app.T("Chọn khu vực", "Choose area"), active: active, icon: "mappin")
             }
             .buttonStyle(.plain)
+            // Each pill hugs its own words (web twin: inline-flex). Without this the row's spare width is handed to
+            // one flexible button, which is what stretched "All areas" into a long dark bar.
+            .fixedSize(horizontal: true, vertical: false)
             .accessibilityAddTraits(active ? .isSelected : [])
             .accessibilityIdentifier("browse.area.current")
 
@@ -423,6 +426,7 @@ struct BrowseView: View {
             }
             .buttonStyle(.plain)
             .layoutPriority(1)
+            .fixedSize(horizontal: true, vertical: false)
             .accessibilityAddTraits(!active ? .isSelected : [])
             .accessibilityIdentifier("browse.area.all")
 
@@ -435,8 +439,9 @@ struct BrowseView: View {
     private func areaPill(_ title: String, active: Bool, icon: String? = nil) -> some View {
         HStack(spacing: 6) {
             if let icon { Image(systemName: icon).font(.app(size: 12, weight: .medium)) }
+            // The label cap keeps a long area name from pushing the second pill off a 375 pt-wide phone.
             Text(title).font(.app(size: 13, weight: .semibold)).lineLimit(1).truncationMode(.tail)
-                .frame(maxWidth: 190, alignment: .leading)
+                .frame(maxWidth: 150, alignment: .leading)
         }
         .foregroundStyle(active ? app.palette.paper : app.palette.ink)
         .padding(.horizontal, 13).frame(minHeight: 40)

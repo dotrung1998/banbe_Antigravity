@@ -492,15 +492,14 @@ struct BottomTabBar: View {
         let isActive = activeID == item.id
         let badgeText: String = item.badgeCapped ? AccountBadges.format(item.badge, cap: item.badgeCap) : String(item.badge)
         ZStack(alignment: .topTrailing) {
-            // Web twin (note 80): icon over an 11pt label; with Simple Shell the Account slot is the user's initials.
+            // Web twin (note 80): icon over an 11pt label; the Account slot is the reader's face (AccountAvatarView).
             VStack(spacing: 3) {
                 Group {
-                    if item.id == "profile", simpleShell, app.isSignedIn {
-                        Text(Self.initials(app.displayName))
-                            .font(.app(size: 10, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(width: iconSize, height: iconSize)
-                            .background(app.palette.clay, in: Circle())
+                    // Account wears the reader's own face here too (owner 2026-11-18): the same AccountAvatarView as
+                    // Home, Browse and the quick panel, so the dock cannot fall back to initials while the header
+                    // shows the photo. Guests keep the person glyph (the avatar renders one for them as well).
+                    if item.id == "profile", app.isSignedIn {
+                        AccountAvatarView(size: iconSize)
                     } else {
                         item.icon(app.palette.ink, isActive)
                             .frame(width: iconSize, height: iconSize)

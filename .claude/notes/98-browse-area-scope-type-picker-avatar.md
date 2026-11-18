@@ -111,3 +111,26 @@ inside the existing one.
   `HomeFilterSheet` builds it in `quickRows`. Verify the build under test; the explicit area pills do not depend on
   that row.
 - The global area choice still changes Home's area as well (by design).
+
+## Owner screenshot pass (2026-11-18, iOS)
+
+Three device screenshots: Home with the quick panel open, and Browse by type.
+
+- **Dock Account face.** The dock drew `BottomTabBar.initials` on a clay disc in Simple Shell while Home's band showed
+  the profile photo. The profile dock slot now renders the shared `AccountAvatarView` (24 pt) for a signed-in reader in
+  both dock layouts. Guests keep the existing `ProfileGlyph` branch.
+- **Quick panel.** The avatar carries a 24 pt gear badge on its bottom-right corner. The sheet was a measured
+  `.height(contentHeight + sheetSafeBottom)` detent *plus* `.large`, and it opened with a band of empty paper under
+  Sign out: a `.height` detent already has the home-indicator inset added by the system, so adding it again
+  double-counted it, and the fallback detent while the content was still unmeasured was `.large`. It now has ONE
+  detent, `.height(contentHeight)`, so it opens at the content height, sits at the lowest position and has no higher
+  detent to drag to. Bottom padding 16 → 14 to match the web panel.
+- **Browse area pills.** `layoutPriority(1)` on the "All areas" button let the HStack hand it the spare width, and its
+  label's `frame(maxWidth: 190)` then grew to 190 pt, so the pill rendered as a long dark bar instead of hugging
+  "All areas". Both buttons are now `.fixedSize(horizontal: true)`, the label cap is 150 pt (still keeps a long area
+  name from pushing the second pill off a 375 pt phone) and `layoutPriority(1)` stays on "All areas" so it is never
+  the one squeezed.
+
+Checks: `git diff --check` clean. iOS was NOT compiled or run: this VM has no `swiftc`, `xcodebuild` or `xcodegen`
+(same limitation as the pass above). Verify on a device: the dock photo, the gear badge, the quick panel's single
+height and its Sign out position, and both area pills hugging their labels with a long area name.

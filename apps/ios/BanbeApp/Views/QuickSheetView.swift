@@ -15,11 +15,6 @@ struct QuickSheetView: View {
     @State private var prefsOpen = false
     @State private var contentHeight: CGFloat = 0
 
-    /// Bottom safe-area inset as the sheet's OWN content sees it. A `.height` detent is the whole sheet frame and the
-    /// content only lays out above this inset, so detent = measured content + this. Reading the window's inset (34pt)
-    /// double counted: on iOS 26 the sheet floats above the home indicator and reports a much smaller inset inside.
-    @State private var sheetSafeBottom: CGFloat = 0
-
     // MARK: Derived
 
     private var name: String {
@@ -170,7 +165,7 @@ struct QuickSheetView: View {
                     .accessibilityIdentifier("quick.signOut")
                 }
             }
-            .padding(.top, 20).padding(.bottom, 16)
+            .padding(.top, 20).padding(.bottom, 14)
             .foregroundStyle(app.palette.ink)
             .background(GeometryReader { g in
                 Color.clear.onAppear { contentHeight = g.size.height }
@@ -178,13 +173,12 @@ struct QuickSheetView: View {
             })
         }
         .scrollBounceBehavior(.basedOnSize)
-        .background(GeometryReader { g in
-            Color.clear.onAppear { sheetSafeBottom = g.safeAreaInsets.bottom }
-                .onChange(of: g.safeAreaInsets.bottom) { _, b in sheetSafeBottom = b }
-        })
         .background(app.palette.paper.ignoresSafeArea())
-        // Hugs its content (web twin: a bottom sheet sized to its content); .large stays available for huge text.
-        .presentationDetents(contentHeight > 0 ? [.height(contentHeight + sheetSafeBottom), .large] : [.large])
+        // Hugs its content at the LOWEST position only (owner 2026-11-18): one height detent means there is no higher
+        // one to drag up to, so the panel always opens and stays a short bottom sheet. A `.height` detent is the
+        // VISIBLE content height — the system adds the home-indicator inset on top of the value itself — so adding
+        // that inset as well (the old `sheetSafeBottom`) left a band of empty paper under Sign out.
+        .presentationDetents([.height(contentHeight > 0 ? contentHeight : 560)])
         .hidesDock("quickSheet")
         .presentationDragIndicator(.visible)
         .onChange(of: app.hostSetupOpen) { _, open in if open { onClose() } }
@@ -201,7 +195,18 @@ struct QuickSheetView: View {
         VStack(spacing: 0) {
             Button { onClose(); app.goProfile() } label: {
                 HStack(spacing: 16) {
+                    // The face carries a small gear badge, the app's usual "settings live behind this" cue.
                     AccountAvatarView(size: 64)
+                        .overlay(alignment: .bottomTrailing) {
+                            Image(systemName: "gearshape.fill")
+                                .font(.app(size: 10, weight: .semibold))
+                                .foregroundStyle(app.palette.ink)
+                                .frame(width: 24, height: 24)
+                                .background(app.palette.paper, in: Circle())
+                                .overlay(Circle().strokeBorder(app.palette.rule, lineWidth: 1))
+                                .offset(x: 2, y: 2)
+                                .accessibilityHidden(true)
+                        }
                     VStack(alignment: .leading, spacing: 6) {
                         Text(name).font(BanbeTheme.display(20)).lineLimit(1)
                         Text(app.T("Tài khoản", "Account") + " ›").font(.app(size: 13))
