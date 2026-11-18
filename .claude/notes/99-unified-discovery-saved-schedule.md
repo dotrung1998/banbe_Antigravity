@@ -127,3 +127,27 @@ only, still read against `docs/prototype/unified-home-map-prototype-v2.html`.
   opacity. The dock's hide also carries `data-collapsed` + an explicit CSS opacity now, because the row's `bbIn`
   entrance animation (fill both) and Reduce Motion's pinned `translate` could leave it visibly on screen.
 - Not yet re-checked on a phone; the owner's device pass is still the final visual check.
+
+## Prototype v2 parity pass 3 (web), 2026-11-18
+
+Owner's follow-up on pass 2: Search must open as the prototype's bottom sheet — its own grabber, in-sheet field and
+an Xong button — instead of the app's shared top search bar.
+
+- **Search (unified, web)**: under `unified_discovery` the Search panel renders inside `NativeSheet` (the app's
+  `<dialog>` sheet primitive), so it rises from the bottom over a scrim with focus containment, Esc / back-gesture
+  dismissal and a press-outside close. Geometry follows the prototype: top 48 px and 28 px corners, a 38 × 5
+  grabber, a 48 px surface-2 field (clay icon, clay focus border, its own clear button) beside **Xong** (`Done` in
+  English), the source chips pinned under the field as `.search-meta`, then recent chips / filter link / results
+  head / `EventRowV23` rows / empty card in their own scroller, and the `Xem trên bản đồ · N` CTA pinned 30 px
+  above the panel bottom like `.search-cta` — so it stays put at one result or nineteen.
+- **Shared bar**: `PersistentSearchBar` steps aside for the unified Search sheet (it stays for the Map and for the
+  pre-switch Search screen), removing the old back + field row above the sheet.
+- **Switch off**: unchanged full-screen Search with the shared bar; the new content wrapper is `display: contents`
+  there, so the page is laid out exactly as before.
+- Checks: `npm run build` green, `npm run test:unit` 1022/1022. Rendered in this VM's cloud Chromium against the
+  demo catalogue (390 px, all three switches on): dialog open, panel top 48 / 28 px corners, grabber + focused
+  in-sheet field + Xong present, shared bar absent, 19 rows; the source chips stayed at y=138 while the body
+  scrolled 400 px; the CTA sat 30 px above the panel bottom with 19 rows and with one (`piano`); Xong closed to
+  Home and saved the query to recents. Switch-off path re-checked with the flags RPC stubbed false: no dialog,
+  full-screen Search, shared bar and its input present.
+- Not device-verified; the owner's phone pass is still the final visual check.

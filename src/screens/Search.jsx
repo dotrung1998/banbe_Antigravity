@@ -21,6 +21,7 @@ import EventRowV23 from '../components/list/EventRowV23.jsx';
 import { categorySheetKeys, DEFAULT_FILTERS } from '../lib/homeDiscovery.js';
 import { flagOn } from '../lib/featureFlags.js';
 import { ownedFilterCount } from '../lib/unifiedDiscovery.js';
+import NativeSheet from '../components/NativeSheet.jsx';
 import { DATE_LABELS, SORT_LABELS } from './sheets/HomeFilterSheet.jsx';
 
 const RECENT_KEY = 'banbe_recent_searches_v1';
@@ -46,10 +47,16 @@ export default function Search({ overlay = false }) {
   useState(() => { searchBarStore.seedSearchQuery(s.searchQuery || ''); });
   const q = useSearchBar(b => b.searchQuery);
   const setQ = searchBarStore.setSearchQuery;
+  // Note 99 (switch unified_discovery): Search, Home and the Map share one query and one set of filters. Under that
+  // switch Search is also the prototype's bottom sheet (its own field + Xong), so it no longer borrows the shared top
+  // bar — PersistentSearchBar steps aside while this is open and Map keeps it.
+  const ud = flagOn(s.featureFlags, 'simple_shell') && flagOn(s.featureFlags, 'home_v23') && flagOn(s.featureFlags, 'unified_discovery');
   // As an overlay, "leaving" just closes it (Home is already there underneath).
   const leave = overlay ? () => set({ searchOverlayOpen: false }) : goHome;
   const [recent, setRecent] = useState(readRecent);
   const [catSheetOpen, setCatSheetOpen] = useState(false);
+  const [fieldFocused, setFieldFocused] = useState(false);
+  const sheetInputRef = useRef(null);
   // "See on map": the page fades out while the map fades in (no hard cut).
   const [leavingToMap, setLeavingToMap] = useState(false);
 
@@ -60,7 +67,7 @@ export default function Search({ overlay = false }) {
   const headerRef = useRef(null);
   useLayoutEffect(() => {
     const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (!origin || reduce) return;
+    if (!origin || reduce || ud) return;
     const ease = 'cubic-bezier(.22,.9,.3,1)';
     const dur = 420;
     // Overlay: the paper fades in over the live Home, the header's own fill with it, and the results drop in from the top.
@@ -72,7 +79,7 @@ export default function Search({ overlay = false }) {
       const cs = getComputedStyle(h);
       h.animate([{ backgroundColor: 'rgba(0,0,0,0)', borderBottomColor: 'rgba(0,0,0,0)' }, { backgroundColor: cs.backgroundColor, borderBottomColor: cs.borderBottomColor }], { duration: 300, easing: 'ease-out' });
     }
-    rootRef.current?.querySelectorAll(':scope > :not([data-search-header]):not([data-search-backdrop])').forEach(el => {
+    rootRef.current?.querySelectorAll(':scope > :not([data-search-header]):not([data-search-backdrop]):not([data-search-body]), :scope > [data-search-body] > *').forEach(el => {
       el.animate([{ opacity: 0, transform: overlay ? 'translateY(-24px)' : 'none' }, { opacity: 1, transform: 'none' }], { duration: 300, delay: 140, easing: ease, fill: 'backwards' });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -81,6 +88,14 @@ export default function Search({ overlay = false }) {
   // rest fades, then Home takes over.
   const closingRef = useRef(false);
   const close = () => {
+    // The bottom sheet has no field to glide back onto: Xong / Esc / a scrim press closes it where it is, keeping the
+    // typed words in this browser's recents.
+    if (ud) {
+      const next = pushRecent(recent, q);
+      setRecent(next); writeRecent(next);
+      leave();
+      return;
+    }
     const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (!origin || reduce) { leave(); return; }
     if (closingRef.current) return;
@@ -89,7 +104,7 @@ export default function Search({ overlay = false }) {
     searchBarStore.setAtHome(true); // the persistent bar glides back down onto Home's own bar while the page fades
     const ease = 'cubic-bezier(.4,0,.2,1)';
     const dur = 420;
-    rootRef.current?.querySelectorAll(':scope > :not([data-search-header]):not([data-search-backdrop])').forEach(el => {
+    rootRef.current?.querySelectorAll(':scope > :not([data-search-header]):not([data-search-backdrop]):not([data-search-body]), :scope > [data-search-body] > *').forEach(el => {
       el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: overlay ? 'translateY(-24px)' : 'none' }], { duration: 200, easing: 'ease-in', fill: 'forwards' });
     });
     rootRef.current?.querySelectorAll(':scope > [data-search-backdrop]').forEach(el => {
@@ -101,6 +116,12 @@ export default function Search({ overlay = false }) {
   };
   // The keyboard comes up once the field has (nearly) landed, not on top of the glide.
   useEffect(() => {
+    // The sheet owns its field: once it has risen, ask for the keyboard (the dialog focuses its first focusable element,
+    // but not every browser opens the keyboard for a programmatic focus).
+    if (ud) {
+      const t = setTimeout(() => sheetInputRef.current?.focus({ preventScroll: true }), 320);
+      return () => clearTimeout(t);
+    }
     if (!origin) { searchBarStore.focus(); return undefined; }
     const t = setTimeout(() => searchBarStore.focus(), 320);
     return () => clearTimeout(t);
@@ -135,10 +156,9 @@ export default function Search({ overlay = false }) {
   }, [s.discoveryEvents, s.homeLiveEvents]);
 
   const query = q.trim();
-  // Note 99 (switch unified_discovery): Search, Home and the Map share one query AND one set of filters, so the event
-  // hits are narrowed to what Home's filters (type, time, price, seats) let through. Home is live under this overlay and
-  // publishes those keys (s.unifiedKeys); opened as its own screen there is no Home, so nothing is narrowed.
-  const ud = flagOn(s.featureFlags, 'simple_shell') && flagOn(s.featureFlags, 'home_v23') && flagOn(s.featureFlags, 'unified_discovery');
+  // Note 99: the event hits are narrowed to what Home's filters (type, time, price, seats) let through. Home is live
+  // under this overlay and publishes those keys (s.unifiedKeys); opened as its own screen there is no Home, so nothing
+  // is narrowed.
   const hf = s.homeFilters || DEFAULT_FILTERS;
   const udOwned = ud ? ownedFilterCount(hf, s.homeSort) : 0;
   const udNarrows = ud && overlay && s.unifiedKeys != null && (udOwned > 0 || hf.date !== 'any');
@@ -211,43 +231,97 @@ export default function Search({ overlay = false }) {
   // status-bar strip itself; as a root screen it sits inside the scroll viewport that already starts below that inset.
   // The persistent bar (PersistentSearchBar.jsx) draws into this slot at the same offset.
   const topPad = overlay ? `calc(${searchBarTop()}px + ${SAFE_TOP})` : `${searchBarTop()}px`;
-  return (
-    <div ref={rootRef} data-screen-label="Search"
-      style={leavingToMap ? { position: overlay ? 'fixed' : 'relative', inset: overlay ? 0 : undefined, zIndex: overlay ? 45 : undefined, minHeight: '100%', background: paper, color: ink, opacity: 0, transition: 'opacity 0.22s ease', pointerEvents: 'none' } : overlay
+  // The prototype's Search is a bottom sheet: it starts 48 px below the status strip, rounds its top 28 px, and carries
+  // its own grabber, field and Xong. The panel itself is the scroller, so the head stays put and the map CTA keeps its
+  // place at the bottom while the rows move under it.
+  const sheetBase = {
+    position: 'relative', display: 'flex', flexDirection: 'column',
+    width: '100%', height: `calc(100% - 48px - ${SAFE_TOP})`, background: paper, color: ink,
+    borderRadius: '28px 28px 0 0', overflow: 'hidden',
+    animation: 'banbeSheetIn 0.38s cubic-bezier(.22,.9,.3,1) both',
+  };
+  const panel = (
+    <div ref={rootRef} data-screen-label="Search" data-search-sheet={ud ? 'true' : undefined}
+      style={ud
+        ? (leavingToMap ? { ...sheetBase, animation: 'none', opacity: 0, transition: 'opacity 0.22s ease', pointerEvents: 'none' } : sheetBase)
+        : leavingToMap ? { position: overlay ? 'fixed' : 'relative', inset: overlay ? 0 : undefined, zIndex: overlay ? 45 : undefined, minHeight: '100%', background: paper, color: ink, opacity: 0, transition: 'opacity 0.22s ease', pointerEvents: 'none' } : overlay
         ? { position: 'fixed', inset: 0, zIndex: 45, overflowY: 'auto', color: ink, paddingBottom: 120, animation: origin ? undefined : 'banbeFade 0.2s ease both' }
         : { minHeight: '100%', background: paper, color: ink, paddingBottom: 120, animation: origin ? undefined : 'banbeIn 0.25s ease both' }}>
-      {overlay && <div data-search-backdrop aria-hidden style={{ position: 'fixed', inset: 0, background: paper, zIndex: -1 }} />}
-      <div ref={headerRef} data-search-header style={{ padding: `${topPad} 16px 10px`, display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', top: 0, background: paper, zIndex: 2, borderBottom: `1px solid ${rule}` }}>
-        {/* The persistent search bar (App.jsx) draws here: back + field. */}
-        <div data-search-bar-slot aria-hidden style={{ height: 44, flex: 1 }} />
+      {overlay && !ud && <div data-search-backdrop aria-hidden style={{ position: 'fixed', inset: 0, background: paper, zIndex: -1 }} />}
+      <div ref={headerRef} data-search-header style={ud
+        ? { flex: 'none', zIndex: 3, background: paper, padding: '0 0 10px' }
+        : { padding: `${topPad} 16px 10px`, display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', top: 0, background: paper, zIndex: 2, borderBottom: `1px solid ${rule}` }}>
+        {ud ? (
+          <>
+            <div aria-hidden style={{ display: 'grid', placeItems: 'center', height: 20 }}>
+              <i style={{ display: 'block', width: 38, height: 5, borderRadius: 3, background: 'rgba(var(--bb-fg-rgb), 0.2)' }} />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '2px 16px 0' }}>
+              <label data-testid="search-sheet-field"
+                style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10, height: 48, padding: '0 6px 0 16px', borderRadius: 999, background: 'var(--bb-surface-2)', border: `1.5px solid ${fieldFocused ? 'var(--bb-clay)' : 'transparent'}`, transition: 'border-color 0.15s' }}>
+                <svg aria-hidden="true" width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="var(--bb-clay)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}>
+                  <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" />
+                </svg>
+                <input ref={sheetInputRef} data-bare data-testid="search-sheet-input" value={q} onChange={(e) => setQ(e.target.value)}
+                  onFocus={() => setFieldFocused(true)} onBlur={() => setFieldFocused(false)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { commit(); e.currentTarget.blur(); } }}
+                  type="text" inputMode="search" enterKeyHint="search" autoComplete="off" spellCheck={false}
+                  placeholder={T('Sự kiện, host, khu vực…', 'Events, hosts, areas…')} aria-label={T('Tìm sự kiện', 'Search events')}
+                  style={{ flex: 1, minWidth: 0, height: '100%', border: 0, outline: 0, background: 'none', fontFamily: 'inherit', fontSize: 16, color: ink }} />
+                {q !== '' && (
+                  <button type="button" data-testid="search-sheet-clear" aria-label={T('Xoá nội dung tìm kiếm', 'Clear search')}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => { setQ(''); sheetInputRef.current?.focus({ preventScroll: true }); }}
+                    style={{ flex: 'none', width: 36, height: 36, marginInlineEnd: -4, borderRadius: '50%', border: 'none', background: 'none', color: ink2, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+                    <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                  </button>
+                )}
+              </label>
+              <button type="button" data-testid="search-sheet-done" onClick={close}
+                style={{ flex: 'none', minHeight: 44, padding: '0 2px', border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
+                {T('Xong', 'Done')}
+              </button>
+            </div>
+          </>
+        ) : (
+          /* The persistent search bar (App.jsx) draws here: back + field. */
+          <div data-search-bar-slot aria-hidden style={{ height: 44, flex: 1 }} />
+        )}
       </div>
 
+      {/* Prototype `.search-meta`: the source chips sit under the field and stay put while the body scrolls. */}
       {ud && (
-        <>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '10px 16px 0' }}>
-            <span data-testid="search-source" style={metaChipStyle}>
-              <svg aria-hidden="true" width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z" /></svg>
-              {T('Từ Trang chủ', 'From Home')}
-            </span>
-            <span style={{ ...metaChipStyle, background: 'none', border: `1px solid ${rule}`, color: ink2 }}>
-              <svg aria-hidden="true" width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="var(--bb-moss, #4E6A30)" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 1-15 6.7L3 16M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M3 21v-5h5M21 3v5h-5" /></svg>
-              {T('Trang chủ + Bản đồ', 'Home + Map')}
-            </span>
+        <div style={{ flex: 'none', display: 'flex', flexWrap: 'wrap', gap: 6, padding: '10px 16px 0' }}>
+          <span data-testid="search-source" style={metaChipStyle}>
+            <svg aria-hidden="true" width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z" /></svg>
+            {T('Từ Trang chủ', 'From Home')}
+          </span>
+          <span style={{ ...metaChipStyle, background: 'none', border: `1px solid ${rule}`, color: ink2 }}>
+            <svg aria-hidden="true" width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="var(--bb-moss, #4E6A30)" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 1-15 6.7L3 16M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M3 21v-5h5M21 3v5h-5" /></svg>
+            {T('Trang chủ + Bản đồ', 'Home + Map')}
+          </span>
+        </div>
+      )}
+
+      {/* The sheet's own scroller: the head stays put and the map CTA stays at the bottom of the panel while these
+          rows move under it (recent, filter, results). Without the switch this wrapper is `display: contents`, so the
+          full-screen Search screen is laid out exactly as before. */}
+      <div data-search-body style={ud
+        ? { flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', padding: '0 0 120px' }
+        : { display: 'contents' }}>
+
+      {ud && recent.length > 0 && !query && (
+        <div data-testid="search-recent-block">
+          <div style={{ padding: '18px 20px 8px', fontSize: 11, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--bb-fg-3)' }}>{T('Gần đây', 'Recent')}</div>
+          <div data-hscroll style={{ display: 'flex', gap: 8, overflowX: 'auto', padding: '0 20px 2px', scrollbarWidth: 'none' }}>
+            {recent.map(r => (
+              <button key={r} type="button" onClick={() => setQ(r)} data-testid="search-recent" style={udSChip}>
+                <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" style={{ opacity: 0.55 }}><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></svg>
+                {r}
+              </button>
+            ))}
           </div>
-          {recent.length > 0 && !query && (
-            <div data-testid="search-recent-block">
-              <div style={{ padding: '18px 20px 8px', fontSize: 11, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--bb-fg-3)' }}>{T('Gần đây', 'Recent')}</div>
-              <div data-hscroll style={{ display: 'flex', gap: 8, overflowX: 'auto', padding: '0 20px 2px', scrollbarWidth: 'none' }}>
-                {recent.map(r => (
-                  <button key={r} type="button" onClick={() => setQ(r)} data-testid="search-recent" style={udSChip}>
-                    <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" style={{ opacity: 0.55 }}><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></svg>
-                    {r}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </>
+        </div>
       )}
 
       {ud && (() => {
@@ -420,16 +494,18 @@ export default function Search({ overlay = false }) {
               </button>
             </div>
           )}
-          <div style={{ height: 108 }} />
-          {udRows.length > 0 && (
-            <button type="button" data-testid="search-see-on-map" onMouseDown={(e) => e.preventDefault()} onClick={goMap}
-              style={{ position: 'sticky', bottom: 16, width: 'calc(100% - 32px)', margin: '0 16px', minHeight: 54, borderRadius: 999, border: 'none', background: ink, color: paper, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, fontFamily: 'inherit', fontSize: 15.5, fontWeight: 600, boxShadow: '0 10px 26px rgba(12,11,9,.24)', cursor: 'pointer' }}>
-              <svg aria-hidden="true" width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z" /><path d="M9 4v14M15 6v14" /></svg>
-              {T('Xem trên bản đồ', 'See on the map')}
-              <span style={{ minWidth: 24, height: 24, padding: '0 7px', boxSizing: 'border-box', borderRadius: 999, border: '1px solid currentColor', display: 'grid', placeItems: 'center', fontSize: 12, opacity: 0.85 }}>{udRows.length}</span>
-            </button>
-          )}
         </div>
+      )}
+
+      </div>
+      {/* Prototype `.search-cta`: pinned to the bottom of the sheet, not the end of the list. */}
+      {ud && udRows.length > 0 && (
+        <button type="button" data-testid="search-see-on-map" onMouseDown={(e) => e.preventDefault()} onClick={goMap}
+          style={{ position: 'absolute', left: 16, right: 16, bottom: 'calc(30px + env(safe-area-inset-bottom, 0px))', minHeight: 54, borderRadius: 999, border: 'none', background: ink, color: paper, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, fontFamily: 'inherit', fontSize: 15.5, fontWeight: 600, boxShadow: '0 10px 26px rgba(12,11,9,.24)', cursor: 'pointer' }}>
+          <svg aria-hidden="true" width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z" /><path d="M9 4v14M15 6v14" /></svg>
+          {T('Xem trên bản đồ', 'See on the map')}
+          <span style={{ minWidth: 24, height: 24, padding: '0 7px', boxSizing: 'border-box', borderRadius: 999, border: '1px solid currentColor', display: 'grid', placeItems: 'center', fontSize: 12, opacity: 0.85 }}>{udRows.length}</span>
+        </button>
       )}
       {catSheetOpen && (
         <CategorySheet keys={categorySheetKeys(CATEGORY_DEFS, s.lang === 'en' ? 'en' : 'vi')} counts={null} values={[]} T={T}
@@ -437,4 +513,15 @@ export default function Search({ overlay = false }) {
       )}
     </div>
   );
+  // Unified discovery: the panel IS the prototype's sheet, so it goes inside the app's native dialog sheet (top layer,
+  // focus containment, Esc / back-gesture dismissal, a press on the scrim). Without the switch the panel stays the
+  // full-screen Search screen it always was.
+  if (ud) {
+    return (
+      <NativeSheet open onClose={close} label={T('Tìm kiếm', 'Search')} testId="search-sheet" zIndex={2200}>
+        {panel}
+      </NativeSheet>
+    );
+  }
+  return panel;
 }

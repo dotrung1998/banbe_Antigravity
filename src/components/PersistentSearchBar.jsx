@@ -10,6 +10,7 @@ import { useBanBe } from '../state/BanBeContext.jsx';
 import { searchBarStore, useSearchBar } from '../lib/searchBarStore.js';
 import { photoPill, ink, ink2, clay } from '../theme.js';
 import { SAFE_TOP } from '../lib/viewport.js';
+import { flagOn } from '../lib/featureFlags.js';
 
 /** Top of the bar / of the empty row under it (Map's former value: the desktop phone frame's status bar + 8). */
 export function searchBarTop() {
@@ -25,7 +26,12 @@ export default function PersistentSearchBar() {
   const { state: s, T } = useBanBe();
   const bar = useSearchBar();
   const isMap = s.screen === 'mapExplore';
-  const active = isMap || s.screen === 'search' || (!!s.searchOverlayOpen && s.screen === 'home');
+  // Unified discovery: Search is the prototype's bottom sheet with its own field and Xong, so the shared bar steps aside
+  // while it is open (Map keeps it).
+  const udSheetSearch = !isMap
+    && flagOn(s.featureFlags, 'simple_shell') && flagOn(s.featureFlags, 'home_v23') && flagOn(s.featureFlags, 'unified_discovery')
+    && (s.screen === 'search' || (!!s.searchOverlayOpen && s.screen === 'home'));
+  const active = !udSheetSearch && (isMap || s.screen === 'search' || (!!s.searchOverlayOpen && s.screen === 'home'));
   const wrapRef = useRef(null);
   const [entered, setEntered] = useState(false);
   const [lingering, setLingering] = useState(false);

@@ -257,6 +257,10 @@ dialog.bb-native-sheet {
   clip-path: inset(var(--bb-dlg-t, 0px) var(--bb-dlg-r, 0px) var(--bb-dlg-b, 0px) var(--bb-dlg-l, 0px) round var(--bb-dlg-radius, 0px));
   animation: banbeFade 0.2s ease both;
 }
+/* The Search sheet's body hides its scrollbar the way the prototype's own scrollers do (`.hs`): the sheet keeps one
+   calm edge instead of a bar down the middle of the phone. */
+[data-search-sheet="true"] [data-search-body] { scrollbar-width: none; }
+[data-search-sheet="true"] [data-search-body]::-webkit-scrollbar { display: none; }
 /* The scrim is the dialog itself, so the platform backdrop stays clear. */
 dialog.bb-native-sheet::backdrop { background: transparent; }
 /* Full-size, bottom-aligned box the panel sits in. Kept as its own node so a scrim press and a panel press are easy
