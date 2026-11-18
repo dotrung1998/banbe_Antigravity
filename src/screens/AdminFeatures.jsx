@@ -142,6 +142,14 @@ const FLAGS = [
     hintEn: 'The web Home, Browse by type and Event Detail use the v2.3 design. Needs the simple layout on. The iPhone app does not use it yet. Off by default. Needs migration 218.',
   },
   {
+    // Migration 221, note 99. Builds on home_v23 (and simple_shell). Web + iPhone.
+    key: 'unified_discovery',
+    vi: 'Tìm kiếm chung Trang chủ và Bản đồ',
+    en: 'One search for Home and Map',
+    hintVi: 'Trang chủ và Bản đồ dùng chung một tìm kiếm, loại, thời gian và bộ lọc. Tab Trang chủ là thời gian chung, Duyệt theo loại lọc ngay tại Trang chủ, Bản đồ có thẻ xem trước. Cần Trang chủ v2.3 đang bật. Mặc định tắt. Cần migration 221.',
+    hintEn: 'Home and Map share one search, type, time and filters. The Home tabs are the shared time, Browse by type filters Home in place, the Map gets a preview card. Needs Home v2.3 on. Off by default. Needs migration 221.',
+  },
+  {
     // Note 76, migration 210. Until 210 is applied the server refuses this switch.
     key: 'event_project_hub',
     vi: 'Dự án sự kiện',

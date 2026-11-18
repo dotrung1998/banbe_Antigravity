@@ -945,6 +945,17 @@ struct RootView: View {
                     .zIndex(35)
             }
 
+            // Note 99: a heart tap says what it did to the Schedule, with Undo (AppState+SaveToast.swift).
+            if let toast = app.saveToast, app.createUndoOffer == nil {
+                SaveToastView(toast: toast)
+                    .id(toast.id)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, app.dockVisible && BottomTabBar.visibleScreens.contains(app.screen)
+                             ? BottomTabBar.barHeight + 16 : 16)
+                    .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(35)
+            }
+
             // First-time host setup (cover / name / intro + reveal). Full-screen, above everything in
             // this window; the dock is hidden via the onboarding flag below.
             if app.hostSetupOpen, app.userID != nil {
@@ -1472,7 +1483,8 @@ struct RootView: View {
         // in a later `.task` — so the very first frame this switch draws
         // already shows the restored camera/detent/filters/selection
         // instead of flashing the defaults for a frame first.
-        case .mapExplore: MapExploreView(restored: app.mapExploreState, isPreview: isPreview, startFocusedOnSearch: app.mapExploreFocusSearch, isActive: isActive, seedQuery: app.mapExploreSeedQuery, entry: app.mapExploreEntry)
+        case .mapExplore: MapExploreView(restored: app.mapExploreState, isPreview: isPreview, startFocusedOnSearch: app.mapExploreFocusSearch, isActive: isActive, seedQuery: app.mapExploreSeedQuery, entry: app.mapExploreEntry,
+                                          shared: app.unifiedDiscoveryEnabled ? (app.homeFilters, app.searchQuery) : nil)
         case .home: HomeView()
         case .profile: AccountView()
         // TASK 2 (2026-09-22 twenty-first follow-up) — see InboxView's own

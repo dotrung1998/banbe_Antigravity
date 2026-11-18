@@ -71,11 +71,16 @@ final class SchedulePresentationTests: XCTestCase {
         XCTAssertEqual(r.items.map(\.id), ["p"])
     }
 
-    func testFavoritesAreNotASource() {
-        // There is no favorites parameter at all: saved ≠ planning to go.
-        let r = SchedulePresentation.mySchedule(bookings: [], hostedKeys: [], addedKeys: [],
-                                                events: ["f": ev("f", now.addingTimeInterval(3600))], now: now)
-        XCTAssertTrue(r.items.isEmpty)
+    func testSavedIsTheSavedSourceAndIsOutranked() {
+        // Note 99: the Saved list is the "added" source, labelled Saved.
+        let soon = now.addingTimeInterval(3600)
+        let r = SchedulePresentation.mySchedule(bookings: [], hostedKeys: ["h"], addedKeys: ["f", "h"],
+                                                events: ["f": ev("f", soon), "h": ev("h", soon)], now: now)
+        XCTAssertEqual(Set(r.items.map { "\($0.id):\($0.source)" }), ["f:added", "h:hosting"])
+        XCTAssertEqual(ScheduleSource.added.label { _, en in en }, "Saved")
+        let none = SchedulePresentation.mySchedule(bookings: [], hostedKeys: [], addedKeys: [],
+                                                   events: ["f": ev("f", soon)], now: now)
+        XCTAssertTrue(none.items.isEmpty, "an event nobody saved, booked or hosts is not a plan")
     }
 
     // MARK: discover
@@ -246,7 +251,6 @@ final class ScheduleAppStateTests: XCTestCase {
         XCTAssertEqual(app.authReturnScreen, .event)
 
         let uid = UUID()
-        defer { InAppCalendarStore().clear(uid: uid) }
         app.userID = uid
         app.myOrganizerID = "org"
         app.myOrgEventKeys = ["fx-h"]
@@ -257,23 +261,17 @@ final class ScheduleAppStateTests: XCTestCase {
         XCTAssertEqual(app.addToBanbeSchedule(events[0]), .alreadyThere, "hosting already puts it on the schedule")
         XCTAssertEqual(app.addToBanbeSchedule(events[1]), .added)
         XCTAssertEqual(app.addToBanbeSchedule(events[1]), .alreadyThere)
-        XCTAssertEqual(app.scheduleAddedKeys, ["fx-m"])
+        XCTAssertEqual(app.favorites, ["fx-m"], "adding to the Schedule saves the event")
+        app.favoriteToggleInFlight.removeAll() // the server write is not awaited in this test
         app.removeFromBanbeSchedule("fx-m")
         XCTAssertFalse(app.isInMySchedule("fx-m"))
     }
 
-    func testSignOutStateResetHidesPreviousAccountsAdditions() {
+    func testSavedKeysFollowTheSignedInAccount() {
         let app = AppState()
-        let uid = UUID()
-        defer { InAppCalendarStore().clear(uid: uid) }
-        InAppCalendarStore().add("e", uid: uid)
-        app.userID = uid
-        app.refreshScheduleAdded()
-        XCTAssertEqual(app.scheduleAddedKeys, ["e"])
-        app.resetScheduleState()
-        XCTAssertTrue(app.scheduleAddedKeys.isEmpty)
+        app.favorites = ["e"]
+        XCTAssertTrue(app.scheduleSavedKeys.isEmpty, "signed out: no Saved plans")
         app.userID = UUID()
-        app.refreshScheduleAdded()
-        XCTAssertTrue(app.scheduleAddedKeys.isEmpty, "a different account never inherits them")
+        XCTAssertEqual(app.scheduleSavedKeys, ["e"])
     }
 }

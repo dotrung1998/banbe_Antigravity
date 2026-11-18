@@ -507,7 +507,7 @@ const PRIVATE_STATE_KEYS = [
   'refundDestinations', 'myRefunds', 'paymentRefundClaim', 'attendanceGuests', 'myOrganizerId', 'myOrganizerIds',
   'myOrganizerIdsStatus', 'myOrganizerAvatarPath', 'myOrganizerAvatarR2Ref', 'orgRegName', 'orgRegDesc', 'orgRegIntroLong',
   'orgRegLinks', 'myOrgEventKeys', 'myOrgEventOrganizerId', 'myOrgPublishedEventCount', 'myOrgHostingSinceYear',
-  'ensureOrganizerStatus', 'ensureOrganizerError', 'hostSetupOpen', 'organizerProfile', 'scheduleAddedKeys', 'guestPrompt',
+  'ensureOrganizerStatus', 'ensureOrganizerError', 'hostSetupOpen', 'organizerProfile', 'scheduleAddedKeys', 'favoritesLoadedFor', 'saveToast', 'guestPrompt',
   'eventRecapId', 'hostRecapId', 'createSeedCoverUrl', 'createUndoOffer', 'createDraftId',
   // Simple Shell follow-up (note 66): the session-only Home view and the Start hosting invitation.
   'homeView', 'startHostingOpen',
@@ -800,6 +800,9 @@ const initialState = {
   activation: { enabled: false, dismissed: false, openedEvent: false },
   // Note 44 web parity: events put on the banbe Schedule by hand (this browser only, per account).
   scheduleAddedKeys: [],
+  favoritesLoadedFor: null,
+  // Note 99: the heart's toast ({ id, key, saved, undone }), shown by SaveToast in App.jsx.
+  saveToast: null,
   // Note 49: the contextual sign-in prompt shown to a guest (lib/guestAccess.js makePrompt), or null.
   guestPrompt: null,
 
@@ -2080,7 +2083,7 @@ export function BanBeProvider({ children }) {
         // Only apply if no later account switch has already moved the ref
         // on — a stale response from a login this account has since left
         // must not resurrect its favorites.
-        if (favoritesUidRef.current === user.id) set({ favorites: (favRows || []).map(r => r.event_id) });
+        if (favoritesUidRef.current === user.id) set({ favorites: (favRows || []).map(r => r.event_id), favoritesLoadedFor: favError ? null : user.id });
       }
       const { data: profile } = await supabase
         .from('profiles')
@@ -5505,12 +5508,18 @@ export function BanBeProvider({ children }) {
   // so a fast logout/login in between can't have it clobber the new
   // account's own favorites.
   const recordSaveDayRef = useRef(null); // assigned by the rewards block below (defined later in this component)
-  const toggleFav = useCallback((k) => {
+  const toggleFav = useCallback((k, opts) => {
     // Note 49: a guest's save used to flip locally and vanish at sign-in; it now asks.
     if (!s.user) return promptSignIn('save', { eventKey: k });
     if (favToggleInFlightRef.current.has(k)) return;
     const wasSaved = s.favorites.includes(k);
-    set(prev => ({ favorites: wasSaved ? prev.favorites.filter(x => x !== k) : [...prev.favorites, k] }));
+    // Note 99: Saved IS the Schedule's "Saved" source, so every heart says so in a small toast with Undo
+    // (SaveToast in App.jsx). `opts.silent`: the Undo itself, which shows its own "Undone".
+    const silent = opts && opts.silent === true;
+    set(prev => ({
+      favorites: wasSaved ? prev.favorites.filter(x => x !== k) : [...prev.favorites, k],
+      saveToast: { id: Date.now(), key: k, saved: !wasSaved, undone: silent },
+    }));
     const uid = s.user.id;
     favToggleInFlightRef.current.add(k);
     (async () => {
@@ -6617,7 +6626,32 @@ export function BanBeProvider({ children }) {
 
   // ---- Note 44/45 web parity: banbe Schedule ----
   const scheduleUid = s.user?.id || null;
-  useEffect(() => { set({ scheduleAddedKeys: scheduleStore.keys(scheduleUid) }); }, [scheduleUid, set]);
+  // Note 99: the Schedule's own "added" source IS the account's Saved list (the `favorites` table), so a heart on
+  // any device shows on every Schedule. The old browser-only list (scheduleStore, note 44) is moved into `favorites`
+  // once, after the server list for this account has loaded, and then cleared.
+  useEffect(() => {
+    if (!scheduleUid || s.favoritesLoadedFor !== scheduleUid) return;
+    const legacy = scheduleStore.keys(scheduleUid).filter(k => !s.favorites.includes(k));
+    if (!scheduleStore.keys(scheduleUid).length) return;
+    (async () => {
+      if (legacy.length) {
+        const { error } = await supabase.from('favorites')
+          .upsert(legacy.map(event_id => ({ user_id: scheduleUid, event_id })), { onConflict: 'user_id,event_id', ignoreDuplicates: true });
+        if (error) { console.warn('Failed to move schedule adds into Saved:', error); return; }
+        set(prev => (prev.user?.id === scheduleUid ? { favorites: [...new Set([...prev.favorites, ...legacy])] } : prev));
+      }
+      scheduleStore.clear(scheduleUid);
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scheduleUid, s.favoritesLoadedFor]);
+  /** Re-reads the Saved list from the server (Schedule open / refresh), so a save made on another device shows. */
+  const reloadFavorites = useCallback(async () => {
+    const uid = s.user?.id;
+    if (!uid || favToggleInFlightRef.current.size) return;
+    const { data, error } = await supabase.from('favorites').select('event_id').eq('user_id', uid);
+    if (error) { console.warn('Failed to reload favorites:', error); return; }
+    set(prev => (prev.user?.id === uid && !favToggleInFlightRef.current.size ? { favorites: (data || []).map(r => r.event_id) } : prev));
+  }, [s.user?.id, set]);
   const goSchedule = useCallback(() => { set({ screen: 'schedule' }); track('schedule_opened'); }, [set]);
 
   /** A shaped real event -> what the schedule needs. No end times exist (note 38). */
@@ -6644,16 +6678,17 @@ export function BanBeProvider({ children }) {
       giftedAway: !!b.gifted_at && b.claimed_by_user_id !== s.user?.id,
     }));
     const hostedKeys = s.myOrgEventKeys || [];
-    const keys = new Set([...bookings.map(b => b.eventKey), ...hostedKeys, ...(s.scheduleAddedKeys || [])]);
+    const savedKeys = s.favorites || [];
+    const keys = new Set([...bookings.map(b => b.eventKey), ...hostedKeys, ...savedKeys]);
     const events = {};
     for (const k of keys) { const info = scheduleInfoFor(s.realEventsById[k]); if (info) events[k] = info; }
-    const mine = scheduleMySchedule({ bookings, hostedKeys, addedKeys: s.scheduleAddedKeys || [], events, now });
+    const mine = scheduleMySchedule({ bookings, hostedKeys, addedKeys: savedKeys, events, now });
     const discoverList = scheduleDiscover((s.discoveryEvents || []).map(scheduleInfoFor).filter(Boolean), new Set(mine.items.map(i => i.id)), now);
     const missingKeys = [...keys].filter(k => !(k in s.realEventsById));
     return { mine, discover: discoverList, missingKeys };
   // A 30s bucket keeps "now"-dependent rules (holds, discover cut-off) fresh without recomputing every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [s.paymentBookings, s.myOrgEventKeys, s.scheduleAddedKeys, s.realEventsById, s.discoveryEvents, s.user?.id, scheduleInfoFor, Math.floor(Date.now() / 30000)]);
+  }, [s.paymentBookings, s.myOrgEventKeys, s.favorites, s.realEventsById, s.discoveryEvents, s.user?.id, scheduleInfoFor, Math.floor(Date.now() / 30000)]);
 
   /** 'added' | 'alreadyThere' | 'needsSignIn' | 'ineligible' */
   const addToBanbeSchedule = useCallback((eventKey) => {
@@ -6661,17 +6696,16 @@ export function BanBeProvider({ children }) {
     if (!scheduleUid) return 'needsSignIn';
     if (scheduleSnapshot.mine.items.some(i => i.id === eventKey)) { track('banbe_schedule_result', { result: 'alreadyAdded' }); return 'alreadyThere'; }
     if (!scheduleCanAdd(scheduleInfoFor(s.realEventsById[eventKey]))) { track('banbe_schedule_result', { result: 'ineligible' }); return 'ineligible'; }
-    const r = scheduleStore.add(eventKey, scheduleUid);
-    set({ scheduleAddedKeys: scheduleStore.keys(scheduleUid) });
-    track('banbe_schedule_result', { result: r });
+    // Adding to the Schedule = saving the event (note 99): one list, on the server.
+    if (!s.favorites.includes(eventKey)) toggleFav(eventKey);
+    track('banbe_schedule_result', { result: 'added' });
     return 'added';
-  }, [scheduleUid, scheduleSnapshot, scheduleInfoFor, s.realEventsById, set]);
+  }, [scheduleUid, scheduleSnapshot, scheduleInfoFor, s.realEventsById, s.favorites, toggleFav]);
   const removeFromBanbeSchedule = useCallback((eventKey) => {
     if (!scheduleUid) return;
-    scheduleStore.remove(eventKey, scheduleUid);
-    set({ scheduleAddedKeys: scheduleStore.keys(scheduleUid) });
+    if (s.favorites.includes(eventKey)) toggleFav(eventKey);
     track('banbe_schedule_remove');
-  }, [scheduleUid, set]);
+  }, [scheduleUid, s.favorites, toggleFav]);
   // v2.3 Browse by type / See all (note 81, reworked in note 85). Opening a list from Home always starts unfiltered and
   // unsearched; the event and host profile opened from it come back here (eventBackScreen / organizerProfileBack =
   // 'browse'). `keep` (browser back/forward into the same list): keep its search and filters instead of starting fresh.
@@ -11795,7 +11829,7 @@ export function BanBeProvider({ children }) {
     canHost, toggleOrganizerMode, applyOrganizerMode, enableOrganizerMode, retryEnsureOrganizer, ensureOrganizerNow, openHostSetup, closeHostSetup,
     setHomeView, startHosting, closeStartHosting, openDockCreate, closeDockCreate, loadEventFill,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
-    loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, setRewardTimezone, setOutingGoal, rewardsEnabled, rewardsV2Enabled, loadFeatureFlags, setFeatureFlag, setOnboardingVersion, toggleLang, resolvedTheme, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, markActivationCelebrated, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
+    loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, setRewardTimezone, setOutingGoal, rewardsEnabled, rewardsV2Enabled, loadFeatureFlags, setFeatureFlag, setOnboardingVersion, toggleLang, resolvedTheme, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, reloadFavorites, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, markActivationCelebrated, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, setQty, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, goReserveConfirmed, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
@@ -11835,7 +11869,7 @@ export function BanBeProvider({ children }) {
     canHost, toggleOrganizerMode, applyOrganizerMode, enableOrganizerMode, retryEnsureOrganizer, ensureOrganizerNow, openHostSetup, closeHostSetup,
     setHomeView, startHosting, closeStartHosting, openDockCreate, closeDockCreate, loadEventFill,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
-    loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, setRewardTimezone, setOutingGoal, rewardsEnabled, rewardsV2Enabled, loadFeatureFlags, setFeatureFlag, setOnboardingVersion, toggleLang, resolvedTheme, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, markActivationCelebrated, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
+    loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, setRewardTimezone, setOutingGoal, rewardsEnabled, rewardsV2Enabled, loadFeatureFlags, setFeatureFlag, setOnboardingVersion, toggleLang, resolvedTheme, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, reloadFavorites, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, markActivationCelebrated, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, setQty, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, goReserveConfirmed, payHoldNow, confirmPayment, cancelBooking, cancelEvent,

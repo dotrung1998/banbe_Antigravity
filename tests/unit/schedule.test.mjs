@@ -31,9 +31,13 @@ test('one row per event, strongest source wins, cancelled and undated handled ho
   assert.equal(r.undatedCount, 1);
 });
 
-test('saved/favorited events are not a source', () => {
-  const r = S.mySchedule({ bookings: [], hostedKeys: [], addedKeys: [], events: { a: ev('a') }, now: NOW });
-  assert.equal(r.items.length, 0);
+test('note 99: saved events are the Saved source, outranked by bookings and hosting', () => {
+  const events = { a: ev('a'), b: ev('b'), c: ev('c') };
+  const r = S.mySchedule({ bookings: [bk('b')], hostedKeys: ['c'], addedKeys: ['a', 'b', 'c'], events, now: NOW });
+  assert.deepEqual(r.items.map(i => [i.id, i.source]).sort(), [['a', 'added'], ['b', 'booked'], ['c', 'hosting']]);
+  assert.equal(S.sourceLabel('added', en), 'Saved');
+  const none = S.mySchedule({ bookings: [], hostedKeys: [], addedKeys: [], events: { a: ev('a') }, now: NOW });
+  assert.equal(none.items.length, 0, 'an event nobody saved, booked or hosts is not a plan');
 });
 
 test('discover: upcoming, reservable, public, not already mine', () => {
@@ -102,6 +106,9 @@ test('manual adds: idempotent, per account, removable', () => {
   assert.deepEqual(S.scheduleStore.keys('u2', st), [], 'another account on this browser never sees them');
   S.scheduleStore.remove('e1', 'u1', st);
   assert.deepEqual(S.scheduleStore.keys('u1', st), []);
+  S.scheduleStore.add('e2', 'u1', st);
+  S.scheduleStore.clear('u1', st);
+  assert.deepEqual(S.scheduleStore.keys('u1', st), [], 'the legacy list is cleared once it has moved into Saved');
   assert.deepEqual(S.scheduleStore.keys(null, st), []);
 });
 

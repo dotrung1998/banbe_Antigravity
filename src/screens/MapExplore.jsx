@@ -6,6 +6,11 @@ import { CARD_GAP, ATTRIB_RESERVE, computeMapLayout, bottomStackFraction, dockVi
 import { eventSlot, inWindow, dayOptions, defaultWindow, moveKnob, windowFromHomeDate, windowSummary } from '../lib/mapTimeWindow.js';
 import MapTimeBar from '../components/map/MapTimeBar.jsx';
 import MapListSheet from '../components/map/MapListSheet.jsx';
+import { MapTimeChip, MapTimePopover } from '../components/map/MapTimeChip.jsx';
+import { MapCarousel, MapPreview } from '../components/map/MapEventCards.jsx';
+import { flagOn } from '../lib/featureFlags.js';
+import { areaGlyphs, ownedFilterCount } from '../lib/unifiedDiscovery.js';
+import { TYPE_KEYS } from '../lib/eventTypes.js';
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { searchBarStore, useSearchBar } from '../lib/searchBarStore.js';
 import { useBanBe, resolveCoverUrl, photoUrlsByEvent } from '../state/BanBeContext.jsx';
@@ -23,7 +28,7 @@ import { cityOfNode } from '../lib/locationTree.js';
 import { findEvent, isCosmeticCatalogMatch, haversineKm, mapsUrl } from '../data/events.js';
 import { distanceLabel } from '../lib/eventDetailPresentation.js';
 import { whenLabel } from '../lib/quickWins.js';
-import { fillBadge, categorySheetKeys, applyDiscoveryFilters, normalizeFilters, activeFilterCount, DEFAULT_FILTERS } from '../lib/homeDiscovery.js';
+import { fillBadge, categorySheetKeys, applyDiscoveryFilters, normalizeFilters, activeFilterCount, DEFAULT_FILTERS, sortEvents } from '../lib/homeDiscovery.js';
 import HomeFilterSheet from './sheets/HomeFilterSheet.jsx';
 import { secondCategory, categoryDefs, cardLine, profileFor } from '../lib/eventTypes.js';
 import { CategoryGlyph, CATEGORY_DEFS, CategorySheet, categoryGlyphMarkup, DiscoveryCard } from '../components/home/HomeDiscoveryParts.jsx';
@@ -73,6 +78,14 @@ const CHIPS_BOTTOM = 12, CHIPS_H = 84, TIME_H = 58, STACK_GAP = 8, BTN_H = 44;
 const TIME_BOTTOM = CHIPS_BOTTOM + CHIPS_H + STACK_GAP;
 const FAB_BOTTOM = TIME_BOTTOM + TIME_H + 10;
 const STACK_H = FAB_BOTTOM + BTN_H + 4;
+// Unified discovery (note 99): no time bar row (time is a chip at the top), and the slot above the buttons holds either the
+// area chips or the pin carousel (96 px cards), so it is a little taller.
+const UD_SLOT_H = 104;
+const UD_FAB_BOTTOM = CHIPS_BOTTOM + UD_SLOT_H + STACK_GAP;
+const UD_STACK_H = UD_FAB_BOTTOM + BTN_H + 4;
+// The Map's day choices as the shared Home date (s.homeFilters.date), and back.
+const DATE_FOR_DAY = { today: 'today', tomorrow: 'tomorrow', weekend: 'weekend', nextWeek: 'week', all: 'any' };
+const windowForSharedDate = (date, nowMs, tz) => (date === 'week' ? defaultWindow('nextWeek', nowMs, tz) : windowFromHomeDate(date, nowMs, tz));
 
 async function fetchLiveEvents({ limit = MAP_EVENT_CAP, bounds = null } = {}) {
   const buildQuery = (withR2) => {
@@ -280,7 +293,12 @@ function styleDim(m, hitSet) {
 }
 
 export default function MapExplore() {
-  const { state: s, set, T, resolvedTheme, goEvent, backFromMapExplore, allowLocation, setMapExploreState, curArea, openArea, openEventPreferences, shareEvent, isSaved, toggleFav } = useBanBe();
+  const { state: s, set, T, resolvedTheme, goEvent, backFromMapExplore, allowLocation, setMapExploreState, curArea, openArea, openEventPreferences, shareEvent, isSaved, toggleFav, setHomeFilters } = useBanBe();
+  // Unified discovery (note 99): the Map reads and writes Home's own search, type, time, filters and sort (s.homeFilters,
+  // s.homeSort, s.searchQuery; the area was already shared through s.area). Off = the Map as it was (note 79).
+  const ud = flagOn(s.featureFlags, 'simple_shell') && flagOn(s.featureFlags, 'home_v23') && flagOn(s.featureFlags, 'unified_discovery');
+  const udRef = useRef(ud);
+  udRef.current = ud;
   // Restored once, at mount, if MapExplore.jsx's own CTA saved a snapshot
   // right before navigating to Event Detail (bug 2) — App.jsx's Shell
   // unmounts/remounts this whole component on every `screen` change, so
@@ -326,17 +344,39 @@ export default function MapExplore() {
   const entry = entryRef.current;
   // Map E+ (note 79): the Map's filters never carry a date (`date` is always 'any'): the day and hours are the time bar's,
   // and they dim rather than remove. Home's date hand-off becomes the time window below.
-  const [filters, setFilters] = useState(() => normalizeFilters({
+  const [localFilters, setLocalFilters] = useState(() => normalizeFilters({
     ...(restored?.filters
     ?? (restored ? { cats: restored.catFilter && restored.catFilter !== 'all' ? [restored.catFilter] : [], seatsLeft: !!restored.openNowOnly } : null)
     ?? entry?.filters
     ?? DEFAULT_FILTERS),
     date: 'any',
   }));
+  // Unified: the filters ARE Home's (s.homeFilters), read with `date` set aside (the shared date is the time window
+  // below, which dims rather than removes); every write goes back to Home's object and keeps its date.
+  const sharedFilters = useMemo(() => normalizeFilters({ ...s.homeFilters, date: 'any' }), [s.homeFilters]);
+  const filters = ud ? sharedFilters : localFilters;
+  const setFilters = useCallback((next) => {
+    if (!udRef.current) { setLocalFilters(next); return; }
+    setHomeFilters(prev => {
+      const cur = normalizeFilters({ ...prev, date: 'any' });
+      const out = typeof next === 'function' ? next(cur) : next;
+      return { ...normalizeFilters(out), date: prev?.date ?? 'any' };
+    });
+  }, [setHomeFilters]);
   // The day + hour window (src/lib/mapTimeWindow.js). Off ("All days") by default; Home's date hand-off or a returning
   // snapshot sets it. Nothing here is a filter: results never change with it, only what is bold and what is dimmed.
-  const [timeWin, setTimeWin] = useState(() => restored?.timeWin
-    ?? windowFromHomeDate(entry?.filters?.date ?? 'any', Date.now(), VN_TIME_ZONE));
+  // Unified: the DAY is the shared date (s.homeFilters.date); the hours stay the Map's own (kept from a return snapshot
+  // when its day still matches).
+  const [timeWin, setTimeWin] = useState(() => {
+    if (ud) {
+      const date = s.homeFilters?.date ?? 'any';
+      if (restored?.timeWin && DATE_FOR_DAY[restored.timeWin.on ? restored.timeWin.key : 'all'] === date) return restored.timeWin;
+      return windowForSharedDate(date, Date.now(), VN_TIME_ZONE);
+    }
+    return restored?.timeWin ?? windowFromHomeDate(entry?.filters?.date ?? 'any', Date.now(), VN_TIME_ZONE);
+  });
+  const timeWinRef = useRef(timeWin);
+  timeWinRef.current = timeWin;
   // The category row is single-choice (Home's sheet hides categories in Simple Shell; the Map sheet does too).
   const catFilter = filters.cats[0] ?? 'all';
   const setCatFilter = useCallback((k) => setFilters(f => normalizeFilters({ ...f, cats: k === 'all' ? [] : [k], typeFilters: [] })), []);
@@ -349,7 +389,9 @@ export default function MapExplore() {
   // a separate search index — same `events` this screen already loads).
   // The text is edited by the ONE persistent search bar (hosted in App.jsx); the map's own query lives in its store
   // (iOS `mapSearchText`). Seeded silently on first render, announced to the bar from a layout effect below.
-  useState(() => { searchBarStore.seedMapQuery(restored?.searchQuery ?? entry?.query ?? ''); });
+  // Unified: the bar starts from the shared query (s.searchQuery), which outlives Search and the Map.
+  const seedQuery = ud ? (s.searchQuery || '') : (restored?.searchQuery ?? entry?.query ?? '');
+  useState(() => { searchBarStore.seedMapQuery(seedQuery); });
   const searchQuery = useSearchBar(b => b.mapQuery);
   const setSearchQuery = searchBarStore.setMapQuery;
   // For You (34/35 notes): local to Map (never touches Home's own `filterForYou`),
@@ -391,13 +433,21 @@ export default function MapExplore() {
   // real device's user-gesture trust intact. Guarded by a ref (not state)
   // so it fires exactly once per mount, never re-focusing on an unrelated
   // re-render.
-  const initialQueryRef = useRef(restored?.searchQuery ?? entry?.query ?? '');
+  const initialQueryRef = useRef(seedQuery);
   useLayoutEffect(() => {
     searchBarStore.setMapQuery(initialQueryRef.current); // re-applied here too: StrictMode's mount/unmount/mount would otherwise lose the seed
     searchBarStore.notify();
     if (restoredRef.current?.focusSearch) searchBarStore.focus();
     return () => { searchBarStore.setMapQuery(''); searchBarStore.clear('map'); };
   }, []);
+  // Unified: every edit of the map's bar is the shared query too (Home and Search read it after the Map closes).
+  const sharedQueryRef = useRef(s.searchQuery);
+  sharedQueryRef.current = s.searchQuery;
+  useEffect(() => {
+    if (!ud || searchQuery === (sharedQueryRef.current || '')) return;
+    set({ searchQuery });
+    searchBarStore.setSearchQuery(searchQuery);
+  }, [ud, searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
   // Map E+ (note 79): the list is a layer over the full-screen map. It opens from "List · N", closes with its Map button
   // or Esc, and starts closed, so a fresh open is the map itself (restored from a return snapshot when there is one).
   const [listOpen, setListOpen] = useState(() => restored?.listOpen ?? false);
@@ -433,6 +483,8 @@ export default function MapExplore() {
   // null when nothing is selected. Not a second data source: it's just an
   // id into the same `events`/`visibleEvents` this screen already loads.
   const [selectedId, setSelectedId] = useState(() => restored?.selectedId ?? null);
+  // Unified (note 99): the selected event's preview card is open (else its carousel shows).
+  const [previewOpen, setPreviewOpen] = useState(() => !!restored?.previewOpen);
   const lastAnimatedPinIdRef = useRef(null);
   // The top controls' real bottom edge is measured (ResizeObserver), never guessed.
   const topRef = useRef(null); // search + filter button + chips: the shared top controls
@@ -442,7 +494,8 @@ export default function MapExplore() {
   const [dockClear, setDockClear] = useState(110); // px the floating dock occupies at the bottom
   // The bottom stack: the dock plus the buttons above it. The camera pads for it; the list and the panel float over the
   // map and never move it.
-  const stackPx = dockClear + STACK_H;
+  const stackPx = dockClear + (ud ? UD_STACK_H : STACK_H);
+  const fabBottom = ud ? UD_FAB_BOTTOM : FAB_BOTTOM;
   // Map v6: Large photo cards / Compact rows at full height (see `sessionListLayout`).
   const [listLayout, setListLayoutState] = useState(() => restored?.listLayout ?? sessionListLayout);
   const setListLayout = useCallback((m) => { sessionListLayout = m; setListLayoutState(m); }, []);
@@ -755,6 +808,9 @@ export default function MapExplore() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Unified: MapKit's own zoom control gives way to the "− +" capsule (MapLibre's is hidden by CSS on data-ud).
+  useEffect(() => { mapRef.current?.setZoomControlVisible?.(!ud); }, [ud, mapReady]);
+
   // ---- freshness: the whole public set again, never a box; camera, area, filters, selection and scroll untouched ----
   const [refreshing, setRefreshing] = useState(false);
   // Bounded mode (phase 4): only when the whole public set is larger than MAP_EVENT_CAP. Each committed area then
@@ -902,6 +958,20 @@ export default function MapExplore() {
     for (const e of (visibleEvents.length ? visibleEvents : events)) { const z = e.tz || VN_TIME_ZONE; tally.set(z, (tally.get(z) || 0) + 1); }
     return [...tally.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || VN_TIME_ZONE;
   }, [visibleEvents, events]);
+  // Unified: Home (or Search) changed the shared date while the Map is mounted, or the switch just came on: the window's
+  // day follows it (hours reset to that day's default); a date the window already shows is left alone.
+  const sharedDate = s.homeFilters?.date ?? 'any';
+  useEffect(() => {
+    if (!ud) return;
+    const cur = timeWinRef.current;
+    if (DATE_FOR_DAY[cur.on ? cur.key : 'all'] === sharedDate) return;
+    setTimeWin(windowForSharedDate(sharedDate, Date.now(), viewTz));
+  }, [ud, sharedDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A day picked on the Map (time chip, or the bar when unified is off). Unified: it is also the shared date.
+  const pickDay = useCallback((k) => {
+    setTimeWin(defaultWindow(k, Date.now(), viewTz));
+    if (udRef.current) setHomeFilters(prev => ({ ...prev, date: DATE_FOR_DAY[k] ?? 'any' }));
+  }, [viewTz, setHomeFilters]);
   // Events per city with every filter except the search text and the map area (the text may be the city's name).
   const cityCounts = useMemo(() => {
     const list = applyDiscoveryFilters(applyForYouFilter(events, forYouActive, forYouOrder).map(discoveryItem), filters, nowMinute * 60000);
@@ -1022,6 +1092,34 @@ export default function MapExplore() {
           const lbl = document.createElement('span');
           lbl.style.cssText = `max-width:132px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:2px 8px;border-radius:999px;background:${paper};color:${ink};font:700 12px/1.3 var(--bb-face, 'Be Vietnam Pro'),sans-serif;box-shadow:0 1px 4px rgba(27,25,22,0.2);`;
           lbl.textContent = name;
+          if (udRef.current) {
+            // Unified (prototype bubble-card): the name over the area's type glyphs, busiest first, at most 4 then "+N".
+            const counts = {};
+            for (const id of g.ids) { const k = byId.get(id)?.catKey; if (k && k !== 'all') counts[k] = (counts[k] || 0) + 1; }
+            const { shown, more } = areaGlyphs(counts, TYPE_KEYS, 4);
+            lbl.style.cssText = `display:flex;flex-direction:column;align-items:center;gap:3px;max-width:150px;padding:5px 10px 6px;box-sizing:border-box;border-radius:12px;background:${paper};color:${ink};border:1px solid ${rule};box-shadow:0 3px 10px rgba(27,25,22,0.14);`;
+            lbl.textContent = '';
+            const nm = document.createElement('b');
+            nm.style.cssText = `max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:600 12px/1.25 var(--bb-face, 'Be Vietnam Pro'),sans-serif;`;
+            nm.textContent = name;
+            lbl.appendChild(nm);
+            if (shown.length) {
+              const row = document.createElement('span');
+              row.setAttribute('data-testid', 'map-areabubble-cats');
+              row.setAttribute('data-cats', shown.join(','));
+              row.style.cssText = `display:flex;align-items:center;gap:5px;color:${ink2};`;
+              row.innerHTML = shown.map(k => categoryGlyphMarkup(k, 13, 1.7)).join('');
+              if (more > 0) {
+                const em = document.createElement('em');
+                em.style.cssText = `font:600 10.5px/1 var(--bb-face, 'Be Vietnam Pro'),sans-serif;font-style:normal;`;
+                em.textContent = `+${more}`;
+                row.appendChild(em);
+              }
+              lbl.appendChild(row);
+              const names = Object.keys(counts).map(k => { const c = CATEGORY_DEFS.find(d => d.key === k); return c ? T(c.vi, c.en) : null; }).filter(Boolean);
+              if (names.length) pinEl.setAttribute('aria-label', `${pinEl.getAttribute('aria-label')}. ${names.join(', ')}`);
+            }
+          }
           parts.bub = bub; parts.lbl = lbl;
           pinEl.appendChild(bub);
           pinEl.appendChild(lbl);
@@ -1055,7 +1153,8 @@ export default function MapExplore() {
             dot.style.cssText = `position:absolute;top:-3px;right:-3px;width:9px;height:9px;border-radius:50%;background:#9A3E2D;border:1.5px solid ${paper};`;
             pinEl.appendChild(dot);
           }
-          const activate = () => openDetailRef.current?.(ev.id);
+          // Unified (note 99): a pin selects its event (ink pin + name, the carousel below); otherwise it opens Event Detail.
+          const activate = () => (udRef.current ? selectPinRef.current?.(ev.id) : openDetailRef.current?.(ev.id));
           pinEl.addEventListener('click', (e) => { e.stopPropagation(); activate(); });
           pinEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); activate(); } });
         } else {
@@ -1098,7 +1197,7 @@ export default function MapExplore() {
     // The `cancelled` guard above keeps an in-flight redraw from a STALE run (rapid filter changes or zooming) from
     // painting markers after a newer run has started.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleEvents, selectedId, mapReady, cameraZoom, cityIdById, areaInfoById]);
+  }, [visibleEvents, selectedId, mapReady, cameraZoom, cityIdById, areaInfoById, ud]);
 
   // Stage 2 (2026-09-27 nav/discovery pass) — pull-to-refresh, LOCAL to
   // this list (not Shell's/App.jsx's generic one): MapExplore renders as
@@ -1156,7 +1255,7 @@ export default function MapExplore() {
     setMapExploreState({
       cameraCenter: center ? { lat: center.lat, lng: center.lng } : null,
       cameraZoom: map?.getZoom() ?? null,
-      listOpen, areaPanel, preAreaView: preAreaViewRef.current, timeWin,
+      listOpen, areaPanel, preAreaView: preAreaViewRef.current, timeWin, previewOpen,
       filters, catFilter,
       openNowOnly,
       forYou: forYouOn,
@@ -1169,7 +1268,7 @@ export default function MapExplore() {
       // Map v6: the full-height layout (Large / Compact).
       listLayout,
     });
-  }, [listOpen, areaPanel, timeWin, filters, catFilter, openNowOnly, forYouOn, searchQuery, selectedId, committedBounds, areaContext, cityDest, events, listLayout, setMapExploreState]);
+  }, [listOpen, areaPanel, timeWin, previewOpen, filters, catFilter, openNowOnly, forYouOn, searchQuery, selectedId, committedBounds, areaContext, cityDest, events, listLayout, setMapExploreState]);
 
   // "Show nearest": the closest matching events (same filters) anywhere, framed above the mid sheet — an explicit
   // geographic move that commits its area once. Never automatic, never presented as "here".
@@ -1324,6 +1423,41 @@ export default function MapExplore() {
     goEvent(id);
   }, [saveSnapshot, goEvent]);
   openDetailRef.current = openEventDetail;
+
+  // ---- Unified (note 99): pin → carousel → preview ----
+  // A pin selects its event; the carousel lists the results with that one centred; a card opens the preview, whose
+  // "‹ Danh sách" returns to the carousel. Esc closes the preview, then the carousel. A background tap clears both.
+  useEffect(() => { if (!selectedId) setPreviewOpen(false); }, [selectedId]);
+  const selectPinRef = useRef(null);
+  // Brings a selected event into the free band above whatever covers the bottom (layout-only 'reveal': never a new
+  // search area). MapLibre only: the MapKit adapter has no screen projection, so there the camera stays put.
+  const revealEvent = useCallback((ev, coverPx) => {
+    const map = mapRef.current;
+    if (!map || !ev?.hasLocation || typeof map.project !== 'function') return;
+    const pt = map.project([ev.lng, ev.lat]);
+    const top = geomRef.current.topControlsBottom + 24;
+    const bottom = geomRef.current.containerH - coverPx - 24;
+    if (pt.y >= top && pt.y <= bottom) return;
+    const target = Math.max(top, (top + bottom) / 2);
+    moveCamera('reveal', m => m.panBy([0, pt.y - target], { duration: reduceMotion() ? 0 : 450 }));
+  }, [moveCamera]);
+  const evById = useMemo(() => new Map(events.map(e => [e.id, e])), [events]);
+  selectPinRef.current = (id) => {
+    if (areaPanelRef.current) setAreaPanel(null);
+    setSelectedId(id);
+    setPreviewOpen(false);
+    revealEvent(evById.get(id), dockClear + UD_STACK_H);
+  };
+  const openPreview = useCallback((id) => {
+    setSelectedId(id);
+    setPreviewOpen(true);
+    revealEvent(evById.get(id), Math.round(geomRef.current.containerH * 0.55));
+  }, [revealEvent, evById]);
+  // "Giữ chỗ": Event Detail has no "open ready to reserve" intent yet, so both actions open Event Detail (its reserve bar
+  // is right there); the return snapshot keeps the selection and the preview.
+  const reserveFromPreview = openEventDetail;
+  // The zoom capsule: the same steps a wheel notch gives, as the user's own move (commits the area once it settles).
+  const zoomStep = useCallback((dir) => moveCamera('user', m => (dir > 0 ? m.zoomIn() : m.zoomOut())), [moveCamera]);
   // "Edit preferences": same snapshot/restore as Event Detail, so Back returns to the
   // same camera, sheet, list position and filters.
   const editPreferences = useCallback(() => {
@@ -1738,15 +1872,48 @@ export default function MapExplore() {
   const emptyOnly = showEmptyCard && !(forYouActive && visibleEvents.length === 0) && !!committedBounds
     && !(loading && events.length === 0) && !(loadError && events.length === 0)
     && ((anyInArea && filtersActive) || matchingAnywhere.length > 0);
-  const chipsShown = !areaPanel && !listOpen && !searchActive && !emptyOnly && levelNow !== 'city' && chipsView.length > 0;
-  const stackDrop = (chipsShown && !emptyOnly) || areaPanel ? 0 : CHIPS_H + STACK_GAP;
+  // Unified (note 99): the selected event (only while it is one of the results), its carousel and its preview.
+  const selectedEv = ud && selectedId ? visibleEvents.find(e => e.id === selectedId) || null : null;
+  const showPreview = !!selectedEv && previewOpen && !listOpen && !searchActive;
+  const carouselShown = !!selectedEv && !previewOpen && !areaPanel && !listOpen && !searchActive && !emptyOnly && levelNow !== 'city' && levelNow !== 'area';
+  const chipsShown = !areaPanel && !listOpen && !searchActive && !emptyOnly && levelNow !== 'city' && chipsView.length > 0 && !carouselShown && !showPreview;
+  const stackDrop = ((chipsShown || carouselShown) && !emptyOnly) || areaPanel ? 0 : (ud ? UD_SLOT_H : CHIPS_H) + STACK_GAP;
+  // Unified: the list and the carousel follow the shared sort (Home's sheet), soonest when it is the default.
+  const sortedVisible = useMemo(() => {
+    if (!ud || !s.homeSort || s.homeSort === 'soonest') return visibleEvents;
+    const me = s.located === true && s.userCoords ? s.userCoords : null;
+    return sortEvents(visibleEvents.map(e => ({ ...discoveryItem(e), popularity: e.booked ?? null, distanceKm: me && e.hasLocation ? haversineKm(me, e) : null })), s.homeSort).map(it => it.ev);
+  }, [ud, s.homeSort, visibleEvents, s.located, s.userCoords]);
+  // Esc: the preview first, then the carousel (the list and the area panel have their own Esc).
+  useEffect(() => {
+    if (!ud || !selectedId || listOpen || areaPanel) return undefined;
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      if (previewOpen) setPreviewOpen(false); else setSelectedId(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [ud, selectedId, previewOpen, listOpen, areaPanel]);
+  // The time chip's popover (unified): open state + the chip, so a tap on the chip toggles instead of closing-then-opening.
+  const [timeOpen, setTimeOpen] = useState(false);
+  const timeChipRef = useRef(null);
+  const closeTime = useCallback((refocus) => { setTimeOpen(false); if (refocus) timeChipRef.current?.focus({ preventScroll: true }); }, []);
+  // Zoom capsule bounds (the live map's own limits; MapKit's are the adapter's). MapLibre never zooms out past the point
+  // where the world is as tall as the map (its own minZoom, -2, is below that), so that is the real floor.
+  const liveMap = mapRef.current;
+  const zoomMin = liveMap?.__isMapKit ? liveMap.getMinZoom() : Math.max(liveMap?.getMinZoom?.() ?? 0, Math.log2(Math.max(1, mapDivRef.current?.clientHeight || containerH) / 512));
+  const zoomMax = mapRef.current?.getMaxZoom?.() ?? 22;
+  const atMinZoom = cameraZoom != null && cameraZoom <= zoomMin + 0.3;
+  const atMaxZoom = cameraZoom != null && cameraZoom >= zoomMax - 0.01;
   const srOnly = { position: 'absolute', width: 1, height: 1, margin: -1, padding: 0, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0 };
   const forYouCapsule = { ...photoPill({ position: 'static', borderRadius: RADIUS.pill }), display: 'inline-flex', alignItems: 'center', minHeight: 36, padding: '0 12px', fontSize: 13, color: ink, fontWeight: forYouActive ? 700 : 500, whiteSpace: 'nowrap',
     ...(forYouActive ? { background: ink, color: paper, border: `1px solid ${ink}`, backdropFilter: 'none', WebkitBackdropFilter: 'none', boxShadow: 'none' } : null) };
   // Badge: every selected filter (sheet, category, Seats left, Free, Almost full) + For You + the day window + a picked area.
   // The sheet's draft: the filters, with the day window shown as its When pill.
   const sheetSeed = { ...filters, date: timeWin?.on && ['today', 'tomorrow', 'weekend'].includes(timeWin.key) ? timeWin.key : 'any' };
-  const filterBadge = activeFilterCount(filters) + (forYouActive ? 1 : 0) + (timeWin?.on ? 1 : 0) + (areaContext === 'map' ? 0 : 1);
+  // Unified: only what the Filters sheet owns (type, price, seats, sort); time and area have their own controls.
+  const filterBadge = ud ? ownedFilterCount(filters, s.homeSort)
+    : activeFilterCount(filters) + (forYouActive ? 1 : 0) + (timeWin?.on ? 1 : 0) + (areaContext === 'map' ? 0 : 1);
   const pickedCategory = catFilter !== 'all' ? CATEGORY_DEFS.find(c => c.key === catFilter) : null;
   const categoryChipEl = (c) => {
     const active = catFilter === c.key;
@@ -1816,11 +1983,17 @@ export default function MapExplore() {
   });
 
   return (
-    <div ref={rootRef} data-screen-label="MapExplore" className="bb-mapsurf"
+    <div ref={rootRef} data-screen-label="MapExplore" className="bb-mapsurf" data-ud={ud ? 'true' : undefined}
       style={{ position: 'fixed', inset: 0, background: paper, opacity: 1 - 0.6 * closingProgress, transform: closingProgress ? `scale(${1 - 0.04 * closingProgress})` : 'none', transition: 'opacity 0.3s ease, transform 0.3s ease' }}>
       {/* iOS has no map zoom controls (mapControls {}); the web +/- sits below the shared controls. */}
       <style>{`[data-screen-label="MapExplore"] .maplibregl-ctrl-top-right { top: ${Math.round(topControlsBottom + 12)}px; right: 6px; } [data-screen-label="MapExplore"] .bb-noscroll::-webkit-scrollbar { display: none; }
         @keyframes bbAreaPanelIn { from { transform: translateY(100%); } to { transform: none; } }
+        @keyframes bbMapPreviewIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+        @keyframes bbTimePopIn { from { opacity: 0; transform: translateY(-6px) scale(0.98); } to { opacity: 1; transform: none; } }
+        [data-screen-label="MapExplore"] .bb-timepop { transform-origin: top left; animation: bbTimePopIn 0.18s ease-out; }
+        @media (prefers-reduced-motion: reduce) { [data-screen-label="MapExplore"] .bb-timepop { animation: none; } }
+        /* Unified (note 99): the Map draws its own "− +" capsule in the bottom row. */
+        [data-screen-label="MapExplore"][data-ud="true"] .maplibregl-ctrl-top-right { display: none; }
         /* Attribution (required) lives just above the bottom stack (the dock and its buttons). */
         [data-screen-label="MapExplore"] .maplibregl-ctrl-bottom-right { display: block; bottom: ${Math.max(0, Math.round(containerH - lay.sheetTopPx))}px; z-index: 3; max-width: calc(100% - 12px); }
         [data-screen-label="MapExplore"] .maplibregl-ctrl-attrib { font-size: 10px; line-height: 1.3; max-width: 100%; }
@@ -1848,6 +2021,12 @@ export default function MapExplore() {
             categories". The row keeps data-hscroll so the root tab swipe ignores it. */}
         <div ref={chipRowRef} data-hscroll="true" data-testid="map-filter-extra-scroller" className="bb-noscroll"
           style={{ display: 'flex', gap: 8, padding: '2px 16px', overflowX: 'auto', scrollbarWidth: 'none', pointerEvents: 'auto' }}>
+          {ud && (
+            <>
+              <MapTimeChip ref={timeChipRef} win={timeWin} dayLabel={dayLabel} open={timeOpen} onToggle={() => setTimeOpen(o => !o)} T={T} />
+              <span aria-hidden="true" style={{ flex: 'none', width: 1, height: 22, alignSelf: 'center', background: rule }} />
+            </>
+          )}
           {hasPrefs && (
             <ForYouChip
               T={T}
@@ -1876,10 +2055,16 @@ export default function MapExplore() {
             {T('Tất cả danh mục', 'All categories')}
           </button>
         </div>
+        {/* Unified: the time chip's popover, under the chip row (the row scrolls, so it cannot hold it). */}
+        {ud && (
+          <MapTimePopover open={timeOpen} onClose={closeTime} chipRef={timeChipRef} win={timeWin} options={dayOpts} dayLabel={dayLabel} T={T}
+            onDay={(k) => { pickDay(k); closeTime(true); }} onKnob={(which, hour) => setTimeWin(cur => moveKnob(cur, which, hour))}
+            style={{ top: 'calc(100% + 6px)' }} />
+        )}
       </div>
 
       {/* The bottom stack: my location and "List · N", right above the dock. */}
-      <div style={{ position: 'absolute', right: 16, bottom: dockClear + FAB_BOTTOM - stackDrop, transition: reduceMotion() ? 'none' : 'bottom 0.25s ease', zIndex: 3, display: 'flex', alignItems: 'center', gap: 8, visibility: listOpen || areaPanel ? 'hidden' : 'visible' }}>
+      <div style={{ position: 'absolute', right: 16, bottom: dockClear + fabBottom - stackDrop, transition: reduceMotion() ? 'none' : 'bottom 0.25s ease', zIndex: 3, display: 'flex', alignItems: 'center', gap: 8, visibility: listOpen || areaPanel || showPreview ? 'hidden' : 'visible' }}>
         <div role="button" tabIndex={0} onClick={recenterOnUser} data-testid="map-compass" aria-label={T('Vị trí của tôi', 'My location')}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); recenterOnUser(); } }}
           style={{ ...photoPill({ position: 'static', borderRadius: '50%' }), width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, opacity: compassOpacity }}>
@@ -1895,10 +2080,38 @@ export default function MapExplore() {
         </button>
       </div>
 
+      {/* Unified: zoom as one small "− +" capsule at the left of the bottom row (the map's own control is hidden). */}
+      {ud && (
+        <div role="group" aria-label={T('Thu phóng bản đồ', 'Map zoom')} data-testid="map-zoom"
+          style={{ ...photoPill({ position: 'absolute', borderRadius: RADIUS.pill }), left: 16, bottom: dockClear + fabBottom - stackDrop, zIndex: 3, height: 44, display: 'flex', alignItems: 'center', overflow: 'hidden', cursor: 'default',
+            transition: reduceMotion() ? 'none' : 'bottom 0.25s ease', visibility: listOpen || areaPanel || showPreview || emptyOnly ? 'hidden' : 'visible' }}>
+          {[['out', -1, T('Thu nhỏ', 'Zoom out'), 'M5 12h14', atMinZoom], ['in', 1, T('Phóng to', 'Zoom in'), 'M12 5v14M5 12h14', atMaxZoom]].map(([k, dir, label, d, off], i) => (
+            <Fragment key={k}>
+              {i === 1 && <span aria-hidden="true" style={{ width: 1, height: 18, background: rule }} />}
+              <button type="button" onClick={() => zoomStep(dir)} disabled={off} aria-label={label} data-testid={`map-zoom-${k}`}
+                style={{ width: 44, height: 44, display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: ink, cursor: off ? 'default' : 'pointer', opacity: off ? 0.3 : 1, padding: 0 }}>
+                <svg aria-hidden="true" width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round"><path d={d} /></svg>
+              </button>
+            </Fragment>
+          ))}
+        </div>
+      )}
+
+      {/* Unified: a selected pin's carousel (pin level), then its preview card. */}
+      {carouselShown && (
+        <MapCarousel events={sortedVisible} selectedId={selectedId} onOpen={openPreview} seatsOf={seatFacts} isHit={isHit} T={T}
+          style={{ bottom: dockClear + CHIPS_BOTTOM - 4 }} />
+      )}
+      {showPreview && (
+        <MapPreview ev={selectedEv} distance={nearDistance(selectedEv)} seatsOf={seatFacts} T={T}
+          onBack={() => setPreviewOpen(false)} onDetails={() => openEventDetail(selectedEv.id)} onReserve={() => reserveFromPreview(selectedEv.id)}
+          style={{ bottom: dockClear + 12 }} />
+      )}
+
       {/* (stackDrop: with no neighbourhood chips the time bar and buttons settle into their room, no gap above the dock.) */}
       {/* Neighbourhood chips: tap one to fly there and open its panel. Hidden at city level, while the list or a panel is
           open, and while there is nothing to show; their room above the buttons stays reserved. */}
-      {!areaPanel && !listOpen && !searchActive && !emptyOnly && levelNow !== 'city' && chipsView.length > 0 && (
+      {chipsShown && (
         <div data-hscroll="true" data-testid="map-area-chips" className="bb-noscroll" role="group" aria-label={T('Khu vực', 'Areas')}
           style={{ position: 'absolute', left: 0, right: 0, bottom: dockClear + CHIPS_BOTTOM, zIndex: 3, display: 'flex', gap: 8, overflowX: 'auto', padding: '2px 16px 4px', scrollbarWidth: 'none' }}>
           {chipsView.map(g => {
@@ -1956,13 +2169,13 @@ export default function MapExplore() {
 
       {/* The day + hours: events inside are bold on the map, the rest dimmed; "All days" turns it off. It rides above the
           panel while one is open. */}
-      <MapTimeBar win={timeWin} options={dayOpts} dayLabel={dayLabel} T={T}
-        onDay={(k) => setTimeWin(defaultWindow(k, Date.now(), viewTz))}
+      {!ud && <MapTimeBar win={timeWin} options={dayOpts} dayLabel={dayLabel} T={T}
+        onDay={pickDay}
         onKnob={(which, hour) => setTimeWin(cur => moveKnob(cur, which, hour))}
-        style={{ bottom: areaPanel ? panelPx + 12 : dockClear + TIME_BOTTOM - stackDrop, visibility: listOpen || emptyOnly ? 'hidden' : 'visible', transition: reduceMotion() ? 'none' : 'bottom 0.38s cubic-bezier(.2,.85,.25,1)' }} />
+        style={{ bottom: areaPanel ? panelPx + 12 : dockClear + TIME_BOTTOM - stackDrop, visibility: listOpen || emptyOnly ? 'hidden' : 'visible', transition: reduceMotion() ? 'none' : 'bottom 0.38s cubic-bezier(.2,.85,.25,1)' }} />}
 
       {showEmptyCard && (
-        <div data-testid="map-empty-card" style={{ position: 'absolute', left: 16, right: 16, bottom: dockClear + FAB_BOTTOM - stackDrop + (emptyOnly ? 0 : BTN_H + 8), zIndex: 3, maxHeight: '40%', overflowY: 'auto', background: paper, borderRadius: 16, boxShadow: '0 4px 18px rgba(27,25,22,0.16)' }}>
+        <div data-testid="map-empty-card" style={{ position: 'absolute', left: 16, right: 16, bottom: dockClear + fabBottom - stackDrop + (emptyOnly ? 0 : BTN_H + 8), zIndex: 3, maxHeight: '40%', overflowY: 'auto', background: paper, borderRadius: 16, boxShadow: '0 4px 18px rgba(27,25,22,0.16)' }}>
           {emptyNodes}
         </div>
       )}
@@ -2043,8 +2256,8 @@ export default function MapExplore() {
           {listOpen && (() => {
             // Inside the window first (soonest first, as loaded), then a dimmed "outside" group, then (apart, never counted
             // as "in this area") matching events with no map location.
-            const inside = hitSet ? visibleEvents.filter(e => hitSet.has(e.id)) : visibleEvents;
-            const outside = hitSet ? visibleEvents.filter(e => !hitSet.has(e.id)) : [];
+            const inside = hitSet ? sortedVisible.filter(e => hitSet.has(e.id)) : sortedVisible;
+            const outside = hitSet ? sortedVisible.filter(e => !hitSet.has(e.id)) : [];
             const ordered = [...inside, ...outside, ...noLocationMatches];
             return ordered.map((ev, i) => {
               const dim = i >= inside.length && i < inside.length + outside.length;
@@ -2090,13 +2303,20 @@ export default function MapExplore() {
           mapMode
           items={sheetItems}
           filters={sheetSeed}
-          sort="soonest"
+          sort={ud ? (s.homeSort || 'soonest') : 'soonest'}
           now={nowMinute * 60000}
           T={T}
-          canSortNearest={false}
+          canSortNearest={ud ? (s.located === true && !!s.userCoords) : false}
           areaLabel={areaChipLabel}
           forYou={hasPrefs ? { on: forYouActive, set: setForYouOn } : null}
-          onApply={(draft) => {
+          onApply={(draft, sort) => {
+            if (ud) {
+              // Unified: the sheet edits the shared filters and sort; the day stays the time chip's.
+              setFilters(normalizeFilters({ ...draft, date: 'any' }));
+              if (sort && sort !== s.homeSort) set({ homeSort: sort });
+              setFilterSheetOpen(false);
+              return;
+            }
             // The sheet's When pills drive the day window (dim/bold, never a filter).
             if (draft.date !== sheetSeed.date) setTimeWin(windowFromHomeDate(draft.date, Date.now(), VN_TIME_ZONE));
             setFilters(normalizeFilters({ ...draft, date: 'any' }));

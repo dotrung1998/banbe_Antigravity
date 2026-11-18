@@ -42,6 +42,9 @@ export default function HomeShellV5({
   T, lang, tab, onTab, onReturnToEvents, lists, items, canHost, user, dateLabel, areaLabel, areaActive = false, filtersActive = false, hasPrefs = true, onClearFilters,
   onOpenEvent, onSeeAll, onAccount, onSearch, onArea, onMap, onFilters, filterSummary, onFindType, onPickType, onSetPrefs, onBrowseAll,
   typeCounts, badgeDate, trStatus, children, hostBody, below, shortlist = null, seeAll = null, onBrowseType = null, browseTotal = null,
+  // Note 99 (switch unified_discovery): Browse by type that filters Home in place replaces the grid below, and the
+  // search circle carries a dot while the shared query is on.
+  unifiedBrowse = null, searchActive = false,
 }) {
   const rail = useRef(null);
   const [idx, setIdx] = useState(0);
@@ -121,7 +124,7 @@ export default function HomeShellV5({
   const h3 = { fontSize: 19, fontWeight: 400, margin: 0, letterSpacing: '-.01em' };
   // Browse (types with counts): above By type today; with v2.3 (note 81) it closes Home, under the Shortlist.
   const pickType = onBrowseType || onPickType;
-  const browseEl = (browse.length > 0 && (
+  const browseEl = unifiedBrowse || (browse.length > 0 && (
             <div data-testid="home-browse" style={{ padding: '28px 20px 0', scrollMarginTop: 'var(--bb-home-head-h)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                 <h3 style={h3}>{onBrowseType ? T('Duyệt theo loại', 'Browse by type') : T('Khám phá', 'Browse')}</h3>
@@ -217,7 +220,10 @@ export default function HomeShellV5({
           </div>
           <div className="bb-home-head__quick">
             <button type="button" onClick={onSearch} data-testid="home-search-bar" aria-label={T('Tìm sự kiện', 'Search events')}
-              className="bb-home-head__round bb-home-head__round--search"><Icon d={SEARCH} size={18} /></button>
+              className="bb-home-head__round bb-home-head__round--search" style={searchActive ? { position: 'relative' } : undefined}>
+              <Icon d={SEARCH} size={18} />
+              {searchActive && <i aria-hidden="true" data-testid="home-search-dot" style={{ position: 'absolute', top: 5, right: 5, width: 8, height: 8, borderRadius: '50%', background: 'var(--bb-clay)', boxShadow: '0 0 0 2px var(--bb-bg)' }} />}
+            </button>
             <button type="button" onClick={onMap} data-testid="home-map-button" aria-label={T('Bản đồ', 'Map')}
               className="bb-home-head__round"><Icon d={MAP} size={18} /></button>
             <button type="button" onClick={onAccount} aria-label={T('Tài khoản và cài đặt nhanh', 'Account and quick settings')} data-testid="home-avatar-button" className="bb-home-head__avatar">

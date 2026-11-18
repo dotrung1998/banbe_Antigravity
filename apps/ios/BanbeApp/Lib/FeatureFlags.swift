@@ -12,7 +12,7 @@ import Foundation
 enum FeatureFlags {
     static let keys = ["rewards", "admin_event_wipe", "rewards_v2", "push_enabled", "app_events",
                        "event_reminders", "event_recap", "host_recap", "follow_alerts", "weekly_digest", "intent_foryou", "live_activity", "market_share", "onboarding_v2", "onboarding_v3", "event_type_profiles", "simple_shell", "polaroid_cards",
-                       "event_project_hub", "project_qr_invite", "project_delegate_checkin", "project_delegate_payments", "project_delegate_refunds", "project_hub_demo", "ticket_demo", "home_v23"]
+                       "event_project_hub", "project_qr_invite", "project_delegate_checkin", "project_delegate_payments", "project_delegate_refunds", "project_hub_demo", "ticket_demo", "home_v23", "unified_discovery"]
     /// Flags that are OFF unless the server explicitly says true (a missing key never turns them on). Note 54:
     /// "admin_event_wipe" is a TESTING-PHASE admin tool that must never switch itself on. "rewards_v2" (migration
     /// 192) is a new feature that stays dark until an admin turns it on (same list as src/lib/featureFlags.js).
@@ -23,10 +23,10 @@ enum FeatureFlags {
     /// "simple_shell" (note 66) is ON unless an admin turns it off (note 80, web twin src/lib/featureFlags.js): not in this list.
     /// Event Project Hub (note 76, migrations 210-214): the hub, QR invites and each money step separately. All stay
     /// dark until set: a missing key must never hand anyone door or money access. "ticket_demo" (migration 217): the admin-only ticket demo on sample bookings. "project_hub_demo" (migration 216):
-    /// the admin-only demo hub on sample data, off unless set. "home_v23" (migration 218, note 81): the v2.3 Home, Browse, Event Detail and host profile on web and iOS (`homeV23Enabled`), off unless set.
+    /// the admin-only demo hub on sample data, off unless set. "home_v23" (migration 218, note 81): the v2.3 Home, Browse, Event Detail and host profile on web and iOS (`homeV23Enabled`), off unless set. "unified_discovery" (migration 221, note 99): Home and Map share one search/type/time/filters (`unifiedDiscoveryEnabled`), off unless set.
     static let offUnlessSet: Set<String> = ["admin_event_wipe", "rewards_v2", "push_enabled", "app_events",
                                             "event_recap", "host_recap", "follow_alerts", "weekly_digest", "intent_foryou", "live_activity", "market_share", "onboarding_v2", "onboarding_v3", "event_type_profiles", "polaroid_cards",
-                                            "event_project_hub", "project_qr_invite", "project_delegate_checkin", "project_delegate_payments", "project_delegate_refunds", "project_hub_demo", "ticket_demo", "home_v23"]
+                                            "event_project_hub", "project_qr_invite", "project_delegate_checkin", "project_delegate_payments", "project_delegate_refunds", "project_hub_demo", "ticket_demo", "home_v23", "unified_discovery"]
     static let cacheKey = "banbe.featureFlags.v1"
 
     /// Keep only known keys with real booleans.

@@ -526,7 +526,6 @@ extension AppState {
         userID = session.user.id
         syncAppEventsSink()
         userEmail = session.user.email
-        refreshScheduleAdded()
         clearAuthDraft()
         syncFollowOwner()
         syncRewardsOwner()
@@ -3455,7 +3454,10 @@ extension AppState {
         do {
             let rows: [FavoriteRow] = try await SupabaseService.client
                 .from("favorites").select("event_id").eq("user_id", value: uid).execute().value
-            if favoritesLoadedForUID == uid { favorites = rows.map(\.eventId) }
+            guard favoritesLoadedForUID == uid, favoriteToggleInFlight.isEmpty else { return }
+            favorites = rows.map(\.eventId)
+            // Note 99: the old device-local Schedule list moves into Saved once.
+            await moveLegacyScheduleAdds(uid: uid)
         } catch {
             print("loadFavorites failed:", error)
         }

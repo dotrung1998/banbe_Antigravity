@@ -120,7 +120,8 @@ final class Fixes45Tests: XCTestCase {
         let perRead = (CFAbsoluteTimeGetCurrent() - start) / 50
         XCTAssertLessThan(perRead, 0.02, "a cached read with 300 events should take milliseconds, got \(perRead)s")
 
-        app.scheduleAddedKeys = ["e1"]
+        app.userID = app.userID ?? UUID()
+        app.favorites = ["e1"]
         XCTAssertNotEqual(app.scheduleInputsKey(), key, "an input change invalidates the cache")
         XCTAssertTrue(app.scheduleSnapshot.mine.items.contains { $0.id == "e1" })
         XCTAssertFalse(app.scheduleSnapshot.discover.contains { $0.key == "e1" }, "a plan leaves Discover")

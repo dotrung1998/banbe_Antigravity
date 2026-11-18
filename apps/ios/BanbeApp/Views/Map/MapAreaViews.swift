@@ -78,6 +78,10 @@ struct MapAreaBubble: View {
     let group: MapDiscovery.AreaGroup
     /// The Map's time window is on (the count is then `group.hit`).
     let windowOn: Bool
+    /// Note 99 (unified_discovery): the area's type glyphs under its name (busiest first, max 4) and how many more.
+    /// Empty with the switch off: the bubble is exactly as before.
+    var glyphs: [String] = []
+    var moreGlyphs: Int = 0
     let onTap: () -> Void
 
     private var single: Bool { group.keys.count == 1 }
@@ -107,6 +111,16 @@ struct MapAreaBubble: View {
                 .foregroundStyle(app.palette.ink)
                 .background(app.palette.paper, in: Capsule())
                 .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
+            if !glyphs.isEmpty {
+                HStack(spacing: 4) {
+                    ForEach(glyphs, id: \.self) { Image(systemName: CategoryGlyph.symbol($0)).font(.app(size: 10.5, weight: .semibold)) }
+                    if moreGlyphs > 0 { Text("+\(moreGlyphs)").font(.app(size: 10.5, weight: .bold)) }
+                }
+                .padding(.horizontal, 7).padding(.vertical, 3)
+                .foregroundStyle(app.palette.ink)
+                .background(app.palette.paper, in: Capsule())
+                .shadow(color: .black.opacity(0.15), radius: 2, y: 1)
+            }
         }
         .opacity(dim ? MapDim.zeroBubble : 1)
         .contentShape(Rectangle())
@@ -114,7 +128,10 @@ struct MapAreaBubble: View {
         .accessibilityLabel((single ? app.T("\(name), \(n) sự kiện, mở khu này", "\(name), \(n) event\(n == 1 ? "" : "s"), open this area")
                                     : app.T("\(name), \(n) sự kiện, phóng to", "\(name), \(n) event\(n == 1 ? "" : "s"), zoom in"))
                             + (windowOn ? app.T(" trong khung giờ", " in the window") : "")
-                            + (dim ? app.T(", ngoài khung giờ", ", outside time window") : ""))
+                            + (dim ? app.T(", ngoài khung giờ", ", outside time window") : "")
+                            + (glyphs.isEmpty ? "" : ": " + glyphs.map { k in
+                                HomeDiscovery.categories.first { $0.key == k }.map { app.T($0.vi, $0.en) } ?? k }.joined(separator: ", ")
+                                + (moreGlyphs > 0 ? app.T(" và \(moreGlyphs) loại khác", " and \(moreGlyphs) more") : "")))
         .accessibilityAddTraits(.isButton)
         .accessibilityValue("\(n)")
         .accessibilityIdentifier("map.areaBubble.\(group.keys.joined(separator: "+"))")

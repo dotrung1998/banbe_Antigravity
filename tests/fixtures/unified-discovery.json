@@ -1,0 +1,36 @@
+{
+  "_comment": "Note 99 (switch unified_discovery): rules shared by src/lib/unifiedDiscovery.js and apps/ios/BanbeApp/Lib/UnifiedDiscovery.swift.",
+  "keys": ["supper", "music", "gallery", "fashion", "popup", "film", "talk"],
+  "tabForDate": [
+    { "date": "any", "tab": "foryou" },
+    { "date": "today", "tab": "tonight" },
+    { "date": "weekend", "tab": "weekend" },
+    { "date": "tomorrow", "tab": "foryou" },
+    { "date": "week", "tab": "foryou" }
+  ],
+  "dateForTab": { "foryou": "any", "tonight": "today", "weekend": "weekend" },
+  "topTypes": [
+    { "counts": { "supper": 2, "music": 1, "gallery": 2, "fashion": 1, "popup": 1, "film": 0, "talk": 3 }, "n": 5,
+      "expect": ["talk", "supper", "gallery", "music", "fashion"] },
+    { "counts": {}, "n": 5, "expect": ["supper", "music", "gallery", "fashion", "popup"] }
+  ],
+  "pickedTileType": [
+    { "selected": "film", "tiles": ["supper", "music"], "expect": "film" },
+    { "selected": "music", "tiles": ["supper", "music"], "expect": null },
+    { "selected": null, "tiles": ["supper"], "expect": null },
+    { "selected": "all", "tiles": ["supper"], "expect": null }
+  ],
+  "typeSheetOrder": [
+    { "counts": { "supper": 1, "music": 3, "film": 0 }, "query": "", "expect": ["music", "supper", "gallery", "fashion", "popup", "film", "talk"] },
+    { "counts": { "supper": 1 }, "query": "mus", "expect": ["music"] }
+  ],
+  "areaGlyphs": [
+    { "cats": { "music": 1, "supper": 2, "gallery": 1, "popup": 1, "fashion": 1 }, "max": 4,
+      "shown": ["supper", "music", "gallery", "fashion"], "more": 1 },
+    { "cats": { "film": 0, "talk": 1 }, "max": 4, "shown": ["talk"], "more": 0 }
+  ],
+  "ownedFilterCount": [
+    { "filters": { "date": "today", "cats": [], "free": false, "priceMin": null, "priceMax": null, "seatsLeft": false, "almostFull": false, "typeFilters": [] }, "sort": "soonest", "expect": 0 },
+    { "filters": { "date": "any", "cats": ["music"], "free": true, "priceMin": null, "priceMax": null, "seatsLeft": true, "almostFull": false, "typeFilters": [] }, "sort": "price", "expect": 4 }
+  ]
+}

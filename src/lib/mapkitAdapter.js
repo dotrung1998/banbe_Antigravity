@@ -4,6 +4,8 @@
 // uses; they are converted to/from MapKit's coordinate span for the current container width.
 
 const TILE = 256;
+// The range the web map lets the zoom capsule step through (MapKit zoom units, one above MapLibre's 512 px basis).
+const MIN_ZOOM = 2, MAX_ZOOM = 20;
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
@@ -64,6 +66,13 @@ export function createMapKitMap(mapkit, { container, center, zoom, theme }) {
       map.setRegionAnimated(regionFor(c, z), true);
     },
     panBy() {},
+    // MapLibre-style zoom steps (unified Map's own "− +" capsule, note 99).
+    zoomIn() { api.easeTo({ zoom: api.getZoom() + 1 }); },
+    zoomOut() { api.easeTo({ zoom: Math.max(MIN_ZOOM, api.getZoom() - 1) }); },
+    getMinZoom: () => MIN_ZOOM,
+    getMaxZoom: () => MAX_ZOOM,
+    // The unified Map draws its own zoom capsule, so MapKit's control can be hidden (and shown again).
+    setZoomControlVisible(v) { map.showsZoomControl = !!v; },
     resize() { /* MapKit tracks its container size itself */ },
     setColorScheme(mode) {
       map.colorScheme = mode === 'dark' ? mapkit.Map.ColorSchemes.Dark : mapkit.Map.ColorSchemes.Light;

@@ -51,6 +51,8 @@ enum UITestFixture {
     /// Note 81: `-uiFixtureV23 YES` is an admin having turned on `home_v23` (with `simple_shell`); `-uiFixtureHeld 2`
     /// (with `shell.event`) gives the viewer a 2-seat hold on the open event, `-uiFixtureHeldConfirmed YES` a ticket.
     static let v23 = UserDefaults.standard.bool(forKey: "uiFixtureV23")
+    /// Note 99: `-uiFixtureUnified YES` (with `-uiFixtureV23 YES`) turns on `unified_discovery`.
+    static let unified = UserDefaults.standard.bool(forKey: "uiFixtureUnified")
     static let held = UserDefaults.standard.integer(forKey: "uiFixtureHeld")
     static let heldConfirmed = UserDefaults.standard.bool(forKey: "uiFixtureHeldConfirmed")
     static let hostMode = UserDefaults.standard.bool(forKey: "uiFixtureHostMode")
@@ -245,6 +247,7 @@ struct UITestFixtureRoot: View {
         if UITestFixture.simpleShell { app.featureFlags["simple_shell"] = true }
         if UITestFixture.polaroid { app.featureFlags["polaroid_cards"] = true }
         if UITestFixture.v23 { app.featureFlags["simple_shell"] = true; app.featureFlags["home_v23"] = true }
+        if UITestFixture.unified { app.featureFlags["unified_discovery"] = true }
         if UITestFixture.projectHub { app.featureFlags["event_project_hub"] = true; app.myProjectsLoaded = true }
         if UITestFixture.projectDemo { app.featureFlags[ProjectDemo.flag] = true }
         if UITestFixture.eventTypes {
@@ -607,11 +610,9 @@ struct UITestFixtureRoot: View {
             app.myOrgEventOrganizerID = ["fx-hosted": "fx-org"]
             app.myOrgEventSummaries = summaries.filter { $0.id == "fx-hosted" }
         }
-        // Manual addition (device-local store), reset per launch.
-        let store = InAppCalendarStore()
-        store.clear(uid: UITestFixture.userID)
-        if !empty && !failed && !name.hasPrefix("plan") { store.add("fx-added", uid: UITestFixture.userID) }
-        app.refreshScheduleAdded()
+        // A saved event (note 99: Saved is the Schedule's "Saved" source), reset per launch.
+        InAppCalendarStore().clear(uid: UITestFixture.userID)
+        if !empty && !failed && !name.hasPrefix("plan") { app.favorites.append("fx-added") }
         // Discover pool (public + live), including the hosted one to prove dedupe.
         app.discoveryEvents = failed ? [] : events.filter { $0.key != "fx-added" || name.hasPrefix("plan") }
         // Map v6 (note 74): two Home cards with three photos each (the card pager).

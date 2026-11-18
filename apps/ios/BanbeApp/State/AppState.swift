@@ -707,6 +707,8 @@ final class AppState: ObservableObject {
     @Published var surveyCreateRequested = false
     // MARK: Feed state
     @Published var favorites: [String] = []
+    /// Note 99: the "Saved · added to banbe Schedule" toast with Undo after a heart tap (RootView, above the dock).
+    @Published var saveToast: SaveToast?
     @Published var following: [String] = []
     // Canonical, account-scoped follow state (AppState+Following.swift).
     @Published var followedOrgIDs: Set<String> = []
@@ -4303,12 +4305,15 @@ final class AppState: ObservableObject {
     // dedupe per event key so a fast double-tap can't fire two opposite
     // writes for the same row, and a rollback that only applies if this is
     // still the same signed-in account by the time the request settles.
-    func toggleFavorite(_ key: String) {
+    func toggleFavorite(_ key: String) { toggleFavorite(key, showsToast: true) }
+
+    func toggleFavorite(_ key: String, showsToast: Bool) {
         // Note 48: a guest's save used to flip locally and vanish; ask instead.
         guard isSignedIn else { return promptSignIn(.save) }
         guard !favoriteToggleInFlight.contains(key) else { return }
         Haptics.selection()
         let wasSaved = favorites.contains(key)
+        if showsToast { showSaveToast(key: key, saved: !wasSaved) }
         if let index = favorites.firstIndex(of: key) { favorites.remove(at: index) } else { favorites.append(key) }
         if !wasSaved { Analytics.trackFirst(.firstEventSaved, userID: userID) }
         guard let uid = userID else { return } // signed-out: local-only, same as before this ticket

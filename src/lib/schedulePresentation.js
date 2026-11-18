@@ -6,9 +6,11 @@
 //   2. awaiting — active booking whose payment is pending host verification.
 //   3. holding  — active booking still inside its seat-hold window (an EXPIRED hold is not a plan).
 //   4. hosting  — the account's own organizer's event.
-//   5. added    — put on the banbe Schedule by hand (this browser only, scheduleStore below).
+//   5. added    — the account's Saved list (server `favorites`, note 99), labelled "Saved".
 // Never included: cancelled events, cancelled bookings, expired holds, tickets gifted to someone else, events with no
-// start time (counted separately so nothing silently disappears). Saved/favorited events are NOT a source.
+// start time (counted separately so nothing silently disappears).
+// Note 99: source 5 'added' is the account's Saved list (the `favorites` table, read from the server), so saving an
+// event and adding it to the Schedule are the same act on every device. Label: "Đã lưu" / "Saved".
 //
 // Time honesty: events carry NO end time today (note 38). "Overlap" is only claimed when both items have a real end;
 // otherwise the only statement made is "starts within 2 hours of a plan". Dates are the browser's local calendar.
@@ -23,7 +25,7 @@ export function sourceLabel(source, T) {
     awaiting: T('Chờ host xác nhận', 'Awaiting host confirmation'),
     holding: T('Đang giữ chỗ', 'Seat on hold'),
     hosting: T('Bạn tổ chức', "You're hosting"),
-    added: T('Bạn đã thêm', 'Added by you'),
+    added: T('Đã lưu', 'Saved'),
   }[source];
 }
 
@@ -228,14 +230,14 @@ export function dayBucket(d, today = new Date()) {
   return 'later';
 }
 
-// MARK: manual adds (this browser only, per account)
+// MARK: legacy manual adds (this browser only, per account) — moved into Saved once, note 99
 
 const storeKey = (uid) => `banbe.schedule.added.v1.${uid}`;
 const ls = () => (typeof localStorage !== 'undefined' ? localStorage : null);
 
 /**
- * "Add to banbe Schedule" — kept in this browser for this account only (event ids + addedAt). Does NOT sync across
- * devices or with the iOS app (that needs a backend table; see note 44).
+ * LEGACY (note 44): the old browser-only "Add to banbe Schedule" list. Since note 99 the Schedule reads the Saved list
+ * from the server; BanBeContext moves anything left here into `favorites` once and then calls clear().
  */
 export const scheduleStore = {
   entries(uid, storage = ls()) {
@@ -249,6 +251,10 @@ export const scheduleStore = {
     if (list.some(e => e.key === key)) return 'alreadyAdded';
     try { storage?.setItem(storeKey(uid), JSON.stringify([...list, { key, addedAt: now }])); } catch { /* ignore */ }
     return 'added';
+  },
+  clear(uid, storage = ls()) {
+    if (!uid) return;
+    try { storage?.removeItem(storeKey(uid)); } catch { /* ignore */ }
   },
   remove(key, uid, storage = ls()) {
     const list = this.entries(uid, storage).filter(e => e.key !== key);

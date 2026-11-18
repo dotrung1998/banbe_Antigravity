@@ -46,6 +46,10 @@ import { liveUpdates } from '../lib/liveLine.js';
 import { useReducedMotion } from '../lib/useReducedMotion.js';
 import { browseFilters as toBrowseFilters, typeCounts as browseTypeCounts } from '../lib/browse.js';
 import HomeShellV5 from '../components/home/HomeShellV5.jsx';
+import { UnifiedStateBar, UnifiedTypeGrid, UnifiedTypeSheet, UnifiedMapBanner } from '../components/home/UnifiedHomeParts.jsx';
+import { DATE_FOR_TAB, tabForDate, ownedFilterCount } from '../lib/unifiedDiscovery.js';
+import { buildEventSearchDoc, matchesSearchQuery } from '../lib/search.js';
+import { searchBarStore } from '../lib/searchBarStore.js';
 import QuickSheetV5 from '../components/home/QuickSheetV5.jsx';
 // Map v6 (note 74): the card pager's photos (cover first, max 6).
 import { cardPhotoList } from '../lib/eventPhotoUrls.js';
@@ -141,6 +145,9 @@ export default function Home({ browse = false }) {
   const simpleShell = flagOn(s.featureFlags, 'simple_shell');
   // v2.3 (note 81, switch home_v23, on top of simple_shell): paged Shortlist, rail of 4 + See all, Browse by type.
   const v23 = simpleShell && flagOn(s.featureFlags, 'home_v23');
+  // Note 99 (migration 221): Home and Map share ONE search, type, time, price and sort. The tabs are the shared time
+  // (homeFilters.date), the shared query (s.searchQuery) narrows Home too, Browse by type filters in place.
+  const ud = v23 && flagOn(s.featureFlags, 'unified_discovery');
   // Calm Pass phase 3 (migration 208, note 71): Home event cards as polaroids. Cards view only; the list is unchanged.
   const polaroidCards = flagOn(s.featureFlags, 'polaroid_cards');
   // Follow-up (note 66): the Hosting view is `homeView` (session-only), shown only while organizer mode is on
@@ -472,15 +479,24 @@ export default function Home({ browse = false }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [feed, s.eventFill, s.homeLiveEvents, located, s.userCoords, pulseScore]);
   const homeFilters = s.homeFilters || DEFAULT_FILTERS;
+  // Note 99: the shared query (the same one Search and the Map use) narrows every Home list, with Search's matcher.
+  const udQuery = ud ? String(s.searchQuery || '').trim() : '';
+  const qItems = useMemo(() => {
+    if (!udQuery) return discoveryItems;
+    return discoveryItems.filter(({ ev: e, details }) => matchesSearchQuery(buildEventSearchDoc({
+      ...e, catLabel: e.cat, area: e.isReal ? e.area : e.locationLabel, organizerName: e.organizerName || e.hostShort,
+      description: e.desc, details,
+    }), udQuery));
+  }, [discoveryItems, udQuery]);
   // Home → Map (Map redesign phase 3): the Map opens with Home's applied filters and For You; it frames its own map
   // area, so its count can differ from Home's (it says so: "+N matching outside this area").
   const openMapWithContext = () => goMapExplore({ source: 'home', filters: homeFilters, forYou: forYouActive });
   const shownItems = useMemo(() => {
-    const filtered = applyDiscoveryFilters(discoveryItems, homeFilters, nowMs);
+    const filtered = applyDiscoveryFilters(qItems, homeFilters, nowMs);
     // For You keeps its own ranking; any explicit sort overrides it, Soonest keeps the feed's order.
     return s.homeSort && s.homeSort !== 'soonest' ? sortEvents(filtered, s.homeSort) : filtered;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [discoveryItems, homeFilters, s.homeSort, Math.floor(nowMs / 60000)]);
+  }, [qItems, homeFilters, s.homeSort, Math.floor(nowMs / 60000)]);
   const quickCounts = useMemo(() => ({
     ...optionCounts(discoveryItems, homeFilters, 'date', ['today', 'weekend'], nowMs),
     free: optionCounts(discoveryItems, homeFilters, 'free', null, nowMs).true,
@@ -504,9 +520,9 @@ export default function Home({ browse = false }) {
   });
   // Category row (web + iOS twin): the counts are what tapping each category shows, with the very same filter the
   // feed renders with (categoryCounts); the row only lists categories that have events here, most first.
-  const categoryCountMap = useMemo(() => categoryCounts(discoveryItems, homeFilters, TYPE_KEYS, nowMs),
+  const categoryCountMap = useMemo(() => categoryCounts(qItems, homeFilters, TYPE_KEYS, nowMs),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-    [discoveryItems, homeFilters, Math.floor(nowMs / 60000)]);
+    [qItems, homeFilters, Math.floor(nowMs / 60000)]);
   const categoryRow = categoryRowKeys(categoryCountMap, TYPE_KEYS, homeFilters.cats);
   const [categorySheetOpen, setCategorySheetOpen] = useState(false);
   const filterBadge = activeFilterCount(homeFilters);
@@ -566,15 +582,17 @@ export default function Home({ browse = false }) {
     const base = { ...homeFilters, date: 'any' };
     // v2.3 (note 81): at most four frames, then the See all card.
     const railMax = v23 ? 4 : 5;
-    const byDate = (date) => applyDiscoveryFilters(discoveryItems, { ...base, date }, nowMs).filter(open).slice(0, railMax).map(shape);
-    const byKey = new Map(discoveryItems.map(it => [it.key, it]));
+    const byDate = (date) => applyDiscoveryFilters(qItems, { ...base, date }, nowMs).filter(open).slice(0, railMax).map(shape);
+    const byKey = new Map(qItems.map(it => [it.key, it]));
     const ranked = forYouRanked.map(m => byKey.get(m.key)).filter(Boolean).filter(open);
-    const soonest = applyDiscoveryFilters(discoveryItems, base, nowMs).filter(open);
+    const soonest = applyDiscoveryFilters(qItems, base, nowMs).filter(open);
     return { foryou: (ranked.length ? ranked : soonest).slice(0, railMax).map(shape), tonight: byDate('today'), weekend: byDate('weekend') };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [simpleShell, v23, discoveryItems, homeFilters, forYouRanked, T, trStatus, Math.floor(nowMs / 60000)]);
+  }, [simpleShell, v23, qItems, homeFilters, forYouRanked, T, trStatus, Math.floor(nowMs / 60000)]);
   // Home from the v5 prototype (note 80): which hero tab is open (For You | Tonight | Weekend).
   const [heroTab, setHeroTab] = useState('foryou');
+  // Note 99: with unified discovery the open tab is the shared time itself.
+  const curTab = ud ? tabForDate(homeFilters.date) : heroTab;
   // v2.3 (note 81, switch home_v23, on top of simple_shell): the Shortlist under the rail is the WHOLE tab, in the
   // tab's order, narrowed by Home's filters (the rail stays the tab's picks). total = before the filters.
   // The whole tab, in the tab's own order (For You ranked, else soonest), before Home's filters. Shared by the
@@ -615,9 +633,9 @@ export default function Home({ browse = false }) {
   const shortlistBase = useMemo(() => {
     if (!v23) return null;
     const open = (it) => !it.ev.cancelled && Number.isFinite(it.startsAt) && it.startsAt >= nowMs - 3600e3;
-    return applyDiscoveryFilters(discoveryItems, DEFAULT_FILTERS, nowMs).filter(open);
+    return applyDiscoveryFilters(qItems, DEFAULT_FILTERS, nowMs).filter(open);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [v23, discoveryItems, Math.floor(nowMs / 60000)]);
+  }, [v23, qItems, Math.floor(nowMs / 60000)]);
   const shortlist = useMemo(() => {
     if (!shortlistBase) return null;
     const narrowed = applyDiscoveryFilters(shortlistBase, homeFilters, nowMs);
@@ -954,6 +972,29 @@ export default function Home({ browse = false }) {
     { today: T('Hôm nay', 'Today'), tomorrow: T('Ngày mai', 'Tomorrow'), weekend: T('Cuối tuần', 'Weekend'), week: T('7 ngày tới', 'Next 7 days') }[homeFilters.date] || T('Mọi lúc', 'Any time'),
     homeFilters.free ? T('Miễn phí', 'Free') : T('Mọi mức giá', 'Any price'),
   ].join(' · ');
+  // ---- Note 99: unified discovery helpers ----
+  const [typeSheetOpen, setTypeSheetOpen] = useState(false);
+  const udOwned = ownedFilterCount(homeFilters, s.homeSort);
+  const udParts = !ud ? [] : [
+    udQuery && { text: `“${udQuery}”`, strong: true },
+    homeFilters.cats?.[0] && { text: T(TYPE_DEF_BY_KEY.get(homeFilters.cats[0])?.vi || homeFilters.cats[0], TYPE_DEF_BY_KEY.get(homeFilters.cats[0])?.en || homeFilters.cats[0]), strong: true },
+    homeFilters.free ? { text: T('Miễn phí', 'Free'), strong: true }
+      : (homeFilters.priceMin != null || homeFilters.priceMax != null) && { text: T('Theo khoảng giá', 'Price range'), strong: true },
+    homeFilters.seatsLeft && { text: T('Còn chỗ', 'Seats left'), strong: true },
+    homeFilters.almostFull && { text: T('Sắp hết', 'Almost full'), strong: true },
+    s.homeSort && s.homeSort !== 'soonest' && SORT_LABELS?.[s.homeSort] && { text: T(...SORT_LABELS[s.homeSort]), strong: false },
+    homeFilters.date !== 'any' && DATE_LABELS?.[homeFilters.date] && { text: T(...DATE_LABELS[homeFilters.date]), strong: false },
+  ].filter(Boolean);
+  const clearUnified = () => {
+    set({ searchQuery: '', homeSort: 'soonest' });
+    searchBarStore.setSearchQuery('');
+    setHomeFilters(prev => ({ ...DEFAULT_FILTERS, date: prev?.date || 'any' }));
+  };
+  // Search (an overlay over this live Home) narrows its event hits to what Home's filters let through.
+  const udKeys = useMemo(() => (ud ? applyDiscoveryFilters(discoveryItems, homeFilters, nowMs).map(it => it.key).join('|') : null),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ud, discoveryItems, homeFilters, Math.floor(nowMs / 60000)]);
+  useEffect(() => { if (s.unifiedKeys !== udKeys) set({ unifiedKeys: udKeys }); }, [udKeys]); // eslint-disable-line react-hooks/exhaustive-deps
   const shellPickType = (k) => {
     if (!(homeFilters.cats || []).includes(k)) pickFilter(k);
     setTimeout(() => document.querySelector('[data-testid="home-by-type"]')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 120);
@@ -1287,11 +1328,11 @@ export default function Home({ browse = false }) {
       )}
       {simpleShell ? (
         <>
-        <HomeShellV5 T={T} lang={s.lang === 'en' ? 'en' : 'vi'} tab={hostView ? 'hosting' : heroTab} canHost={!!s.user}
+        <HomeShellV5 T={T} lang={s.lang === 'en' ? 'en' : 'vi'} tab={hostView ? 'hosting' : curTab} canHost={!!s.user}
           onTab={(k) => {
             if (k === 'hosting') { if (!s.organizerMode) { if (!s.organizerModeBusy) startHosting({ land: 'home' }); } else if (!hostView) setHomeView('host'); return; }
             if (hostView) setHomeView('goer');
-            setHeroTab(k);
+            if (ud) setHomeFilters(prev => ({ ...prev, date: DATE_FOR_TAB[k] || 'any' })); else setHeroTab(k);
           }}
           onReturnToEvents={returnToEvents}
           lists={heroLists} items={shownItems} user={s.user} typeCounts={shellTypeCounts} badgeDate={badgeDate} trStatus={trStatus}
@@ -1305,17 +1346,29 @@ export default function Home({ browse = false }) {
           onSetPrefs={() => openEventPreferences('home')}
           // "Browse all events" opens the every-event list itself (owner 2026-11-18): it used to scroll Home down to
           // the By type section, which only ever held a handful of events, never all of them.
-          onBrowseAll={() => browseTypesFrom(heroTab)}
+          onBrowseAll={() => browseTypesFrom(curTab)}
           hostBody={<div data-reveal="1"><HostHome /><div style={{ height: 44 }} /></div>} below={surveySection}
-          seeAll={v23 && heroTab !== 'hosting' ? { count: tabItems(heroTab).length, label: TAB_LABEL[heroTab] } : null}
+          seeAll={v23 && curTab !== 'hosting' ? { count: tabItems(curTab).length, label: TAB_LABEL[curTab] } : null}
+          searchActive={!!udQuery}
+          unifiedBrowse={ud ? (
+            <UnifiedTypeGrid counts={shellTypeCounts} selected={homeFilters.cats?.[0] || null} total={categoryCountMap.all ?? shownItems.length}
+              onPick={(k) => pickFilter(homeFilters.cats?.[0] === k ? 'all' : k)} onClear={() => pickFilter('all')}
+              onOpenSheet={() => setTypeSheetOpen(true)} T={T} />
+          ) : null}
           onBrowseType={v23 ? (k) => openBrowse({ type: k, scope: 'all' }) : null}
           browseTotal={v23 ? applyDiscoveryFilters(discoveryItems, DEFAULT_FILTERS, nowMs).filter(it => !it.ev.cancelled).length : null}
           shortlist={shortlist && (
             <div data-reveal="2">
               <LiveLine updates={live} index={Math.min(liveIndex, Math.max(0, live.length - 1))} onIndex={setLiveIndex} onOpen={() => setLiveOpen(true)} T={T} />
+              {ud && (udQuery || udOwned > 0) && (
+                <UnifiedStateBar parts={udParts} count={shortlist.rows.length} onMap={openMapWithContext} onClear={clearUnified} T={T} />
+              )}
               <ShortlistV23 T={T} lang={s.lang === 'en' ? 'en' : 'vi'} rows={shortlist.rows} total={shortlist.total}
-                filterBadge={filterBadge} onFilters={() => set({ homeFilterSheetOpen: true })} onOpenEvent={goEvent} onAction={onShortlistAction}
+                filterBadge={ud ? udOwned : filterBadge} onFilters={() => set({ homeFilterSheetOpen: true })} onOpenEvent={goEvent} onAction={onShortlistAction}
                 onToggleSave={toggleFav} />
+              {ud && shortlist.rows.length > 0 && (
+                <UnifiedMapBanner count={shortlist.rows.length} areaLabel={curArea.key !== 'all' ? areaName : ''} onOpen={openMapWithContext} T={T} />
+              )}
             </div>
           )}>
           <div data-reveal="1" data-testid="home-hero" data-hero={goerHero}>
@@ -1331,6 +1384,10 @@ export default function Home({ browse = false }) {
           </div>
         </HomeShellV5>
         {quickOpen && <QuickSheetV5 onClose={() => setQuickOpen(false)} />}
+        {ud && typeSheetOpen && (
+          <UnifiedTypeSheet counts={shellTypeCounts} total={categoryCountMap.all ?? shownItems.length} selected={homeFilters.cats?.[0] || null} T={T}
+            onPick={(k) => { pickFilter(k); setTypeSheetOpen(false); }} onClose={() => setTypeSheetOpen(false)} />
+        )}
         {liveOpen && live.length > 0 && (
           <LiveNowSheet updates={live} shownIndex={reducedMotion ? liveIndex : null} T={T} onClose={() => setLiveOpen(false)}
             onOpenEvent={(id, i) => { setLiveIndex(i); goEvent(id); }} />

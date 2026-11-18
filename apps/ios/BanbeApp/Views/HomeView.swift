@@ -34,6 +34,8 @@ struct HomeView: View {
     /// v2.3 (note 81): the live line's shown update (Reduced form) and the Live now sheet.
     @State private var liveIndex = 0
     @State private var liveNowOpen = false
+    /// Note 99: the "All types" sheet of the unified type tiles.
+    @State private var udTypeSheetOpen = false
     @StateObject private var forYouAlert = ForYouAlertModel()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -218,7 +220,7 @@ struct HomeView: View {
                 withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.35)) { weekendProxy.scrollTo(id, anchor: anchor) }
             }
             // The tour asks for a hero tab (For You on step 1, Tonight on its "do it" tap).
-            .onReceive(OnboardingTourController.shared.$heroTabRequest.compactMap { $0 }) { heroTab = $0 }
+            .onReceive(OnboardingTourController.shared.$heroTabRequest.compactMap { $0 }) { heroTabBinding.wrappedValue = $0 }
             }
         }
         }
@@ -232,7 +234,7 @@ struct HomeView: View {
         // The header from the wordmark to the search bar stays pinned while the feed scrolls under it.
         .overlay(alignment: .top) {
             if app.simpleShellEnabled {
-                HomeHeroPinnedHeader(tab: $heroTab,
+                HomeHeroPinnedHeader(tab: heroTabBinding,
                                      onSearchLocations: { areaSearchOpen = true },
                                      onAvatar: { quickSheetOpen = true },
                                      height: $pinnedHeaderHeight)
@@ -700,7 +702,7 @@ struct HomeView: View {
     @ViewBuilder
     private func v23GoerFeed(_ snap: Snapshot) -> some View {
         let items = app.isSignedIn ? sortActionCenterItems(goerActionItems) : []
-        HomeHeroSection(tab: $heroTab, lists: snap.heroLists, onSeeAll: { heroSeeAll($0) },
+        HomeHeroSection(tab: heroTabBinding, lists: snap.heroLists, onSeeAll: { heroSeeAll($0) },
                         onSearchLocations: { areaSearchOpen = true },
                         onAvatar: { quickSheetOpen = true },
                         headerHeight: pinnedHeaderHeight,
@@ -719,8 +721,18 @@ struct HomeView: View {
         }
         VStack(spacing: 0) {
             LiveLineView(updates: snap.live, index: $liveIndex, onOpen: { liveNowOpen = true })
-            ShortlistV23View(tab: heroTab, rows: snap.shortRows, total: snap.shortTotal, filterBadge: snap.filterBadge,
+            if app.unifiedDiscoveryEnabled,
+               !app.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || UnifiedDiscovery.ownedFilterCount(app.homeFilters, sort: app.homeSort) > 0 {
+                UnifiedStateBar(count: snap.udTotal, onMap: { app.goMapExploreFromHome() }, onClear: { clearUnified() })
+            }
+            // Note 99: time has the tabs, so the Filters badge counts only what Filters owns.
+            ShortlistV23View(tab: shownHeroTab, rows: snap.shortRows, total: snap.shortTotal,
+                             filterBadge: app.unifiedDiscoveryEnabled ? UnifiedDiscovery.ownedFilterCount(app.homeFilters, sort: app.homeSort) : snap.filterBadge,
                              onFilters: { app.homeFilterSheetOpen = true }, onAction: { shortlistAction($0) })
+            if app.unifiedDiscoveryEnabled && snap.udTotal > 0 {
+                UnifiedMapBanner(count: snap.udTotal, onOpen: { app.goMapExploreFromHome() })
+            }
         }
         .id("home.tour.filters")
         .revealRegion(2)
@@ -730,10 +742,24 @@ struct HomeView: View {
                          onClose: { liveNowOpen = false })
                 .environmentObject(app)
         }
-        HomeBrowseSection(counts: snap.categoryCounts, onPick: { app.openBrowse(type: $0, scope: "all") },
-                          onFind: { app.openBrowse(type: "all", scope: "all") }, seeAllTotal: snap.browseTotal)
+        Group {
+            if app.unifiedDiscoveryEnabled {
+                UnifiedBrowseSection(counts: snap.udCounts, onToggle: { toggleUnifiedType($0) },
+                                     onClear: { app.pickFilter("all") }, onOpenSheet: { udTypeSheetOpen = true })
+            } else {
+                HomeBrowseSection(counts: snap.categoryCounts, onPick: { app.openBrowse(type: $0, scope: "all") },
+                                  onFind: { app.openBrowse(type: "all", scope: "all") }, seeAllTotal: snap.browseTotal)
+            }
+        }
             .id("home.tour.browse")
             .revealRegion(2)
+            .sheet(isPresented: $udTypeSheetOpen) {
+                UnifiedTypeSheet(counts: snap.udCounts, selected: app.homeFilters.cats.first) { key in
+                    udTypeSheetOpen = false
+                    app.pickFilter(key)
+                }
+                .environmentObject(app)
+            }
         if !app.homeStories.isEmpty { storyRow.padding(.top, 20) }
         if app.isSignedIn { surveyDiscoveryRow }
         tagline
@@ -741,6 +767,35 @@ struct HomeView: View {
     }
 
     private var reduceMotionOn: Bool { UIAccessibility.isReduceMotionEnabled }
+
+    /// Note 99 (unified_discovery): the tabs ARE the shared time. The selected tab is derived from
+    /// `homeFilters.date` and picking one sets the date; with the switch off this is the local tab as before.
+    private var shownHeroTab: HomeHeroTab {
+        app.unifiedDiscoveryEnabled ? UnifiedDiscovery.heroTab(forDate: app.homeFilters.date) : heroTab
+    }
+    private var heroTabBinding: Binding<HomeHeroTab> {
+        guard app.unifiedDiscoveryEnabled else { return $heroTab }
+        return Binding(get: { UnifiedDiscovery.heroTab(forDate: app.homeFilters.date) },
+                       set: { t in
+                           heroTab = t
+                           let d = UnifiedDiscovery.dateForTab(t)
+                           if app.homeFilters.date != d { app.homeFilters.date = d }
+                       })
+    }
+
+    /// Note 99: × on the state bar clears the query and the Filters-owned filters, keeping the time.
+    private func clearUnified() {
+        app.searchQuery = ""
+        var f = HomeDiscovery.Filters.default
+        f.date = app.homeFilters.date
+        app.homeFilters = f
+        app.homeSort = "soonest"
+    }
+
+    private func toggleUnifiedType(_ key: String) {
+        Haptics.selection()
+        app.pickFilter(app.homeFilters.cats.first == key ? "all" : key)
+    }
 
     /// End-card and empty-state actions of the Shortlist (web twin: `onShortlistAction`).
     private func shortlistAction(_ act: String) {
@@ -1200,6 +1255,10 @@ struct HomeView: View {
         var tabCounts: [HomeHeroTab: Int] = [:]
         var live: [LiveLine.Update] = []
         var browseTotal = 0
+        /// Note 99 (unified_discovery): events per type for the shared search + time + price (type tiles, type sheet),
+        /// and every event matching the shared search + filters (state bar, map banner: the Map's same results).
+        var udCounts: [String: Int] = [:]
+        var udTotal = 0
     }
 
     private static let quickChips: [(key: String, vi: String, en: String)] = [
@@ -1310,7 +1369,18 @@ struct HomeView: View {
             counts[t] = l.count
         }
         snap.tabCounts = counts
-        let tabAll = lists[heroTab] ?? []
+        var tabAll = lists[shownHeroTab] ?? []
+        if app.unifiedDiscoveryEnabled {
+            // The shared query narrows the Shortlist with Search's own matcher; the shared date is already in `f`.
+            let q = app.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+            let matchQ: (HomeDiscovery.Item) -> Bool = { it in
+                q.isEmpty || byKey[it.key].map { SearchMatch.matches(doc: SearchMatch.buildDoc(for: $0), query: q) } ?? false
+            }
+            tabAll = tabAll.filter(matchQ)
+            let live = items.filter { byKey[$0.key]?.cancelled == false && matchQ($0) }
+            snap.udCounts = HomeDiscovery.categoryCounts(live, f, keys: EventTypes.keys, now: now)
+            snap.udTotal = HomeDiscovery.apply(live, f, now: now).count
+        }
         snap.shortTotal = tabAll.count
         snap.shortRows = HomeDiscovery.apply(tabAll, f, now: now).compactMap { it in byKey[it.key].map { app.v23Row($0, item: it, now: now) } }
         snap.browseTotal = HomeDiscovery.apply(items, .default, now: now).filter { byKey[$0.key]?.cancelled == false }.count

@@ -38,6 +38,9 @@ extension AppState {
     /// Migration 218, note 81: the v2.3 Home, Browse by type, Event Detail and host profile (web twin `home_v23`), on top of
     /// Simple Shell. Off until set; off renders today's screens unchanged.
     var homeV23Enabled: Bool { simpleShellEnabled && FeatureFlags.isOn(featureFlags, "home_v23") }
+    /// Migration 221, note 99: Home and Map share one search, type, time and filters (web twin `unified_discovery`), on
+    /// top of the v2.3 Home. Off until set; off renders today's screens unchanged.
+    var unifiedDiscoveryEnabled: Bool { homeV23Enabled && FeatureFlags.isOn(featureFlags, "unified_discovery") }
     /// The dock's tab order for the active layout (RootView's root tab swipe walks it).
     var dockOrder: [Screen] { DockLayout.dockOrder(simpleShell: simpleShellEnabled) }
 

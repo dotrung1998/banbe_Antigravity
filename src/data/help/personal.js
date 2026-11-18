@@ -87,8 +87,8 @@ export const PERSONAL_GUIDE = {
     { id: 'schedule', vi: 'Lịch & lịch hẹn', en: 'Schedule & calendars', blocks: [
       ['p', 'Tab "Lịch" (hoặc Tài khoản > "Lịch của tôi") có hai phần: "Lịch của tôi" và "Khám phá", cùng nút "Hôm nay", dải tuần và chế độ xem tháng.', 'The "Schedule" tab (or Account > "My schedule") has two parts, "My schedule" and "Discover", plus "Today", a week strip and a month view.'],
       ['ul', [
-        ['Mỗi mục ghi rõ nguồn: "Đã đặt chỗ", "Chờ host xác nhận", "Đang giữ chỗ", "Bạn tổ chức" hoặc "Bạn đã thêm". Sự kiện chỉ lưu (trái tim) không tự vào lịch.', 'Each plan says where it comes from: "Booked", "Awaiting host confirmation", "Seat on hold", "You\'re hosting" or "Added by you". Events you only saved (heart) are not added.'],
-        ['"＋ Thêm vào lịch banbe" ghi sự kiện vào lịch để nhớ, KHÔNG phải giữ chỗ. Chỉ mục bạn tự thêm mới có "Bỏ khỏi lịch". Mục tự thêm chỉ nằm trên máy/trình duyệt này, không đồng bộ.', '"＋ Add to banbe Schedule" puts an event in your plans as a reminder. It is NOT a reservation. Only plans you added yourself have "Remove". They stay on this device/browser and do not sync.'],
+        ['Mỗi mục ghi rõ nguồn: "Đã đặt chỗ", "Chờ host xác nhận", "Đang giữ chỗ", "Bạn tổ chức" hoặc "Đã lưu".', 'Each plan says where it comes from: "Booked", "Awaiting host confirmation", "Seat on hold", "You\'re hosting" or "Saved".'],
+        ['Chạm trái tim (♡) để lưu một sự kiện: nó vào "Đã lưu" và hiện trên lịch banbe, trên mọi thiết bị bạn đăng nhập. Lưu KHÔNG phải giữ chỗ. "Bỏ lưu" gỡ khỏi cả hai.', 'Tap the heart (♡) to save an event: it goes to "Saved" and shows on your banbe Schedule on every device you sign in on. Saving is NOT a reservation. "Unsave" removes it from both.'],
         ['Nếu hai kế hoạch cách nhau dưới 2 giờ, bạn được nhắc, nhưng vẫn thêm được.', 'If two plans start within 2 hours of each other you get a note, but adding is never blocked.'],
       ]],
       ['h', 'Thêm vào lịch điện thoại', 'Adding to your phone\'s calendar'],

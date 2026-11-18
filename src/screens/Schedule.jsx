@@ -1,7 +1,7 @@
 // banbe Schedule — web port of iOS ScheduleView (notes 44/45). A dock screen: My schedule (booked / awaiting /
 // holding / hosting / added by you) and Discover (upcoming public events), a week strip (swipe or arrows to change
 // week), a month view, and per-event "Add to banbe Schedule" + "Add to calendar" (.ics download / Google).
-// All rules live in lib/schedulePresentation.js (unit-tested). Manual adds are kept in this browser only.
+// All rules live in lib/schedulePresentation.js (unit-tested). "Saved" plans are the account's Saved list, read from the server (note 99).
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import DockHeaderTitle, { DOCK_HEADER } from '../components/ui/DockHeaderTitle.jsx';
@@ -111,7 +111,7 @@ function MonthSheet({ events, selected, firstDay, vi, T, onPick, onClose, mode, 
 
 export default function Schedule() {
   const {
-    state: s, T, scheduleSnapshot, goEvent, addToBanbeSchedule, removeFromBanbeSchedule,
+    state: s, T, scheduleSnapshot, goEvent, addToBanbeSchedule, removeFromBanbeSchedule, reloadFavorites,
     loadPaymentBookings, loadDiscoveryEvents, loadRealEventsById, goMapExplore,
   } = useBanBe();
   const vi = s.lang !== 'en';
@@ -132,7 +132,7 @@ export default function Schedule() {
   useEffect(() => {
     if (Date.now() - loadedAt.current < 45000) return;
     loadedAt.current = Date.now();
-    if (s.user?.id) loadPaymentBookings?.();
+    if (s.user?.id) { loadPaymentBookings?.(); reloadFavorites?.(); } // Saved comes straight from the server (note 99)
     if (!(s.discoveryEvents || []).length) loadDiscoveryEvents?.();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -195,7 +195,7 @@ export default function Schedule() {
 
   const add = (key) => {
     const r = addToBanbeSchedule(key);
-    setNotice(r === 'added' ? T('Đã thêm vào lịch banbe trên trình duyệt này.', 'Added to your banbe Schedule in this browser.')
+    setNotice(r === 'added' ? T('Đã lưu và thêm vào lịch banbe.', 'Saved and added to your banbe Schedule.')
       : r === 'alreadyThere' ? T('Đã có trong lịch của bạn.', 'Already in your schedule.')
         : r === 'ineligible' ? T('Sự kiện này không thêm vào lịch được.', "This event can't be added.") : '');
     setTimeout(() => setNotice(''), 5000);
@@ -234,8 +234,8 @@ export default function Schedule() {
           {!e.ended && <CalendarExportButtons info={e} T={T} compact />}
           {item.source === 'added' && (
             <button type="button" onClick={() => removeFromBanbeSchedule(e.key)} data-testid={`schedule-remove-${e.key}`}
-              title={T('Chỉ bỏ khỏi lịch banbe trên trình duyệt này', 'Removes it from your banbe Schedule in this browser only')} style={linkBtn}>
-              ⊖ {T('Bỏ khỏi lịch', 'Remove')}
+              title={T('Bỏ lưu: gỡ khỏi Đã lưu và lịch banbe', 'Unsave: removes it from Saved and your banbe Schedule')} style={linkBtn}>
+              ⊖ {T('Bỏ lưu', 'Unsave')}
             </button>
           )}
         </div>
@@ -262,8 +262,8 @@ export default function Schedule() {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center' }}>
             {s.user && (
               <button type="button" onClick={() => add(e.key)} data-testid={`schedule-add-${e.key}`} style={linkBtn}
-                title={T('Lưu vào lịch trong app. Không phải đặt chỗ.', 'Saves to your in-app schedule. Not a reservation.')}>
-                ＋ {T('Thêm vào lịch banbe', 'Add to banbe Schedule')}
+                title={T('Lưu sự kiện, hiện trên lịch banbe ở mọi thiết bị. Không phải đặt chỗ.', 'Saves the event; it shows on your banbe Schedule on every device. Not a reservation.')}>
+                ♡ {T('Lưu vào lịch banbe', 'Save to banbe Schedule')}
               </button>
             )}
             <CalendarExportButtons info={e} T={T} compact />
@@ -401,7 +401,7 @@ export default function Schedule() {
           </p>
         )}
         <p style={{ fontSize: 11.5, color: muted(0.55), marginTop: 18 }}>
-          {T('Sự kiện bạn tự thêm chỉ lưu trên trình duyệt này.', 'Events you add yourself are kept in this browser only.')}
+          {T('Sự kiện bạn lưu (♡) hiện ở đây trên mọi thiết bị.', 'Events you save (♡) show here on every device.')}
         </p>
         </div>
       </div>

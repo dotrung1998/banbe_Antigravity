@@ -7,6 +7,8 @@ import SwiftUI
 // Search never counts toward the streak (note 36).
 struct SearchView: View {
     @State private var categorySheetOpen = false
+    /// Note 99: the shared Filters sheet opened from Search's Filters row.
+    @State private var udFilterSheetOpen = false
     @EnvironmentObject private var app: AppState
     /// Shown over Home (RootView) instead of as its own screen.
     let isOverlay: Bool
@@ -56,16 +58,36 @@ struct SearchView: View {
 
     private var query: String { app.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines) }
 
+    /// Note 99: Home's filters + time + sort over the query's hits (the same `HomeDiscovery.apply` Home renders with).
+    private func udNarrowed(_ hits: [Doc]) -> [Doc] {
+        let now = Date()
+        let items = hits.map { app.discoveryItem(for: $0.event, now: now) }
+        var kept = HomeDiscovery.apply(items, app.homeFilters, now: now)
+        if app.homeSort != "soonest" { kept = HomeDiscovery.sort(kept, mode: app.homeSort) }
+        let byKey = Dictionary(hits.map { ($0.event.key, $0) }, uniquingKeysWith: { a, _ in a })
+        return kept.compactMap { byKey[$0.key] }
+    }
+
+    /// The Filters sheet counts over what the query found (everything when there is no query yet).
+    private func udSheetItems(_ all: [Doc], _ q: String) -> [HomeDiscovery.Item] {
+        let now = Date()
+        let base = q.isEmpty ? all : all.filter { SearchMatch.matches(doc: $0.doc, query: q) }
+        return base.map { app.discoveryItem(for: $0.event, now: now) }
+    }
+
     var body: some View {
         let all = docs
         let q = query
-        let eventHits = q.isEmpty ? [] : all.filter { SearchMatch.matches(doc: $0.doc, query: q) }
+        let queryHits = q.isEmpty ? [] : all.filter { SearchMatch.matches(doc: $0.doc, query: q) }
+        // Note 99 (unified_discovery): results also respect the shared filters and time.
+        let eventHits = app.unifiedDiscoveryEnabled ? udNarrowed(queryHits) : queryHits
         let hosts = hostHits(all, q)
         let areas = areaHits(q)
         VStack(spacing: 0) {
             header
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
+                    if app.unifiedDiscoveryEnabled { UnifiedSearchFilterRow(onOpen: { udFilterSheetOpen = true }) }
                     if q.isEmpty { idle } else { results(eventHits, hosts, areas) }
                 }
                 .padding(.bottom, 60)
@@ -101,6 +123,10 @@ struct SearchView: View {
                 app.searchEntranceFrom = nil
                 focused = app.searchQuery.isEmpty
             }
+        }
+        .sheet(isPresented: $udFilterSheetOpen) {
+            HomeFilterSheet(items: udSheetItems(all, q), now: Date(), onClose: { udFilterSheetOpen = false })
+                .environmentObject(app)
         }
         .sheet(isPresented: $categorySheetOpen) {
             HomeCategorySheet(counts: [:], selected: [], onPick: { key in

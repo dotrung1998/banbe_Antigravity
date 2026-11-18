@@ -592,7 +592,7 @@ private struct ScheduleScreen: View {
                     SwipeSafeButton {
                         if let event = app.resolvedEvent(for: e.key) { app.addToBanbeSchedule(event) }
                     } label: {
-                        Label(app.T("Thêm vào lịch banbe", "Add to banbe Schedule"), systemImage: "plus")
+                        Label(app.T("Lưu vào lịch banbe", "Save to banbe Schedule"), systemImage: "heart")
                             .font(.app(.footnote).weight(.semibold))
                             .lineLimit(oneLine ? 1 : nil)
                             .padding(.horizontal, 12).frame(minHeight: 44)
@@ -616,14 +616,14 @@ private struct ScheduleScreen: View {
                 SwipeSafeButton {
                     app.removeFromBanbeSchedule(e.key)
                 } label: {
-                    Label(app.T("Bỏ khỏi lịch", "Remove"), systemImage: "minus.circle")
+                    Label(app.T("Bỏ lưu", "Unsave"), systemImage: "heart.slash")
                         .font(.app(.footnote).weight(.semibold))
                         .padding(.horizontal, 10).padding(.vertical, 12)
                         .frame(minWidth: 44, minHeight: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityHint(app.T("Chỉ bỏ khỏi lịch banbe trên máy này", "Removes it from your banbe Schedule on this device only"))
+                .accessibilityHint(app.T("Gỡ khỏi Đã lưu và lịch banbe", "Removes it from Saved and your banbe Schedule"))
                 .accessibilityIdentifier("schedule.remove.\(e.key)")
             }
     }

@@ -10,12 +10,10 @@ import Foundation
 //   3. holding    — active booking still inside its seat-hold window. An
 //                   EXPIRED hold is not a plan and is dropped.
 //   4. hosting    — the account's own organizer's live event.
-//   5. added      — the person put it on their banbe Schedule themselves
-//                   (device-local, InAppCalendarStore).
+//   5. added      — the account's Saved list (server `favorites`, note 99),
+//                   labelled "Saved". Saving = adding to the Schedule.
 // Never included: cancelled events, cancelled bookings, expired holds, events
 // with no start time (counted separately so nothing silently disappears).
-// Saved/favorited events are NOT a source — "saved" means bookmarked, not
-// "I plan to go".
 //
 // Time honesty: events carry NO end time today (note 38). An item's `end` is
 // optional; "overlap" is only claimed when both items have a real end.
@@ -31,7 +29,7 @@ enum ScheduleSource: Int, Comparable, CaseIterable {
         case .awaiting: return T("Chờ host xác nhận", "Awaiting host confirmation")
         case .holding: return T("Đang giữ chỗ", "Seat on hold")
         case .hosting: return T("Bạn tổ chức", "You're hosting")
-        case .added: return T("Bạn đã thêm", "Added by you")
+        case .added: return T("Đã lưu", "Saved")
         }
     }
 
@@ -41,7 +39,7 @@ enum ScheduleSource: Int, Comparable, CaseIterable {
         case .awaiting: return "hourglass"
         case .holding: return "timer"
         case .hosting: return "person.2"
-        case .added: return "bookmark"
+        case .added: return "heart"
         }
     }
 }

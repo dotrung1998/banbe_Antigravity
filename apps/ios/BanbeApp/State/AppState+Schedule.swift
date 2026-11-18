@@ -3,7 +3,13 @@ import Foundation
 // Schedule tab state + real data sources (note 44). The mapping itself lives
 // in Lib/SchedulePresentation.swift; this file only adapts AppState's
 // existing data (paymentBookings, myOrgEvents, discoveryEvents, the resolved
-// event caches) and the device-local InAppCalendarStore to it.
+// event caches) and the account's Saved list to it.
+//
+// Note 99: the "Saved" source (ScheduleSource.added) IS `favorites`, the
+// server's `favorites` table, re-read when the Schedule loads. Saving an event
+// and adding it to the Schedule are one act on every device. The old
+// device-local InAppCalendarStore list is moved into `favorites` once.
+// (`scheduleAddedKeys` in AppState.swift is no longer read.)
 
 extension AppState {
 
@@ -15,15 +21,36 @@ extension AppState {
     func resetScheduleState() {
         scheduleCache = nil
         scheduleLoadedAt = nil
-        scheduleAddedKeys = []
         scheduleMode = .mine
         scheduleSelectedDate = Date()
     }
 
-    /// Reads this account's own device-local additions (none when signed out).
-    func refreshScheduleAdded() {
-        guard let uid = userID else { scheduleAddedKeys = []; return }
-        scheduleAddedKeys = InAppCalendarStore().keys(uid: uid)
+    /// The Schedule's "Saved" plans: the account's Saved list, from the server.
+    var scheduleSavedKeys: [String] { userID == nil ? [] : favorites }
+
+    /// One-time move of the old device-local "Add to banbe Schedule" list into
+    /// Saved (server), then the local list is cleared. Runs after the account's
+    /// favorites have loaded; a failed upsert keeps the local list for next time.
+    func moveLegacyScheduleAdds(uid: UUID) async {
+        let store = InAppCalendarStore()
+        let legacy = store.keys(uid: uid)
+        guard !legacy.isEmpty, userID == uid else { return }
+        let missing = legacy.filter { !favorites.contains($0) }
+        if !missing.isEmpty {
+            struct Row: Encodable { let userId: UUID; let eventId: String
+                enum CodingKeys: String, CodingKey { case userId = "user_id"; case eventId = "event_id" } }
+            do {
+                try await SupabaseService.client.from("favorites")
+                    .upsert(missing.map { Row(userId: uid, eventId: $0) }, onConflict: "user_id,event_id", ignoreDuplicates: true)
+                    .execute()
+            } catch {
+                print("moveLegacyScheduleAdds failed:", error)
+                return
+            }
+            guard userID == uid else { return }
+            for k in missing where !favorites.contains(k) { favorites.append(k) }
+        }
+        store.clear(uid: uid)
     }
 
     // MARK: event → schedule info
@@ -41,7 +68,7 @@ extension AppState {
     /// Every event this account's schedule could reference, keyed by id.
     private var scheduleEventIndex: [String: ScheduleEventInfo] {
         var index: [String: ScheduleEventInfo] = [:]
-        let keys = Set(paymentBookings.map(\.eventKey) + scheduleAddedKeys + myOrgEvents.map(\.key))
+        let keys = Set(paymentBookings.map(\.eventKey) + scheduleSavedKeys + myOrgEvents.map(\.key))
         for e in myOrgEvents { index[e.key] = scheduleInfo(for: e) }
         for key in keys where index[key] == nil {
             if let e = resolvedEvent(for: key) { index[key] = scheduleInfo(for: withLive(e)) }
@@ -71,7 +98,7 @@ extension AppState {
         if let c = scheduleCache, c.key == key { return c.value }
         let now = Date()
         let mine = SchedulePresentation.mySchedule(bookings: scheduleBookingInputs, hostedKeys: scheduleHostedKeys,
-                                                   addedKeys: scheduleAddedKeys, events: scheduleEventIndex, now: now)
+                                                   addedKeys: scheduleSavedKeys, events: scheduleEventIndex, now: now)
         let discover = SchedulePresentation.discover(events: discoveryEvents.map { scheduleInfo(for: withLive($0)) },
                                                      excluding: Set(mine.items.map(\.id)), now: now)
         let snapshot = ScheduleSnapshot(mine: mine, discover: discover)
@@ -92,7 +119,7 @@ extension AppState {
         h.combine(myOrganizerID)
         h.combine(myOrgEventKeys)
         for e in myOrgEventSummaries { h.combine(e.id); h.combine(e.status); h.combine(e.startsAt) }
-        h.combine(scheduleAddedKeys)
+        h.combine(scheduleSavedKeys)
         for e in discoveryEvents {
             h.combine(e.key); h.combine(e.cancelled); h.combine(e.endedHoursAgo); h.combine(e.soldOut); h.combine(e.startDate)
         }
@@ -111,7 +138,7 @@ extension AppState {
     /// The strongest source keeping an event on My schedule, if any.
     func scheduleSource(for key: String) -> ScheduleSource? { mySchedule.items.first { $0.id == key }?.source }
 
-    // MARK: add / remove (device-local)
+    // MARK: add / remove (= save / unsave, note 99)
 
     enum ScheduleAddOutcome: Equatable { case added, alreadyThere, needsSignIn, ineligible }
 
@@ -119,7 +146,7 @@ extension AppState {
     @discardableResult
     func addToBanbeSchedule(_ e: CatalogEvent) -> ScheduleAddOutcome {
         Analytics.track(.banbeScheduleAdd)
-        guard let uid = userID else {
+        guard userID != nil else {
             requireAuth(returnTo: screen, backTo: screen)
             return .needsSignIn
         }
@@ -131,20 +158,18 @@ extension AppState {
             Analytics.track(.banbeScheduleResult(result: "ineligible"))
             return .ineligible
         }
-        let r = InAppCalendarStore().add(e.key, uid: uid)
-        refreshScheduleAdded()
-        Haptics.success()
-        Analytics.track(.banbeScheduleResult(result: r.rawValue))
+        // Adding to the Schedule = saving the event: one list, on the server.
+        if !favorites.contains(e.key) { toggleFavorite(e.key) }
+        Analytics.track(.banbeScheduleResult(result: "added"))
         return .added
     }
 
-    /// Only removes a manual addition; bookings/hosting are not touched here.
+    /// Unsaves the event (bookings/hosting are not touched here).
     func removeFromBanbeSchedule(_ key: String) {
         Analytics.track(.banbeScheduleRemove)
-        guard let uid = userID else { return }
-        let r = InAppCalendarStore().remove(key, uid: uid)
-        refreshScheduleAdded()
-        Analytics.track(.banbeScheduleResult(result: r.rawValue))
+        guard userID != nil, favorites.contains(key) else { return }
+        toggleFavorite(key)
+        Analytics.track(.banbeScheduleResult(result: "removed"))
     }
 
     /// Loads what the agenda reads, reusing the existing loaders. Throttled: the
@@ -158,8 +183,10 @@ extension AppState {
         #endif
         if !force, let at = scheduleLoadedAt, Date().timeIntervalSince(at) < 45 { return }
         scheduleLoadedAt = Date()
+        // Saved comes straight from the server, so a save on another device shows here.
+        if let uid = userID, favoriteToggleInFlight.isEmpty { await loadFavorites(uid: uid) }
         await loadPaymentBookings()
-        await loadMissingRealEvents(for: paymentBookings.map(\.eventKey) + scheduleAddedKeys)
+        await loadMissingRealEvents(for: paymentBookings.map(\.eventKey) + scheduleSavedKeys)
         if discoveryEvents.isEmpty && !discoveryEventsLoading { await loadDiscoveryEvents() }
     }
 }

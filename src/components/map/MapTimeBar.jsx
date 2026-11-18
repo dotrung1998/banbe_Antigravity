@@ -14,8 +14,8 @@ const TICKS_NARROW = [10, 18, 26]; // a 320 px screen leaves the range ~130 px: 
 const SPAN = RANGE_MAX - RANGE_MIN;
 const pct = (h) => ((h - RANGE_MIN) / SPAN) * 100;
 
-export default function MapTimeBar({ win, options, dayLabel, onDay, onKnob, T, style }) {
-  const [menu, setMenu] = useState(false);
+// The two-knob hour range on its own, so the unified Map's time popover (MapTimeChip.jsx) reuses exactly these knobs.
+export function MapTimeRange({ win, onKnob, T, margin = '0 10px 0 8px' }) {
   const [active, setActive] = useState(null); // 'from' | 'to' while that knob is dragged or has keyboard focus
   const [dragging, setDragging] = useState(false);
   const ruler = useRef(null);
@@ -29,7 +29,6 @@ export default function MapTimeBar({ win, options, dayLabel, onDay, onKnob, T, s
     return () => ro.disconnect();
   }, []);
   const on = win.on;
-  const currentKey = on ? win.key : 'all';
 
   const hourAt = (clientX) => {
     const r = ruler.current.getBoundingClientRect();
@@ -74,6 +73,25 @@ export default function MapTimeBar({ win, options, dayLabel, onDay, onKnob, T, s
   };
 
   return (
+    <div ref={ruler} data-testid="map-time-range" data-on={on ? 'true' : 'false'} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
+      style={{ position: 'relative', flex: 1, height: 44, margin, touchAction: 'none', cursor: on ? 'pointer' : 'default', opacity: on ? 1 : MAP_DIM.rangeOff, pointerEvents: on ? 'auto' : 'none', transition: 'opacity 0.2s ease' }}>
+      <div aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, top: 14, height: 6, borderRadius: 3, background: 'rgba(var(--bb-fg-rgb),0.12)' }} />
+      <div aria-hidden="true" style={{ position: 'absolute', top: 14, height: 6, borderRadius: 3, background: ink, left: `${pct(win.from)}%`, right: `${100 - pct(win.to)}%` }} />
+      {(narrow ? TICKS_NARROW : TICKS).map(h => (
+        <span key={h} aria-hidden="true" style={{ position: 'absolute', top: 30, left: `${pct(h)}%`, transform: 'translateX(-50%)', fontSize: 10, color: ink3, fontVariantNumeric: 'tabular-nums' }}>{hourLabel(h)}</span>
+      ))}
+      {knob('from')}
+      {knob('to')}
+    </div>
+  );
+}
+
+export default function MapTimeBar({ win, options, dayLabel, onDay, onKnob, T, style }) {
+  const [menu, setMenu] = useState(false);
+  const on = win.on;
+  const currentKey = on ? win.key : 'all';
+
+  return (
     <div data-testid="map-time-bar" style={{ position: 'absolute', left: 14, right: 14, zIndex: 3, ...style }}>
       {/* The glass is its own layer: photoPill carries a mask that would clip the day menu and the knob bubble. */}
       <div aria-hidden="true" style={{ ...photoPill({ position: 'absolute', borderRadius: 29 }), top: 0, left: 0, right: 0, height: 58, cursor: 'default' }} />
@@ -94,17 +112,7 @@ export default function MapTimeBar({ win, options, dayLabel, onDay, onKnob, T, s
             </GlassMenuItem>
           ))}
         </GlassMenu>
-        {/* The range: off (every event is in) for "All days". */}
-        <div ref={ruler} data-testid="map-time-range" data-on={on ? 'true' : 'false'} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
-          style={{ position: 'relative', flex: 1, height: 44, margin: '0 10px 0 8px', touchAction: 'none', cursor: on ? 'pointer' : 'default', opacity: on ? 1 : MAP_DIM.rangeOff, pointerEvents: on ? 'auto' : 'none', transition: 'opacity 0.2s ease' }}>
-          <div aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, top: 14, height: 6, borderRadius: 3, background: 'rgba(var(--bb-fg-rgb),0.12)' }} />
-          <div aria-hidden="true" style={{ position: 'absolute', top: 14, height: 6, borderRadius: 3, background: ink, left: `${pct(win.from)}%`, right: `${100 - pct(win.to)}%` }} />
-          {(narrow ? TICKS_NARROW : TICKS).map(h => (
-            <span key={h} aria-hidden="true" style={{ position: 'absolute', top: 30, left: `${pct(h)}%`, transform: 'translateX(-50%)', fontSize: 10, color: ink3, fontVariantNumeric: 'tabular-nums' }}>{hourLabel(h)}</span>
-          ))}
-          {knob('from')}
-          {knob('to')}
-        </div>
+        <MapTimeRange win={win} onKnob={onKnob} T={T} />
       </div>
       <span style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }} aria-live="polite" data-testid="map-time-live">
         {on ? `${dayLabel}, ${hourLabel(win.from)} – ${hourLabel(win.to)}` : dayLabel}

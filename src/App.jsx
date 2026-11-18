@@ -71,6 +71,7 @@ import HostRecap from './screens/HostRecap.jsx';
 import AdminManageEvents from './screens/AdminManageEvents.jsx';
 import AdminDobCorrections from './screens/AdminDobCorrections.jsx';
 import ToastStack from './screens/ToastStack.jsx';
+import { EVENTS } from './data/events.js';
 import Policy from './screens/Policy.jsx';
 import Guide from './screens/Guide.jsx';
 import Faq from './screens/Faq.jsx';
@@ -215,6 +216,50 @@ function CreateUndoToast({ offer, aboveDock }) {
       <div aria-hidden style={{ marginTop: 10, height: 4, borderRadius: 2, background: 'rgba(var(--bb-fg-rgb),0.12)', overflow: 'hidden' }}>
         <div className="bb-undo-bar" style={{ height: '100%', borderRadius: 2, background: 'rgba(var(--bb-fg-rgb),0.7)', '--bb-undo-ms': `${CREATE_UNDO_MS}ms` }} />
       </div>
+    </div>
+  );
+}
+
+const SAVE_TOAST_MS = 4500;
+/** Note 99: every heart says "Saved · added to banbe Schedule" (or the reverse) with Undo, above the dock. */
+function SaveToast({ toast, aboveDock }) {
+  const { state: s, T, toggleFav, set } = useBanBe();
+  useEffect(() => {
+    const t = setTimeout(() => set(prev => (prev.saveToast?.id === toast.id ? { saveToast: null } : {})), toast.undone ? 1800 : SAVE_TOAST_MS);
+    return () => clearTimeout(t);
+  }, [toast.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const real = s.realEventsById?.[toast.key];
+  const cat = real ? null : EVENTS.find(e => e.key === toast.key);
+  const name = real?.name || cat?.name || '';
+  const when = real?.startsAt ? new Date(real.startsAt).toLocaleString(s.lang === 'en' ? 'en-GB' : 'vi-VN',
+    { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: real.tz || undefined }) : '';
+  const title = toast.undone ? T('Đã hoàn tác', 'Undone')
+    : toast.saved ? T('Đã lưu · thêm vào Lịch banbe', 'Saved · added to banbe Schedule')
+      : T('Đã bỏ lưu · gỡ khỏi Lịch banbe', 'Unsaved · removed from banbe Schedule');
+  return (
+    <div role="status" aria-live="polite" data-testid="save-toast" data-saved={toast.saved ? '1' : '0'}
+      style={{
+        position: 'fixed', left: 0, right: 0, margin: '0 auto', zIndex: 60, width: 'max-content', maxWidth: 'calc(100% - 32px)',
+        bottom: `calc(env(safe-area-inset-bottom, 0px) + ${aboveDock ? BAR_BOTTOM_OFFSET + 64 + 16 : 16}px)`,
+        display: 'flex', alignItems: 'center', gap: 10, boxSizing: 'border-box', padding: toast.undone ? '12px 18px' : '8px 8px 8px 18px',
+        borderRadius: 999, background: 'var(--bb-fg)', color: 'var(--bb-bg)', boxShadow: '0 10px 26px rgba(12,11,9,.25)',
+        animation: 'bbRiseIn .3s cubic-bezier(.2,.9,.25,1) both', fontSize: 13.5, fontWeight: 600,
+      }}>
+      <span style={{ minWidth: 0, lineHeight: 1.3 }}>
+        {title}
+        {!toast.undone && toast.saved && (name || when) && (
+          <small style={{ display: 'block', fontSize: 11.5, fontWeight: 400, opacity: 0.72, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 240 }}>
+            {[when, name].filter(Boolean).join(' · ')}
+          </small>
+        )}
+      </span>
+      {!toast.undone && (
+        <button type="button" data-testid="save-toast-undo" className="bb-press"
+          onClick={() => toggleFav(toast.key, { silent: true })}
+          style={{ flex: 'none', minHeight: 40, padding: '0 14px', borderRadius: 999, border: 'none', background: 'rgba(127,127,127,.24)', color: 'inherit', fontFamily: 'inherit', fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}>
+          {T('Hoàn tác', 'Undo')}
+        </button>
+      )}
     </div>
   );
 }
@@ -945,6 +990,7 @@ function Shell() {
       {state.deleteAccountOpen && <DeleteAccountSheet />}
       {state.deleteAccountStayOpen && <DeleteAccountStaySheet />}
       {state.hostSetupOpen && state.user && <HostSetupSheet />}
+      {state.saveToast && state.user && <SaveToast key={state.saveToast.id} toast={state.saveToast} aboveDock={showBar} />}
       <ToastStack />
       {/* account gate (web parity) — blocking overlay above every screen until the server gate clears */}
       <AccountGate />

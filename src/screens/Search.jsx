@@ -17,7 +17,10 @@ import { buildLocationSearchIndex, searchLocationTree } from '../lib/locationTre
 import { formatVnEventDate } from '../lib/countdown.js';
 import { formatMoney } from '../lib/eventMarket.js';
 import { CategoryGlyph, CATEGORY_DEFS, CategorySheet } from '../components/home/HomeDiscoveryParts.jsx';
-import { categorySheetKeys } from '../lib/homeDiscovery.js';
+import { categorySheetKeys, DEFAULT_FILTERS } from '../lib/homeDiscovery.js';
+import { flagOn } from '../lib/featureFlags.js';
+import { ownedFilterCount } from '../lib/unifiedDiscovery.js';
+import { DATE_LABELS, SORT_LABELS } from './sheets/HomeFilterSheet.jsx';
 
 const RECENT_KEY = 'banbe_recent_searches_v1';
 const RECENT_MAX = 8;
@@ -130,7 +133,15 @@ export default function Search({ overlay = false }) {
   }, [s.discoveryEvents, s.homeLiveEvents]);
 
   const query = q.trim();
-  const eventHits = useMemo(() => (query ? docs.filter(d => matchesSearchQuery(d.doc, query)) : []), [docs, query]);
+  // Note 99 (switch unified_discovery): Search, Home and the Map share one query AND one set of filters, so the event
+  // hits are narrowed to what Home's filters (type, time, price, seats) let through. Home is live under this overlay and
+  // publishes those keys (s.unifiedKeys); opened as its own screen there is no Home, so nothing is narrowed.
+  const ud = flagOn(s.featureFlags, 'simple_shell') && flagOn(s.featureFlags, 'home_v23') && flagOn(s.featureFlags, 'unified_discovery');
+  const hf = s.homeFilters || DEFAULT_FILTERS;
+  const udOwned = ud ? ownedFilterCount(hf, s.homeSort) : 0;
+  const udNarrows = ud && overlay && s.unifiedKeys != null && (udOwned > 0 || hf.date !== 'any');
+  const udKeySet = useMemo(() => (udNarrows ? new Set(String(s.unifiedKeys).split('|')) : null), [udNarrows, s.unifiedKeys]);
+  const eventHits = useMemo(() => (query ? docs.filter(d => matchesSearchQuery(d.doc, query) && (!udKeySet || udKeySet.has(d.key))) : []), [docs, query, udKeySet]);
   const hostHits = useMemo(() => {
     if (!query) return [];
     const byName = new Map();
@@ -187,6 +198,30 @@ export default function Search({ overlay = false }) {
         {/* The persistent search bar (App.jsx) draws here: back + field. */}
         <div data-search-bar-slot aria-hidden style={{ height: 44, flex: 1 }} />
       </div>
+
+      {ud && (() => {
+        const cat = hf.cats?.[0] ? CATEGORY_DEFS.find(c => c.key === hf.cats[0]) : null;
+        const parts = [
+          cat && T(cat.vi, cat.en),
+          hf.free ? T('Miễn phí', 'Free') : (hf.priceMin != null || hf.priceMax != null) && T('Theo khoảng giá', 'Price range'),
+          hf.seatsLeft && T('Còn chỗ', 'Seats left'), hf.almostFull && T('Sắp hết', 'Almost full'),
+          s.homeSort && s.homeSort !== 'soonest' && SORT_LABELS[s.homeSort] && T(...SORT_LABELS[s.homeSort]),
+        ].filter(Boolean);
+        const when = DATE_LABELS[hf.date] ? T(...DATE_LABELS[hf.date]) : T('Mọi lúc', 'Any time');
+        return (
+          <button type="button" data-testid="search-filters-link" onClick={() => set({ homeFilterSheetOpen: true })}
+            aria-label={parts.length ? T(`Bộ lọc, đang bật ${udOwned}: ${parts.join(', ')}`, `Filters, ${udOwned} on: ${parts.join(', ')}`) : T('Bộ lọc', 'Filters')}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '14px 16px 0', width: 'calc(100% - 32px)', minHeight: 52, padding: '0 10px 0 14px', borderRadius: 16, border: 'none', background: 'var(--bb-block)', color: ink, fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></svg>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {parts.length ? <><b style={{ fontWeight: 600 }}>{T('Bộ lọc:', 'Filters:')}</b> {parts.join(' · ')}</> : T('Bộ lọc', 'Filters')}
+              <span style={{ color: 'var(--bb-fg-3)' }}> · {parts.length ? when : T(`loại, giá, sắp xếp · ${when}`, `type, price, sort · ${when}`)}</span>
+            </span>
+            {udOwned > 0 && <span style={{ minWidth: 20, height: 20, padding: '0 6px', borderRadius: 999, background: 'var(--bb-clay)', color: '#fff', fontSize: 11.5, fontWeight: 700, display: 'grid', placeItems: 'center' }}>{udOwned}</span>}
+            <span aria-hidden="true" style={{ opacity: 0.5 }}>›</span>
+          </button>
+        );
+      })()}
 
       {!query && (
         <div data-testid="search-idle">

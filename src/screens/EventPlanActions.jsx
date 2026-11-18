@@ -69,7 +69,7 @@ export function EventPlanButtons({ eventKey, day, month, inert = false, onMessag
   const add = () => {
     if (!s.user || !canAdd(info)) { flash(T('Sự kiện này không thêm vào lịch được.', "This event can't be added.")); return; }
     const r = addToBanbeSchedule(eventKey);
-    flash(r === 'added' ? T('Đã thêm vào lịch banbe trên trình duyệt này. Đây chưa phải đặt chỗ.', "Added to your banbe Schedule in this browser. This isn't a reservation.")
+    flash(r === 'added' ? T('Đã lưu và thêm vào lịch banbe. Đây chưa phải đặt chỗ.', "Saved and added to your banbe Schedule. This isn't a reservation.")
       : r === 'ineligible' ? T('Sự kiện này không thêm vào lịch được.', "This event can't be added.") : '');
   };
   const ics = () => {

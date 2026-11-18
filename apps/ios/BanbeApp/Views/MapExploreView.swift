@@ -172,8 +172,10 @@ struct MapExploreView: View {
     /// Seeds every local `@State` directly from a saved snapshot (or plain defaults) INSIDE `init`, rather than
     /// restoring them a moment later inside `.task`: `.task` runs after the very first frame, so a return to the map
     /// used to flash the default camera / filters for one frame before snapping to the restored ones.
-    init(restored: MapExploreState?, isPreview: Bool = false, startFocusedOnSearch: Bool = false, isActive: Bool = true, seedQuery: String? = nil, entry: (filters: HomeDiscovery.Filters, forYou: Bool)? = nil) {
+    init(restored: MapExploreState?, isPreview: Bool = false, startFocusedOnSearch: Bool = false, isActive: Bool = true, seedQuery: String? = nil, entry: (filters: HomeDiscovery.Filters, forYou: Bool)? = nil,
+         shared: (filters: HomeDiscovery.Filters, query: String)? = nil) {
         hadRestoredState = restored != nil
+        unified = shared != nil
         self.seedQuery = seedQuery
         self.isPreview = isPreview
         self.isActive = isActive
@@ -222,7 +224,22 @@ struct MapExploreView: View {
             _selectedId = State(initialValue: nil)
             _framed = State(initialValue: false)
         }
+        // Note 99 (unified_discovery): Home, Search and the Map share ONE search, type, time and filters, read live
+        // instead of a one-shot hand-off. Hours stay the Map's own; a restored window is kept when its day still
+        // names the shared date.
+        if let shared {
+            _filters = State(initialValue: Self.withoutDate(shared.filters))
+            _searchQuery = State(initialValue: shared.query)
+            let keep = restored?.timeWin.map { UnifiedDiscovery.mapDayForDate(shared.filters.date) == ($0.on ? $0.key : "all") } ?? false
+            if !keep { _timeWin = State(initialValue: Self.udWindowFor(date: shared.filters.date)) }
+        }
     }
+
+    /// Note 99: the switch was on when this Map opened (RootView passes `shared`). Constant for the instance.
+    private let unified: Bool
+    @State private var udTimeOpen = false
+    /// The preview card replacing the carousel (an event id), nil = the carousel.
+    @State private var udPreviewID: String?
 
     /// The Map's filters never carry a date: the day and hours are the time bar's (they dim rather than remove).
     private static func withoutDate(_ f: HomeDiscovery.Filters) -> HomeDiscovery.Filters {
@@ -232,6 +249,11 @@ struct MapExploreView: View {
     }
     private static func windowFor(date: String) -> MapTimeWindow.Window {
         MapTimeWindow.windowFromHomeDate(date, nowMs: Date().timeIntervalSince1970 * 1000, timeZone: EventMarket.vnTimeZone)
+    }
+    /// Note 99: the shared date as the Map's day window ("next 7 days" is the Map's Next week).
+    private static func udWindowFor(date: String) -> MapTimeWindow.Window {
+        MapTimeWindow.defaultWindow(key: UnifiedDiscovery.mapDayForDate(date), nowMs: Date().timeIntervalSince1970 * 1000,
+                                    timeZone: EventMarket.vnTimeZone)
     }
 
     // MARK: - Time window (note 79)
@@ -437,6 +459,7 @@ struct MapExploreView: View {
         .onChange(of: searchQuery) { _, q in if app.mapSearchText != q { app.mapSearchText = q } }
         .onChange(of: app.mapSearchText) { _, q in if searchQuery != q { searchQuery = q } }
         .onChange(of: sheetFilterCount) { _, _ in registerSearchBar() }
+        .background { if unified { udSyncProbe } }
         .onChange(of: app.lang) { _, _ in registerSearchBar() }
         .onChange(of: app.mapCloseSwipeCancelled) { _, cancelled in
             // An interrupted left-edge swipe never navigates anywhere: the progress springs back by itself.
@@ -480,7 +503,9 @@ struct MapExploreView: View {
                             mapFilters: sheetSeed,
                             onApplyMap: { applied in
                                 // The sheet's When pills drive the map's day window (dim/bold, never a filter).
-                                if applied.date != sheetSeed.date { timeWin = Self.windowFor(date: applied.date) }
+                                if applied.date != sheetSeed.date {
+                                    timeWin = unified && applied.date == "week" ? Self.udWindowFor(date: applied.date) : Self.windowFor(date: applied.date)
+                                }
                                 filters = Self.withoutDate(applied)
                             },
                             forYou: hasForYouPrefs ? Binding(get: { forYouOn }, set: { forYouOn = $0 }) : nil)
@@ -555,25 +580,33 @@ struct MapExploreView: View {
         // they would have taken, instead of leaving a gap above the dock. The reserved room (reference rect) is unchanged.
         let drop: CGFloat = showAreaChips && !emptyOnly ? 0 : MapStack.chipsHeight + MapStack.gap
         return ZStack(alignment: .bottom) {
-            if showAreaChips && !emptyOnly {
+            if showAreaChips && !emptyOnly && !udShowsCarousel {
                 areaChipsRow
                     .padding(.bottom, MapStack.dockClear + MapStack.chipsBottom)
             }
+            // Note 99: a selected pin shows the results as a carousel (or one event's preview) in the chips' place.
+            if udShowsCarousel {
+                Group {
+                    if let id = udPreviewID, let ev = eventsByID[id] { udPreviewCard(ev) } else { udCarousel }
+                }
+                .padding(.bottom, MapStack.dockClear + MapStack.chipsBottom)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
             // The day + hours: events inside are bold on the map, the rest dimmed; "All days" turns it off. It rides above
             // the panel while one is open and is hidden under the list.
-            if !listOpen && !emptyOnly {
+            if !listOpen && !emptyOnly && !unified {
                 timeBar
                     .padding(.bottom, areaPanel != nil ? panelHeight + 12 : MapStack.dockClear + MapStack.timeBottom - drop)
                     .animation(panelSpring, value: areaPanel != nil)
             }
             if showEmptyCard {
                 emptyCard
-                    .padding(.bottom, emptyOnly ? MapStack.dockClear + MapStack.fabBottom - drop
-                                                : MapStack.dockClear + MapStack.fabBottom - drop + MapStack.buttonHeight + 8)
+                    .padding(.bottom, emptyOnly ? MapStack.dockClear + MapStack.fabBottom - drop - udLift
+                                                : MapStack.dockClear + MapStack.fabBottom - drop - udLift + MapStack.buttonHeight + 8)
             }
-            if !listOpen && areaPanel == nil && !emptyOnly {
-                buttonsRow
-                    .padding(.bottom, MapStack.dockClear + MapStack.fabBottom - drop)
+            if !listOpen && areaPanel == nil && !emptyOnly && !(udShowsCarousel && udPreviewID != nil) {
+                Group { if unified { udButtonsRow } else { buttonsRow } }
+                    .padding(.bottom, MapStack.dockClear + MapStack.fabBottom - drop - udLift)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
@@ -589,6 +622,26 @@ struct MapExploreView: View {
 
     private var buttonsRow: some View {
         HStack(spacing: 8) {
+            compassButton
+            listButton
+        }
+        .padding(.trailing, 16)
+        .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+
+    /// Note 99: [− +] … List · N … my location.
+    private var udButtonsRow: some View {
+        HStack(spacing: 8) {
+            MapZoomCapsule(canZoomOut: cameraZoom > Self.udMinZoom + 0.05, canZoomIn: cameraZoom < Self.udMaxZoom - 0.05) { udZoom($0) }
+            Spacer(minLength: 8)
+            listButton
+            Spacer(minLength: 8)
+            compassButton
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private var compassButton: some View {
             Button(action: tapCompass) {
                 Text("🧭")
                     .font(.app(size: 18))
@@ -599,7 +652,10 @@ struct MapExploreView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(app.T("Vị trí của tôi", "My location"))
             .accessibilityIdentifier("map.compass")
+    }
 
+    @ViewBuilder
+    private var listButton: some View {
             let n = inWindowCount
             Button {
                 Haptics.selection()
@@ -621,9 +677,6 @@ struct MapExploreView: View {
                 : app.T("Danh sách, \(n) sự kiện", n == 1 ? "List, 1 event" : "List, \(n) events"))
             .accessibilityValue("\(n)")
             .accessibilityIdentifier("map.listButton")
-        }
-        .padding(.trailing, 16)
-        .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
     /// Neighbourhood chips: one per neighbourhood with results, most events first. Hidden at city level and while the
@@ -962,6 +1015,38 @@ struct MapExploreView: View {
         return f
     }
 
+    /// Note 99: the badge counts only what the Filters button owns (type, price, seats, sort); time has its chip.
+    private var udFilterBadge: Int {
+        UnifiedDiscovery.ownedFilterCount(filters, sort: sortByDistance ? "nearest" : "soonest")
+    }
+
+    /// Note 99: keeps the Map's local copies and the shared state (Home, Search) in step both ways. Hours stay local.
+    private var udSyncProbe: some View {
+        Color.clear
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            .onChange(of: filters) { _, f in
+                var next = f
+                next.date = app.homeFilters.date
+                if next != app.homeFilters { app.homeFilters = next }
+            }
+            .onChange(of: app.homeFilters) { _, f in
+                let mine = Self.withoutDate(f)
+                if mine != filters { filters = mine }
+                if UnifiedDiscovery.mapDayForDate(f.date) != (timeWin.on ? timeWin.key : "all") {
+                    timeWin = Self.udWindowFor(date: f.date)
+                }
+            }
+            .onChange(of: timeWin) { _, win in
+                let key = win.on ? win.key : "all"
+                if UnifiedDiscovery.mapDayForDate(app.homeFilters.date) != key { app.homeFilters.date = UnifiedDiscovery.dateForMapDay(key) }
+            }
+            .onChange(of: searchQuery) { _, q in if app.searchQuery != q { app.searchQuery = q } }
+            .onChange(of: app.searchQuery) { _, q in if searchQuery != q { searchQuery = q } }
+            .onChange(of: sortByDistance) { _, _ in registerSearchBar() }
+            .onChange(of: selectedId) { _, id in if id == nil || id != udPreviewID { udPreviewID = nil } }
+    }
+
     /// Badge: every selected filter (sheet, category, Seats left) plus For You.
     private var sheetFilterCount: Int {
         HomeDiscovery.activeFilterCount(filters) + (forYouActive ? 1 : 0) + (timeWin.on ? 1 : 0)
@@ -1082,7 +1167,7 @@ struct MapExploreView: View {
             submit: { rememberSearch() },
             cancel: { searchFieldFocused = false },
             filters: { searchFieldFocused = false; filterSheetOpen = true },
-            badge: sheetFilterCount)
+            badge: unified ? udFilterBadge : sheetFilterCount)
     }
 
     /// Back to Home: the bar glides down onto Home's own bar (the reverse of the entrance), then the map closes.
@@ -1183,7 +1268,9 @@ struct MapExploreView: View {
     @ViewBuilder
     private func marker(for m: MapMarker) -> some View {
         switch m {
-        case .area(let a): MapAreaBubble(app: app, group: a, windowOn: windowOn) { tapArea(a) }
+        case .area(let a):
+            let g = unified ? udAreaGlyphs(a.ids) : (shown: [String](), more: 0)
+            MapAreaBubble(app: app, group: a, windowOn: windowOn, glyphs: g.shown, moreGlyphs: g.more) { tapArea(a) }
         case .group(let g): groupMarker(g)
         }
     }
@@ -1388,7 +1475,231 @@ struct MapExploreView: View {
         .accessibilityLabel("\(ev.name), \(label)" + (dim ? ", " + outsideWindowText : ""))
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityIdentifier("map.pin.\(ev.id)")
-        .onTapGesture { Haptics.selection(); openEventDetail(ev.id) }
+        .onTapGesture { Haptics.selection(); if unified { udSelect(ev.id) } else { openEventDetail(ev.id) } }
+    }
+
+    // MARK: - Unified discovery (note 99)
+
+    /// The time bar's row is gone in unified mode: the buttons and the empty card settle into its room.
+    private var udLift: CGFloat { unified ? MapStack.timeHeight + 10 : 0 }
+    static let udMinZoom: Double = 3
+    static let udMaxZoom: Double = 19
+
+    /// − / +: one zoom level around the current centre, animated (Reduce Motion: instant). A user-like move, so it
+    /// commits the new area when it settles.
+    private func udZoom(_ step: Int) {
+        guard let r = currentCameraRegion else { return }
+        let target = min(Self.udMaxZoom, max(Self.udMinZoom, cameraZoom + Double(step)))
+        let factor = pow(2, cameraZoom - target)
+        var next = r
+        next.span = MKCoordinateSpan(latitudeDelta: min(170, r.span.latitudeDelta * factor),
+                                     longitudeDelta: min(350, r.span.longitudeDelta * factor))
+        moveCamera(.user, to: next, duration: 0.35)
+    }
+
+    /// A pin tap selects (ink pin + name) and shows the carousel scrolled to it; tapping it again clears.
+    private func udSelect(_ id: String) {
+        withAnimation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.88)) {
+            udPreviewID = nil
+            selectedId = selectedId == id ? nil : id
+        }
+    }
+
+    /// Only at pin level, with a selection among the results, and nothing else open over the map.
+    private var udShowsCarousel: Bool {
+        guard unified, let id = selectedId, !listOpen, areaPanel == nil, !searchFieldFocused else { return false }
+        return MapDiscovery.markerLevel(zoom: cameraZoom) == .pin && eventsByID[id] != nil
+    }
+
+    /// The area's types under its name: busiest first, then catalogue order, max 4 then "+N".
+    private func udAreaGlyphs(_ ids: [String]) -> (shown: [String], more: Int) {
+        let byID = eventsByID
+        var cats: [String: Int] = [:]
+        for id in ids {
+            if let ev = byID[id], let c = ev.catKeys.first ?? effectiveCatKey(ev) { cats[c, default: 0] += 1 }
+        }
+        return UnifiedDiscovery.areaGlyphs(cats, keys: EventTypes.keys)
+    }
+
+    private func udTypeLabel(_ ev: MapEventRow) -> String {
+        let k = ev.catKeys.first ?? effectiveCatKey(ev) ?? ""
+        return k.isEmpty ? (ev.catLabel ?? "") : UnifiedText.typeName(app, k)
+    }
+
+    @ViewBuilder
+    private func udThumb(_ ev: MapEventRow, size: CGFloat) -> some View {
+        if let url = app.mapEventCoverURLs[ev.id] {
+            CatalogPhoto(path: url.absoluteString, height: size, width: size, cornerRadius: 12)
+        } else if let path = EventCatalog.find(ev.id)?.img {
+            CatalogPhoto(path: path, height: size, width: size, cornerRadius: 12)
+        } else {
+            RoundedRectangle(cornerRadius: 12, style: .continuous).fill(app.palette.ink.opacity(0.08))
+                .frame(width: size, height: size)
+                .overlay(Image(systemName: CategoryGlyph.symbol(ev.catKeys.first ?? effectiveCatKey(ev) ?? "")).opacity(0.5))
+        }
+    }
+
+    /// Compact cards for the whole result set, scrolled to the selection (ink ring). A card opens its preview.
+    private var udCarousel: some View {
+        let rows = visibleEvents.filter { $0.lat != nil && $0.lng != nil }
+        return ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 10) {
+                    ForEach(rows) { ev in udCard(ev).id(ev.id) }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 4)
+            }
+            .onAppear { if let id = selectedId { proxy.scrollTo(id, anchor: .center) } }
+            .onChange(of: selectedId) { _, id in
+                guard let id else { return }
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .center) }
+            }
+        }
+        .frame(height: 84)
+        .rootSwipeExclusion("mapCarousel")
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(app.T("Kết quả", "Results"))
+        .accessibilityIdentifier("map.carousel")
+    }
+
+    private func udCard(_ ev: MapEventRow) -> some View {
+        let on = ev.id == selectedId
+        let few = seatFacts(ev)
+        let status: String? = few?.soldOut == true ? app.T("Hết chỗ", "Sold out")
+            : (few?.almostFull == true ? app.T("Còn \(few?.left ?? 0) chỗ", "\(few?.left ?? 0) left") : nil)
+        let place = [ev.area, nearDistance(ev)].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+        return Button {
+            Haptics.selection()
+            withAnimation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.88)) {
+                selectedId = ev.id
+                udPreviewID = ev.id
+            }
+        } label: {
+            HStack(spacing: 10) {
+                udThumb(ev, size: 56)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text([app.discoveryDateBadge(ev.startsAt, timeZone: EventMarket.timeZone(ev.timeZoneID)), udTypeLabel(ev)]
+                            .filter { !$0.isEmpty }.joined(separator: " · ").uppercased())
+                        .font(.app(size: 10.5, weight: .semibold)).foregroundStyle(app.palette.ink2).lineLimit(1)
+                    Text(ev.name).font(.app(size: 14.5, weight: .semibold)).lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(status ?? place).font(.app(size: 12)).lineLimit(1)
+                            .foregroundStyle(status != nil ? app.palette.honey : app.palette.ink2)
+                        Spacer(minLength: 4)
+                        Text(ev.priceVnd > 0 ? EventMarket.formatMoneyShort(ev.priceVnd, currency: ev.rowCurrency) : app.T("Miễn phí", "Free"))
+                            .font(.app(size: 12.5, weight: .bold)).lineLimit(1).fixedSize()
+                    }
+                }
+            }
+            .padding(10)
+            .frame(width: 280, height: 76, alignment: .leading)
+            .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(on ? app.palette.ink : app.palette.rule, lineWidth: on ? 2 : 1))
+            .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(app.palette.ink)
+        .accessibilityLabel("\(ev.name), \(eventWhen(ev)), \(priceLine(ev))")
+        .accessibilityHint(app.T("Xem trước", "Preview"))
+        .accessibilityAddTraits(on ? .isSelected : [])
+        .accessibilityIdentifier("map.card.\(ev.id)")
+    }
+
+    /// One event's preview: when · type · distance, name, two lines of intro, chips (area, host), the stub row, and
+    /// "See details" (every event) + "Reserve" (paid ones; Event Detail, where reserving starts).
+    private func udPreviewCard(_ ev: MapEventRow) -> some View {
+        let tz = EventMarket.timeZone(ev.timeZoneID)
+        let parts = ev.startsAt.map { EventMarket.zonedParts($0, timeZone: tz) }
+        let wd = parts.map { (app.isEN ? ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"] : ["CN", "T2", "T3", "T4", "T5", "T6", "T7"])[$0.weekday] }
+        let few = seatFacts(ev)
+        let seats: String? = few?.soldOut == true ? app.T("Hết chỗ", "Sold out")
+            : few?.left.map { app.T("Còn \($0) chỗ", "\($0) left") }
+        let blurb = (ev.intro?.isEmpty == false ? ev.intro : ev.description) ?? ""
+        let chips = [ev.area, ev.organizerName.map { app.T("Host · \($0)", "Host · \($0)") }].compactMap { $0 }.filter { !$0.isEmpty }
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center) {
+                Text([app.discoveryDateBadge(ev.startsAt, timeZone: tz), udTypeLabel(ev), nearDistance(ev)].compactMap { $0 }
+                        .filter { !$0.isEmpty }.joined(separator: " · ").uppercased())
+                    .font(.app(size: 11, weight: .semibold)).foregroundStyle(app.palette.ink2).lineLimit(1)
+                Spacer(minLength: 8)
+                Button {
+                    Haptics.selection()
+                    withAnimation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.88)) { udPreviewID = nil }
+                } label: {
+                    Label(app.T("Danh sách", "List"), systemImage: "chevron.left")
+                        .font(.app(size: 13, weight: .semibold))
+                        .padding(.horizontal, 10).frame(minHeight: 44).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("map.preview.back")
+            }
+            Text(ev.name).font(BanbeTheme.display(20)).lineLimit(2).accessibilityAddTraits(.isHeader)
+            if !blurb.isEmpty {
+                Text(blurb).font(.app(size: 13.5)).foregroundStyle(app.palette.ink2).lineLimit(2)
+            }
+            if !chips.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(chips, id: \.self) { c in
+                        Text(c).font(.app(size: 12)).lineLimit(1)
+                            .padding(.horizontal, 10).frame(minHeight: 26)
+                            .background(app.palette.ink.opacity(0.06), in: Capsule())
+                    }
+                }
+            }
+            HStack(spacing: 12) {
+                if let parts {
+                    VStack(spacing: 0) {
+                        Text(wd ?? "").font(.app(size: 11, weight: .semibold)).foregroundStyle(app.palette.ink2)
+                        Text("\(parts.day)").font(.app(size: 20, weight: .bold)).monospacedDigit()
+                    }
+                    .frame(width: 52, height: 52)
+                    .background(app.palette.block, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .accessibilityElement(children: .combine)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    priceView(ev, font: .app(size: 16, weight: .bold))
+                    if let seats {
+                        Text(seats).font(.app(size: 12.5)).foregroundStyle(few?.almostFull == true || few?.soldOut == true ? app.palette.honey : app.palette.ink2)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 8) {
+                Button { openEventDetail(ev.id) } label: {
+                    Text(app.T("Xem chi tiết", "See details"))
+                        .font(.app(size: 15, weight: .semibold))
+                        .frame(maxWidth: .infinity, minHeight: 46)
+                        .foregroundStyle(ev.priceVnd > 0 ? app.palette.ink : app.palette.paper)
+                        .background(ev.priceVnd > 0 ? app.palette.ink.opacity(0.08) : app.palette.ink, in: Capsule())
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("map.preview.details")
+                if ev.priceVnd > 0 {
+                    // No "open ready to reserve" intent exists yet: Event Detail is where reserving starts.
+                    Button { openEventDetail(ev.id) } label: {
+                        Text(app.T("Giữ chỗ", "Reserve"))
+                            .font(.app(size: 15, weight: .semibold))
+                            .frame(maxWidth: .infinity, minHeight: 46)
+                            .foregroundStyle(app.palette.paper)
+                            .background(app.palette.ink, in: Capsule())
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("map.preview.reserve")
+                }
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(16)
+        .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: .black.opacity(0.18), radius: 14, y: 5)
+        .padding(.horizontal, 12)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(app.T("Xem trước \(ev.name)", "Preview of \(ev.name)"))
+        .accessibilityIdentifier("map.preview")
     }
 
     // MARK: - Results
@@ -1745,6 +2056,17 @@ struct MapExploreView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     Color.clear.frame(width: 0, height: 1).id("map.chip.start")
+                    // Note 99: time is ONE chip here (the time bar row is gone); its pop-over keeps every choice.
+                    if unified {
+                        MapTimeChip(win: timeWin, dayLabel: dayLabel) { searchFieldFocused = false; udTimeOpen = true }
+                            .popover(isPresented: $udTimeOpen, arrowEdge: .top) {
+                                MapTimePopover(win: timeWin, options: dayOptions,
+                                               onDay: { key in timeWin = MapTimeWindow.defaultWindow(key: key, nowMs: Date().timeIntervalSince1970 * 1000, timeZone: viewTZ) },
+                                               onKnob: { which, hour in timeWin = MapTimeWindow.moveKnob(timeWin, which, hour: Double(hour)) })
+                                    .environmentObject(app)
+                                    .presentationCompactAdaptation(.popover)
+                            }
+                    }
                     if hasForYouPrefs { forYouChip.fixedSize(horizontal: true, vertical: false) }
                     if showSeats && openNowOnly { seatsChip }
                     if filters.free { freeChip }

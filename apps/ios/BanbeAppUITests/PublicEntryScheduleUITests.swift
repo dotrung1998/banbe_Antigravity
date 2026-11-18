@@ -130,7 +130,7 @@ final class PublicEntryScheduleUITests: XCTestCase {
         XCTAssertTrue(el(app, "schedule.item.fx-added").exists)
         // Each card is one combined accessibility element; its label carries the source line.
         XCTAssertTrue(el(app, "schedule.item.fx-hosted").label.contains("You're hosting"))
-        XCTAssertTrue(el(app, "schedule.item.fx-added").label.contains("Added by you"))
+        XCTAssertTrue(el(app, "schedule.item.fx-added").label.contains("Saved"))
         el(app, "schedule.item.fx-hosted").tap()
         XCTAssertTrue(el(app, "fixture.event.fx-hosted").waitForExistence(timeout: 5))
     }

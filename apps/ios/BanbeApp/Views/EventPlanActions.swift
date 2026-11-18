@@ -176,7 +176,7 @@ struct EventPlanButtons: View {
                                      title: app.T("Đã có trong lịch của tôi · \(source.label(app.T))", "In My schedule · \(source.label(app.T))"),
                                      systemImage: "checkmark.circle.fill", disabled: true) {}]
         if source == .added {
-            items.append(PopoverMenuItem(id: "event.schedule.remove", title: app.T("Bỏ khỏi lịch banbe", "Remove from banbe Schedule"),
+            items.append(PopoverMenuItem(id: "event.schedule.remove", title: app.T("Bỏ lưu (gỡ khỏi lịch banbe)", "Unsave (remove from banbe Schedule)"),
                                          systemImage: "calendar.badge.minus", destructive: true) {
                 app.removeFromBanbeSchedule(event.key)
                 show(nil)
@@ -188,7 +188,7 @@ struct EventPlanButtons: View {
     private func addToSchedule() {
         guard canAdd else { show(app.T("Sự kiện này không thể thêm vào lịch.", "This event can't be added to your schedule.")); return }
         switch app.addToBanbeSchedule(event) {
-        case .added: show(app.T("Đã thêm vào lịch banbe. Đây chưa phải đặt chỗ.", "Added to your banbe Schedule. This isn't a reservation."))
+        case .added: show(app.T("Đã lưu và thêm vào lịch banbe. Đây chưa phải đặt chỗ.", "Saved and added to your banbe Schedule. This isn't a reservation."))
         case .ineligible: show(app.T("Sự kiện này không thể thêm vào lịch.", "This event can't be added to your schedule."))
         case .alreadyThere, .needsSignIn: show(nil)
         }
