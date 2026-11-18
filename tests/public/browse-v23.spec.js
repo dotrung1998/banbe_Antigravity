@@ -257,10 +257,10 @@ test('an empty area offers All areas and returns to the whole catalogue', async 
   await expect(page.getByTestId('browse-screen')).toBeVisible({ timeout: 20000 });
   await page.getByTestId('browse-area-current').click();
   await expect(page.getByTestId('area-sheet-tree')).toBeVisible();
-  // The US root is always in the tree even with zero events, so this is a real empty-area selection.
+  // The US root is always in the tree even with zero events, so this is a real empty-area selection. Picking a
+  // location closes this centered sheet immediately (pickArea clears areaAsking), so there is no close step after it.
   await page.getByTestId('area-node:loc:US').click();
-  await expect(page.getByTestId('area-sheet-current')).toContainText('United States');
-  await page.getByTestId('area-sheet-close').click();
+  await expect(page.getByTestId('area-sheet-tree')).toHaveCount(0);
   await expect(page.getByTestId('browse-area-all')).toHaveAttribute('aria-pressed', 'false');
   await expect(page.getByTestId('browse-empty-all-areas')).toBeVisible();
   await page.getByTestId('browse-empty-all-areas').click();
