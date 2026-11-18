@@ -428,7 +428,11 @@ function Shell() {
   // visibility flag or another UIWindow-style overlay.
   // Post-signup onboarding overlay (note 34): the dock is hidden while it is up.
   const eventOnboardingActive = useEventOnboardingActive();
-  const showBar = showsBottomBar(state.screen) && !state.storyViewer && !state.pulseOpen && !state.areaAsking && !state.dockSuppressed && !state.storySurveyModalPublicId && !eventOnboardingActive;
+  // Prototype v2 (unified discovery): the Map is a full-screen view with NO dock (its own bottom row carries zoom,
+  // List · N and locate). Only Simple Shell drops it; the legacy dock keeps its Map tab.
+  const unifiedMap = flagOn(state.featureFlags, 'simple_shell') && flagOn(state.featureFlags, 'home_v23') && flagOn(state.featureFlags, 'unified_discovery');
+  const showBar = showsBottomBar(state.screen) && !(unifiedMap && state.screen === 'mapExplore')
+    && !state.storyViewer && !state.pulseOpen && !state.areaAsking && !state.dockSuppressed && !state.storySurveyModalPublicId && !eventOnboardingActive;
 
   // Stage 2 (2026-09-27 nav/discovery pass) — root-tab swipe + pull-to-
   // refresh, both gated on the SAME "is a root tab actually showing right

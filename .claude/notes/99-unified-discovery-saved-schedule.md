@@ -93,3 +93,31 @@ Owner ran the web app with migration 221 applied and said it did not exactly mir
   emoji); carousel cards 292 × 104 with an 84 px thumb; preview title 24 px light.
 - Checks: `npm run build` green, `npm run test:unit` 1022/1022. Web app not visually compared in this VM
   (no browser/deps for Playwright); a device pass is still the owner's check.
+
+## Prototype v2 parity pass 2 (web), 2026-11-18
+
+Owner's second report after the pass above: (1) the dock did not hide completely on scroll, (2) "See all" still
+opened the Browse-by-type screen, (3) the Map was still not the prototype, (4) Search was not the prototype. Web
+only, still read against `docs/prototype/unified-home-map-prototype-v2.html`.
+
+- **See all** (hero rail end card per tab): under `unified_discovery` it now scrolls the app's scroll viewport to
+  `home-shortlist-section` minus 70 px (`data-act="list"` in the prototype), instead of `openBrowse()`. The
+  shortlist end-card "Tất cả loại" opens the in-place `UnifiedTypeSheet`, and Home's empty-state Browse links
+  (`onBrowseAll`, `onBrowseType`) filter Home / scroll instead of opening Browse. Browse is now unreachable from
+  Home in this mode; its screen and the switch-off paths are unchanged.
+- **Dock on the Map**: with the three unified flags on, the Map no longer renders the floating dock at all (the
+  prototype has no dock there), so the `mapDockHidden` peek logic is bypassed. Legacy Simple Shell without
+  `unified_discovery` keeps its dock and its Map tab.
+- **Map**: `dockClear` is 0 in the unified Map (nothing to clear), the chip row is now the prototype's
+  time chip + hairline + "All"/every type with its count (sorted by count, zero-count last), the For You / seats /
+  price / area chips and the whole area-card row are gone, and the bottom row (zoom left, "Danh sách · N" centre,
+  locate right) sits 22 px off the bottom instead of above a dock. The carousel now sits above that row (as in the
+  prototype's `.map-bottom` flow) and the preview card above it too.
+- **Search** (unified overlay): the sheet is now the prototype's content — "Từ Trang chủ" + "Trang chủ + Bản đồ"
+  meta chips, "Gần đây" chips (hidden once a query is typed), the existing filter link, a results head
+  ("N kết quả cho …" / "N sự kiện") with "Cùng kết quả với bản đồ", `EventRowV23` rows with save hearts (same rows
+  the Map shows), the "Không có sự kiện nào khớp." end card with "Xoá bộ lọc", and a bottom "Xem trên bản đồ · N"
+  CTA. The category, trending, host and area groups are no longer rendered in this mode. Search rows now know an
+  event's `catKey` (added to both the real and demo doc builders).
+- Checks: `npm run build` green, `npm run test:unit` 1022/1022. Still not visually compared in this VM (no
+  browser/Playwright); the device pass remains the owner's check.

@@ -491,7 +491,8 @@ export default function MapExplore() {
   const rootRef = useRef(null);
   const [topControlsBottom, setTopControlsBottom] = useState(56); // px from the TOP of this screen's own box
   const [containerH, setContainerH] = useState(() => screenHeight());
-  const [dockClear, setDockClear] = useState(110); // px the floating dock occupies at the bottom
+  // Unified discovery draws the Map full-screen WITHOUT the dock (prototype v2), so there is no dock clearance there.
+  const [dockClear, setDockClear] = useState(ud ? 0 : 110); // px the floating dock occupies at the bottom
   // The bottom stack: the dock plus the buttons above it. The camera pads for it; the list and the panel float over the
   // map and never move it.
   const stackPx = dockClear + (ud ? UD_STACK_H : STACK_H);
@@ -509,6 +510,8 @@ export default function MapExplore() {
     const measure = () => {
       const r = root.getBoundingClientRect();
       if (r.height > 0) setContainerH(r.height);
+      // No dock in the unified Map: its bottom row sits at the screen's own edge.
+      if (ud) { setDockClear(0); return; }
       // The dock itself (Simple Shell has no Map tab to measure from).
       const tab = document.querySelector('[data-testid="bottom-tab-bar"]') || document.querySelector('[data-testid="tab-map"]');
       // Map v5: the dock slides away below tall; measuring it then would read its off-screen position.
@@ -524,7 +527,7 @@ export default function MapExplore() {
     window.addEventListener('resize', measure);
     window.addEventListener('orientationchange', measure);
     return () => { ro.disconnect(); window.removeEventListener('resize', measure); window.removeEventListener('orientationchange', measure); };
-  }, []);
+  }, [ud]);
 
   // Re-measures whenever the box resizes. ("Tìm ở đây" is gone: results follow the map on their own.)
   useEffect(() => {
@@ -2027,6 +2030,14 @@ export default function MapExplore() {
               <span aria-hidden="true" style={{ flex: 'none', width: 1, height: 22, alignSelf: 'center', background: rule }} />
             </>
           )}
+          {/* Prototype v2's Map row: the time chip, a hairline, then EVERY type with its count (All first). The other
+              narrowing lives in the Filters sheet, reached from the sliders button in the search row. */}
+          {ud && ['all', ...CATEGORY_DEFS.filter(c => c.key !== 'all')
+            .slice()
+            .sort((a, b) => ((categoryCountMap[b.key] || 0) > 0) - ((categoryCountMap[a.key] || 0) > 0) || (categoryCountMap[b.key] || 0) - (categoryCountMap[a.key] || 0))]
+            .map(k => { const c = CATEGORY_DEFS.find(x => x.key === k); return c ? categoryChipEl(c) : null; })}
+          {!ud && (
+            <>
           {hasPrefs && (
             <ForYouChip
               T={T}
@@ -2054,6 +2065,8 @@ export default function MapExplore() {
           <button type="button" onClick={() => setCategorySheetOpen(true)} data-testid="map-cat-show-all" aria-haspopup="dialog" style={mapChip(false, false)}>
             {T('Tất cả danh mục', 'All categories')}
           </button>
+            </>
+          )}
         </div>
         {/* Unified: the time chip's popover, under the chip row (the row scrolls, so it cannot hold it). */}
         {ud && (
@@ -2065,7 +2078,7 @@ export default function MapExplore() {
 
       {/* The bottom stack: my location and "List · N", right above the dock. */}
       {/* Prototype v2's bottom row: zoom left, "Danh sách · N" centred, locate right. */}
-      <div style={{ position: 'absolute', bottom: dockClear + fabBottom - stackDrop, transition: reduceMotion() ? 'none' : 'bottom 0.25s ease', zIndex: 3, display: 'flex', alignItems: 'center', gap: 8, visibility: listOpen || areaPanel || showPreview ? 'hidden' : 'visible',
+      <div style={{ position: 'absolute', bottom: ud ? dockClear + 22 : dockClear + fabBottom - stackDrop, transition: reduceMotion() ? 'none' : 'bottom 0.25s ease', zIndex: 3, display: 'flex', alignItems: 'center', gap: 8, visibility: listOpen || areaPanel || showPreview ? 'hidden' : 'visible',
         ...(ud ? { left: 0, right: 0, justifyContent: 'center', padding: '0 16px' } : { right: 16 }) }}>
         <div role="button" tabIndex={0} onClick={recenterOnUser} data-testid="map-compass" aria-label={T('Vị trí của tôi', 'My location')}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); recenterOnUser(); } }}
@@ -2087,7 +2100,7 @@ export default function MapExplore() {
       {/* Unified: zoom as one small "− +" capsule at the left of the bottom row (the map's own control is hidden). */}
       {ud && (
         <div role="group" aria-label={T('Thu phóng bản đồ', 'Map zoom')} data-testid="map-zoom"
-          style={{ ...photoPill({ position: 'absolute', borderRadius: RADIUS.pill }), left: 16, bottom: dockClear + fabBottom - stackDrop, zIndex: 3, height: 44, display: 'flex', alignItems: 'center', overflow: 'hidden', cursor: 'default',
+          style={{ ...photoPill({ position: 'absolute', borderRadius: RADIUS.pill }), left: 16, bottom: ud ? dockClear + 22 : dockClear + fabBottom - stackDrop, zIndex: 3, height: 44, display: 'flex', alignItems: 'center', overflow: 'hidden', cursor: 'default',
             transition: reduceMotion() ? 'none' : 'bottom 0.25s ease', visibility: listOpen || areaPanel || showPreview || emptyOnly ? 'hidden' : 'visible' }}>
           {[['out', -1, T('Thu nhỏ', 'Zoom out'), 'M5 12h14', atMinZoom], ['in', 1, T('Phóng to', 'Zoom in'), 'M12 5v14M5 12h14', atMaxZoom]].map(([k, dir, label, d, off], i) => (
             <Fragment key={k}>
@@ -2104,18 +2117,18 @@ export default function MapExplore() {
       {/* Unified: a selected pin's carousel (pin level), then its preview card. */}
       {carouselShown && (
         <MapCarousel events={sortedVisible} selectedId={selectedId} onOpen={openPreview} seatsOf={seatFacts} isHit={isHit} T={T}
-          style={{ bottom: dockClear + CHIPS_BOTTOM - 4 }} />
+          style={{ bottom: ud ? dockClear + 22 + BTN_H + 12 : dockClear + CHIPS_BOTTOM - 4 }} />
       )}
       {showPreview && (
         <MapPreview ev={selectedEv} distance={nearDistance(selectedEv)} seatsOf={seatFacts} T={T}
           onBack={() => setPreviewOpen(false)} onDetails={() => openEventDetail(selectedEv.id)} onReserve={() => reserveFromPreview(selectedEv.id)}
-          style={{ bottom: dockClear + 12 }} />
+          style={{ bottom: ud ? dockClear + BTN_H + 28 : dockClear + 12 }} />
       )}
 
       {/* (stackDrop: with no neighbourhood chips the time bar and buttons settle into their room, no gap above the dock.) */}
       {/* Neighbourhood chips: tap one to fly there and open its panel. Hidden at city level, while the list or a panel is
           open, and while there is nothing to show; their room above the buttons stays reserved. */}
-      {chipsShown && (
+      {chipsShown && !ud && (
         <div data-hscroll="true" data-testid="map-area-chips" className="bb-noscroll" role="group" aria-label={T('Khu vực', 'Areas')}
           style={{ position: 'absolute', left: 0, right: 0, bottom: dockClear + CHIPS_BOTTOM, zIndex: 3, display: 'flex', gap: 8, overflowX: 'auto', padding: '2px 16px 4px', scrollbarWidth: 'none' }}>
           {chipsView.map(g => {
@@ -2179,7 +2192,7 @@ export default function MapExplore() {
         style={{ bottom: areaPanel ? panelPx + 12 : dockClear + TIME_BOTTOM - stackDrop, visibility: listOpen || emptyOnly ? 'hidden' : 'visible', transition: reduceMotion() ? 'none' : 'bottom 0.38s cubic-bezier(.2,.85,.25,1)' }} />}
 
       {showEmptyCard && (
-        <div data-testid="map-empty-card" style={{ position: 'absolute', left: 16, right: 16, bottom: dockClear + fabBottom - stackDrop + (emptyOnly ? 0 : BTN_H + 8), zIndex: 3, maxHeight: '40%', overflowY: 'auto', background: paper, borderRadius: 16, boxShadow: '0 4px 18px rgba(27,25,22,0.16)' }}>
+        <div data-testid="map-empty-card" style={{ position: 'absolute', left: 16, right: 16, bottom: (ud ? dockClear + 22 : dockClear + fabBottom - stackDrop) + (emptyOnly ? 0 : BTN_H + 8), zIndex: 3, maxHeight: '40%', overflowY: 'auto', background: paper, borderRadius: 16, boxShadow: '0 4px 18px rgba(27,25,22,0.16)' }}>
           {emptyNodes}
         </div>
       )}

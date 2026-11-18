@@ -17,6 +17,7 @@ import { buildLocationSearchIndex, searchLocationTree } from '../lib/locationTre
 import { formatVnEventDate } from '../lib/countdown.js';
 import { formatMoney } from '../lib/eventMarket.js';
 import { CategoryGlyph, CATEGORY_DEFS, CategorySheet } from '../components/home/HomeDiscoveryParts.jsx';
+import EventRowV23 from '../components/list/EventRowV23.jsx';
 import { categorySheetKeys, DEFAULT_FILTERS } from '../lib/homeDiscovery.js';
 import { flagOn } from '../lib/featureFlags.js';
 import { ownedFilterCount } from '../lib/unifiedDiscovery.js';
@@ -38,6 +39,7 @@ const ENDED_AFTER_MS = 12 * 3600000; // note 38: a live row 12h past its start i
 export default function Search({ overlay = false }) {
   const {
     state: s, set, T, goEvent, goHome, loadDiscoveryEvents, loadPulse, openOrganizerProfile, pickArea, locationTree, pickFilter,
+    setHomeFilters, toggleFav,
   } = useBanBe();
   // The text lives in the ONE persistent bar's store (the bar is hosted in App.jsx and edits it directly). Seeded from
   // the global query on first render (silent: the bar re-reads on its own commit).
@@ -121,11 +123,11 @@ export default function Search({ overlay = false }) {
     const now = Date.now();
     const real = (s.discoveryEvents || [])
       .filter(e => e.status === 'live' && e.visibility === 'public' && !(e.startsAt && now - new Date(e.startsAt).getTime() > ENDED_AFTER_MS))
-      .map(e => ({ key: e.key, name: e.name, img: e.photoUrl, organizerId: e.organizerId, organizerName: e.organizerName, area: e.area,
+      .map(e => ({ key: e.key, name: e.name, img: e.photoUrl, organizerId: e.organizerId, organizerName: e.organizerName, area: e.area, catKey: e.catKey,
         startsAt: e.startsAt, priceVnd: e.priceVnd, currency: e.currency, tz: e.tz, doc: buildEventSearchDoc(e) }));
     const realKeys = new Set(real.map(e => e.key));
     const demo = EVENTS.filter(e => !realKeys.has(e.key) && !e.inviteOnly).map(e => ({
-      key: e.key, name: e.name, img: e.img, organizerId: null, organizerName: e.hostShort, area: e.locationLabel,
+      key: e.key, name: e.name, img: e.img, organizerId: null, organizerName: e.hostShort, area: e.locationLabel, catKey: e.cat,
       startsAt: catalogStartMs(e, s.homeLiveEvents?.[e.key]?.starts_at), price: e.price,
       doc: buildEventSearchDoc({ ...e, catLabel: e.cat, area: e.locationLabel, organizerName: e.hostShort, description: e.desc, details: s.homeLiveEvents?.[e.key]?.details }),
     }));
@@ -172,6 +174,27 @@ export default function Search({ overlay = false }) {
   const priceOf = (d) => (d.price != null ? d.price : d.priceVnd ? formatMoney(d.priceVnd, d.currency) : T('Miễn phí', 'Free'));
   const total = eventHits.length + hostHits.length + areaHits.length;
 
+  // Prototype v2's Search sheet lists the SAME result set the Map shows: one event row per result, narrowed by the
+  // shared query and the shared Home/Map filters, with no host/area groups and no trending block.
+  const udBase = ud ? (udKeySet ? docs.filter(d => udKeySet.has(d.key)) : docs) : [];
+  const udList = ud ? (query ? eventHits : udBase) : [];
+  const udRows = ud ? udList.map(d => {
+    const cat = CATEGORY_DEFS.find(c => c.key === d.catKey);
+    return { key: d.key, name: d.name, img: d.img, when: whenOf(d), type: cat ? T(cat.vi, cat.en) : null,
+      place: d.area, priceLabel: priceOf(d), isFree: d.price === 'Miễn phí' || d.priceVnd === 0,
+      saved: (s.favorites || []).includes(d.key) };
+  }) : [];
+  const metaChipStyle = { display: 'inline-flex', alignItems: 'center', gap: 5, height: 26, padding: '0 10px', borderRadius: 999, background: 'var(--bb-block)', color: ink2, fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap' };
+  const udSChip = { flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, height: 38, padding: '0 14px', borderRadius: 999, background: 'var(--bb-surface-2)', color: ink, border: 'none', fontFamily: 'inherit', fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap', cursor: 'pointer' };
+  const goMap = () => {
+    commit();
+    const go = () => { searchBarStore.setMapQuery(query); set({ screen: 'mapExplore', mapExploreState: { focusSearch: false, searchQuery: query } }); };
+    const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) { go(); return; }
+    setLeavingToMap(true);
+    setTimeout(go, 220);
+  };
+
   const groupTitle = (label, n, testId) => (
     <div data-testid={testId} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '18px 20px 10px' }}>
       <span style={{ ...display(16) }}>{label}</span><span style={{ fontSize: 12.5, opacity: 0.6 }}>{n}</span>
@@ -199,6 +222,34 @@ export default function Search({ overlay = false }) {
         <div data-search-bar-slot aria-hidden style={{ height: 44, flex: 1 }} />
       </div>
 
+      {ud && (
+        <>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '10px 16px 0' }}>
+            <span data-testid="search-source" style={metaChipStyle}>
+              <svg aria-hidden="true" width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z" /></svg>
+              {T('Từ Trang chủ', 'From Home')}
+            </span>
+            <span style={{ ...metaChipStyle, background: 'none', border: `1px solid ${rule}`, color: ink2 }}>
+              <svg aria-hidden="true" width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="var(--bb-moss, #4E6A30)" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 1-15 6.7L3 16M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M3 21v-5h5M21 3v5h-5" /></svg>
+              {T('Trang chủ + Bản đồ', 'Home + Map')}
+            </span>
+          </div>
+          {recent.length > 0 && !query && (
+            <div data-testid="search-recent-block">
+              <div style={{ padding: '18px 20px 8px', fontSize: 11, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--bb-fg-3)' }}>{T('Gần đây', 'Recent')}</div>
+              <div data-hscroll style={{ display: 'flex', gap: 8, overflowX: 'auto', padding: '0 20px 2px', scrollbarWidth: 'none' }}>
+                {recent.map(r => (
+                  <button key={r} type="button" onClick={() => setQ(r)} data-testid="search-recent" style={udSChip}>
+                    <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" style={{ opacity: 0.55 }}><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></svg>
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
       {ud && (() => {
         const cat = hf.cats?.[0] ? CATEGORY_DEFS.find(c => c.key === hf.cats[0]) : null;
         const parts = [
@@ -223,7 +274,7 @@ export default function Search({ overlay = false }) {
         );
       })()}
 
-      {!query && (
+      {!query && !ud && (
         <div data-testid="search-idle">
           {recent.length > 0 && (
             <div>
@@ -258,7 +309,7 @@ export default function Search({ overlay = false }) {
         </div>
       )}
 
-      {query && (
+      {query && !ud && (
         <div data-testid="search-results" data-count={total}>
           {total === 0 && (
             <div data-testid="search-empty" style={{ padding: '28px 24px 0', textAlign: 'center' }}>
@@ -337,6 +388,47 @@ export default function Search({ overlay = false }) {
               {T('Xem trên bản đồ', 'See on map')} ›
             </button>
           </div>
+        </div>
+      )}
+      {ud && (
+        <div data-testid="search-results" data-count={udRows.length}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, padding: '24px 20px 12px' }}>
+            <h3 style={{ margin: 0, fontSize: 19, fontWeight: 400, letterSpacing: '-.01em' }}>
+              {query ? T(`${udRows.length} kết quả cho “${query}”`, `${udRows.length} result${udRows.length === 1 ? '' : 's'} for “${query}”`)
+                : T(`${udRows.length} sự kiện`, `${udRows.length} ${udRows.length === 1 ? 'event' : 'events'}`)}
+            </h3>
+            <small style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--bb-fg-3)', whiteSpace: 'nowrap' }}>
+              <i aria-hidden="true" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--bb-moss, #4E6A30)' }} />
+              {T('Cùng kết quả với bản đồ', 'Same results as the map')}
+            </small>
+          </div>
+          {udRows.map(r => (
+            <EventRowV23 key={r.key} row={r} T={T} testId={`search-event-${r.key}`} onOpen={() => openEv(r.key)} onToggleSave={toggleFav} />
+          ))}
+          {!udRows.length && (
+            <div data-testid="search-empty" style={{ margin: '0 20px', padding: '16px 18px', borderRadius: 16, background: 'var(--bb-block)' }}>
+              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--bb-fg-3)' }}>{T('Tìm kiếm', 'Search')}</div>
+              <b style={{ display: 'block', fontSize: 16, fontWeight: 500, margin: '6px 0 4px' }}>{T('Không có sự kiện nào khớp.', 'Nothing matches.')}</b>
+              <p style={{ margin: '0 0 12px', fontSize: 13, color: ink2 }}>
+                {query ? T(`Không có gì khớp “${query}”. Thử một từ khác hoặc bỏ bộ lọc.`, `Nothing matches “${query}”. Try another word or drop the filters.`)
+                  : T('Thử bỏ bớt bộ lọc, hoặc chọn Mọi lúc.', 'Try fewer filters, or pick Any time.')}
+              </p>
+              <button type="button" data-testid="search-empty-clear"
+                onClick={() => { setQ(''); set({ searchQuery: '' }); setHomeFilters({ ...DEFAULT_FILTERS }); set({ homeSort: 'soonest' }); }}
+                style={{ minHeight: 40, padding: '0 16px', borderRadius: 999, border: 'none', background: ink, color: paper, fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                {T('Xoá bộ lọc', 'Clear filters')}
+              </button>
+            </div>
+          )}
+          <div style={{ height: 108 }} />
+          {udRows.length > 0 && (
+            <button type="button" data-testid="search-see-on-map" onMouseDown={(e) => e.preventDefault()} onClick={goMap}
+              style={{ position: 'sticky', bottom: 16, width: 'calc(100% - 32px)', margin: '0 16px', minHeight: 54, borderRadius: 999, border: 'none', background: ink, color: paper, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, fontFamily: 'inherit', fontSize: 15.5, fontWeight: 600, boxShadow: '0 10px 26px rgba(12,11,9,.24)', cursor: 'pointer' }}>
+              <svg aria-hidden="true" width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z" /><path d="M9 4v14M15 6v14" /></svg>
+              {T('Xem trên bản đồ', 'See on the map')}
+              <span style={{ minWidth: 24, height: 24, padding: '0 7px', boxSizing: 'border-box', borderRadius: 999, border: '1px solid currentColor', display: 'grid', placeItems: 'center', fontSize: 12, opacity: 0.85 }}>{udRows.length}</span>
+            </button>
+          )}
         </div>
       )}
       {catSheetOpen && (

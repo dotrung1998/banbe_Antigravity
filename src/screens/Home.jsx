@@ -680,11 +680,23 @@ export default function Home({ browse = false }) {
   const onShortlistAction = (act) => {
     if (act === 'clear-filters') { clearFilters(); set({ homeSort: 'soonest' }); }
     else if (act === 'map') openMapWithContext();
-    else if (act === 'types') openBrowse({ type: 'all', scope: 'all' });
+    // Prototype v2's end-card "Tất cả loại": a type sheet over Home, not a Browse-by-type screen.
+    else if (act === 'types') { if (ud) setTypeSheetOpen(true); else openBrowse({ type: 'all', scope: 'all' }); }
+  };
+
+  // Prototype v2: the rail's end card ("Xem tất cả N · trong Gần bạn hoặc trên bản đồ") scrolls Home down to the
+  // "Gần bạn" list. It does NOT open a separate Browse-by-type screen.
+  const scrollToNearby = () => {
+    const el = document.querySelector('[data-testid="home-shortlist-section"]');
+    if (!el) return;
+    const sc = document.querySelector('[data-testid="app-scroll-viewport"]');
+    const box = el.getBoundingClientRect();
+    const top = (sc ? sc.scrollTop : window.scrollY) + box.top - (sc ? sc.getBoundingClientRect().top : 0) - 70;
+    (sc || window).scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
   };
 
   const heroSeeAll = (tab) => {
-    if (v23) { openBrowse({ type: 'all', scope: tab }); return; }
+    if (v23) { if (ud) scrollToNearby(); else openBrowse({ type: 'all', scope: tab }); return; }
     if (tab === 'foryou') { if (!s.filterForYou && hasForYou) toggleHomeFilter('forYou'); }
     else if (homeFilters.date !== (tab === 'tonight' ? 'today' : 'weekend')) pickFilter(tab === 'tonight' ? 'today' : 'weekend');
     setTimeout(() => document.querySelector('[data-testid^="home-event-"]')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 120);
@@ -1346,7 +1358,7 @@ export default function Home({ browse = false }) {
           onSetPrefs={() => openEventPreferences('home')}
           // "Browse all events" opens the every-event list itself (owner 2026-11-18): it used to scroll Home down to
           // the By type section, which only ever held a handful of events, never all of them.
-          onBrowseAll={() => browseTypesFrom(curTab)}
+          onBrowseAll={() => { if (ud) { scrollToNearby(); return; } browseTypesFrom(curTab); }}
           hostBody={<div data-reveal="1"><HostHome /><div style={{ height: 44 }} /></div>} below={surveySection}
           seeAll={v23 && curTab !== 'hosting' ? { count: tabItems(curTab).length, label: TAB_LABEL[curTab] } : null}
           searchActive={!!udQuery}
@@ -1356,7 +1368,7 @@ export default function Home({ browse = false }) {
               onPick={(k) => pickFilter(homeFilters.cats?.[0] === k ? 'all' : k)} onClear={() => pickFilter('all')}
               onOpenSheet={() => setTypeSheetOpen(true)} T={T} />
           ) : null}
-          onBrowseType={v23 ? (k) => openBrowse({ type: k, scope: 'all' }) : null}
+          onBrowseType={v23 ? (k) => { if (ud) { pickFilter(k); return; } openBrowse({ type: k, scope: 'all' }); } : null}
           browseTotal={v23 ? applyDiscoveryFilters(discoveryItems, DEFAULT_FILTERS, nowMs).filter(it => !it.ev.cancelled).length : null}
           shortlist={shortlist && (
             <div data-reveal="2">
