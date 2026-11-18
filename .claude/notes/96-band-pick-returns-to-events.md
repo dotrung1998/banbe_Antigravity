@@ -49,3 +49,14 @@ No test ids changed and no spec was touched. Not verified in a browser or on a d
 scroll deep, open the pill, pick Tonight → the page returns to the top with the tabs shown and Tonight selected; pick an
 area → same, and the list is for that area; **pick the option already on → same again**; open the menu and scroll → the
 menu closes; on Browse, tap the open tab or chip → the list jumps back to its heading.
+
+## Follow-up (2026-11-23): the iOS menus stayed open while scrolling
+
+Two screenshots of the same area menu at two scroll positions (the page at the top, then at "Next up") showed the native
+`Menu` still open after the reader had scrolled the feed. The web menu closes on any scroll, but a SwiftUI `Menu` has no
+`isPresented` binding and stays until a tap outside or a selection.
+
+`HomeHeaderCompact` now bumps a `menuGeneration` on the rising edge of each scroll gesture (a movement after 200 ms of
+quiet), and both middle controls — the expanded area chip and the folded view + area pill, which also carries the nested
+area submenu — carry `.id(compact.menuGeneration)`. A new identity rebuilds them, which dismisses the open menu; the
+gesture-edge guard means normal scrolling rebuilds nothing.

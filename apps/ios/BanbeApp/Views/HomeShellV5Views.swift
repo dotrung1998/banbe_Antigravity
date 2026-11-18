@@ -36,8 +36,17 @@ private struct HeroFirstCardTourTarget: ViewModifier {
 final class HomeHeaderCompact: ObservableObject {
     static let shared = HomeHeaderCompact()
     @Published private(set) var isCompact = false
+    /// Bumped when a scroll gesture begins. The band's native menus (area, view) rebuild on a new identity, which
+    /// dismisses them — a SwiftUI `Menu` has no `isPresented` binding, so a menu opened from the pinned band used to
+    /// stay on screen while the reader scrolled the feed under it (owner 2026-11-23, the two screenshots). One rebuild
+    /// per gesture, on its rising edge, so normal scrolling costs nothing.
+    @Published private(set) var menuGeneration = 0
+    private var lastOffsetY: CGFloat?
+    private var scrolling = false
+    private var idleTask: DispatchWorkItem?
 
     func update(offsetY: CGFloat) {
+        noteScroll(offsetY)
         let next = isCompact ? offsetY > 24 : offsetY > 72
         guard next != isCompact else { return }
         if UIAccessibility.isReduceMotionEnabled {
@@ -45,6 +54,20 @@ final class HomeHeaderCompact: ObservableObject {
         } else {
             withAnimation(.easeInOut(duration: 0.24)) { isCompact = next }
         }
+    }
+
+    /// A new scroll gesture (a movement after a quiet moment) closes any band menu; a pause of 200 ms ends the gesture.
+    private func noteScroll(_ y: CGFloat) {
+        defer { lastOffsetY = y }
+        guard let last = lastOffsetY, abs(y - last) > 0.5 else { return }
+        if !scrolling {
+            scrolling = true
+            menuGeneration &+= 1
+        }
+        idleTask?.cancel()
+        let task = DispatchWorkItem { [weak self] in self?.scrolling = false }
+        idleTask = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: task)
     }
 
     func reset() {
@@ -94,12 +117,15 @@ struct HomeHeroPinnedHeader: View {
                 mark
                 Spacer(minLength: 6)
                 // One middle, two states: the area chip while the tabs show, the view + area pill once they fold away.
+                // Both carry the menu-generation id, so starting to scroll rebuilds them and closes an open menu.
                 ZStack {
                     areaButton
+                        .id(compact.menuGeneration)
                         .opacity(compact.isCompact ? 0 : 1)
                         .allowsHitTesting(!compact.isCompact)
                         .accessibilityHidden(compact.isCompact)
                     viewPill
+                        .id(compact.menuGeneration)
                         .opacity(compact.isCompact ? 1 : 0)
                         .allowsHitTesting(compact.isCompact)
                         .accessibilityHidden(!compact.isCompact)
