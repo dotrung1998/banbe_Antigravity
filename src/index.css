@@ -847,8 +847,14 @@ input::placeholder, textarea::placeholder {
 }
 
 /* Map v5 (note 73): the dock slides away on the Map below tall; Reduce Motion = a plain fade. */
+/* The row's entrance animation (bbIn, fill both) can keep opacity at 1 and Reduce Motion pins translate, so the
+   hidden state also carries its own attribute and wins explicitly — the dock must never linger half-hidden. */
+[data-testid="dock-row"][data-hidden="true"],
+[data-testid="dock-row"][data-collapsed="true"] { opacity: 0 !important; }
 @media (prefers-reduced-motion: reduce) {
   [data-testid="dock-row"] { transition: opacity 0.2s ease !important; translate: -50% 0 !important; }
+  [data-testid="dock-row"][data-hidden="true"],
+  [data-testid="dock-row"][data-collapsed="true"] { translate: -50% calc(100% + 40px) !important; opacity: 0 !important; }
 }
 
 /* Map v6 (note 74): sideways photo pager (src/components/PhotoPager.jsx) and the Map peek strip scroll without a bar. */

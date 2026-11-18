@@ -2034,7 +2034,8 @@ export default function MapExplore() {
               narrowing lives in the Filters sheet, reached from the sliders button in the search row. */}
           {ud && ['all', ...CATEGORY_DEFS.filter(c => c.key !== 'all')
             .slice()
-            .sort((a, b) => ((categoryCountMap[b.key] || 0) > 0) - ((categoryCountMap[a.key] || 0) > 0) || (categoryCountMap[b.key] || 0) - (categoryCountMap[a.key] || 0))]
+            .sort((a, b) => ((categoryCountMap[b.key] || 0) > 0) - ((categoryCountMap[a.key] || 0) > 0) || (categoryCountMap[b.key] || 0) - (categoryCountMap[a.key] || 0))
+            .map(c => c.key)]
             .map(k => { const c = CATEGORY_DEFS.find(x => x.key === k); return c ? categoryChipEl(c) : null; })}
           {!ud && (
             <>
@@ -2082,7 +2083,7 @@ export default function MapExplore() {
         ...(ud ? { left: 0, right: 0, justifyContent: 'center', padding: '0 16px' } : { right: 16 }) }}>
         <div role="button" tabIndex={0} onClick={recenterOnUser} data-testid="map-compass" aria-label={T('Vị trí của tôi', 'My location')}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); recenterOnUser(); } }}
-          style={{ ...photoPill({ position: 'static', borderRadius: '50%' }), width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, opacity: compassOpacity, ...(ud ? { position: 'absolute', right: 16 } : null) }}>
+          style={{ ...photoPill({ position: 'static', borderRadius: '50%' }), width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, opacity: ud ? 1 : compassOpacity, ...(ud ? { position: 'absolute', right: 16 } : null) }}>
           {ud ? (
             <svg aria-hidden="true" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="1.5" /></svg>
           ) : '🧭'}

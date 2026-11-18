@@ -289,6 +289,7 @@ function DockRow({ collapsed, showCreate, hidden = false }) {
       data-reveal="3"
       data-testid="dock-row"
       data-hidden={hidden ? 'true' : undefined}
+      data-collapsed={hidden || collapsed ? 'true' : undefined}
       aria-hidden={hidden || undefined}
       inert={hidden || collapsed || undefined}
       style={{

@@ -119,5 +119,11 @@ only, still read against `docs/prototype/unified-home-map-prototype-v2.html`.
   the Map shows), the "Không có sự kiện nào khớp." end card with "Xoá bộ lọc", and a bottom "Xem trên bản đồ · N"
   CTA. The category, trending, host and area groups are no longer rendered in this mode. Search rows now know an
   event's `catKey` (added to both the real and demo doc builders).
-- Checks: `npm run build` green, `npm run test:unit` 1022/1022. Still not visually compared in this VM (no
-  browser/Playwright); the device pass remains the owner's check.
+- Checks: `npm run build` green, `npm run test:unit` 1022/1022. This pass WAS rendered in a headless Chromium
+  against the demo catalogue (iPhone viewport): Home's See-all card scrolled to "Near you" with no Browse screen,
+  the Map had no dock and no area chips and its type row showed All 18 + every type, and Search listed 19 event rows
+  with the source chips, results head and "See on the map · 19" CTA. Found and fixed two rendering bugs this way: the
+  type chips mapped category objects instead of keys (only "All" rendered) and the Map's locate button was at 0.16
+  opacity. The dock's hide also carries `data-collapsed` + an explicit CSS opacity now, because the row's `bbIn`
+  entrance animation (fill both) and Reduce Motion's pinned `translate` could leave it visibly on screen.
+- Not yet re-checked on a phone; the owner's device pass is still the final visual check.
