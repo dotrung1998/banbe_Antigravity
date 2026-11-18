@@ -129,9 +129,6 @@ struct HomeHeroPinnedHeader: View {
         }
         // Bottom edge of the pinned header: the tour keeps spotlighted sections below it.
         .tourTarget("tour.home.headerBottom")
-        // Another area (the band's chip or the folded pill) changes what the feed lists, so the feed goes back to the
-        // events at the top instead of leaving the reader looking at a section the change did not touch.
-        .onChange(of: app.area) { _, _ in app.resetHomeScrollToTop() }
     }
 
     /// What the band occupies in the hero's layout for the current state.
@@ -334,20 +331,19 @@ struct HomeHeroPinnedHeader: View {
     }
 
     /// A goer tab: from Hosting it also returns Home to the Going out view (tab and mode stay in sync). Either way the
-    /// feed goes back to the top: from the folded band the pick can happen far down the page, and a list that changes
-    /// somewhere above the reader reads as "nothing happened" (owner 2026-11-23).
+    /// feed goes back to the top — including when the tab tapped is the one already open: from the folded band the pick
+    /// can happen far down the page, and re-choosing the current view is never a dead tap (owner 2026-11-23).
     private func selectGoerTab(_ t: HomeHeroTab) {
         if hosting {
             Haptics.selection()
             tab = t
             app.homeView = .goer
             HomeMode.stored = app.homeView
-            app.resetHomeScrollToTop()
         } else if tab != t {
             Haptics.selection()
             tab = t
-            app.resetHomeScrollToTop()
         }
+        app.resetHomeScrollToTop()
     }
 
     private func tabButton(title: String, selected: Bool, id: String, action: @escaping () -> Void) -> some View {

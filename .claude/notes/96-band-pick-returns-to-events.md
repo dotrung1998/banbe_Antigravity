@@ -11,28 +11,41 @@ anywhere in a very long feed — so the choice was applied to a list that change
 reads as "nothing happened". The same screenshot showed the web's frosted view menu still hanging over content that had
 scrolled underneath it.
 
+Then, with the first fix in: "Options remain available here and in other instances where clicking again while already
+inside an option should automatically return to events during scrolling." The option the reader is already on (the open
+tab, the checked area, the selected Browse tab or type chip) was still a dead tap.
+
 ## The fix
 
-- **The feed goes back to the top whenever what it shows changes**: another tab, the host view, or another area. On web
-  that is one derived key (`host|tab|area`) guarded by a ref so the first render is not treated as a change (a restored
-  scroll position is never overridden); on iOS `selectGoerTab` now resets for goer-to-goer switches too (it already did
-  when leaving Hosting) and the band resets on `app.area`.
-  Both resets are the app's existing ones (`scrollTo` on `[data-testid="app-scroll-viewport"]` with Reduce Motion going
-  instant; `app.resetHomeScrollToTop()`, which also unfolds the band), so the reader lands on the events with the tabs
-  back — the band unfolding is the visible acknowledgement of the pick.
+- **One action, "return to the events", runs on every pick — including the one already on.** Web: `returnToEvents()` in
+  Home.jsx sets `homeScrollTopToken`, which App.jsx owns (it zeroes the app scroller; area picks go through the same
+  token from `pickArea` in BanBeContext, so the expanded chip, the folded pill's Area row and the area list all agree).
+  iOS: `app.resetHomeScrollToTop()` in `selectGoerTab` (now called for every tab, not only a change), in `openHosting`,
+  and in `AppState.pickArea` when the screen is Home. `resetHomeScrollToTop` also unfolds the band, so the reader lands
+  on the events with the tabs back — the visible acknowledgement of the pick.
+- **No double scroll.** The earlier version watched a `host|tab|area` key and scrolled on change; the token replaces
+  it, so a changed pick and a re-pick travel exactly the same path and the first render never moves a restored scroll.
+- **Area picks only reset on Home.** Everywhere else an area is a filter on another screen, not a place to return to.
 - **The frosted menu closes on any scroll** (`GlassMenu.jsx`, one capture-phase scroll listener while open), so a menu
-  opened from the pinned band can no longer float over content the reader has moved to. It already closed on a tap
-  outside, on Escape, and after an item was chosen. iOS's native `Menu` dismisses itself the same way.
-- Choosing an option that changes nothing (the tab you are on, the area you are in) still closes the menu and does not
-  move the page.
+  opened from the pinned band can no longer float over content the reader has moved to. It still closes on a tap
+  outside, on Escape, and after an item is chosen. iOS's native `Menu` dismisses itself the same way.
+- **The same idea in Browse, "another instance" of the pattern:** on web, re-tapping the open scope tab or the open type
+  chip scrolls the list back to its heading; on iOS the scope tabs and type chips bump `browseTopToken`, which scrolls
+  to the now-anchored `browse.listTop` (the anchor existed in a `scrollTo` call but was never attached, so the end card's
+  "see this type" jump had been a no-op too).
 
 ## Files
 
-- `src/screens/Home.jsx` — the `feedKey` effect ("a new view or area puts the feed back at the events").
-- `src/components/GlassMenu.jsx` — close on scroll, with the listener cleaned up.
-- `apps/ios/BanbeApp/Views/HomeShellV5Views.swift` — `selectGoerTab` resets on every tab change; `HomeHeroPinnedHeader`
-  resets on `app.area` (the chip and the folded pill both go through it).
+- `src/screens/Home.jsx` — `returnToEvents()` (homeScrollTopToken) passed to the band.
+- `src/components/home/HomeShellV5.jsx` — view menu rows, Hosting row and the tab row all call `onReturnToEvents`.
+- `src/state/BanBeContext.jsx` — `pickArea` bumps the token when the screen is Home (updater form, so it sees the screen).
+- `src/components/GlassMenu.jsx` — close on scroll, listener cleaned up.
+- `src/screens/Browse.jsx` — an active scope tab or type chip scrolls to the list head.
+- `apps/ios/BanbeApp/Views/HomeShellV5Views.swift` — `selectGoerTab` always resets; `openHosting` already did.
+- `apps/ios/BanbeApp/State/AppState.swift` — `pickArea` resets on Home.
+- `apps/ios/BanbeApp/Views/BrowseView.swift` — same-tap scroll on scope tabs/type chips, `browse.listTop` anchored.
 
 No test ids changed and no spec was touched. Not verified in a browser or on a device; the behaviour to confirm is:
 scroll deep, open the pill, pick Tonight → the page returns to the top with the tabs shown and Tonight selected; pick an
-area → same, and the list is for that area; open the menu and scroll → the menu closes.
+area → same, and the list is for that area; **pick the option already on → same again**; open the menu and scroll → the
+menu closes; on Browse, tap the open tab or chip → the list jumps back to its heading.

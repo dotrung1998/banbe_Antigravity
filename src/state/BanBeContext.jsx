@@ -8681,7 +8681,15 @@ export function BanBeProvider({ children }) {
   // localStorage/`banbe.preferences` or the profile) — same mechanism as
   // before, just a location node id now. Old keys are migrated on the way
   // in so a stale caller/deep link can't store an unmatchable value.
-  const pickArea = useCallback((key) => set({ area: migrateLegacyAreaKey(key), areaAsking: false }), [set]);
+  // Choosing an area is also a "take me back to the events" action on Home (owner 2026-11-23): the band's pick can
+  // happen far down the feed, and picking the area already on counts too. Only on Home — everywhere else the area is a
+  // filter, not a place to return to. App.jsx owns the actual scroll (homeScrollTopToken).
+  const pickArea = useCallback((key) => set(prev => ({
+    ...prev,
+    area: migrateLegacyAreaKey(key),
+    areaAsking: false,
+    ...(prev.screen === 'home' ? { homeScrollTopToken: Date.now() } : null),
+  })), [set]);
   const requestFreshCoords = useCallback(() => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(

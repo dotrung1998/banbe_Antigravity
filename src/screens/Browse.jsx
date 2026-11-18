@@ -184,7 +184,12 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
             const on = t.key === 'all' ? scope === 'all' : scope === t.key;
             return (
               <button key={t.key} type="button" role="tab" aria-selected={on} data-testid={`browse-scope-${t.key}`}
-                onClick={() => { if (on) return; if (t.key === 'all') onBrowseTypes(); else onScope(t.key); }}
+                onClick={() => {
+                  // Tapping the tab you are already on returns to the top of its list (owner 2026-11-23: choosing the
+                  // current option must never be a dead tap after scrolling).
+                  if (on) { scrollRef.current?.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' }); return; }
+                  if (t.key === 'all') onBrowseTypes(); else onScope(t.key);
+                }}
                 style={{ flex: 'none', border: 'none', background: 'none', fontFamily: 'inherit', fontSize: 15.5, minHeight: 44, padding: '0 0 2px', cursor: 'pointer',
                   color: 'inherit', opacity: on ? 1 : 0.6, fontWeight: on ? 600 : 400, whiteSpace: 'nowrap',
                   borderBottom: `2px solid ${on ? 'var(--bb-fg)' : 'transparent'}` }}>
@@ -222,7 +227,11 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
                   const on = effType === d.key;
                   const n = d.key === 'all' ? items.length : counts[d.key];
                   return (
-                    <button key={d.key} type="button" role="tab" aria-selected={on} data-testid={`browse-type-${d.key}`} onClick={() => pickType(d.key)} style={chipLook(on)}>
+                    <button key={d.key} type="button" role="tab" aria-selected={on} data-testid={`browse-type-${d.key}`}
+                      onClick={() => {
+                        if (on) { scrollRef.current?.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' }); return; }
+                        pickType(d.key);
+                      }} style={chipLook(on)}>
                       {d.key !== 'all' && <CategoryGlyph cat={d.key} size={16} strokeWidth={1.6} />}
                       <span>{T(d.vi, d.en)}</span>
                       <span data-testid={`browse-type-count-${d.key}`} style={{ fontWeight: 500, opacity: 0.7, fontVariantNumeric: 'tabular-nums' }}>{n}</span>

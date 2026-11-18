@@ -40,7 +40,7 @@ const initials = (name) => String(name || '').trim().split(/\s+/).filter(Boolean
  * @param {boolean} p.canHost  show the Hosting tab
  */
 export default function HomeShellV5({
-  T, lang, tab, onTab, lists, items, canHost, user, dateLabel, areaLabel, areaActive = false, filtersActive = false, hasPrefs = true, onClearFilters,
+  T, lang, tab, onTab, onReturnToEvents, lists, items, canHost, user, dateLabel, areaLabel, areaActive = false, filtersActive = false, hasPrefs = true, onClearFilters,
   onOpenEvent, onSeeAll, onAccount, onSearch, onArea, onMap, onFilters, filterSummary, onFindType, onPickType, onSetPrefs, onBrowseAll,
   typeCounts, badgeDate, trStatus, children, hostBody, below, shortlist = null, seeAll = null, onBrowseType = null, browseTotal = null,
 }) {
@@ -197,12 +197,14 @@ export default function HomeShellV5({
                 </button>
               )}>
               {TABS.map(([k, vi, en]) => (
-                <GlassMenuItem key={k} testId={`home-view-${k}`} checked={!hosting && tab === k} onClick={() => onTab(k)}>{T(vi, en)}</GlassMenuItem>
+                <GlassMenuItem key={k} testId={`home-view-${k}`} checked={!hosting && tab === k}
+                  onClick={() => { onTab(k); onReturnToEvents?.(); }}>{T(vi, en)}</GlassMenuItem>
               ))}
               {canHost && (
                 <>
                   <GlassMenuDivider />
-                  <GlassMenuItem testId="home-view-hosting" checked={hosting} onClick={() => onTab('hosting')}>
+                  <GlassMenuItem testId="home-view-hosting" checked={hosting}
+                    onClick={() => { onTab('hosting'); onReturnToEvents?.(); }}>
                     {T('Tổ chức', 'Hosting')} <small style={{ fontSize: 11.5, fontWeight: 400, opacity: 0.6 }}>{T('chế độ host', 'host view')}</small>
                   </GlassMenuItem>
                 </>
@@ -226,7 +228,8 @@ export default function HomeShellV5({
         </div>
         <div role="tablist" data-testid="home-hero-tabs" className="bb-home-head__tabs" aria-hidden={compact || undefined}>
           {tabs.map(([k, vi, en]) => (
-            <button key={k} type="button" role="tab" aria-selected={tab === k} data-testid={`home-hero-tab-${k}`} onClick={() => onTab(k)}
+            <button key={k} type="button" role="tab" aria-selected={tab === k} data-testid={`home-hero-tab-${k}`}
+              onClick={() => { onTab(k); onReturnToEvents?.(); }}
               tabIndex={compact ? -1 : 0} className="bb-home-head__tab">{T(vi, en)}</button>
           ))}
         </div>

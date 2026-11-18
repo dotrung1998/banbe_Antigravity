@@ -140,6 +140,9 @@ struct BrowseView: View {
     @State private var hostsOpen = false
     @State private var filtersOpen = false
     @FocusState private var searchFocused: Bool
+    /// Bumped when the reader taps the scope tab or type chip they are already on: the list goes back to its top
+    /// (owner 2026-11-23 — re-choosing the current option is never a dead tap after scrolling).
+    @State private var browseTopToken = 0
 
     private var tabLabel: ViEn? { HomeHeroTab(rawValue: app.browseScope).map { ViEn($0.vi, $0.en) } }
 
@@ -182,6 +185,7 @@ struct BrowseView: View {
                         // title and Filters closes the chip row, where each used to take a row of its own and push
                         // the first event almost halfway down the screen.
                         listHead(titleText, count: result.list.count, hosts: hosts, now: now)
+                            .id("browse.listTop")
                         HStack(spacing: 0) {
                             if !chips.isEmpty || app.browseScope != "all" { typeChips(chips, counts: counts, total: entries.count, selected: effType) }
                             else { Spacer(minLength: 0) }
@@ -197,6 +201,9 @@ struct BrowseView: View {
                     .foregroundStyle(app.palette.ink)
                 }
                 .scrollDismissesKeyboard(.immediately)
+                .onChange(of: browseTopToken) { _, _ in
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.35)) { proxy.scrollTo("browse.listTop", anchor: .top) }
+                }
             }
         }
         .background(app.palette.paper.ignoresSafeArea())
@@ -233,7 +240,8 @@ struct BrowseView: View {
                 ForEach(HomeHeroTab.allCases, id: \.self) { t in
                     let on = app.browseScope == t.rawValue
                     Button {
-                        guard !on else { return }
+                        // Re-tapping the open tab returns to the top of its list instead of doing nothing.
+                        guard !on else { Haptics.light(); browseTopToken += 1; return }
                         Haptics.selection()
                         app.browseSwitchScope(t.rawValue)
                     } label: {
@@ -244,7 +252,7 @@ struct BrowseView: View {
                     .accessibilityIdentifier("browse.scope.\(t.rawValue)")
                 }
                 Button {
-                    guard app.browseScope != "all" else { return }
+                    guard app.browseScope != "all" else { Haptics.light(); browseTopToken += 1; return }
                     Haptics.selection()
                     app.browseOpenTypes()
                 } label: {
@@ -372,7 +380,11 @@ struct BrowseView: View {
     }
 
     private func chip(key: String, title: String, n: Int, on: Bool) -> some View {
-        Button { Haptics.selection(); app.browsePickType(key) } label: {
+        Button {
+            Haptics.selection()
+            // Re-tapping the open chip returns to the top of its list instead of doing nothing.
+            if on { browseTopToken += 1 } else { app.browsePickType(key) }
+        } label: {
             HStack(spacing: 6) {
                 if key != "all" { Image(systemName: CategoryGlyph.symbol(key)).font(.app(size: 13)) }
                 Text(title).font(.app(size: 14, weight: .semibold))

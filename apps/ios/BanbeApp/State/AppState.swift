@@ -4364,7 +4364,12 @@ final class AppState: ObservableObject {
     /// Home's area MENU (`AreaMenuOptions`) and the searchable list
     /// (`LocationPickerSheet`). The menu dismisses itself, so there is no
     /// "close the picker" step here any more.
-    func pickArea(_ key: String) { area = LocationHierarchy.migrateSelection(key) }
+    /// Choosing an area on Home also returns the feed to the events (owner 2026-11-23): the pick can happen far down the
+    /// page, and picking the area already on counts too — it is never a dead tap.
+    func pickArea(_ key: String) {
+        area = LocationHierarchy.migrateSelection(key)
+        if screen == .home { resetHomeScrollToTop() }
+    }
 
     func askLocation() { if located == nil { askingLocation = true } }
 
