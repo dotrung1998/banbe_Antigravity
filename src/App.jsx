@@ -272,7 +272,9 @@ function SaveToast({ toast, aboveDock }) {
 // is 0 in a Safari tab, where the browser's own bottom bar already takes that space, and 0 on desktop.
 // (`SAFE_TOP`, the status-bar inset as a CSS length, lives in src/lib/viewport.js — shared with the Map, the Search
 // overlay and the persistent search bar, all of which measure from the top of the window.)
-const DOCK_CLEARANCE = `calc(${BAR_HEIGHT + BAR_BOTTOM_OFFSET + 18}px + env(safe-area-inset-bottom, 0px))`;
+// Audit 2026-11-19 row 29: 18 px of air was not enough under the last line on a short screen (the guest banner and the
+// footer sat against the dock's top edge at 320), so the scroll end keeps a full dock height plus 28.
+const DOCK_CLEARANCE = `calc(${BAR_HEIGHT + BAR_BOTTOM_OFFSET + 28}px + env(safe-area-inset-bottom, 0px))`;
 
 // `hidden` (Map v5, note 73): the Map hides the dock at peek and mid and shows it at tall. It slides down and fades
 // (kept mounted, so it slides back instead of replaying its entrance); hidden = not focusable or tappable.
