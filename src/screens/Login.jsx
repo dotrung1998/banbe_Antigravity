@@ -126,7 +126,12 @@ export default function Login() {
         {!s.authMandatory && <span onClick={() => set({ screen: s.authBackScreen })} style={{ cursor: 'pointer' }}>‹ {T('Quay lại', 'Back')}</span>}
         <span style={{ flex: 1 }} />
         <span onClick={toggleLang} data-testid="login-lang" style={pref}>{T('EN', 'VN')}</span>
-        <span onClick={() => pickTheme(dark ? 'light' : 'dark')} data-testid="login-theme" style={pref}>{dark ? T('Sáng', 'Light') : T('Tối', 'Dark')}</span>
+        {/* Audit 2026-11-19 row 30: "Tối" alone read as a word, not a control — a moon/sun glyph, a real button role
+            and an aria-label say what it does. */}
+        <span role="button" tabIndex={0} onClick={() => pickTheme(dark ? 'light' : 'dark')}
+          onKeyDown={(ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); pickTheme(dark ? 'light' : 'dark'); } }}
+          aria-label={dark ? T('Chuyển sang giao diện sáng', 'Switch to the light theme') : T('Chuyển sang giao diện tối', 'Switch to the dark theme')}
+          data-testid="login-theme" style={pref}>{dark ? `☀ ${T('Sáng', 'Light')}` : `☾ ${T('Tối', 'Dark')}`}</span>
       </div>
 
       <div style={{ display: 'flex', gap: 16, marginTop: 24, borderBottom: `1px solid ${rule}` }}>
@@ -141,7 +146,13 @@ export default function Login() {
           style={{ ...oauthBtn, border: 'none', fontFamily: 'inherit', minHeight: 44, ...(oauthBusy ? { opacity: 0.7, cursor: 'default' } : {}) }}>
           {oauthBusy ? T('Đang mở Google…', 'Opening Google…') : T('Tiếp tục với Google', 'Continue with Google')}
         </button>
-        <div aria-disabled="true" data-testid="login-facebook" style={{ ...oauthBtn, opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'none' }}>{T('Tiếp tục với Facebook', 'Continue with Facebook')}</div>
+        {/* Audit 2026-11-19 row 30: a faint button read as a broken one. It is a labelled "coming soon" control now:
+            a dashed edge, the state written on it, and the reason under it. */}
+        <div aria-disabled="true" data-testid="login-facebook"
+          style={{ ...oauthBtn, opacity: 0.62, borderStyle: 'dashed', cursor: 'not-allowed', pointerEvents: 'none' }}>
+          {T('Tiếp tục với Facebook', 'Continue with Facebook')}
+          <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, border: `1px solid ${rule}` }}>{T('Sắp có', 'Coming soon')}</span>
+        </div>
         <p style={{ fontSize: 11.5, lineHeight: 1.4, color: ink, opacity: 0.7, margin: '-2px 0 0', textAlign: 'center' }} data-testid="login-facebook-note">{T('Đăng nhập Facebook đang được phát triển.', 'Facebook login is under development.')}</p>
       </div>
 
