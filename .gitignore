@@ -114,6 +114,22 @@ dist-ssr
 /.github/hooks/impeccable.json
 /.impeccable/
 
+# Product-audit workflow skills (code review, branch isolation, UI prototypes).
+# Pinned in skills-lock.json; restore with `npx skills experimental_install`
+# instead of committing them, to stay under the published web app's file cap.
+# The .claude/skills entries are symlinks, so they carry no trailing slash.
+/.agents/skills/code-review/
+/.agents/skills/prototype/
+/.agents/skills/using-git-worktrees/
+/.claude/skills/code-review
+/.claude/skills/prototype
+/.claude/skills/using-git-worktrees
+
+# Isolated per-branch workspaces created by the using-git-worktrees skill.
+# No trailing slash: the skill probes `git check-ignore .worktrees` before the
+# directory exists, and a trailing-slash rule only matches an existing dir.
+/.worktrees
+
 # graphify knowledge-graph output (generated locally, rebuild with /graphify)
 /graphify-out/
 

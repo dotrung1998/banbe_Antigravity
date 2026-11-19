@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.banbe.weekly-audit</string>
+
+	<!-- The installed copy, not the repo: launchd cannot read ~/Downloads (TCC). -->
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/bash</string>
+		<string>/Users/thetrungdo/Library/Application Support/banbe/audit-runner.sh</string>
+	</array>
+
+	<key>WorkingDirectory</key>
+	<string>/Users/thetrungdo/Library/Application Support/banbe</string>
+
+	<!-- Every day at 09:00 local time (no Weekday key). -->
+	<key>StartCalendarInterval</key>
+	<dict>
+		<key>Hour</key>
+		<integer>9</integer>
+		<key>Minute</key>
+		<integer>0</integer>
+	</dict>
+
+	<!-- Loading the agent must not fire it; use kickstart to test. -->
+	<key>RunAtLoad</key>
+	<false/>
+
+	<key>StandardOutPath</key>
+	<string>/Users/thetrungdo/Library/Logs/banbe-weekly-audit.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/thetrungdo/Library/Logs/banbe-weekly-audit.err.log</string>
+</dict>
+</plist>
