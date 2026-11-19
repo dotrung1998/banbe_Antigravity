@@ -1097,6 +1097,13 @@ input::placeholder, textarea::placeholder {
 .bb-home-head__tab[aria-selected="true"] { color: var(--bb-fg); font-weight: 600; border-bottom-color: var(--bb-fg); }
 
 .bb-home-head__arealabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Audit 2026-11-19 row 20, visual pass: at 320 the shrunk chip clipped its label to a single letter ("N"), which reads
+   as noise rather than a name. Below 340 px it is icon-only — pin + chevron, the full area still in the button's
+   aria-label — which is the audit's own 320 recommendation. */
+@media (max-width: 339px) {
+  .bb-home-head__area .bb-home-head__arealabel { display: none; }
+  .bb-home-head__area { padding: 0 10px; gap: 4px; }
+}
 /* "Everywhere" is a quiet label, not a second placeholder. */
 .bb-home-head__areafallback { color: var(--bb-fg-3); font-weight: 500; }
 .bb-home-head__chev { flex: none; font-size: var(--bb-text-meta); opacity: .5; }
