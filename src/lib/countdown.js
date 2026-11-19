@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { zonedParts } from './eventMarket.js';
+import { eventEndsAt } from './eventEnd.js';
 
 // Shared countdown formatting + a ticking clock, used everywhere a payment
 // deadline is shown: Home's banners, the ticket screen, the payment screen,
@@ -230,12 +231,19 @@ export function liveEventOverrides(liveEvent, staticEv, now = Date.now()) {
       endedHoursAgo: null,
     };
   }
-  if (liveEvent.status === 'ended') {
+  // Audit 2026-11-19 row 6: one "is it over" rule. The server's ended status still wins, and a row still marked live
+  // is over once its own end time (events.end_time / end_open, migration 220) has passed — or 12 h after its start
+  // when no end is stated, the note 38 window the surfaces used to apply one by one.
+  const endedAt = eventEndsAt({
+    startsAt: liveEvent.starts_at, tz: liveEvent.tz,
+    endTime: liveEvent.end_time ?? staticEv?.endTime, endOpen: liveEvent.end_open ?? staticEv?.endOpen,
+  });
+  if (liveEvent.status === 'ended' || (endedAt != null && now >= endedAt)) {
     return {
       ...dateOverrides,
       cancelled: false,
       cancelledHoursAgo: null,
-      endedHoursAgo: hoursSince(liveEvent.starts_at, now) ?? staticEv?.endedHoursAgo ?? 0,
+      endedHoursAgo: hoursSince(endedAt ?? liveEvent.starts_at, now) ?? staticEv?.endedHoursAgo ?? 0,
     };
   }
   // 'live' (or 'draft'/'review', which shouldn't be publicly reachable at

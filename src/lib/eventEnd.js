@@ -3,6 +3,8 @@
 // = not stated (events created before 220), and the page shows the start time alone. Pure, unit-tested
 // (tests/unit/eventEnd.test.mjs). Copy: { vi, en } pairs, no dash/semicolon idea separators (note 57).
 
+import { zonedParts, wallClockToMs, VN_TIME_ZONE } from './eventMarket.js';
+
 const L = (vi, en) => ({ vi, en });
 const hm = (t) => {
   const m = /^(\d{1,2}):(\d{2})/.exec(String(t || ''));
@@ -52,6 +54,50 @@ export function timeRange(start, endTime, endOpen) {
     return L(`${s} – ${e}${next ? ' (hôm sau)' : ''}`, `${s} – ${e}${next ? ' (next day)' : ''}`);
   }
   return L(s, s);
+}
+
+/** The note 38 window used when an event states no end: 12 hours after its start. */
+export const OVER_FALLBACK_MS = 12 * 3600000;
+
+const pad2 = (n) => String(n).padStart(2, '0');
+
+/**
+ * The instant an event is over, in ms — ONE rule for every surface (audit 2026-11-19 row 6):
+ *   * a host-set `endTime` (events.end_time, wall clock in the venue's zone; at or before the start means the next
+ *     venue day), or
+ *   * the note 38 fallback, 12 h after the start, when the end is open-ended or not stated.
+ * `ev` may carry `startsAt`/`starts_at` (ms, ISO string or Date), `tz`, `endTime`/`end_time` and `endOpen`/`end_open`.
+ * Null when the start is unknown (then nothing claims the event is over).
+ */
+export function eventEndsAt(ev) {
+  const raw = ev?.startsAt ?? ev?.starts_at ?? ev?.startDate;
+  const startMs = raw instanceof Date ? raw.getTime() : typeof raw === 'number' ? raw : Date.parse(raw);
+  if (!Number.isFinite(startMs)) return null;
+  const rawEnd = ev?.endTime ?? ev?.end_time;
+  const endText = rawEnd != null ? String(rawEnd).slice(0, 5) : '';
+  if (endMode(rawEnd, ev?.endOpen ?? ev?.end_open) === 'time') {
+    const tz = ev?.tz || VN_TIME_ZONE;
+    const p = zonedParts(startMs, tz);
+    const day = [p.year, p.month, p.day];
+    const startHm = `${pad2(p.hour)}:${pad2(p.minute)}`;
+    const at = ([y, mo, d]) => `${y}-${pad2(mo)}-${pad2(d)}`;
+    const same = wallClockToMs(at(day), endText, tz);
+    if (same == null) return startMs + OVER_FALLBACK_MS;
+    if (!endsNextDay(startHm, endText)) return same;
+    const next = new Date(Date.UTC(day[0], day[1] - 1, day[2] + 1));
+    return wallClockToMs(at([next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate()]), endText, tz) ?? same;
+  }
+  return startMs + OVER_FALLBACK_MS;
+}
+
+/** True once the event is past its end (status 'ended' counts regardless of the clock). */
+export function isEventOver(ev, now = Date.now()) {
+  if (!ev) return false;
+  const status = ev.status ?? ev.eventStatus;
+  if (status === 'ended') return true;
+  if (status === 'cancelled' || status === 'removed' || status === 'draft' || status === 'review') return false;
+  const end = eventEndsAt(ev);
+  return end != null && now >= end;
 }
 
 /** Length in minutes (crossing midnight), or null. */

@@ -17,7 +17,8 @@ import { useBanBe, resolveCoverUrl, photoUrlsByEvent } from '../state/BanBeConte
 import { cardPhotoList } from '../lib/eventPhotoUrls.js';
 import { addRecentSearch, loadRecentSearches, saveRecentSearches } from '../lib/mapRecentSearches.js';
 import { supabase } from '../lib/supabase.js';
-import { withR2Columns, marketColumnList, detailsColumnList } from '../lib/mediaUrls.js';
+import { withR2Columns, marketColumnList, detailsColumnList, endColumnList } from '../lib/mediaUrls.js';
+import { isEventOver } from '../lib/eventEnd.js';
 import {
   reasonCommits, referenceRect, boundsForRect, mapResults, selectionAfter, boundsOfPoints, pointsNear, nearestPoint,
   fitCamera, distanceKm as geoKm, sameSpot, padBounds, cityFor, searchCities, cityGroups, activeFilterSummary, CITY_ZOOM,
@@ -100,7 +101,7 @@ export async function fetchLiveEvents({ limit = MAP_EVENT_CAP, bounds = null } =
     // search document built below (`buildEventSearchDoc`) can include
     // category/organizer/description text regardless of whether
     // `keywords` happens to be populated for a given row.
-    .select('id, key, slug, name, cat_key, cat_label, area, city, lat, lng, starts_at, event_date, event_time, price_vnd, seats_remaining, status, cover_image, ' + detailsColumnList().map(c => c + ', ').join('') + (withR2 ? 'cover_r2_ref, ' : '') + 'keywords, description, intro, country_code, state_province, neighborhood, ' + marketColumnList().map(c => c + ', ').join('') + 'organizers(name)', { count: 'exact' })
+    .select('id, key, slug, name, cat_key, cat_label, area, city, lat, lng, starts_at, event_date, event_time, price_vnd, seats_remaining, status, cover_image, ' + detailsColumnList().map(c => c + ', ').join('') + endColumnList().map(c => c + ', ').join('') + (withR2 ? 'cover_r2_ref, ' : '') + 'keywords, description, intro, country_code, state_province, neighborhood, ' + marketColumnList().map(c => c + ', ').join('') + 'organizers(name)', { count: 'exact' })
     .eq('status', 'live')
     // Strict invite-only events (2026-10-25): unlike loadWeekendEvents/
     // loadDiscoveryEvents (BanBeContext.jsx), this query never filtered
@@ -197,6 +198,8 @@ export async function fetchLiveEvents({ limit = MAP_EVENT_CAP, bounds = null } =
       hasLocation: row.lat != null && row.lng != null,
       seatsRemaining: row.seats_remaining,
       startsAt: row.starts_at,
+      // End time (migration 220) — the one "is this over" rule (audit 2026-11-19 row 6).
+      endTime: row.end_time || null, endOpen: !!row.end_open,
       // Raw fields the shared For You candidate builder (src/lib/forYou.js) reads —
       // the same ones Home's events carry, so Home and Map can never score differently.
       // Minor units of `currency` (migration 195): dong, or cents for USD. `tz` is the venue's zone.
@@ -897,10 +900,9 @@ export default function MapExplore() {
   const searchedEvents = useMemo(() => {
     // For You — the SAME match set drives pins and this list.
     let list = applyForYouFilter(events, forYouActive, forYouOrder);
-    // Note 38/99: a live row 12 h past its start is over — Search drops it (ENDED_AFTER_MS), so the Map must too,
-    // or "Same results as the map" is false while the end-past-events job (migration 167) is not running.
-    const endedBefore = nowMinute * 60000 - 12 * 3600000;
-    list = list.filter(e => !e.startsAt || new Date(e.startsAt).getTime() >= endedBefore);
+    // Note 38/99 + audit 2026-11-19 row 6: Search and the Map must drop the same events. One rule — the host's end
+    // time, else 12 h after the start while the end-past-events job (migration 167) has not flipped the row.
+    list = list.filter(e => !isEventOver(e, nowMinute * 60000));
     // Matched against the canonical search document (name/category/area/city/organizer/description/keywords),
     // normalized and multi-token AND — see src/lib/search.js.
     if (searchQuery.trim()) {

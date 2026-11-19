@@ -62,7 +62,7 @@ import { savedComingUp, fillText, whenLabel } from '../lib/quickWins.js';
 import { rowTimeZone, wallClockToMs } from '../lib/eventMarket.js';
 import NextUpV23 from '../components/home/NextUpV23.jsx';
 import { nextUpGroups, nextUpStatus, nextUpChip, peopleLine, dateBadge } from '../lib/nextUp.js';
-import { endsNextDay } from '../lib/eventEnd.js';
+import { endsNextDay, isEventOver } from '../lib/eventEnd.js';
 import {
   applyDiscoveryFilters, sortEvents, fillBadge, activeFilterCount, optionCounts, relaxationHints, DEFAULT_FILTERS,
   categoryCounts, categoryRowKeys, categorySheetKeys,
@@ -301,7 +301,8 @@ export default function Home({ browse = false }) {
     .map(e => {
       // `tz`: dates read in the venue's zone (migration 195).
       const overrides = liveEventOverrides(
-        { starts_at: e.startsAt, status: e.status, cancelled_at: e.cancelledAt, tz: e.tz }, null
+        { starts_at: e.startsAt, status: e.status, cancelled_at: e.cancelledAt, tz: e.tz,
+          end_time: e.endTime, end_open: e.endOpen }, null
       ) || {};
       const seatsText = e.seatsRemaining != null ? `${e.seatsRemaining} chỗ trống` : '';
       return {
@@ -347,6 +348,8 @@ export default function Home({ browse = false }) {
         priceVnd: e.priceVnd || 0, currency: e.currency, tz: e.tz,
         status: e.status,
         // Note 50: Search, the fill badge and the Nearest sort need these; they used to be dropped here.
+        // End time (migration 220) feeds the one "is this over" rule (audit 2026-11-19 row 6).
+        endTime: e.endTime || null, endOpen: !!e.endOpen,
         keywords: e.keywords || [], organizerName: e.organizerName || '', organizerId: e.organizerId, organizerAvatarUrl: e.organizerAvatarUrl || '',
         capacity: e.capacity ?? null, lat: e.lat, lng: e.lng, description: e.description || '',
       };
@@ -427,9 +430,10 @@ export default function Home({ browse = false }) {
   }), [discoveryShaped]);
   const feed = useMemo(() => [...realEventsSorted, ...EVENTS]
     .map(withLive)
-    // Ended events leave the feed (they live on the host's profile under "Past events"). A live row
-    // 12h+ past its start is already over even if the server cron hasn't flipped it yet.
-    .filter(e => e.endedHoursAgo == null && !(e.startsAtRaw && Date.now() - new Date(e.startsAtRaw).getTime() > 12 * 3600000))
+    // Ended events leave the feed (they live on the host's profile under "Past events"). One rule for every
+    // surface (audit 2026-11-19 row 6): the host's end time, else 12h after the start when the server cron has
+    // not flipped the row yet.
+    .filter(e => e.endedHoursAgo == null && !isEventOver(e))
     .filter(e => !e.inviteOnly && curArea.match(e))
     .filter(e => !forYouActive || forYouOrder.has(e.key))
     .sort((a, b) => demoted(a) - demoted(b))
@@ -566,10 +570,18 @@ export default function Home({ browse = false }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [shownItems, forYouRanked, forYouActive, topPulseKey, trStatus, T, typesOn, s.lang, cardImgs]);
 
+  // One "is this still on" rule for every Home rail and list (audit 2026-11-19 row 6). It used to drop anything
+  // that had merely STARTED more than an hour ago, which is why the type tiles and their lists disagreed; the
+  // event's own end time (or 12h after the start when none is stated) decides now.
+  const isOpenItem = useCallback((it) => !it.ev.cancelled && Number.isFinite(it.startsAt)
+    && !isEventOver({ startsAt: it.startsAt, tz: it.tz || it.ev.tz, endTime: it.ev.endTime, endOpen: it.ev.endOpen }, nowMs),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [nowMs]);
+
   // Home photo hero (note 80): For You / Tonight / Weekend rails built from the same items and filters as the list.
   const heroLists = useMemo(() => {
     if (!simpleShell) return null;
-    const open = (it) => !it.soldOut && !it.ev.cancelled && Number.isFinite(it.startsAt) && it.startsAt >= nowMs - 3600e3;
+    const open = (it) => !it.soldOut && isOpenItem(it);
     const shape = (it) => {
       const e = it.ev;
       const fill = fillBadge(it.booked, it.capacity);
@@ -601,7 +613,7 @@ export default function Home({ browse = false }) {
   // The whole tab, in the tab's own order (For You ranked, else soonest), before Home's filters. Shared by the
   // Shortlist and See all.
   const tabItems = useCallback((tab) => {
-    const open = (it) => !it.ev.cancelled && Number.isFinite(it.startsAt) && it.startsAt >= nowMs - 3600e3;
+    const open = isOpenItem;
     if (tab === 'tonight' || tab === 'weekend') {
       return applyDiscoveryFilters(discoveryItems, { ...DEFAULT_FILTERS, date: tab === 'tonight' ? 'today' : 'weekend' }, nowMs).filter(open);
     }
@@ -635,7 +647,7 @@ export default function Home({ browse = false }) {
   // empties just because For You is open. total = before the filters.
   const shortlistBase = useMemo(() => {
     if (!v23) return null;
-    const open = (it) => !it.ev.cancelled && Number.isFinite(it.startsAt) && it.startsAt >= nowMs - 3600e3;
+    const open = isOpenItem;
     return applyDiscoveryFilters(qItems, DEFAULT_FILTERS, nowMs).filter(open);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [v23, qItems, Math.floor(nowMs / 60000)]);

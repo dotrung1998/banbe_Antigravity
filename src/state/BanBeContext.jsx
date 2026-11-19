@@ -29,7 +29,7 @@ import { loadMapKit } from '../lib/mapkit.js';
 import { mapKitSearch } from '../lib/mapkitAdapter.js';
 import { uploadViaMediaApi, deleteViaMediaApi, reconcileEventViaMediaApi } from '../lib/mediaUpload.js';
 import { publicEventPhotoUrl, organizerAvatarPublicUrl, withR2Columns, isChatGreetingColumnMissing, chatGreetingColumnList, marketColumnList, detailsColumnList, endColumnList, isEndColumnMissing, endColumnsRejected, isMissingColumnError } from '../lib/mediaUrls.js';
-import { endMode } from '../lib/eventEnd.js';
+import { endMode, eventEndsAt, isEventOver } from '../lib/eventEnd.js';
 import { rowTimeZone, rowCurrency, formatMoney, resolveEventTimeZone, eventCurrency, VN_TIME_ZONE, parsePriceInput, priceInputText, wallClockToMs, todayInZone } from '../lib/eventMarket.js';
 import { eventDraftDefaults, createDefaultsPatch, createDraftMatchesDefaults } from '../lib/smartDefaults.js';
 import { notificationRoute, runItAgainDate } from '../lib/coreLoops.js';
@@ -333,10 +333,12 @@ export function shapeRealEventAsCurEvent(real) {
   const currency = rowCurrency(real);
   // Date/time read in the VENUE's zone (migration 195), the same for every viewer.
   const { weekdayShort, dayMonth, dayLong, time } = startsAt ? formatVnEventDate(startsAt, tz) : {};
-  // Events have no end time; the server flips live -> ended only on a cron (migration 167 makes it hourly).
-  // Until then a live row 12h+ past its start is already over, so treat it as ended.
-  const hoursSinceStart = startsAt ? Math.max(0, Math.round((Date.now() - startsAt.getTime()) / 3600000)) : null;
-  const endedHoursAgo = (real.status === 'ended' || (real.status === 'live' && hoursSinceStart != null && hoursSinceStart >= 12)) ? hoursSinceStart : null;
+  // One "is this over" rule (audit 2026-11-19 row 6): the host's end time (migration 220), else 12h after the start
+  // while the server's own ended cron (migration 167, hourly) has not flipped the row yet.
+  const endsAt = eventEndsAt({ startsAt: real.startsAt, tz });
+  const endedHoursAgo = isEventOver({ startsAt: real.startsAt, tz, endTime: real.endTime, endOpen: real.endOpen, status: real.status })
+    ? Math.max(0, Math.round((Date.now() - (endsAt ?? startsAt.getTime())) / 3600000))
+    : null;
   return {
     // Note 69: the second category lives in details.cat2 (migration 207).
     key: real.key, catKey: real.catKey, cat: real.catLabel || '', cat2Key: secondCategory(real.details, real.catKey), catDisplay: real.catLabel || '',

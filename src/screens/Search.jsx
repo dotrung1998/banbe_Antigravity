@@ -15,6 +15,7 @@ import { inlineEmptyAction } from '../components/ui/InlineEmpty.jsx';
 import { buildEventSearchDoc, matchesSearchQuery, normalizeSearchText } from '../lib/search.js';
 import { buildLocationSearchIndex, searchLocationTree } from '../lib/locationTree.js';
 import { formatVnEventDate } from '../lib/countdown.js';
+import { isEventOver } from '../lib/eventEnd.js';
 import { formatMoney } from '../lib/eventMarket.js';
 import { CategoryGlyph, CATEGORY_DEFS, CategorySheet } from '../components/home/HomeDiscoveryParts.jsx';
 import EventRowV23 from '../components/list/EventRowV23.jsx';
@@ -35,7 +36,6 @@ export function pushRecent(list, q) {
   return [t, ...list.filter(x => normalizeSearchText(x) !== key)].slice(0, RECENT_MAX);
 }
 
-const ENDED_AFTER_MS = 12 * 3600000; // note 38: a live row 12h past its start is over
 
 let mapRowsCache = null; // the Map's rows, kept for the session so a reopened sheet never flashes
 export default function Search({ overlay = false }) {
@@ -143,17 +143,19 @@ export default function Search({ overlay = false }) {
   // One searchable list: real public events + the demo catalogue, upcoming only, same doc builder as Map.
   const docs = useMemo(() => {
     const now = Date.now();
+    // One "is this over" rule (audit 2026-11-19 row 6): the host's end time, else 12h after the start.
     const real = (s.discoveryEvents || [])
-      .filter(e => e.status === 'live' && e.visibility === 'public' && !(e.startsAt && now - new Date(e.startsAt).getTime() > ENDED_AFTER_MS))
+      .filter(e => e.status === 'live' && e.visibility === 'public'
+        && !isEventOver({ startsAt: e.startsAt, tz: e.tz, endTime: e.endTime, endOpen: e.endOpen }, now))
       .map(e => ({ key: e.key, name: e.name, img: e.photoUrl, organizerId: e.organizerId, organizerName: e.organizerName, area: e.area, catKey: e.catKey,
-        startsAt: e.startsAt, priceVnd: e.priceVnd, currency: e.currency, tz: e.tz, doc: buildEventSearchDoc(e) }));
+        startsAt: e.startsAt, priceVnd: e.priceVnd, currency: e.currency, tz: e.tz, endTime: e.endTime, endOpen: e.endOpen, doc: buildEventSearchDoc(e) }));
     const realKeys = new Set(real.map(e => e.key));
     const demo = EVENTS.filter(e => !realKeys.has(e.key) && !e.inviteOnly).map(e => ({
       key: e.key, name: e.name, img: e.img, organizerId: null, organizerName: e.hostShort, area: e.locationLabel, catKey: e.cat,
-      startsAt: catalogStartMs(e, s.homeLiveEvents?.[e.key]?.starts_at), price: e.price,
+      startsAt: catalogStartMs(e, s.homeLiveEvents?.[e.key]?.starts_at), price: e.price, tz: e.tz, endTime: e.endTime, endOpen: e.endOpen,
       doc: buildEventSearchDoc({ ...e, catLabel: e.cat, area: e.locationLabel, organizerName: e.hostShort, description: e.desc, details: s.homeLiveEvents?.[e.key]?.details }),
     }));
-    return [...real, ...demo.filter(d => d.startsAt == null || now - d.startsAt <= ENDED_AFTER_MS)];
+    return [...real, ...demo.filter(d => !isEventOver({ startsAt: d.startsAt, tz: d.tz, endTime: d.endTime, endOpen: d.endOpen }, now))];
   }, [s.discoveryEvents, s.homeLiveEvents]);
 
   const query = q.trim();
