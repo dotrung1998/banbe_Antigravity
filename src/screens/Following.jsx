@@ -83,7 +83,7 @@ export default function Following() {
               />
               {query && <span onClick={() => setQuery('')} role="button" aria-label={T('Xoá', 'Clear')} data-testid="following-search-clear" style={{ cursor: 'pointer', color: ink, opacity: 0.5, fontSize: 16, lineHeight: 1 }}>×</span>}
             </div>
-            <div style={{ fontSize: 11.5, color: ink, opacity: 0.65, margin: '10px 2px 8px' }} data-testid="following-count">
+            <div style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65, margin: '10px 2px 8px' }} data-testid="following-count">
               {T(`${rows.length} tổ chức`, rows.length === 1 ? '1 host' : `${rows.length} hosts`)}
             </div>
             {shown.length === 0 ? (
@@ -115,7 +115,7 @@ export default function Following() {
                           <span style={{ fontSize: 14, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {h.available ? h.name : T('Tổ chức này không còn khả dụng', 'This host is no longer available')}{h.available && h.verified ? ' ✓' : ''}
                           </span>
-                          <span style={{ fontSize: 11, fontWeight: 600, color: ink, opacity: 0.7 }}>✓ {T('Đang theo dõi', 'Following')}</span>
+                          <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.7 }}>✓ {T('Đang theo dõi', 'Following')}</span>
                         </div>
                       </div>
                       <span

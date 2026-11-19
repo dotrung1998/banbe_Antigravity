@@ -14,7 +14,7 @@ function Badge({ count, testId }) {
       aria-hidden
       title={String(count)}
       data-testid={testId}
-      style={{ minWidth: 20, height: 20, borderRadius: 10, padding: '0 6px', boxSizing: 'border-box', background: alert, color: 'var(--bb-on-alert)', fontSize: 11, fontWeight: 700, lineHeight: '20px', textAlign: 'center', flex: 'none' }}
+      style={{ minWidth: 20, height: 20, borderRadius: 10, padding: '0 6px', boxSizing: 'border-box', background: alert, color: 'var(--bb-on-alert)', fontSize: 'var(--bb-text-meta)', fontWeight: 700, lineHeight: '20px', textAlign: 'center', flex: 'none' }}
     >
       {formatBadgeCount(count)}
     </span>
@@ -82,7 +82,7 @@ export function MoreRow({ icon, label, sub, trailing, badge = 0, badgeLabel, onC
         </span>
       </span>
       <span style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 'none' }}>
-        {badge > 0 && <span role="status" aria-label={badgeLabel} data-testid={testId ? `${testId}-badge` : undefined} style={{ minWidth: 20, height: 20, borderRadius: 10, padding: '0 6px', boxSizing: 'border-box', background: alert, color: 'var(--bb-on-alert)', fontSize: 11, fontWeight: 700, lineHeight: '20px', textAlign: 'center' }}>{formatBadgeCount(badge)}</span>}
+        {badge > 0 && <span role="status" aria-label={badgeLabel} data-testid={testId ? `${testId}-badge` : undefined} style={{ minWidth: 20, height: 20, borderRadius: 10, padding: '0 6px', boxSizing: 'border-box', background: alert, color: 'var(--bb-on-alert)', fontSize: 'var(--bb-text-meta)', fontWeight: 700, lineHeight: '20px', textAlign: 'center' }}>{formatBadgeCount(badge)}</span>}
         {trailing != null && trailing !== '' && <span style={{ fontSize: 13, color: ink3 }}>{trailing}</span>}
         {end !== undefined ? end : <span aria-hidden style={{ fontSize: 17, color: ink3, lineHeight: 1 }}>›</span>}
       </span>

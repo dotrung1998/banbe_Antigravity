@@ -57,7 +57,7 @@ export function CategoryRow({ values = [], onPick, T, keys = CATEGORY_DEFS.map(c
   });
   const btn = { flex: 'none', minWidth: 56, maxWidth: 84, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '2px 2px', border: 'none', background: 'none', cursor: 'pointer', color: ink, fontFamily: 'inherit' };
   // One line, no count (owner 2026-11-01): "Supper club" wrapped to two lines and the counts made the row noisy.
-  const label = { fontSize: 11.5, lineHeight: 1.2, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' };
+  const label = { fontSize: 'var(--bb-text-meta)', lineHeight: 1.2, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' };
   return (
     <div data-hscroll="true" data-testid="home-category-row" role="tablist" aria-label={T('Danh mục', 'Categories')}
       style={{ display: 'flex', gap: 2, overflowX: 'auto', scrollbarWidth: 'none', padding: compact ? '8px 12px 8px' : '12px 12px 4px' }}>
@@ -149,7 +149,7 @@ export function HomeSearchBar({ onOpen, T, areaLabel, onArea, everywhere = false
           style={{ flex: '0 1 auto', minWidth: 44, maxWidth: '40%', height: 44, display: 'flex', alignItems: 'center', gap: 5, padding: '0 12px', border: 'none', borderRadius: RADIUS.pill, background: 'none', cursor: 'pointer', color: ink, fontFamily: 'inherit', fontSize: 13.5, fontWeight: 600 }}>
           <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
           <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{areaLabel}</span>
-          <span aria-hidden="true" style={{ fontSize: 9, flex: 'none' }}>▾</span>
+          <span aria-hidden="true" style={{ fontSize: 'var(--bb-text-meta)', flex: 'none' }}>▾</span>
         </button>
       </div>
     );
@@ -170,7 +170,7 @@ export function HomeSearchBar({ onOpen, T, areaLabel, onArea, everywhere = false
 }
 
 // ---- event card -------------------------------------------------------------------------
-const badgeBase = { fontSize: 10.5, padding: '5px 9px', borderRadius: RADIUS.pill, letterSpacing: '0.03em' };
+const badgeBase = { fontSize: 'var(--bb-text-meta)', padding: '5px 9px', borderRadius: RADIUS.pill, letterSpacing: '0.03em' };
 
 function Photo({ ev, height, T, radius, compact = false, slot = null }) {
   if (ev.img) return <div style={bg(ev.img, { width: '100%', height, borderRadius: radius, filter: 'none' })} />;
@@ -237,7 +237,7 @@ export function DiscoveryCard({ ev, onOpen, onToggleSave, T, filled = false, pol
       </div>
       {body(<>
       {ev.label && (
-        <div data-testid={`home-card-label-${ev.label}`} style={{ marginTop: 10, fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 5 }}>
+        <div data-testid={`home-card-label-${ev.label}`} style={{ marginTop: 10, fontSize: 'var(--bb-text-kicker)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 5 }}>
           <span aria-hidden="true" style={{ color: 'var(--bb-honey)' }}>{ev.label === 'best' ? '★' : '✦'}</span>
           {ev.label === 'best' ? T('Hợp với bạn nhất', 'Best match for you') : T('Nổi bật tuần này', 'Popular this week')}
         </div>
@@ -250,7 +250,7 @@ export function DiscoveryCard({ ev, onOpen, onToggleSave, T, filled = false, pol
       {/* What kind of evening it is (event type profiles), e.g. "Bàn 8 người · Có món chay · BYO". */}
       {ev.typeLine && <div data-testid="home-card-type-line" style={{ fontSize: 12.5, color: ink, opacity: 0.8, marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.typeLine}</div>}
       {ev.fill?.going != null && !ev.cancelled && (
-        <div data-testid="home-card-going" style={{ fontSize: 11.5, color: ink, opacity: 0.6, marginTop: 3 }}>{T(`${ev.fill.going} người sẽ đến`, `${ev.fill.going} going`)}</div>
+        <div data-testid="home-card-going" style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6, marginTop: 3 }}>{T(`${ev.fill.going} người sẽ đến`, `${ev.fill.going} going`)}</div>
       )}
       </>)}
       </div>
@@ -275,7 +275,7 @@ export function DiscoveryRow({ ev, onOpen, T }) {
         <span style={{ fontSize: 12, opacity: 0.68, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[ev.dateBadge, ev.metaLine].filter(Boolean).join(' · ')}</span>
         {ev.typeLine && <span style={{ fontSize: 12, opacity: 0.8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.typeLine}</span>}
         {(ev.cancelled || ev.fill?.soldOut || ev.fill?.almostFull) && (
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: ev.cancelled ? 'var(--bb-alert)' : 'var(--bb-honey)' }}>
+          <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ev.cancelled ? 'var(--bb-alert)' : 'var(--bb-honey)' }}>
             {ev.cancelled ? T('Đã hủy', 'Cancelled') : ev.fill.soldOut ? T('Hết chỗ', 'Sold out') : T(`Sắp hết · còn ${ev.fill.left}`, `Almost full · ${ev.fill.left} left`)}
           </span>
         )}
@@ -300,7 +300,7 @@ export function NextUpBanner({ item, onOpen, onShowTicket, T }) {
           <Photo ev={{ img: item.photoUrl }} height={52} T={T} radius={RADIUS.thumb} compact />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--bb-honey)' }}>
+          <div style={{ fontSize: 'var(--bb-text-kicker)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--bb-honey)' }}>
             <span aria-hidden="true">★ </span>{live ? T('Đang diễn ra', 'Happening now') : T('Sắp diễn ra', 'Starting soon')}
           </div>
           <div style={{ ...display(15.5, { marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{item.name}</div>

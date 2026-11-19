@@ -167,7 +167,7 @@ export function EventDraftsSheet({ T, EN, drafts, onOpen, onDelete, onClose }) {
             style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', width: 36, height: 36, borderRadius: '50%', background: 'rgba(120,120,128,0.16)', backdropFilter: 'blur(14px) saturate(1.6)', WebkitBackdropFilter: 'blur(14px) saturate(1.6)', boxShadow: 'inset 0 0 0 0.5px rgba(255,255,255,0.35), 0 1px 4px rgba(0,0,0,0.12)', color: ink, fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>✕</span>
           <span style={{ ...display(17) }}>{T(`Bản nháp (${drafts.length}/${MAX_DRAFTS})`, `Drafts (${drafts.length}/${MAX_DRAFTS})`)}</span>
         </div>
-        <p style={{ fontSize: 11, opacity: 0.65, lineHeight: 1.5, margin: '14px 0' }}>
+        <p style={{ fontSize: 'var(--bb-text-meta)', opacity: 0.65, lineHeight: 1.5, margin: '14px 0' }}>
           {T(`Bản nháp lưu trên trình duyệt này, tối đa ${MAX_DRAFTS}. Chạm để tiếp tục, hoặc vuốt trái / chạm ⋯ để sửa hay xoá.`,
             `Drafts are kept in this browser, up to ${MAX_DRAFTS}. Tap one to continue, or swipe left / tap ⋯ to edit or delete.`)}
         </p>

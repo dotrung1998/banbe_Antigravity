@@ -55,7 +55,7 @@ export default function HostRecap() {
         ‹ {s.hostRecapBack === 'notifications' ? T('Thông báo', 'Notifications') : T('Trang tổ chức', 'Dashboard')}
       </div>
       <div style={{ padding: '14px 22px 48px' }}>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7 }}>{T('Tổng kết sự kiện', 'Event recap')}</span>
+        <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.7 }}>{T('Tổng kết sự kiện', 'Event recap')}</span>
         <h1 onClick={id ? () => goEvent(id) : undefined} role="link" data-testid="host-recap-title" style={{ ...display(26, { margin: '6px 0 0', cursor: 'pointer' }) }}>{ev?.name || '…'}</h1>
         {when && <p style={{ fontSize: 13, color: ink, opacity: 0.7, margin: '6px 0 0' }}>{when}</p>}
 
@@ -97,7 +97,7 @@ export default function HostRecap() {
                       ))}
                     </div>
                   )}
-                  <p style={{ fontSize: 11.5, color: ink, opacity: 0.6, margin: '8px 0 0' }}>{T('Ghi chú không kèm tên, thứ tự ngẫu nhiên.', 'Notes are unnamed and in random order.')}</p>
+                  <p style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6, margin: '8px 0 0' }}>{T('Ghi chú không kèm tên, thứ tự ngẫu nhiên.', 'Notes are unnamed and in random order.')}</p>
                 </>
               )}
             </section>

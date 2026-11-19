@@ -87,7 +87,7 @@ export default function CancelEventModal({
 
   const templatePicker = (
     <>
-      <div style={{ fontSize: 11.5, fontWeight: 600, margin: '16px 0 8px' }}>{T('Chọn mẫu thư xin lỗi', 'Choose an apology template')}</div>
+      <div style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, margin: '16px 0 8px' }}>{T('Chọn mẫu thư xin lỗi', 'Choose an apology template')}</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {CANCELLATION_TEMPLATES.map(t => (
           <div key={t.key} onClick={() => setTemplateKey(t.key)} data-testid={`cancel-template-${t.key}`}
@@ -101,7 +101,7 @@ export default function CancelEventModal({
 
   const preview = (
     <>
-      <div style={{ fontSize: 11.5, fontWeight: 600, margin: '16px 0 8px' }}>
+      <div style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, margin: '16px 0 8px' }}>
         {T('Xem trước', 'Preview')}{holders[0]?.name ? ` · ${T('ví dụ cho', 'as sent to')} ${holders[0].name}` : ''}
       </div>
       <div style={{ ...fieldGlass({ padding: 14 }) }} data-testid="cancel-preview">
@@ -138,7 +138,7 @@ export default function CancelEventModal({
           <>
             {templatePicker}
             {preview}
-            <div style={{ fontSize: 11.5, fontWeight: 600, margin: '18px 0 8px' }}>
+            <div style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, margin: '18px 0 8px' }}>
               {holders.length
                 ? T(`Đã mở thư cho ${holders.filter(h => drafted.has(h.email)).length}/${holders.length} khách`, `${holders.filter(h => drafted.has(h.email)).length} of ${holders.length} guests drafted`)
                 : T('Không có người giữ vé nào để gửi thư.', 'No ticket holders to email.')}
@@ -148,7 +148,7 @@ export default function CancelEventModal({
                 <div key={h.email} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '12px 14px', borderBottom: i < holders.length - 1 ? `1px solid ${rule}` : 'none' }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.name || T('Khách', 'Guest')}</div>
-                    <div style={{ fontSize: 11.5, opacity: 0.7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.email}</div>
+                    <div style={{ fontSize: 'var(--bb-text-meta)', opacity: 0.7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.email}</div>
                   </div>
                   <a href={individualUrl(h)} onClick={() => markDrafted(h.email)} data-testid="cancel-draft-one"
                      style={{ flex: 'none', fontSize: 12.5, fontWeight: 600, color: ink, textDecoration: 'none', border: `1px solid ${rule}`, borderRadius: 999, padding: '7px 14px' }}>
@@ -158,7 +158,7 @@ export default function CancelEventModal({
               ))}
             </div>
             {holders.length > 1 && (
-              <p style={{ fontSize: 11.5, margin: '14px 0 0' }}>
+              <p style={{ fontSize: 'var(--bb-text-meta)', margin: '14px 0 0' }}>
                 <a href={groupUrl()} onClick={() => holders.forEach(h => markDrafted(h.email))} style={{ color: ink }} data-testid="cancel-draft-group">
                   {T('Hoặc soạn một thư chung cho tất cả (BCC)', 'Or draft one email to everyone (BCC)')}
                 </a>

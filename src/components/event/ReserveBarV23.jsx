@@ -115,7 +115,7 @@ export default function ReserveBarV23({ compact, qty, remaining, setQty, totalFo
             </button>
           ) : (
             <span key="n" ref={numRef} data-testid="event-qty-value" aria-live="polite" aria-label={T(`${qty} vé`, `${qty} tickets`)} style={{ display: 'flex', alignItems: 'baseline', gap: 2, fontVariantNumeric: 'tabular-nums' }}>
-              <b style={{ fontSize: 15, fontWeight: 800 }}>{qty}</b><small style={{ fontSize: 10.5, fontWeight: 600, opacity: 0.75 }}>{T('vé', '')}</small>
+              <b style={{ fontSize: 15, fontWeight: 800 }}>{qty}</b><small style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, opacity: 0.75 }}>{T('vé', '')}</small>
             </span>
           ))}
         </div>
@@ -170,7 +170,7 @@ export default function ReserveBarV23({ compact, qty, remaining, setQty, totalFo
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
             <div data-testid="event-bar-total" style={{ display: 'flex', flexDirection: 'column', minWidth: 112 }}>
               <b ref={totalRef} data-testid="event-bar-total-value" style={{ fontFamily: SERIF, fontSize: 26, fontWeight: 400, letterSpacing: '-0.025em', fontVariantNumeric: 'tabular-nums', lineHeight: 1.08, whiteSpace: 'nowrap' }}>{totalText}</b>
-              <small data-testid="event-bar-total-sub" style={{ fontSize: 11.5, color: barState === 'adding' ? 'var(--bb-honey)' : 'var(--bb-fg-2)', marginTop: 2, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{T(sub.vi, sub.en)}</small>
+              <small data-testid="event-bar-total-sub" style={{ fontSize: 'var(--bb-text-meta)', color: barState === 'adding' ? 'var(--bb-honey)' : 'var(--bb-fg-2)', marginTop: 2, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{T(sub.vi, sub.en)}</small>
             </div>
             {reserve}
           </div>

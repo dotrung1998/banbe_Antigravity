@@ -68,7 +68,7 @@ function joinTypes(ids, vi, or = false) {
 }
 
 function Eyebrow({ children, style }) {
-  return <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: muted(0.62), ...style }}>{children}</div>;
+  return <div style={{ fontSize: 'var(--bb-text-kicker)', fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: muted(0.62), ...style }}>{children}</div>;
 }
 
 /** Back (labelled with where it goes), "1 of 3", and one bar per screen. */
@@ -212,7 +212,7 @@ function Tile({ emoji, title, detail, selected, onClick, testId, haspopup }) {
       {selected && <span aria-hidden style={{ position: 'absolute', top: 6, right: 8, fontSize: 12 }}>✓</span>}
       <span aria-hidden style={{ fontSize: 26, lineHeight: 1.1 }}>{emoji}</span>
       <span style={{ fontSize: 13, fontWeight: selected ? 700 : 500, lineHeight: 1.25 }}>{title}</span>
-      {detail != null && <small style={{ fontSize: 11.5, color: muted(0.65) }}>{detail}</small>}
+      {detail != null && <small style={{ fontSize: 'var(--bb-text-meta)', color: muted(0.65) }}>{detail}</small>}
     </button>
   );
 }
@@ -245,7 +245,7 @@ function TypesPanel({ flow, send, counts, countsReady, onClose }) {
   const live = all.filter(o => (counts[o.id] || 0) > 0).sort((a, b) => (counts[b.id] - counts[a.id]) || label(a).localeCompare(label(b)));
   const rest = all.filter(o => !(counts[o.id] > 0)).sort((a, b) => label(a).localeCompare(label(b)));
   const picked = flow.draft.interests || [];
-  const group = (text) => <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: muted(0.6), margin: '16px 0 4px' }}>{text}</div>;
+  const group = (text) => <div style={{ fontSize: 'var(--bb-text-kicker)', fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: muted(0.6), margin: '16px 0 4px' }}>{text}</div>;
   const row = (o) => {
     const on = picked.includes(o.id);
     const n = counts[o.id] || 0;

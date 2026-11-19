@@ -33,7 +33,7 @@ function CollapseHeader({ title, count, open, onToggle, testId }) {
   return (
     <div onClick={onToggle} role="button" aria-expanded={open} data-testid={testId}
          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '4px 0' }}>
-      <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>
+      <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>
         {title}{count > 0 && <span style={{ fontWeight: 400, opacity: 0.65 }}> ▪︎ {count}</span>}
       </span>
       <span aria-hidden="true" style={{ fontSize: 12, color: ink, display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>›</span>
@@ -291,11 +291,11 @@ export default function Dashboard() {
               viewer IS the owner. Never persisted as part of the name
               itself ("Team" is display-only text here). */}
           {s.myOrganizerId && (
-            <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }} data-testid="dashboard-owner-line">
+            <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }} data-testid="dashboard-owner-line">
               {T(`Bởi ${s.user?.name || ''} Team`, `By ${s.user?.name || ''} Team`)}
             </span>
           )}
-          <span style={{ display: 'inline-block', fontSize: 10, fontWeight: 600, padding: '5px 11px', borderRadius: 999, background: 'transparent', color: ink, border: b.border, width: 'fit-content' }}>{b.label}</span>
+          <span style={{ display: 'inline-block', fontSize: 'var(--bb-text-meta)', fontWeight: 600, padding: '5px 11px', borderRadius: 999, background: 'transparent', color: ink, border: b.border, width: 'fit-content' }}>{b.label}</span>
         </div>
       </div>
       <div style={{ padding: '14px 22px 0', fontSize: 12.5, color: ink }}>{dashStatsLine}</div>
@@ -380,11 +380,11 @@ export default function Dashboard() {
               <div key={e.key} data-testid={`dashboard-needs-fix-${e.key}`} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '13px 16px', borderBottom: (i < needsFixReal.length - 1 || pendingReal.length) ? `1px solid ${rule}` : 'none' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
                   <span style={{ ...display(15) }}>{e.name}</span>
-                  <span style={{ fontSize: 10.5, fontWeight: 600, color: alert }}>{T('Cần chỉnh sửa', 'Needs fixing')}</span>
+                  <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: alert }}>{T('Cần chỉnh sửa', 'Needs fixing')}</span>
                 </div>
-                <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.8, margin: 0 }}>{e.rejectionReason}</p>
+                <p style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.5, color: ink, opacity: 0.8, margin: 0 }}>{e.rejectionReason}</p>
                 {(e.submittedAt || e.reviewedAt) && (
-                  <span data-testid={`dashboard-needs-fix-times-${e.key}`} style={{ fontSize: 10.5, color: ink, opacity: 0.6 }}>
+                  <span data-testid={`dashboard-needs-fix-times-${e.key}`} style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6 }}>
                     {[e.submittedAt && T(`Gửi lúc ${fmtWhen(e.submittedAt)}`, `Submitted ${fmtWhen(e.submittedAt)}`), e.reviewedAt && T(`Admin phản hồi lúc ${fmtWhen(e.reviewedAt)}`, `Sent back ${fmtWhen(e.reviewedAt)}`)].filter(Boolean).join(' ▪︎ ')}
                   </span>
                 )}
@@ -394,7 +394,7 @@ export default function Dashboard() {
                     (2 successful resubmissions per rolling 24h), never
                     phrased as a legal/Ticketbox requirement. */}
                 {s.resubmissionStatusByEvent[e.key] && (
-                  <span style={{ fontSize: 10.5, color: ink, opacity: 0.6 }} data-testid={`dashboard-resubmit-remaining-${e.key}`}>
+                  <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6 }} data-testid={`dashboard-resubmit-remaining-${e.key}`}>
                     {s.resubmissionStatusByEvent[e.key].remaining > 0
                       ? T(`Còn ${s.resubmissionStatusByEvent[e.key].remaining} lần gửi lại trong 24 giờ.`, `${s.resubmissionStatusByEvent[e.key].remaining} resubmission(s) left in the next 24h.`)
                       : T(`Đã hết lượt gửi lại. Thử lại sau ${new Date(s.resubmissionStatusByEvent[e.key].nextEligibleAt).toLocaleString()}.`, `Resubmission limit reached. Try again after ${new Date(s.resubmissionStatusByEvent[e.key].nextEligibleAt).toLocaleString()}.`)}
@@ -403,7 +403,7 @@ export default function Dashboard() {
                 <span
                   onClick={s.resubmissionStatusByEvent[e.key]?.remaining === 0 ? undefined : () => goEditEvent(e.key)}
                   data-testid={`dashboard-resubmit-${e.key}`}
-                  style={{ fontSize: 11, fontWeight: 600, color: ink, border: '1px solid rgba(27,25,22,0.16)', borderRadius: 12, padding: '6px 10px', alignSelf: 'flex-start', cursor: 'pointer', opacity: s.resubmissionStatusByEvent[e.key]?.remaining === 0 ? 0.4 : 1 }}
+                  style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, border: '1px solid rgba(27,25,22,0.16)', borderRadius: 12, padding: '6px 10px', alignSelf: 'flex-start', cursor: 'pointer', opacity: s.resubmissionStatusByEvent[e.key]?.remaining === 0 ? 0.4 : 1 }}
                 >
                   {T('Sửa & gửi lại', 'Fix & resubmit')}
                 </span>
@@ -413,10 +413,10 @@ export default function Dashboard() {
               <div key={e.key} data-testid={`dashboard-pending-${e.key}`} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '13px 16px', borderBottom: i < pendingReal.length - 1 ? `1px solid ${rule}` : 'none' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
                   <span style={{ ...display(15) }}>{e.name}</span>
-                  <span style={{ fontSize: 10.5, fontWeight: 600, color: ink, opacity: 0.65 }}>{T('Đang chờ Banbe duyệt', 'Waiting for Banbe to review')}</span>
+                  <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.65 }}>{T('Đang chờ Banbe duyệt', 'Waiting for Banbe to review')}</span>
                 </div>
                 {e.submittedAt && (
-                  <span data-testid={`dashboard-pending-submitted-${e.key}`} style={{ fontSize: 10.5, color: ink, opacity: 0.6 }}>{T(`Gửi lúc ${fmtWhen(e.submittedAt)}`, `Submitted ${fmtWhen(e.submittedAt)}`)}</span>
+                  <span data-testid={`dashboard-pending-submitted-${e.key}`} style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6 }}>{T(`Gửi lúc ${fmtWhen(e.submittedAt)}`, `Submitted ${fmtWhen(e.submittedAt)}`)}</span>
                 )}
                 {/* Owner-only withdrawal (migration 107,
                     withdraw_event_submission) — requires a non-empty reason
@@ -433,7 +433,7 @@ export default function Dashboard() {
                       data-testid={`dashboard-withdraw-reason-${e.key}`}
                       style={{ fontSize: 12, padding: '8px 10px', borderRadius: 10, border: `1px solid ${rule}` }}
                     />
-                    {s.withdrawEventError && <span style={{ fontSize: 10.5, color: alert }}>{s.withdrawEventError}</span>}
+                    {s.withdrawEventError && <span style={{ fontSize: 'var(--bb-text-meta)', color: alert }}>{s.withdrawEventError}</span>}
                     <div style={{ display: 'flex', gap: 8 }}>
                       <span
                         onClick={async () => {
@@ -441,14 +441,14 @@ export default function Dashboard() {
                           if (ok) { setWithdrawTargetKey(null); setWithdrawReasonDraft(''); submitted.refresh(); }
                         }}
                         data-testid={`dashboard-withdraw-confirm-${e.key}`}
-                        style={{ fontSize: 11, fontWeight: 600, color: paper, background: alert, borderRadius: 12, padding: '6px 10px', cursor: 'pointer', opacity: s.withdrawEventBusy ? 0.6 : 1 }}
+                        style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: paper, background: alert, borderRadius: 12, padding: '6px 10px', cursor: 'pointer', opacity: s.withdrawEventBusy ? 0.6 : 1 }}
                       >
                         {T('Xác nhận rút lại', 'Confirm withdrawal')}
                       </span>
                       <span
                         onClick={() => { setWithdrawTargetKey(null); setWithdrawReasonDraft(''); }}
                         data-testid={`dashboard-withdraw-cancel-${e.key}`}
-                        style={{ fontSize: 11, fontWeight: 600, color: ink, opacity: 0.6, cursor: 'pointer', padding: '6px 4px' }}
+                        style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.6, cursor: 'pointer', padding: '6px 4px' }}
                       >
                         {T('Huỷ', 'Cancel')}
                       </span>
@@ -482,8 +482,8 @@ export default function Dashboard() {
 
       <div style={{ margin: '24px 22px 0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Sự kiện sắp tới', 'Upcoming events')}</span>
-          <span style={{ fontSize: 10.5, color: ink }}>{upcoming.length}{T(' sự kiện', upcoming.length === 1 ? ' event' : ' events')}</span>
+          <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Sự kiện sắp tới', 'Upcoming events')}</span>
+          <span style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{upcoming.length}{T(' sự kiện', upcoming.length === 1 ? ' event' : ' events')}</span>
         </div>
         <div style={{ ...fieldGlass({ marginTop: 10, display: 'flex', flexDirection: 'column' }) }}>
           {upcoming.map((e, i, arr) => (
@@ -495,12 +495,12 @@ export default function Dashboard() {
               </div>
               <div onClick={() => goEvent(e.key)} style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1, cursor: 'pointer' }}>
                 {e.reminder && (
-                  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#7A5200' }}>
+                  <span style={{ fontSize: 'var(--bb-text-kicker)', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#7A5200' }}>
                     <span aria-hidden="true" style={{ color: '#E0A526' }}>★ </span>{e.reminder === 'live' ? T('Đang diễn ra', 'Happening now') : T('Sắp diễn ra', 'Starting soon')}
                   </span>
                 )}
                 <span style={{ ...display(15, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{e.name}</span>
-                <span style={{ fontSize: 11.5, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{trStatus(stripKm(e.meta, e))}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{trStatus(stripKm(e.meta, e))}</span>
               </div>
               {/* STAGE C (2026-09-25) — real "add photo" affordance, the
                   actual thing that lets Pulse's photo tab and Task 3's
@@ -512,14 +512,14 @@ export default function Dashboard() {
               <span
                 onClick={() => pickEventPhoto(e.key)}
                 data-testid={`dashboard-add-photo-${e.key}`}
-                style={{ fontSize: 11, fontWeight: 600, color: ink, border: '1px solid rgba(27,25,22,0.16)', borderRadius: 12, padding: '6px 10px', flex: 'none', cursor: s.eventPhotoUploadBusy[e.key] ? 'default' : 'pointer', opacity: s.eventPhotoUploadBusy[e.key] ? 0.5 : 1 }}
+                style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, border: '1px solid rgba(27,25,22,0.16)', borderRadius: 12, padding: '6px 10px', flex: 'none', cursor: s.eventPhotoUploadBusy[e.key] ? 'default' : 'pointer', opacity: s.eventPhotoUploadBusy[e.key] ? 0.5 : 1 }}
               >
                 {s.eventPhotoUploaded[e.key] ? T('Đã thêm ✓', 'Added ✓') : s.eventPhotoUploadBusy[e.key] ? T('Đang tải…', 'Uploading…') : T('+ Ảnh', '+ Photo')}
               </span>
               <span onClick={() => openAttendance(e.key)} data-testid={`dashboard-checkin-${e.key}`}
                     style={e.reminder
-                      ? { fontSize: 11, fontWeight: 700, color: paper, background: ink, borderRadius: 12, padding: '7px 12px', flex: 'none', cursor: 'pointer' }
-                      : { fontSize: 11, fontWeight: 600, color: ink, border: '1px solid rgba(27,25,22,0.16)', borderRadius: 12, padding: '6px 10px', flex: 'none', cursor: 'pointer' }}>{T('Điểm danh', 'Check-in')}</span>
+                      ? { fontSize: 'var(--bb-text-meta)', fontWeight: 700, color: paper, background: ink, borderRadius: 12, padding: '7px 12px', flex: 'none', cursor: 'pointer' }
+                      : { fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, border: '1px solid rgba(27,25,22,0.16)', borderRadius: 12, padding: '6px 10px', flex: 'none', cursor: 'pointer' }}>{T('Điểm danh', 'Check-in')}</span>
             </div>
           ))}
           {upcoming.length === 0 && (
@@ -536,11 +536,11 @@ export default function Dashboard() {
               <div onClick={() => goEvent(e.key)} style={bg(e.img, { flex: 'none', width: 52, height: 52, filter: 'grayscale(0.5)', cursor: 'pointer' })} />
               <div onClick={() => goEvent(e.key)} style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1, cursor: 'pointer' }}>
                 <span style={{ ...display(15, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{e.name}</span>
-                <span style={{ fontSize: 11.5, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{trStatus(stripKm(e.meta, e))} ▪︎ {e.agoLabel(e.endedHoursAgo)}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{trStatus(stripKm(e.meta, e))} ▪︎ {e.agoLabel(e.endedHoursAgo)}</span>
               </div>
               {hostRecapOn && e.isReal && (
                 <span onClick={() => openHostRecap(e.key, 'dashboard')} role="button" data-testid={`dashboard-recap-${e.key}`}
-                  style={{ fontSize: 11, fontWeight: 600, color: ink, border: '1px solid rgba(27,25,22,0.16)', borderRadius: 12, padding: '6px 10px', flex: 'none', cursor: 'pointer' }}>
+                  style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, border: '1px solid rgba(27,25,22,0.16)', borderRadius: 12, padding: '6px 10px', flex: 'none', cursor: 'pointer' }}>
                   {T('Tổng kết', 'Recap')}
                 </span>
               )}
@@ -550,7 +550,7 @@ export default function Dashboard() {
               <span
                 onClick={() => pickEventPhoto(e.key)}
                 data-testid={`dashboard-add-photo-${e.key}`}
-                style={{ fontSize: 11, fontWeight: 600, color: ink, border: '1px solid rgba(27,25,22,0.16)', borderRadius: 12, padding: '6px 10px', flex: 'none', cursor: s.eventPhotoUploadBusy[e.key] ? 'default' : 'pointer', opacity: s.eventPhotoUploadBusy[e.key] ? 0.5 : 1 }}
+                style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, border: '1px solid rgba(27,25,22,0.16)', borderRadius: 12, padding: '6px 10px', flex: 'none', cursor: s.eventPhotoUploadBusy[e.key] ? 'default' : 'pointer', opacity: s.eventPhotoUploadBusy[e.key] ? 0.5 : 1 }}
               >
                 {s.eventPhotoUploaded[e.key] ? T('Đã thêm ✓', 'Added ✓') : s.eventPhotoUploadBusy[e.key] ? T('Đang tải…', 'Uploading…') : T('+ Ảnh', '+ Photo')}
               </span>
@@ -576,7 +576,7 @@ export default function Dashboard() {
             onClick={() => setTeamOpen(o => !o)} role="button" aria-expanded={teamOpen} data-testid="dashboard-team-toggle"
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '4px 0' }}
           >
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>
+            <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>
               {T('Đội ngũ', 'Team')}
               {teamCount > 0 && <span style={{ fontWeight: 400, opacity: 0.65 }}> ▪︎ {teamCount}</span>}
             </span>
@@ -596,7 +596,7 @@ export default function Dashboard() {
               data-testid="dashboard-team-invite-role"
               style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 13, color: ink }}
             />
-            {s.orgTeamInviteError && <span style={{ fontSize: 11.5, color: alert }}>{s.orgTeamInviteError}</span>}
+            {s.orgTeamInviteError && <span style={{ fontSize: 'var(--bb-text-meta)', color: alert }}>{s.orgTeamInviteError}</span>}
             <div
               onClick={s.orgTeamInviteBusy ? undefined : () => inviteOrganizerMember(s.myOrganizerId)}
               data-testid="dashboard-team-invite-submit"
@@ -609,7 +609,7 @@ export default function Dashboard() {
             <div key={m.id} style={{ ...fieldGlass({ marginTop: 8, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }) }} data-testid={`dashboard-team-member-${m.id}`}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                 <span style={{ fontSize: 13, color: ink }}>{m.profiles?.display_name || m.profiles?.handle}</span>
-                <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>
+                <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65 }}>
                   {m.public_role} ▪︎ {ROLE_STATUS_LABEL[m.status]}{m.status === 'accepted' && !m.public_visible ? ` ▪︎ ${T('đã ẩn công khai', 'hidden from public')}` : ''}
                 </span>
               </div>
@@ -625,7 +625,7 @@ export default function Dashboard() {
               re-checks both server-side regardless). */}
           {myRealEvents.length > 0 && s.orgTeamRoster.some(m => m.status === 'accepted') && (
             <div style={{ ...fieldGlass({ marginTop: 8, padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }) }}>
-              <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Ghi nhận đóng góp sự kiện', 'Credit an event contribution')}</span>
+              <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Ghi nhận đóng góp sự kiện', 'Credit an event contribution')}</span>
               <select value={creditEventKey} onChange={e => setCreditEventKey(e.target.value)} data-testid="dashboard-credit-event-select" style={{ fontSize: 12.5, padding: 8 }}>
                 <option value="">{T('Chọn sự kiện…', 'Choose an event…')}</option>
                 {myRealEvents.map(e => <option key={e.key} value={e.key}>{e.name}</option>)}

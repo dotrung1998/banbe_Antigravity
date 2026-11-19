@@ -33,7 +33,7 @@ export default function EventRowV23({ row, onOpen, testId, T = EN, onToggleSave 
         style={{ flex: 1, minWidth: 0, display: 'flex', gap: 12, alignItems: 'center', cursor: 'pointer' }}>
       <div aria-hidden="true" data-zoom-photo style={{ width: 80, height: 80, flex: 'none', borderRadius: RADIUS.thumb, background: row.img ? `var(--bb-block) center/cover no-repeat url("${row.img}")` : 'var(--bb-block)' }} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
-        <span data-testid="event-row-kicker" style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <span data-testid="event-row-kicker" style={{ fontSize: 'var(--bb-text-kicker)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {row.when ? <span data-testid="event-row-when">{row.when}</span> : null}
           {row.type ? <span style={{ opacity: 0.72 }}>{row.when ? ' · ' : ''}{row.type}</span> : null}
         </span>

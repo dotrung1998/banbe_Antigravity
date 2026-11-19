@@ -22,7 +22,7 @@ const IconMsg = () => (<svg {...ico} width={14} height={14}><path d="M21 12a8 8 
 
 const H = ({ children, action }) => (
   <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, margin: '0 0 14px' }}>
-    <h2 style={{ margin: 0, fontSize: 11, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--bb-fg-2)', fontWeight: 700 }}>{children}</h2>
+    <h2 style={{ margin: 0, fontSize: 'var(--bb-text-kicker)', letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--bb-fg-2)', fontWeight: 700 }}>{children}</h2>
     {action}
   </div>
 );
@@ -124,9 +124,9 @@ export default function EventDetailV23View(p) {
             <div aria-hidden data-testid="event-hero-scrim" style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(6,5,4,.68) 0%, rgba(6,5,4,.1) 30%, rgba(6,5,4,.7) 56%, rgba(6,5,4,.92) 100%)' }} />
             <div data-testid="event-hero-title" className="bbv23-ttl" style={{ position: 'absolute', left: 22, right: 22, bottom: 26, zIndex: 2, color: '#fff' }}>
               <div style={{ display: 'flex', gap: 7, marginBottom: 13, flexWrap: 'wrap' }}>
-                {catLabel && <span data-testid="event-category" style={{ height: 26, padding: '0 10px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', fontSize: 11, fontWeight: 700, letterSpacing: '0.03em', background: 'rgba(247,244,236,.92)', color: '#1B1916', backdropFilter: 'blur(14px) saturate(1.6)', WebkitBackdropFilter: 'blur(14px) saturate(1.6)' }}>{catLabel}</span>}
-                {minAge && <span data-testid={`event-type-fact-${minAge.id}`} aria-label={`${minAge.label} ${minAge.value}`} style={{ height: 26, padding: '0 10px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', fontSize: 11, fontWeight: 700, letterSpacing: '0.03em', background: 'rgba(0,0,0,.28)', color: '#fff', border: '1px solid rgba(255,255,255,.5)' }}>{minAge.value}</span>}
-                {inviteOnly && <span data-testid="event-invite-chip" style={{ height: 26, padding: '0 10px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', fontSize: 11, fontWeight: 700, background: 'rgba(0,0,0,.28)', color: '#fff', border: '1px solid rgba(255,255,255,.5)' }}>{T('Riêng tư · theo lời mời', 'Private · invite only')}</span>}
+                {catLabel && <span data-testid="event-category" style={{ height: 26, padding: '0 10px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', fontSize: 'var(--bb-text-meta)', fontWeight: 700, letterSpacing: '0.03em', background: 'rgba(247,244,236,.92)', color: '#1B1916', backdropFilter: 'blur(14px) saturate(1.6)', WebkitBackdropFilter: 'blur(14px) saturate(1.6)' }}>{catLabel}</span>}
+                {minAge && <span data-testid={`event-type-fact-${minAge.id}`} aria-label={`${minAge.label} ${minAge.value}`} style={{ height: 26, padding: '0 10px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', fontSize: 'var(--bb-text-meta)', fontWeight: 700, letterSpacing: '0.03em', background: 'rgba(0,0,0,.28)', color: '#fff', border: '1px solid rgba(255,255,255,.5)' }}>{minAge.value}</span>}
+                {inviteOnly && <span data-testid="event-invite-chip" style={{ height: 26, padding: '0 10px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', fontSize: 'var(--bb-text-meta)', fontWeight: 700, background: 'rgba(0,0,0,.28)', color: '#fff', border: '1px solid rgba(255,255,255,.5)' }}>{T('Riêng tư · theo lời mời', 'Private · invite only')}</span>}
               </div>
               <h1 style={{ margin: 0, fontFamily: SERIF, fontWeight: 400, fontSize: 40, lineHeight: 1.04, letterSpacing: '-0.025em', textWrap: 'balance', overflowWrap: 'anywhere' }}>{ev.name}</h1>
             </div>
@@ -144,7 +144,7 @@ export default function EventDetailV23View(p) {
                     <dl style={{ display: 'grid', gridTemplateColumns: '104px 1fr', gap: '15px 18px', margin: about.visible ? '0 0 28px' : 0 }}>
                       {know.map(r => (
                         <div key={r.key} data-testid={`event-type-fact-${r.key}`} style={{ display: 'contents' }}>
-                          <dt style={{ fontSize: 10.5, letterSpacing: '0.13em', textTransform: 'uppercase', color: 'var(--bb-clay-ink)', fontWeight: 700, paddingTop: 3 }}>{typeof r.label === 'string' ? r.label : T(r.label.vi, r.label.en)}</dt>
+                          <dt style={{ fontSize: 'var(--bb-text-kicker)', letterSpacing: '0.13em', textTransform: 'uppercase', color: 'var(--bb-clay-ink)', fontWeight: 700, paddingTop: 3 }}>{typeof r.label === 'string' ? r.label : T(r.label.vi, r.label.en)}</dt>
                           <dd style={{ margin: 0, fontSize: 14, lineHeight: 1.58, color: 'var(--bb-fg-2)', overflowWrap: 'anywhere' }}>{r.text}</dd>
                         </div>
                       ))}
@@ -244,7 +244,7 @@ export default function EventDetailV23View(p) {
                     {protection.map(([title, sub], i) => (
                       <li key={i} style={{ position: 'relative', display: 'flex', gap: 12 }}>
                         {i < protection.length - 1 && <span aria-hidden style={{ position: 'absolute', left: 11, top: 26, bottom: -14, width: 1, background: 'var(--bb-rule)' }} />}
-                        <span aria-hidden style={{ width: 23, height: 23, borderRadius: '50%', background: 'var(--bb-surface-2)', display: 'grid', placeItems: 'center', fontSize: 10.5, fontWeight: 700, flex: 'none', marginTop: 1 }}>{i + 1}</span>
+                        <span aria-hidden style={{ width: 23, height: 23, borderRadius: '50%', background: 'var(--bb-surface-2)', display: 'grid', placeItems: 'center', fontSize: 'var(--bb-text-meta)', fontWeight: 700, flex: 'none', marginTop: 1 }}>{i + 1}</span>
                         <span style={{ minWidth: 0 }}>
                           <b style={{ display: 'block', fontSize: 13.5, fontWeight: 600 }}>{title}</b>
                           <span style={{ display: 'block', fontSize: 12.5, color: 'var(--bb-fg-2)', lineHeight: 1.5, marginTop: 2 }}>{sub}</span>

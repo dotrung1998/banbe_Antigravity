@@ -94,7 +94,7 @@ export function HeaderIconButton({ icon, label, onClick, testId, tint, style }) 
       }}>
         <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">{HEADER_ICONS[icon]}</svg>
       </span>
-      <span style={{ fontSize: 9.5, color: tint || ink, opacity: tint ? 0.85 : 0.7 }}>{label}</span>
+      <span style={{ fontSize: 'var(--bb-text-meta)', color: tint || ink, opacity: tint ? 0.85 : 0.7 }}>{label}</span>
     </div>
   );
 }
@@ -438,7 +438,7 @@ export default function Notifications({ overlay = false }) {
               <Section key={sec.key} title={sec.title}>
                 {visibleDays.map(day => (
                   <div key={day.key} style={{ marginBottom: 14 }}>
-                    <span style={{ fontSize: 10.5, fontWeight: 600, color: ink, opacity: 0.5 }} data-testid="notification-day-header">
+                    <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.5 }} data-testid="notification-day-header">
                       {day.label}
                     </span>
                     <div style={{ marginTop: 4 }}>{day.items.map(withAgo).map(row)}</div>
@@ -537,7 +537,7 @@ function MenuRow({ children, onClick, destructive, testId }) {
 function Section({ title, children }) {
   return (
     <div style={{ marginBottom: 22 }}>
-      <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', color: ink, opacity: 0.6, textTransform: 'uppercase' }}>{title}</span>
+      <span style={{ fontSize: 'var(--bb-text-kicker)', fontWeight: 600, letterSpacing: '0.04em', color: ink, opacity: 0.6, textTransform: 'uppercase' }}>{title}</span>
       <div style={{ marginTop: 6 }}>{children}</div>
     </div>
   );
@@ -615,7 +615,7 @@ export function Row({ n, unread, avatar, onClick, onOpenMenu, selectionMode, sel
             <span style={{ ...display(15, { lineHeight: 1.3 }), fontWeight: unread ? 700 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', ...(n.kind === 'event_announcement' ? { color: alert } : {}) }}>{n.kind === 'event_announcement' ? '📣 ' : ''}{n.title}</span>
             <KindIcon category={notificationCategory(n.kind)} />
           </span>
-          <span style={{ fontSize: 11, color: ink, flex: 'none', whiteSpace: 'nowrap' }}>{n.ago}</span>
+          <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, flex: 'none', whiteSpace: 'nowrap' }}>{n.ago}</span>
         </div>
         {/* Instagram's own "bold actor/action + secondary preview" shape —
             one truncated line, not the old full-body wrap. */}

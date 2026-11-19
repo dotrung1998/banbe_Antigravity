@@ -153,12 +153,12 @@ export default function AdminManageEvents() {
                           <span aria-hidden style={{ fontSize: 13, opacity: 0.5, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s ease' }}>›</span>
                         </span>
                         <span style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 999,
+                          <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 700, padding: '2px 7px', borderRadius: 999,
                             background: removed ? 'rgba(var(--bb-alert-rgb),0.14)' : 'rgba(var(--bb-fg-rgb),0.08)', color: removed ? alert : ink }}>
                             {T(...(STATUS_LABELS[r.status] || [r.status, r.status]))}
                           </span>
                           {orphan && (
-                            <span data-testid={`admin-manage-orphan-${r.id}`} style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 999, background: 'rgba(var(--bb-alert-rgb),0.12)', color: alert }}>
+                            <span data-testid={`admin-manage-orphan-${r.id}`} style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 700, padding: '2px 7px', borderRadius: 999, background: 'rgba(var(--bb-alert-rgb),0.12)', color: alert }}>
                               {T('Host đã xoá tài khoản', 'Host account deleted')}
                             </span>
                           )}
@@ -166,7 +166,7 @@ export default function AdminManageEvents() {
                         </span>
                       </button>
                       {removed && <span style={{ fontSize: 12, opacity: 0.75 }}>{T('Lý do: ', 'Reason: ')}{r.removal_reason}</span>}
-                      {removed && c?.purgeable && <span style={{ fontSize: 11.5, fontWeight: 600, opacity: 0.7 }}>{T('Chưa từng có đặt chỗ, có thể xoá vĩnh viễn.', 'Never booked, can be deleted permanently.')}</span>}
+                      {removed && c?.purgeable && <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, opacity: 0.7 }}>{T('Chưa từng có đặt chỗ, có thể xoá vĩnh viễn.', 'Never booked, can be deleted permanently.')}</span>}
                       {!removed && isBlocked(c) && (
                         <span data-testid={`admin-manage-blocked-${r.id}`} style={{ fontSize: 12, fontWeight: 600, color: 'var(--bb-honey)' }}>{blockerLine(c, T, orphan)}</span>
                       )}

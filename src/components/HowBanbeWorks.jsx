@@ -223,7 +223,7 @@ function Photo({ src, h, r = 14, children, style, className }) {
 function ForYouChip({ T, stamp, delay = 0 }) {
   return (
     <span className={stamp ? 'bb-hiw-stamp' : undefined} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '3px 8px', borderRadius: 999, background: paper,
-      border: `1px solid ${GOLD}b3`, fontSize: 10.5, fontWeight: 700, color: ink, whiteSpace: 'nowrap', animationDelay: `${delay}ms` }}>
+      border: `1px solid ${GOLD}b3`, fontSize: 'var(--bb-text-meta)', fontWeight: 700, color: ink, whiteSpace: 'nowrap', animationDelay: `${delay}ms` }}>
       <span style={{ color: GOLD }}>★</span>{T('Dành cho bạn', 'For You')}
     </span>
   );
@@ -354,7 +354,7 @@ function Tickets({ T }) {
         </div>
         <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <div style={{ fontSize: 11, opacity: 0.55 }}>{T('Tổng', 'Total')}</div>
+            <div style={{ fontSize: 'var(--bb-text-meta)', opacity: 0.55 }}>{T('Tổng', 'Total')}</div>
             <div key={n} className="bb-hiw-caption" style={{ fontSize: 18, fontWeight: 800 }}>{vnd(priceOf(e) * n)}</div>
           </div>
           <span style={{ padding: '10px 14px', borderRadius: 14, background: 'var(--bb-clay)', color: '#fff', fontSize: 13, fontWeight: 700 }}>{T('Giữ chỗ', 'Hold seats')}</span>
@@ -455,7 +455,7 @@ function Organizer({ T }) {
   const icon = { width: 24, textAlign: 'center', fontSize: 16 };
   const chev = <span style={{ marginLeft: 'auto', opacity: 0.35, fontSize: 14 }}>›</span>;
   const tool = (e, vi, en) => (
-    <div style={{ flex: 1, borderRadius: 10, padding: '8px 0', textAlign: 'center', fontSize: 11, fontWeight: 600, background: `rgba(var(--bb-bg-rgb),${on ? 0.9 : 0.5})`, opacity: on ? 1 : 0.45, transition: 'all .35s' }}>
+    <div style={{ flex: 1, borderRadius: 10, padding: '8px 0', textAlign: 'center', fontSize: 'var(--bb-text-meta)', fontWeight: 600, background: `rgba(var(--bb-bg-rgb),${on ? 0.9 : 0.5})`, opacity: on ? 1 : 0.45, transition: 'all .35s' }}>
       <div style={{ fontSize: 16 }}>{e}</div>{T(vi, en)}
     </div>
   );

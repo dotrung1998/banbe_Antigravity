@@ -147,7 +147,7 @@ export default function AdminTestAccounts() {
         <div style={{ ...fieldGlass({ marginTop: 14, padding: '14px 16px', borderRadius: 20 }), display: 'flex', alignItems: 'center', gap: 14 }} data-testid="admin-bypass-card">
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 14, fontWeight: 600 }}>{T('Bỏ qua SMS cho tất cả', 'Bypass SMS for everyone')}</div>
-            <div style={{ fontSize: 11.5, lineHeight: 1.5, opacity: 0.7, marginTop: 2 }}>
+            <div style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.5, opacity: 0.7, marginTop: 2 }}>
               {bypassAll === null ? T('Đang tải…', 'Loading…')
                 : bypassAll ? T('ĐANG BẬT. Không ai phải xác minh SMS.', 'ON. Nobody has to verify by SMS.')
                 : T('Đang tắt. Người dùng phải xác minh SMS.', 'Off. Users must verify by SMS.')}
@@ -182,7 +182,7 @@ export default function AdminTestAccounts() {
             <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+4917656035288" inputMode="tel" data-testid="admin-test-phone" style={fieldStyle} />
             {!found.has_dob && (
               <>
-                <div style={{ fontSize: 11.5, opacity: 0.7, marginTop: 10 }}>{T('Ngày sinh (chỉ ghi, không bao giờ ghi đè)', 'Date of birth (write-only, never overwritten)')}</div>
+                <div style={{ fontSize: 'var(--bb-text-meta)', opacity: 0.7, marginTop: 10 }}>{T('Ngày sinh (chỉ ghi, không bao giờ ghi đè)', 'Date of birth (write-only, never overwritten)')}</div>
                 <input type="date" value={dob} onChange={e => setDob(e.target.value)} data-testid="admin-test-dob" style={{ ...fieldStyle, marginTop: 4 }} />
               </>
             )}
@@ -195,7 +195,7 @@ export default function AdminTestAccounts() {
             <div onClick={() => !busy && save()} style={{ ...inkButton({ marginTop: 14, borderRadius: 18, padding: 14, fontSize: 14 }), opacity: busy ? 0.45 : 1, cursor: 'pointer' }} data-testid="admin-test-save">
               {busy ? T('Đang lưu…', 'Saving…') : T('Lưu', 'Save')}
             </div>
-            <p style={{ fontSize: 11.5, lineHeight: 1.5, opacity: 0.65, margin: '10px 0 0' }}>
+            <p style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.5, opacity: 0.65, margin: '10px 0 0' }}>
               {T('Số chỉ lưu trong hồ sơ, không có trong Auth nên không dùng được cho tin nhắn quảng bá.', 'The number is stored on the profile only (not in Auth), so it does not enable promo texting.')}
             </p>
             {found.role !== 'admin' && (

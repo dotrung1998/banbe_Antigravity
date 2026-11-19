@@ -83,7 +83,7 @@ export default function PendingEventSheet({ eventId, name, onClose, onChanged })
 
   const line = (label, value) => (value ? (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <span style={{ fontSize: 11, color: ink, opacity: 0.6 }}>{label}</span>
+      <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6 }}>{label}</span>
       <span style={{ fontSize: 14, color: ink, whiteSpace: 'pre-wrap' }}>{value}</span>
     </div>
   ) : null);
@@ -133,11 +133,11 @@ export default function PendingEventSheet({ eventId, name, onClose, onChanged })
                     : T('Đã nhắc tối đa 2 lần', 'Reminded the maximum 2 times')}
                 </div>
                 {lastReminded && (
-                  <span style={{ fontSize: 11.5, color: ink, opacity: 0.65 }}>{T(`Nhắc lần gần nhất: ${fmt(lastReminded)}`, `Last reminded: ${fmt(lastReminded)}`)}</span>
+                  <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65 }}>{T(`Nhắc lần gần nhất: ${fmt(lastReminded)}`, `Last reminded: ${fmt(lastReminded)}`)}</span>
                 )}
               </>
             )}
-            {msg && <span role="status" style={{ fontSize: 11.5, color: msgBad ? alert : ink, opacity: msgBad ? 1 : 0.75 }}>{msg}</span>}
+            {msg && <span role="status" style={{ fontSize: 'var(--bb-text-meta)', color: msgBad ? alert : ink, opacity: msgBad ? 1 : 0.75 }}>{msg}</span>}
           </div>
         )}
 

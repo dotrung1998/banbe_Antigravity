@@ -34,7 +34,7 @@ const IconChev = ({ open }) => (<svg {...ico} width={14} height={14} style={{ tr
 const circle = { width: 44, height: 44, borderRadius: '50%', border: 'none', background: 'var(--bb-surface-2)', color: 'var(--bb-fg)', display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0, flex: 'none' };
 const H = ({ children, action }) => (
   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, margin: '0 0 10px' }}>
-    <h2 style={{ margin: 0, fontSize: 11, letterSpacing: '0.13em', textTransform: 'uppercase', color: 'var(--bb-fg-3)', fontWeight: 700 }}>{children}</h2>
+    <h2 style={{ margin: 0, fontSize: 'var(--bb-text-kicker)', letterSpacing: '0.13em', textTransform: 'uppercase', color: 'var(--bb-fg-3)', fontWeight: 700 }}>{children}</h2>
     {action}
   </div>
 );
@@ -92,7 +92,7 @@ export default function OrganizerProfileV23(p) {
           {stats.map(([v, l], i) => (
             <div key={l} className="bb-hp-rise" style={{ ...delay(i), textAlign: 'center', borderLeft: i ? '1px solid var(--bb-rule)' : 'none' }}>
               <b style={{ display: 'block', fontFamily: SERIF, fontSize: 23, fontWeight: 400, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' }}>{v}</b>
-              <small style={{ display: 'block', fontSize: 11, color: 'var(--bb-fg-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: 2, fontWeight: 600 }}>{l}</small>
+              <small style={{ display: 'block', fontSize: 'var(--bb-text-kicker)', color: 'var(--bb-fg-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: 2, fontWeight: 600 }}>{l}</small>
             </div>
           ))}
         </div>

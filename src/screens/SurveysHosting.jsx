@@ -99,7 +99,7 @@ function GlassTabs({ tabs, value, onChange }) {
         return (
           <div key={x.key} style={{ position: 'relative', flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, fontSize: 12.5, fontWeight: on ? 600 : 500, color: ink, opacity: on ? 1 : 0.55, whiteSpace: 'nowrap', pointerEvents: 'none' }}>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.label}</span>
-            {x.badge > 0 && <span style={{ fontSize: 10.5, fontWeight: 700, minWidth: 16, height: 16, lineHeight: '16px', borderRadius: 8, padding: '0 4px', background: ink, color: paper }}>{x.badge}</span>}
+            {x.badge > 0 && <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 700, minWidth: 16, height: 16, lineHeight: '16px', borderRadius: 8, padding: '0 4px', background: ink, color: paper }}>{x.badge}</span>}
           </div>
         );
       })}
@@ -190,7 +190,7 @@ function CreateSurveyForm({ T, onCreate, busy, error, searchAddressSuggestions }
   };
 
   const inputStyle = { width: '100%', padding: '10px 12px', borderRadius: 8, border: `1px solid ${rule}`, fontSize: 13.5, boxSizing: 'border-box' };
-  const labelStyle = { fontSize: 11.5, color: ink, opacity: 0.7, display: 'block', marginBottom: 5 };
+  const labelStyle = { fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7, display: 'block', marginBottom: 5 };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 18, border: `1px solid ${rule}`, borderRadius: 12 }}>
@@ -230,14 +230,14 @@ function CreateSurveyForm({ T, onCreate, busy, error, searchAddressSuggestions }
       <div>
         <label style={labelStyle}>{T('Địa điểm (tìm địa chỉ, có thể thêm nhiều)', 'Locations (search an address, add as many as you like)')}</label>
         <input style={inputStyle} value={locQuery} onChange={(e) => onLocType(e.target.value)} placeholder={T('Nhập số nhà, đường, quận…', 'House number, street, district…')} data-testid="survey-location-search" />
-        {locSearching && <div style={{ fontSize: 11.5, opacity: 0.6, marginTop: 6 }}>{T('Đang tìm…', 'Searching…')}</div>}
-        {locError && <div style={{ fontSize: 11.5, color: alert, marginTop: 6 }}>{locError}</div>}
+        {locSearching && <div style={{ fontSize: 'var(--bb-text-meta)', opacity: 0.6, marginTop: 6 }}>{T('Đang tìm…', 'Searching…')}</div>}
+        {locError && <div style={{ fontSize: 'var(--bb-text-meta)', color: alert, marginTop: 6 }}>{locError}</div>}
         {locSuggestions.length > 0 && (
           <div style={{ border: `1px solid ${rule}`, borderRadius: 8, marginTop: 6, overflow: 'hidden' }}>
             {locSuggestions.map((sg, i) => (
               <div key={i} onClick={() => addLocation(sg)} style={{ padding: '9px 12px', fontSize: 12.5, cursor: 'pointer', borderTop: i ? `1px solid ${rule}` : 'none' }}>
                 <div style={{ fontWeight: 600 }}>{sg.addressLine || sg.label}</div>
-                <div style={{ opacity: 0.6, fontSize: 11.5 }}>{[sg.district, sg.city].filter(Boolean).join(', ')}</div>
+                <div style={{ opacity: 0.6, fontSize: 'var(--bb-text-meta)' }}>{[sg.district, sg.city].filter(Boolean).join(', ')}</div>
               </div>
             ))}
           </div>
@@ -450,7 +450,7 @@ export default function SurveysHosting() {
                   <span style={{ fontSize: 13, fontWeight: 600 }}>{sv.title}</span>
                   <span
                     onClick={mySurveyCandidatesBusySurveyId ? undefined : () => refreshSurveyCandidatesAction(sv.id)}
-                    style={{ fontSize: 11.5, textDecoration: 'underline', cursor: 'pointer', opacity: mySurveyCandidatesBusySurveyId === sv.id ? 0.4 : 0.7 }}
+                    style={{ fontSize: 'var(--bb-text-meta)', textDecoration: 'underline', cursor: 'pointer', opacity: mySurveyCandidatesBusySurveyId === sv.id ? 0.4 : 0.7 }}
                   >
                     {mySurveyCandidatesBusySurveyId === sv.id ? T('Đang làm mới…', 'Refreshing…') : T('Làm mới', 'Refresh')}
                   </span>
@@ -464,7 +464,7 @@ export default function SurveysHosting() {
                           <span style={{ fontSize: 14, fontWeight: 600 }}>
                             {[c.date_label, c.location_label].filter(Boolean).join(' ▪︎ ') || sv.title}
                           </span>
-                          <span style={{ fontSize: 10.5, opacity: 0.6, textTransform: 'uppercase' }}>
+                          <span style={{ fontSize: 'var(--bb-text-meta)', opacity: 0.6, textTransform: 'uppercase' }}>
                             {c.status === 'dismissed' ? T('Đã bỏ qua', 'Dismissed') : `#${i + 1}`}
                           </span>
                         </div>
@@ -580,7 +580,7 @@ export default function SurveysHosting() {
               <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                 <span style={{ fontSize: 14, fontWeight: 600 }}>{sv.title}</span>
-                <span style={{ fontSize: 10.5, opacity: 0.6, textTransform: 'uppercase' }}>{sv.status}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', opacity: 0.6, textTransform: 'uppercase' }}>{sv.status}</span>
               </div>
               <div style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>
                 {T('Hạn', 'Deadline')}: {sv.closes_at ? new Date(sv.closes_at).toLocaleString('vi-VN') : '—'}
@@ -588,7 +588,7 @@ export default function SurveysHosting() {
               {sv.status !== 'draft' && (
                 <div
                   onClick={() => { navigator.clipboard?.writeText(surveyPublicUrl(sv.public_id)); }}
-                  style={{ fontSize: 11.5, opacity: 0.6, marginTop: 4, cursor: 'pointer', wordBreak: 'break-all' }}
+                  style={{ fontSize: 'var(--bb-text-meta)', opacity: 0.6, marginTop: 4, cursor: 'pointer', wordBreak: 'break-all' }}
                   title={T('Bấm để sao chép', 'Tap to copy')}
                 >
                   {surveyPublicUrl(sv.public_id)}

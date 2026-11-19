@@ -68,7 +68,7 @@ function MonthSheet({ events, selected, firstDay, vi, T, onPick, onClose, mode, 
           <button type="button" style={segBtn(mode === 'discover')} aria-pressed={mode === 'discover'} onClick={() => onMode('discover')}>{T('Khám phá', 'Discover')}</button>
         </div>
         <div role="grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
-          {grid[0].map(d => <div key={`h${d.date.getDay()}`} role="columnheader" style={{ textAlign: 'center', fontSize: 11.5, fontWeight: 600, color: muted(0.7), padding: '4px 0' }}>{SP.weekdayLetter(d.date, vi)}</div>)}
+          {grid[0].map(d => <div key={`h${d.date.getDay()}`} role="columnheader" style={{ textAlign: 'center', fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: muted(0.7), padding: '4px 0' }}>{SP.weekdayLetter(d.date, vi)}</div>)}
           {grid.flat().map(d => {
             const t = d.date.getTime();
             const n = counts.get(t) || 0;
@@ -311,7 +311,7 @@ export default function Schedule() {
             <div className="bb-row-reveal" style={{ display: 'flex', alignItems: 'center', gap: 2, animation: 'bbRowReveal .25s ease-out' }}>
               <span style={{ width: 32 }} />
               {(grid[0] || []).map(d => (
-                <div key={d.date.getTime()} style={{ flex: 1, textAlign: 'center', fontSize: 11, fontWeight: 600, opacity: 0.65 }}>{SP.weekdayLetter(d.date, vi)}</div>
+                <div key={d.date.getTime()} style={{ flex: 1, textAlign: 'center', fontSize: 'var(--bb-text-meta)', fontWeight: 600, opacity: 0.65 }}>{SP.weekdayLetter(d.date, vi)}</div>
               ))}
               <span style={{ width: 32 }} />
             </div>
@@ -337,7 +337,7 @@ export default function Schedule() {
                       aria-label={[SP.dayTitle(d, vi), isToday ? T('Hôm nay', 'Today') : null, hasEvents ? T('Có sự kiện', 'Has events') : null].filter(Boolean).join(', ')}
                       style={{ flex: 1, minWidth: 0, border: 'none', fontFamily: 'inherit', cursor: 'pointer', borderRadius: 14, padding: monthExpanded ? '6px 0' : '8px 0', minHeight: monthExpanded ? 44 : 60,
                         background: isSel ? ink : 'transparent', color: isSel ? paper : ink, opacity: monthExpanded && !inMonth && !isSel ? 0.35 : 1 }}>
-                      {!monthExpanded && <div style={{ fontSize: 11, fontWeight: 600, opacity: isSel ? 0.85 : 0.65 }}>{SP.weekdayLetter(d, vi)}</div>}
+                      {!monthExpanded && <div style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, opacity: isSel ? 0.85 : 0.65 }}>{SP.weekdayLetter(d, vi)}</div>}
                       <div style={{ fontSize: 16, fontWeight: isToday ? 700 : 500, marginTop: monthExpanded ? 0 : 2, textDecoration: isToday && !isSel ? 'underline' : 'none' }}>{d.getDate()}</div>
                       <div aria-hidden style={{ width: 5, height: 5, borderRadius: 3, margin: '4px auto 0', background: hasEvents ? (isSel ? paper : ink) : 'transparent' }} />
                     </button>
@@ -400,7 +400,7 @@ export default function Schedule() {
             {T(`${mine.undatedCount} kế hoạch chưa có ngày giờ nên chưa hiện trên lịch.`, `${mine.undatedCount} plan${mine.undatedCount === 1 ? ' has' : 's have'} no date yet, so not shown on the calendar.`)}
           </p>
         )}
-        <p style={{ fontSize: 11.5, color: muted(0.55), marginTop: 18 }}>
+        <p style={{ fontSize: 'var(--bb-text-meta)', color: muted(0.55), marginTop: 18 }}>
           {T('Sự kiện bạn lưu (♡) hiện ở đây trên mọi thiết bị.', 'Events you save (♡) show here on every device.')}
         </p>
         </div>

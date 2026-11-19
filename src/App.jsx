@@ -250,7 +250,7 @@ function SaveToast({ toast, aboveDock }) {
       <span style={{ minWidth: 0, lineHeight: 1.3 }}>
         {title}
         {!toast.undone && toast.saved && (name || when) && (
-          <small style={{ display: 'block', fontSize: 11.5, fontWeight: 400, opacity: 0.72, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 240 }}>
+          <small style={{ display: 'block', fontSize: 'var(--bb-text-meta)', fontWeight: 400, opacity: 0.72, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 240 }}>
             {[when, name].filter(Boolean).join(' · ')}
           </small>
         )}

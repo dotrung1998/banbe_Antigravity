@@ -67,7 +67,7 @@ export default function TeamPage() {
         <div style={{ padding: '18px 20px 40px' }}>
           {groups.map(group => (
             <div key={group.role} style={{ marginBottom: 22 }}>
-              <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7 }}>{group.role}</span>
+              <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.7 }}>{group.role}</span>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
                 {group.members.map(m => (
                   <div
@@ -85,7 +85,7 @@ export default function TeamPage() {
                     )}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                       <span style={{ fontSize: 14, fontWeight: 600, color: ink }}>{m.display_name || m.handle}</span>
-                      <span style={{ fontSize: 11.5, color: ink, opacity: 0.65 }}>@{m.handle}</span>
+                      <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65 }}>@{m.handle}</span>
                     </div>
                   </div>
                 ))}

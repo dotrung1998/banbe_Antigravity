@@ -51,7 +51,7 @@ export default function LiveLine({ updates, index, onIndex, onOpen, T }) {
             {dot}
             <span ref={oneRef} aria-live="polite" data-testid="home-live-one" style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
               <span style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.25 }}>{T(cur.text.vi, cur.text.en)}</span>
-              {cur.when && <small style={{ fontSize: 11.5, opacity: 0.72 }}>{cur.when}</small>}
+              {cur.when && <small style={{ fontSize: 'var(--bb-text-meta)', opacity: 0.72 }}>{cur.when}</small>}
             </span>
           </button>
           <div style={{ display: 'flex', alignItems: 'center', flex: 'none' }}>
@@ -79,7 +79,7 @@ export default function LiveLine({ updates, index, onIndex, onOpen, T }) {
             aria-label={paused ? T('Tiếp tục cập nhật trực tiếp', 'Resume live updates') : T('Tạm dừng cập nhật trực tiếp', 'Pause live updates')}
             style={{ ...sideBtn, flex: 'none', gap: 6, padding: '0 12px', display: 'flex', alignItems: 'center', fontSize: 12.5, fontWeight: 700, background: 'var(--bb-bg)', marginLeft: 6 }}>
             {dot}<span data-testid="home-live-state">{paused ? T('Đã dừng', 'Paused') : T('Trực tiếp', 'Live')}</span>
-            {!paused && <span aria-hidden="true" style={{ fontSize: 10, letterSpacing: 1 }}>❙❙</span>}
+            {!paused && <span aria-hidden="true" style={{ fontSize: 'var(--bb-text-meta)', letterSpacing: 1 }}>❙❙</span>}
           </button>
         </>
       )}

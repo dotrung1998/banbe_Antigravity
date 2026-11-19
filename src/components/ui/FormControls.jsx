@@ -120,11 +120,11 @@ export function StepProgress({ steps, current, completed, message, showPercent =
                   {done && !active ? '✓' : i + 1}
                   {done && active && (
                     <span aria-hidden style={{ position: 'absolute', top: -5, right: -5, width: 14, height: 14, borderRadius: 7, background: paper, color: ink,
-                      fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1.5px solid ${ink}`, boxSizing: 'border-box' }}>✓</span>
+                      fontSize: 'var(--bb-text-meta)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1.5px solid ${ink}`, boxSizing: 'border-box' }}>✓</span>
                   )}
                 </span>
               </span>
-              <span style={{ fontSize: 11, fontWeight: active ? 600 : 400, opacity: active || done ? 1 : 0.55, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{title}</span>
+              <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: active ? 600 : 400, opacity: active || done ? 1 : 0.55, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{title}</span>
             </>
           );
           const style = { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, color: ink };

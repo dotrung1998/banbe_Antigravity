@@ -76,7 +76,7 @@ export default function EditProfile() {
             long-form intro, never overwriting the short bio above. Shown
             as a concise preview with "Đọc thêm" on the public profile. */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontSize: 11.5, color: ink }}>{T('Giới thiệu chi tiết (không bắt buộc)', 'Long-form intro (optional)')}</span>
+          <span style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{T('Giới thiệu chi tiết (không bắt buộc)', 'Long-form intro (optional)')}</span>
           <textarea
             value={s.editProfileIntroLong}
             onChange={editProfileIntroLongType}
@@ -85,7 +85,7 @@ export default function EditProfile() {
             data-testid="edit-profile-intro-long"
             style={{ ...fieldGlass({ padding: '12px 14px', fontSize: 13.5, resize: 'vertical', border: 'none', outline: 'none', color: ink, borderRadius: 14 }), fontFamily: 'inherit' }}
           />
-          <span style={{ fontSize: 10.5, color: ink, opacity: 0.55, textAlign: 'right' }}>{s.editProfileIntroLong.length}/4000</span>
+          <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.55, textAlign: 'right' }}>{s.editProfileIntroLong.length}/4000</span>
         </div>
 
         <SocialLinksEditor
@@ -96,7 +96,7 @@ export default function EditProfile() {
         />
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <span style={{ fontSize: 11.5, color: ink }}>{T('Bảng màu hồ sơ', 'Profile palette')}</span>
+          <span style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{T('Bảng màu hồ sơ', 'Profile palette')}</span>
           <div style={{ display: 'flex', gap: 10 }}>
             {PROFILE_PALETTES.map(p => (
               <div key={p.key} onClick={() => set({ editProfileTheme: p.key })} data-testid={`edit-profile-theme-${p.key}`}
@@ -134,7 +134,7 @@ function Field({ label, value, onChange, multiline, prefix, testId }) {
   const Comp = multiline ? 'textarea' : 'input';
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-      <span style={{ fontSize: 11.5, color: ink }}>{label}</span>
+      <span style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{label}</span>
       <div style={{ ...fieldGlass({ display: 'flex', alignItems: multiline ? 'flex-start' : 'center', padding: '11px 12px' }) }}>
         {prefix && <span style={{ fontSize: 13, color: ink, opacity: 0.6, marginRight: 2 }}>{prefix}</span>}
         <Comp

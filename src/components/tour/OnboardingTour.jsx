@@ -318,7 +318,7 @@ export default function OnboardingTour() {
           style={{ position: 'absolute', left: 0, width: '100%', bottom: 0, boxSizing: 'border-box', padding: '10px 20px 30px',
             borderRadius: '26px 26px 0 0', background: paper, color: ink, animation: reduce ? 'none' : 'bbTourUp .32s cubic-bezier(.22,.61,.36,1) both' }}>
           <div aria-hidden style={{ width: 36, height: 5, borderRadius: 3, background: 'rgba(var(--bb-fg-rgb), 0.2)', margin: '0 auto 12px' }} />
-          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', opacity: 0.6 }}>
+          <div style={{ fontSize: 'var(--bb-text-kicker)', fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', opacity: 0.6 }}>
             {finished ? T('Xong hướng dẫn', 'Tour complete') : T(`Xong chương ${ci + 1}`, `Chapter ${ci + 1} done`)}
           </div>
           <h2 id="tour-title" ref={titleRef} tabIndex={-1} data-testid="tour-sheet-title" style={display(26, { margin: '6px 0 0', outline: 'none', fontWeight: 300 })}>
@@ -406,7 +406,7 @@ export default function OnboardingTour() {
       <div ref={cardRef} role="dialog" aria-modal="true" aria-labelledby="tour-title" aria-describedby="tour-body" data-testid="tour-card"
         style={{ position: 'absolute', width: cardW, boxSizing: 'border-box', padding: '16px 18px 14px', borderRadius: 22, background: paper, color: ink,
           boxShadow: '0 18px 50px rgba(20,18,14,0.35)', transition: ease, ...cardStyle }}>
-        <div data-testid="tour-chapter" style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 11, fontWeight: 600, letterSpacing: '.1em', textTransform: 'uppercase', opacity: 0.6 }}>
+        <div data-testid="tour-chapter" style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 'var(--bb-text-kicker)', fontWeight: 600, letterSpacing: '.1em', textTransform: 'uppercase', opacity: 0.6 }}>
           <span style={{ flex: 1, minWidth: 0 }}>{T(`Chương ${ci + 1}/${run.chapters.length} · ${L(chapter.name)}`, `Chapter ${ci + 1} of ${run.chapters.length} · ${L(chapter.name)}`)}</span>
           <span style={{ flex: 'none', whiteSpace: 'nowrap' }}>{T(`${stepInChapter}/${chapterSteps}`, `${stepInChapter} of ${chapterSteps}`)}</span>
         </div>

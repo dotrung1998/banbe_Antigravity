@@ -30,7 +30,7 @@ export default function Payout() {
       </div>
 
       <div style={{ margin: '20px 22px 0' }}>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Ngân hàng', 'Bank')}</span>
+        <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Ngân hàng', 'Bank')}</span>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 10 }}>
           <Field label={T('Tên ngân hàng', 'Bank name')} value={s.payoutBankName} onChange={payoutField('payoutBankName')} placeholder="Vietcombank" testid="payout-bank" />
           <Field label={T('Số tài khoản', 'Account number')} value={s.payoutAccountNo} onChange={payoutField('payoutAccountNo')} placeholder="0071000…" testid="payout-account-no" />
@@ -39,7 +39,7 @@ export default function Payout() {
       </div>
 
       <div style={{ margin: '20px 22px 0' }}>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Ví MoMo', 'MoMo wallet')}</span>
+        <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Ví MoMo', 'MoMo wallet')}</span>
         <div style={{ marginTop: 10 }}>
           <Field label={T('Số điện thoại MoMo', 'MoMo phone')} value={s.payoutMomo} onChange={payoutField('payoutMomo')} placeholder="09xx xxx xxx" testid="payout-momo" />
         </div>
@@ -48,7 +48,7 @@ export default function Payout() {
       <HostPaymentQr />
 
       <div style={{ margin: '20px 22px 0' }}>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Trên chứng từ', 'On your documents')}</span>
+        <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Trên chứng từ', 'On your documents')}</span>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 10 }}>
           <Field label={T('Địa chỉ', 'Address')} value={s.payoutAddress} onChange={payoutField('payoutAddress')}
                  placeholder={T('Số nhà, đường, phường, quận, thành phố', 'Street, ward, district, city')} testid="payout-address" multiline />
@@ -85,7 +85,7 @@ function Field({ label, value, onChange, placeholder, testid, multiline }) {
   };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-      <label style={{ fontSize: 11.5, color: ink }}>{label}</label>
+      <label style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{label}</label>
       {multiline
         ? <textarea rows={2} value={value} onChange={onChange} placeholder={placeholder} style={style} data-testid={testid} />
         : <input value={value} onChange={onChange} placeholder={placeholder} style={style} data-testid={testid} />}

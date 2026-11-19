@@ -78,7 +78,7 @@ export function MapTimeRange({ win, onKnob, T, margin = '0 10px 0 8px' }) {
       <div aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, top: 14, height: 6, borderRadius: 3, background: 'rgba(var(--bb-fg-rgb),0.12)' }} />
       <div aria-hidden="true" style={{ position: 'absolute', top: 14, height: 6, borderRadius: 3, background: ink, left: `${pct(win.from)}%`, right: `${100 - pct(win.to)}%` }} />
       {(narrow ? TICKS_NARROW : TICKS).map(h => (
-        <span key={h} aria-hidden="true" style={{ position: 'absolute', top: 30, left: `${pct(h)}%`, transform: 'translateX(-50%)', fontSize: 10, color: ink3, fontVariantNumeric: 'tabular-nums' }}>{hourLabel(h)}</span>
+        <span key={h} aria-hidden="true" style={{ position: 'absolute', top: 30, left: `${pct(h)}%`, transform: 'translateX(-50%)', fontSize: 'var(--bb-text-meta)', color: ink3, fontVariantNumeric: 'tabular-nums' }}>{hourLabel(h)}</span>
       ))}
       {knob('from')}
       {knob('to')}

@@ -36,7 +36,7 @@ export default function ForYouChip({ T, active, pending, animate, onClick, capsu
       {label}
       {pending && (
         <span data-testid="home-foryou-new" aria-hidden="true" style={{
-          marginInlineStart: 2, padding: '1px 6px', borderRadius: 999, fontSize: 10.5, fontWeight: 700,
+          marginInlineStart: 2, padding: '1px 6px', borderRadius: 999, fontSize: 'var(--bb-text-meta)', fontWeight: 700,
           lineHeight: '14px', color: '#fff', background: '#7A5200',
         }}>{T('Mới', 'New')}</span>
       )}

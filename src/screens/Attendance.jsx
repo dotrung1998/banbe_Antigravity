@@ -234,7 +234,7 @@ export default function Attendance() {
       <div onClick={backFromAttendance} style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {backLabel}</div>
       <div style={{ padding: '14px 22px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
         <div style={{ minWidth: 0 }}>
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Điểm danh khách', 'Guest check-in')}</span>
+          <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Điểm danh khách', 'Guest check-in')}</span>
           <h1 style={{ ...display(24, { margin: '8px 0 0' }) }}>{attEv.name}</h1>
           {/* 2026-09-25 fix pass (Task 0 audit) — this used to read the raw
               `attEv` (the static catalogue object), even though the
@@ -253,7 +253,7 @@ export default function Attendance() {
           <span aria-hidden="true" style={{ fontSize: 22 }}>📣</span>
           <span style={{ flex: 1, minWidth: 0 }}>
             <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: alert }}>{T('Gửi thông báo cho khách', 'Announce to guests')}</span>
-            <span style={{ display: 'block', fontSize: 11.5, opacity: 0.7, marginTop: 2 }}>{T('Mẫu có sẵn hoặc tự viết · gửi cho tất cả người giữ vé', 'Quick templates or your own · sent to all ticket holders')}</span>
+            <span style={{ display: 'block', fontSize: 'var(--bb-text-meta)', opacity: 0.7, marginTop: 2 }}>{T('Mẫu có sẵn hoặc tự viết · gửi cho tất cả người giữ vé', 'Quick templates or your own · sent to all ticket holders')}</span>
           </span>
           <span aria-hidden="true" style={{ color: alert, fontSize: 18 }}>›</span>
         </div>
@@ -284,8 +284,8 @@ export default function Attendance() {
       </div>
       {/* Modest breathing room below the now-rounded panel — bumped from
           10px into this screen's own 12-16px spacing ladder. */}
-      <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, margin: '14px 22px 0' }}>{T('Chạm vào tên khách hoặc quét mã QR vé khi họ tới nơi.', "Tap a guest's name, or scan their ticket QR, when they arrive.")}</p>
-      <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.7, margin: '6px 22px 0' }}>{T('Đánh dấu "Đã thanh toán" khi bạn thấy tiền vào tài khoản, rồi tải lên hoá đơn/biên nhận thật của bạn cho khách.', 'Mark a guest paid once you see the money arrive, then upload your own real invoice/receipt for them.')}</p>
+      <p style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.5, color: ink, margin: '14px 22px 0' }}>{T('Chạm vào tên khách hoặc quét mã QR vé khi họ tới nơi.', "Tap a guest's name, or scan their ticket QR, when they arrive.")}</p>
+      <p style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.5, color: ink, opacity: 0.7, margin: '6px 22px 0' }}>{T('Đánh dấu "Đã thanh toán" khi bạn thấy tiền vào tài khoản, rồi tải lên hoá đơn/biên nhận thật của bạn cho khách.', 'Mark a guest paid once you see the money arrive, then upload your own real invoice/receipt for them.')}</p>
       <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style={{ display: 'none' }} onChange={onReceiptFileChosen} data-testid="attendance-receipt-input" />
       <div style={{ ...fieldGlass({ margin: '14px 22px 0', display: 'flex', flexDirection: 'column' }) }}>
         {guests.map((g, gi) => {
@@ -301,17 +301,17 @@ export default function Attendance() {
                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 16px', borderBottom: gi < guests.length - 1 ? `1px solid ${rule}` : 'none', cursor: rowClickable ? 'pointer' : 'default', background: g.checkedIn ? 'rgba(var(--bb-fg-rgb), 0.08)' : 'transparent' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                 <span style={{ ...display(15) }}>{g.name}</span>
-                <span style={{ fontSize: 11.5, color: ink }}>{meta} ▪︎ {formatVnd(g.totalVnd)}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{meta} ▪︎ {formatVnd(g.totalVnd)}</span>
                 {g.paid ? (
                   <>
-                    <span style={{ fontSize: 11, color: ink, opacity: 0.7 }} data-testid="guest-paid">
+                    <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }} data-testid="guest-paid">
                       {T('Đã thanh toán ✓', 'Paid ✓')}
                     </span>
                     <span
                       ref={(node) => { uploadRefs.current[g.id] = node; }}
                       onClick={(e) => { e.stopPropagation(); pickReceiptFile(g.id); }}
                       style={{
-                        fontSize: 11, fontWeight: 600, color: ink, width: 'fit-content',
+                        fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, width: 'fit-content',
                         cursor: uploadingFor === g.id ? 'default' : 'pointer', borderRadius: 10, padding: '4px 8px', marginTop: 2,
                         opacity: uploadingFor === g.id ? 0.6 : 1,
                         border: highlightedBookingId === g.id ? `1px solid ${alert}` : '1px solid rgba(27,25,22,0.16)',
@@ -336,14 +336,14 @@ export default function Attendance() {
                         and individually openable, not just counted. */}
                     {g.receiptPendingDelete > 0 && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 3 }}>
-                        <span style={{ fontSize: 10, color: ink, opacity: 0.5 }} data-testid="guest-receipt-version">
+                        <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.5 }} data-testid="guest-receipt-version">
                           {T(`Phiên bản hiện tại (${g.receiptVersionCount})`, `Current version (${g.receiptVersionCount})`)}
                         </span>
                         {g.receipts.map((r) => (
                           <span
                             key={r.id}
                             onClick={(e) => { e.stopPropagation(); openDocumentFromNotification(r.id, 'attendance', 'host'); }}
-                            style={{ fontSize: 10.5, fontWeight: 600, color: r.isLive ? ink : ink, opacity: r.isLive ? 0.85 : 0.6, cursor: 'pointer', width: 'fit-content', textDecoration: 'underline', textUnderlineOffset: 2 }}
+                            style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: r.isLive ? ink : ink, opacity: r.isLive ? 0.85 : 0.6, cursor: 'pointer', width: 'fit-content', textDecoration: 'underline', textUnderlineOffset: 2 }}
                             data-testid={r.isLive ? 'guest-receipt-current' : 'guest-receipt-old'}
                           >
                             {r.isLive ? T('Bản hiện tại ›', 'Current copy ›') : T('Bản cũ · xoá sau 24h ›', 'Old copy · deletes in 24h ›')}
@@ -359,12 +359,12 @@ export default function Attendance() {
                           placeholder={T('Vì sao thay thế bản cũ?', 'Why are you replacing the old one?')}
                           rows={2}
                           data-testid="guest-replace-reason"
-                          style={{ fontSize: 11.5, padding: 8, borderRadius: 10, border: '1px solid rgba(27,25,22,0.16)', fontFamily: "var(--bb-face, 'Be Vietnam Pro'), sans-serif", resize: 'vertical' }}
+                          style={{ fontSize: 'var(--bb-text-meta)', padding: 8, borderRadius: 10, border: '1px solid rgba(27,25,22,0.16)', fontFamily: "var(--bb-face, 'Be Vietnam Pro'), sans-serif", resize: 'vertical' }}
                         />
                         <div style={{ display: 'flex', gap: 6 }}>
                           <span
                             onClick={() => { setPendingReplace(null); setReplaceReason(''); }}
-                            style={{ flex: 1, fontSize: 11, textAlign: 'center', color: ink, opacity: 0.7, padding: '6px 0', cursor: 'pointer' }}
+                            style={{ flex: 1, fontSize: 'var(--bb-text-meta)', textAlign: 'center', color: ink, opacity: 0.7, padding: '6px 0', cursor: 'pointer' }}
                           >
                             {T('Huỷ', 'Cancel')}
                           </span>
@@ -372,7 +372,7 @@ export default function Attendance() {
                             onClick={replaceReason.trim() ? submitReplace : undefined}
                             data-testid="guest-replace-submit"
                             style={{
-                              flex: 1, fontSize: 11, fontWeight: 600, textAlign: 'center', color: paper,
+                              flex: 1, fontSize: 'var(--bb-text-meta)', fontWeight: 600, textAlign: 'center', color: paper,
                               background: replaceReason.trim() ? ink : 'rgba(27,25,22,0.35)',
                               borderRadius: 10, padding: '6px 0', cursor: replaceReason.trim() ? 'pointer' : 'default',
                             }}
@@ -382,18 +382,18 @@ export default function Attendance() {
                         </div>
                       </div>
                     ) : uploadErrorFor?.bookingId === g.id && (
-                      <span style={{ fontSize: 10.5, color: alert }} data-testid="guest-upload-error">{uploadErrorMessage(uploadErrorFor.code)}</span>
+                      <span style={{ fontSize: 'var(--bb-text-meta)', color: alert }} data-testid="guest-upload-error">{uploadErrorMessage(uploadErrorFor.code)}</span>
                     )}
                   </>
                 ) : (
                   <>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: ink, opacity: 0.8, marginTop: 2 }}>
+                    <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.8, marginTop: 2 }}>
                       {T('Có nhận khách này không?', 'Accept this guest?')}
                     </span>
                     <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
                       <span
                         onClick={(e) => { e.stopPropagation(); markGuestPaid(g.id); }}
-                        style={{ fontSize: 11, fontWeight: 600, color: ink, cursor: 'pointer', border: '1px solid rgba(27,25,22,0.16)', borderRadius: 10, padding: '4px 8px' }}
+                        style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, cursor: 'pointer', border: '1px solid rgba(27,25,22,0.16)', borderRadius: 10, padding: '4px 8px' }}
                         data-testid="guest-accept"
                       >
                         {/* The screenshot the guest already sent is the
@@ -403,7 +403,7 @@ export default function Attendance() {
                       </span>
                       <span
                         onClick={(e) => { e.stopPropagation(); openRejectGuest(g.id); }}
-                        style={{ fontSize: 11, fontWeight: 600, color: alert, opacity: 0.8, cursor: 'pointer', border: `1px solid ${alert}33`, borderRadius: 10, padding: '4px 8px' }}
+                        style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: alert, opacity: 0.8, cursor: 'pointer', border: `1px solid ${alert}33`, borderRadius: 10, padding: '4px 8px' }}
                         data-testid="guest-reject"
                       >
                         {T('Từ chối', 'Reject')}
@@ -418,7 +418,7 @@ export default function Attendance() {
                     {g.hasProof && (
                       <span
                         onClick={(e) => { e.stopPropagation(); openVerificationDetail(g.id, attKey); }}
-                        style={{ fontSize: 11, fontWeight: 600, color: alert, opacity: 0.8, width: 'fit-content', cursor: 'pointer', marginTop: 4 }}
+                        style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: alert, opacity: 0.8, width: 'fit-content', cursor: 'pointer', marginTop: 4 }}
                         data-testid="guest-check-payment"
                       >
                         {T('Kiểm tra thanh toán ›', 'Check payment ›')}
@@ -435,13 +435,13 @@ export default function Attendance() {
                 {!g.checkedIn && (
                   <span
                     onClick={(e) => { e.stopPropagation(); openCancelBooking(g.id); }}
-                    style={{ fontSize: 11, color: alert, opacity: 0.8, width: 'fit-content', cursor: 'pointer', marginTop: 2 }}
+                    style={{ fontSize: 'var(--bb-text-meta)', color: alert, opacity: 0.8, width: 'fit-content', cursor: 'pointer', marginTop: 2 }}
                   >
                     {T('Huỷ vé', 'Cancel booking')}
                   </span>
                 )}
               </div>
-              <span style={{ fontSize: 11.5, fontWeight: 600, flex: 'none', padding: '5px 10px', color: g.checkedIn ? paper : ink, background: g.checkedIn ? ink : 'rgba(27,25,22,0.16)' }}>
+              <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, flex: 'none', padding: '5px 10px', color: g.checkedIn ? paper : ink, background: g.checkedIn ? ink : 'rgba(27,25,22,0.16)' }}>
                 {g.checkedIn ? T('Đã đến ✓', 'Here ✓') : g.paid ? T('Chưa đến', 'Not yet') : T('Chưa thanh toán', 'Not paid yet')}
               </span>
             </div>
@@ -502,8 +502,8 @@ export default function Attendance() {
         return (
           <div style={{ margin: '22px 22px 40px', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-              <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Trung tâm hoàn tiền', 'Refund Center')}</span>
-              <span style={{ fontSize: 10.5, color: ink, opacity: 0.7 }}>
+              <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Trung tâm hoàn tiền', 'Refund Center')}</span>
+              <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>
                 {T(`${refundedClaims.length}/${claims.length} đã gửi ▪︎ ${formatVnd(refundedVnd)} / ${formatVnd(totalVnd)}`,
                    `${refundedClaims.length}/${claims.length} sent ▪︎ ${formatVnd(refundedVnd)} / ${formatVnd(totalVnd)}`)}
               </span>
@@ -517,7 +517,7 @@ export default function Attendance() {
                 <div style={{ display: 'flex', gap: 8 }}>
                   <span
                     onClick={() => (selected.length === eligibleCount ? clearRefundCenterSelection() : selectAllEligibleRefundCenter())}
-                    style={{ fontSize: 11.5, color: ink, textDecoration: 'underline', cursor: eligibleCount ? 'pointer' : 'default', opacity: eligibleCount ? 1 : 0.4 }}
+                    style={{ fontSize: 'var(--bb-text-meta)', color: ink, textDecoration: 'underline', cursor: eligibleCount ? 'pointer' : 'default', opacity: eligibleCount ? 1 : 0.4 }}
                   >
                     {selected.length === eligibleCount && eligibleCount > 0 ? T('Bỏ chọn tất cả', 'Deselect all') : T('Chọn tất cả', 'Select all eligible')}
                   </span>
@@ -543,15 +543,15 @@ export default function Attendance() {
                               <span style={{ fontSize: 13, fontWeight: 600, color: ink, whiteSpace: 'nowrap' }}>{formatVnd(c.amount_vnd)}</span>
                             </div>
                             {c.destination ? (
-                              <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>
+                              <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>
                                 {c.destination.bank_name} ▪︎ {maskAccountNumber(c.destination.account_number)} ▪︎ {c.destination.account_holder_name}
                               </span>
                             ) : (
-                              <span style={{ fontSize: 11, color: alert }}>{T('Khách chưa chọn tài khoản nhận hoàn tiền.', "The guest hasn't chosen a refund destination yet.")}</span>
+                              <span style={{ fontSize: 'var(--bb-text-meta)', color: alert }}>{T('Khách chưa chọn tài khoản nhận hoàn tiền.', "The guest hasn't chosen a refund destination yet.")}</span>
                             )}
-                            {c.transfer_reference && <span style={{ fontSize: 10.5, color: ink, opacity: 0.6 }}>REF {c.transfer_reference}</span>}
+                            {c.transfer_reference && <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6 }}>REF {c.transfer_reference}</span>}
                             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 2 }}>
-                              <span style={{ fontSize: 10.5, fontWeight: 600, color: c.overdue ? alert : ink, opacity: c.overdue ? 1 : 0.7 }}>{T(...label)}</span>
+                              <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: c.overdue ? alert : ink, opacity: c.overdue ? 1 : 0.7 }}>{T(...label)}</span>
                               {c.destination && (
                                 <span
                                   onClick={async () => {
@@ -561,7 +561,7 @@ export default function Attendance() {
                                       setTimeout(() => setCopiedFor(cur => (cur === c.id ? null : cur)), 1500);
                                     } catch { /* clipboard unavailable — no-op */ }
                                   }}
-                                  style={{ fontSize: 10.5, color: ink, textDecoration: 'underline', cursor: 'pointer' }}
+                                  style={{ fontSize: 'var(--bb-text-meta)', color: ink, textDecoration: 'underline', cursor: 'pointer' }}
                                   data-testid="refund-center-copy"
                                 >
                                   {copiedFor === c.id ? T('Đã sao chép', 'Copied') : T('Sao chép', 'Copy')}
@@ -570,7 +570,7 @@ export default function Attendance() {
                               {c.status === 'disputed' && (
                                 <span
                                   onClick={() => { setResendFormFor(resendFormFor === c.id ? null : c.id); setResendReference(''); setResendBank(''); }}
-                                  style={{ fontSize: 10.5, color: ink, textDecoration: 'underline', cursor: 'pointer' }}
+                                  style={{ fontSize: 'var(--bb-text-meta)', color: ink, textDecoration: 'underline', cursor: 'pointer' }}
                                 >
                                   {T('Gửi lại thông tin chuyển khoản', 'Resend transfer info')}
                                 </span>
@@ -585,7 +585,7 @@ export default function Attendance() {
                                     // pre-call UI state.
                                     await loadRefundCenter(attKey);
                                   }}
-                                  style={{ fontSize: 10.5, color: ink, textDecoration: 'underline', cursor: 'pointer' }}
+                                  style={{ fontSize: 'var(--bb-text-meta)', color: ink, textDecoration: 'underline', cursor: 'pointer' }}
                                 >
                                   {T('Hoàn lại lần nữa', 'Send again')}
                                 </span>

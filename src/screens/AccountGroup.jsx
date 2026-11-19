@@ -56,7 +56,7 @@ function Row({ icon, label, trailing, onClick, testId, border = true, badge }) {
       <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind={icon} />{label}</span>
       <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {!!badge && (
-          <span data-testid={`${testId}-badge`} role="status" aria-label={`${badge} new item(s)`} title={String(badge)} style={{ fontSize: 11, fontWeight: 700, color: paper, background: alert, borderRadius: 999, padding: '2px 7px', minWidth: 18, textAlign: 'center' }}>
+          <span data-testid={`${testId}-badge`} role="status" aria-label={`${badge} new item(s)`} title={String(badge)} style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 700, color: paper, background: alert, borderRadius: 999, padding: '2px 7px', minWidth: 18, textAlign: 'center' }}>
             {formatBadgeCount(badge)}
           </span>
         )}
@@ -169,7 +169,7 @@ export default function AccountGroup() {
           <>
             {s.myOrganizerInvites.length > 0 && (
               <div style={{ marginTop: 24 }} data-testid="account-team-invites">
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Lời mời Team', 'Team Invites')}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Lời mời Team', 'Team Invites')}</span>
                 {s.myOrganizerInvites.map(inv => (
                   <div key={inv.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }) }} data-testid={`team-invite-${inv.id}`}>
                     <span style={{ fontSize: 13, color: ink }}>
@@ -185,19 +185,19 @@ export default function AccountGroup() {
             )}
             {s.myTeamMemberships.length > 0 && (
               <div style={{ marginTop: 24 }} data-testid="account-team-memberships">
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đội ngũ của tôi', 'My Teams')}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Đội ngũ của tôi', 'My Teams')}</span>
                 {s.myTeamMemberships.map(m => (
                   <div key={m.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }) }} data-testid={`team-membership-${m.id}`}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
                       <span style={{ fontSize: 13, color: ink }}>{m.organizers?.name || T('Một tổ chức', 'An organizer')}</span>
-                      <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{m.public_role}</span>
+                      <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65 }}>{m.public_role}</span>
                     </div>
                     <div
                       onClick={() => setOrganizerMemberVisibility(m.id, !m.public_visible)}
                       data-testid={`team-membership-visibility-${m.id}`}
                       style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
                     >
-                      <span style={{ fontSize: 11, color: ink }}>{T('Hiển thị tôi trong Team', 'Show me in the Team')}</span>
+                      <span style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{T('Hiển thị tôi trong Team', 'Show me in the Team')}</span>
                       <span aria-hidden style={{ flex: 'none', width: 40, height: 24, borderRadius: 12, padding: 3, background: m.public_visible ? ink : 'rgba(27,25,22,0.18)', transition: 'background .15s' }}>
                         <span style={{ display: 'block', width: 18, height: 18, borderRadius: '50%', background: paper, transform: m.public_visible ? 'translateX(16px)' : 'translateX(0)', transition: 'transform .15s' }} />
                       </span>
@@ -219,7 +219,7 @@ export default function AccountGroup() {
                 unchanged from their previous location. */}
             {s.myEventCredits.length > 0 && (
               <div style={{ marginTop: 24 }} data-testid="account-event-credits">
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đóng góp sự kiện: lời mời đang chờ', 'Event contributions: pending invites')}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Đóng góp sự kiện: lời mời đang chờ', 'Event contributions: pending invites')}</span>
                 {s.myEventCredits.map(c => (
                   <div key={c.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }) }} data-testid={`event-credit-${c.id}`}>
                     <span style={{ fontSize: 13, color: ink }}>
@@ -235,7 +235,7 @@ export default function AccountGroup() {
             )}
             {s.myConfirmedEventCredits.length > 0 && (
               <div style={{ marginTop: 24 }} data-testid="account-event-credits-confirmed">
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đóng góp sự kiện: đã xác nhận', 'Event contributions: confirmed')}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Đóng góp sự kiện: đã xác nhận', 'Event contributions: confirmed')}</span>
                 {s.myConfirmedEventCredits.map(c => (
                   <div
                     key={c.id}
@@ -245,7 +245,7 @@ export default function AccountGroup() {
                   >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                       <span style={{ fontSize: 13, fontWeight: 600, color: ink }}>{c.events?.name || T('Một sự kiện', 'An event')}</span>
-                      <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{c.organizers?.name || T('Một tổ chức', 'An organizer')}</span>
+                      <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65 }}>{c.organizers?.name || T('Một tổ chức', 'An organizer')}</span>
                     </div>
                     <span aria-hidden style={{ fontSize: 18, color: ink, opacity: 0.5 }}>›</span>
                   </div>
@@ -321,7 +321,7 @@ export default function AccountGroup() {
                 <>
                   {active.length > 0 && (
                     <div style={{ marginTop: 24 }} data-testid="my-tickets-active">
-                      <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Vé của tôi', 'My Tickets')}</span>
+                      <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Vé của tôi', 'My Tickets')}</span>
                       {active.map(b => (
                         <div
                           key={b.id}
@@ -331,8 +331,8 @@ export default function AccountGroup() {
                         >
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                             <span style={{ fontSize: 13, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.events?.name || T('Một sự kiện', 'An event')}</span>
-                            <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{b.events?.event_date ? `${b.events.event_date}${b.events.event_time ? ' ▪︎ ' + b.events.event_time : ''}` : ''}</span>
-                            <span style={{ fontSize: 11, color: ink, opacity: 0.85 }}>{b.recipient_name ? T(`Đã tặng cho ${b.recipient_name}`, `Gifted to ${b.recipient_name}`) : statusLabel(b)}</span>
+                            <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65 }}>{b.events?.event_date ? `${b.events.event_date}${b.events.event_time ? ' ▪︎ ' + b.events.event_time : ''}` : ''}</span>
+                            <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.85 }}>{b.recipient_name ? T(`Đã tặng cho ${b.recipient_name}`, `Gifted to ${b.recipient_name}`) : statusLabel(b)}</span>
                           </div>
                           {b.recipient_name ? pdfButton(b) : <span aria-hidden style={{ fontSize: 18, color: ink, opacity: 0.5, flex: 'none' }}>›</span>}
                         </div>
@@ -342,11 +342,11 @@ export default function AccountGroup() {
                   {inactive.length > 0 && (
                     <div style={{ marginTop: 24 }} data-testid="my-tickets-inactive">
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đã hủy / hết hạn', 'Cancelled / expired')}</span>
+                        <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Đã hủy / hết hạn', 'Cancelled / expired')}</span>
                         <span
                           role="button"
                           onClick={() => { setSelecting(v => !v); setSelectedTickets(new Set()); setConfirmDelete(false); }}
-                          style={{ fontSize: 11.5, fontWeight: 600, color: ink, cursor: 'pointer' }}
+                          style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, cursor: 'pointer' }}
                           data-testid="tickets-inactive-select"
                         >{selecting ? T('Xong', 'Done') : T('Chọn', 'Select')}</span>
                       </div>
@@ -363,7 +363,7 @@ export default function AccountGroup() {
                           {selecting && <span aria-hidden style={{ fontSize: 18, color: ink, flex: 'none' }}>{selectedTickets.has(b.id) ? '◉' : '○'}</span>}
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                             <span style={{ fontSize: 13, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.events?.name || T('Một sự kiện', 'An event')}</span>
-                            <span style={{ fontSize: 11, color: ink }}>{terminalLabel(b)}</span>
+                            <span style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{terminalLabel(b)}</span>
                           </div>
                           {b.recipient_name && pdfButton(b)}
                         </div>
@@ -399,7 +399,7 @@ export default function AccountGroup() {
                           )}
                         </div>
                       )}
-                      <p style={{ fontSize: 10.5, color: ink, opacity: 0.6, marginTop: 8 }}>
+                      <p style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6, marginTop: 8 }}>
                         {T('Các mục này tự động bị xóa sau 30 ngày. Xóa chỉ ẩn khỏi danh sách của bạn. Hồ sơ hoàn tiền vẫn được giữ.', 'These are removed automatically after 30 days. Deleting only clears them from your list. Any refund record is kept.')}
                       </p>
                     </div>
@@ -418,7 +418,7 @@ export default function AccountGroup() {
                 a named ticket from a group booking, or a gift. */}
             {(s.importedTickets || []).length > 0 && (
               <>
-                <span style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: ink, marginTop: 24 }}>{T('Vé đã nhập', 'Imported tickets')}</span>
+                <span style={{ display: 'block', fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, marginTop: 24 }}>{T('Vé đã nhập', 'Imported tickets')}</span>
                 <div style={{ ...fieldGlass({ marginTop: 8, display: 'flex', flexDirection: 'column' }) }} data-testid="account-imported-tickets">
                   {s.importedTickets.map((t, i) => {
                     const voided = t.booking_status === 'cancelled' || t.booking_status === 'expired' || t.event_status === 'cancelled';
@@ -427,7 +427,7 @@ export default function AccountGroup() {
                         style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '13px 16px', borderBottom: i < s.importedTickets.length - 1 ? `1px solid ${rule}` : 'none', cursor: 'pointer', textDecoration: voided ? 'line-through' : 'none' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                           <span style={{ fontSize: 13.5, fontWeight: 600, color: ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.event_name}</span>
-                          <span style={{ fontSize: 11.5, color: ink, opacity: 0.65 }}>{t.name}{voided ? ` ▪︎ ${T('Đã huỷ', 'Cancelled')}` : ''}</span>
+                          <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65 }}>{t.name}{voided ? ` ▪︎ ${T('Đã huỷ', 'Cancelled')}` : ''}</span>
                         </div>
                         <span style={{ fontSize: 13, color: ink }}>›</span>
                       </div>
@@ -436,7 +436,7 @@ export default function AccountGroup() {
                 </div>
               </>
             )}
-            <span style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: ink, marginTop: 24 }}>{T('Nhập vé được tặng hoặc vé nhóm', 'Import a gifted or group ticket')}</span>
+            <span style={{ display: 'block', fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, marginTop: 24 }}>{T('Nhập vé được tặng hoặc vé nhóm', 'Import a gifted or group ticket')}</span>
             <div style={{ ...fieldGlass({ marginTop: 8, display: 'flex', flexDirection: 'column' }) }}>
               <Row icon="document" label={T('Nhập vé bằng mã nhận vé', 'Import a ticket with your claim code')} trailing="›" testId="account-ticket-import" onClick={() => openTicketImport('')} border={false} />
             </div>
@@ -492,7 +492,7 @@ export default function AccountGroup() {
             `alert` color token — no new color introduced. */}
         {key === 'preferences' && (
           <div style={{ marginTop: 24 }} data-testid="account-management-section">
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Quản Lý Tài Khoản', 'Account Management')}</span>
+            <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Quản Lý Tài Khoản', 'Account Management')}</span>
             <div
               onClick={openDeleteAccountStay}
               data-testid="account-delete-row"
@@ -597,7 +597,7 @@ export default function AccountGroup() {
           <>
             {s.myAdminInvite && (
               <div style={{ marginTop: 24 }} data-testid="account-admin-invite">
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Lời mời quản trị', 'Admin Invite')}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Lời mời quản trị', 'Admin Invite')}</span>
                 <div style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }) }} data-testid={`admin-invite-${s.myAdminInvite.id}`}>
                   <span style={{ fontSize: 13, color: ink }}>
                     {T('Bạn được mời trở thành quản trị viên banbe.', "You've been invited to become a banbe admin.")}
@@ -619,7 +619,7 @@ export default function AccountGroup() {
             {s.canManageAdmins && (
               <>
                 <div style={{ marginTop: 24 }}>
-                  <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Mời Quản Trị Viên', 'Invite Admin')}</span>
+                  <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Mời Quản Trị Viên', 'Invite Admin')}</span>
                   <div style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }) }}>
                     <input
                       value={s.adminInviteEmailDraft}
@@ -649,7 +649,7 @@ export default function AccountGroup() {
 
                 {s.adminInvites.filter(i => i.status === 'pending').length > 0 && (
                   <div style={{ marginTop: 24 }}>
-                    <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Lời Mời Đang Chờ', 'Pending Invites')}</span>
+                    <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Lời Mời Đang Chờ', 'Pending Invites')}</span>
                     {s.adminInvites.filter(i => i.status === 'pending').map(inv => (
                       <div key={inv.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }) }} data-testid={`admin-invite-row-${inv.id}`}>
                         <span style={{ fontSize: 13, color: ink, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inv.invited_email}</span>
@@ -668,7 +668,7 @@ export default function AccountGroup() {
 
                 {s.adminRemoval?.votes?.length > 0 && (
                   <div style={{ marginTop: 24 }} data-testid="admin-removal-votes">
-                    <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Cuộc Bỏ Phiếu Đang Mở', 'Open Votes')}</span>
+                    <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Cuộc Bỏ Phiếu Đang Mở', 'Open Votes')}</span>
                     {s.adminRemoval.votes.map(v => (
                       <div key={v.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }) }} data-testid={`admin-removal-vote-${v.id}`}>
                         <span style={{ fontSize: 13, color: ink, fontWeight: 600 }}>
@@ -700,39 +700,39 @@ export default function AccountGroup() {
                 )}
 
                 <div style={{ marginTop: 24 }}>
-                  <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Quản Trị Viên Hiện Tại', 'Current Admins')}</span>
+                  <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Quản Trị Viên Hiện Tại', 'Current Admins')}</span>
                   {s.adminRoster.map(a => (
                     <div key={a.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }) }} data-testid={`admin-roster-row-${a.id}`}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                         <span style={{ fontSize: 13, color: ink }}>{a.display_name || T('(Chưa đặt tên)', '(No name set)')}{a.is_self ? T(' (bạn)', ' (you)') : ''}</span>
-                        {a.can_manage_admins && <span style={{ fontSize: 10.5, color: ink, opacity: 0.6 }}>{T('Có quyền quản lý đội ngũ', 'Can manage the admin team')}</span>}
+                        {a.can_manage_admins && <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6 }}>{T('Có quyền quản lý đội ngũ', 'Can manage the admin team')}</span>}
                         {!a.is_self && s.revokeAdminConfirmId !== a.id && s.adminRemoval?.protected_user_id !== a.id && (
-                          <span onClick={() => setAdminManagementPermission(a.id, !a.can_manage_admins)} data-testid={`admin-roster-permission-${a.id}`} role="button" style={{ fontSize: 11.5, fontWeight: 600, color: ink, cursor: 'pointer', marginTop: 4 }}>
+                          <span onClick={() => setAdminManagementPermission(a.id, !a.can_manage_admins)} data-testid={`admin-roster-permission-${a.id}`} role="button" style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, cursor: 'pointer', marginTop: 4 }}>
                             {a.can_manage_admins ? T('Bỏ quyền quản lý đội ngũ', 'Remove team-management access') : T('Cấp quyền quản lý đội ngũ', 'Allow managing the team')}
                           </span>
                         )}
                         {s.adminRemoval?.protected_user_id === a.id && (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }} data-testid="admin-protected-block">
-                            <span style={{ fontSize: 10.5, fontWeight: 600, color: ink, opacity: 0.8 }}>{T('Tài khoản được bảo vệ', 'Protected admin')}</span>
+                            <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.8 }}>{T('Tài khoản được bảo vệ', 'Protected admin')}</span>
                             {!a.is_self && (
                               s.adminRemoval.admin_count < 3 ? (
-                                <span style={{ fontSize: 11.5, color: ink, opacity: 0.65 }}>
+                                <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65 }}>
                                   {T(`Chỉ có thể thay đổi khi có ít nhất 3 quản trị viên (hiện có ${s.adminRemoval.admin_count}), và phải qua bỏ phiếu.`,
                                      `Can only be changed with at least 3 admins (now ${s.adminRemoval.admin_count}), and only by a vote.`)}
                                 </span>
                               ) : !s.adminRemoval.can_open ? (
-                                <span style={{ fontSize: 11.5, color: ink, opacity: 0.65 }}>
+                                <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65 }}>
                                   {T('Cần ít nhất 2 quản trị viên có quyền quản lý đội ngũ (không tính tài khoản này) để bỏ phiếu. Hãy cấp quyền quản lý đội ngũ cho quản trị viên khác.', 'At least 2 admins with team-management access (not counting this account) are needed to vote. Grant team-management access to another admin first.')}
                                 </span>
                               ) : (
                                 <>
                                   {a.can_manage_admins && !s.adminRemoval.votes.some(v => v.kind === 'revoke_management') && (
-                                    <span onClick={() => !s.adminRemovalBusy && openAdminRemovalVote(a.id, 'revoke_management')} data-testid="admin-removal-open-management" role="button" style={{ fontSize: 11.5, fontWeight: 600, color: ink, cursor: 'pointer' }}>
+                                    <span onClick={() => !s.adminRemovalBusy && openAdminRemovalVote(a.id, 'revoke_management')} data-testid="admin-removal-open-management" role="button" style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, cursor: 'pointer' }}>
                                       {T('Mở bỏ phiếu: bỏ quyền quản lý đội ngũ', 'Start a vote: remove team-management access')}
                                     </span>
                                   )}
                                   {!s.adminRemoval.votes.some(v => v.kind === 'revoke_admin') && (
-                                    <span onClick={() => !s.adminRemovalBusy && openAdminRemovalVote(a.id, 'revoke_admin')} data-testid="admin-removal-open-admin" role="button" style={{ fontSize: 11.5, fontWeight: 600, color: alert, cursor: 'pointer' }}>
+                                    <span onClick={() => !s.adminRemovalBusy && openAdminRemovalVote(a.id, 'revoke_admin')} data-testid="admin-removal-open-admin" role="button" style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: alert, cursor: 'pointer' }}>
                                       {T('Mở bỏ phiếu: gỡ khỏi đội ngũ quản trị', 'Start a vote: remove as admin')}
                                     </span>
                                   )}

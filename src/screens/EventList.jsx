@@ -95,7 +95,7 @@ export default function EventList() {
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
                 <span style={{ ...display(15, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{e.name}</span>
-                <span style={{ fontSize: 11.5, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.meta}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.meta}</span>
               </div>
               {!e.unavailable && <span style={{ fontSize: 15, color: ink, flex: 'none', lineHeight: 1 }}>›</span>}
             </div>

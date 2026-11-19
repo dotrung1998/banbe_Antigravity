@@ -44,12 +44,12 @@ export default function DigestOptIn() {
 
   return (
     <div style={{ marginTop: 24 }} data-testid="account-notifications-section">
-      <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Thông báo', 'Notifications')}</span>
+      <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Thông báo', 'Notifications')}</span>
       <div onClick={toggle} role="switch" aria-checked={!!on} aria-disabled={on == null || busy} data-testid="account-digest-toggle"
         style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px' }), display: 'flex', alignItems: 'center', gap: 12, cursor: on == null || busy ? 'default' : 'pointer' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={display(15, { lineHeight: 1.3 })}>{T('Bản tin cuối tuần: sự kiện cuối tuần, tối thứ Năm', "Weekly digest: this weekend's events, Thursday evening")}</div>
-          <div style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.75, marginTop: 3 }}>{T('Tin quảng bá. Mặc định tắt. Tắt bất cứ lúc nào.', 'Promotional. Off by default. Turn off anytime.')}</div>
+          <div style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.5, color: ink, opacity: 0.75, marginTop: 3 }}>{T('Tin quảng bá. Mặc định tắt. Tắt bất cứ lúc nào.', 'Promotional. Off by default. Turn off anytime.')}</div>
         </div>
         <span aria-hidden style={{ flex: 'none', width: 44, height: 26, borderRadius: 13, background: on ? ink : 'rgba(27,25,22,0.18)', position: 'relative', transition: 'background .15s', opacity: on == null ? 0.5 : 1 }}>
           <span style={{ position: 'absolute', top: 3, left: on ? 21 : 3, width: 20, height: 20, borderRadius: 10, background: paper, transition: 'left .15s' }} />

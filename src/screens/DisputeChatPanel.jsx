@@ -249,25 +249,25 @@ export default function DisputeChatPanel({ bookingId, refundClaimId }) {
 
   return (
     <div style={{ ...fieldGlass({ marginTop: 10, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }) }} data-testid="dispute-chat-panel">
-      <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>
+      <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>
         {T('Trao đổi trực tiếp về tranh chấp này', 'Direct chat about this dispute')}
       </span>
       {isRefund && meta?.found && (
         claimClosed ? (
-          <span style={{ fontSize: 11.5, fontWeight: 700, color: ink, opacity: 0.7 }} data-testid="dispute-chat-completed">
+          <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 700, color: ink, opacity: 0.7 }} data-testid="dispute-chat-completed">
             {T('Tranh chấp đã hoàn tất', 'Dispute completed')}
             {meta.dispute_closed_by_role ? ` ▪︎ ${meta.dispute_closed_by_role === meta.viewer_role ? T('bạn đã đóng', 'closed by you') : T('bên kia đã đóng', 'closed by the other side')}` : ''}
           </span>
         ) : (
-          <span style={{ fontSize: 11.5, fontWeight: 700, color: alert }} data-testid="dispute-chat-in-progress">
+          <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 700, color: alert }} data-testid="dispute-chat-in-progress">
             {T('Đang tranh chấp', 'Dispute in progress')}
           </span>
         )
       )}
       {windowText && (
-        <span style={{ fontSize: 11, fontWeight: 700, color: alert }} data-testid="dispute-chat-window">{windowText}</span>
+        <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 700, color: alert }} data-testid="dispute-chat-window">{windowText}</span>
       )}
-      <p style={{ fontSize: 11, lineHeight: 1.45, color: ink, opacity: 0.7, margin: 0 }}>
+      <p style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.45, color: ink, opacity: 0.7, margin: 0 }}>
         {/* The two kinds have genuinely different endings — a payment
             dispute is closed by banbe and emailed a transcript, a refund
             dispute is just settled between the two parties — so the promise
@@ -279,22 +279,22 @@ export default function DisputeChatPanel({ bookingId, refundClaimId }) {
                'This conversation is temporary: it is deleted once banbe rules on the dispute, and a copy is emailed to both of you.')}
       </p>
       {readOnly && (
-        <span style={{ fontSize: 10.5, fontWeight: 600, color: ink, opacity: 0.55 }} data-testid="dispute-chat-closed">
+        <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.55 }} data-testid="dispute-chat-closed">
           {T('Tranh chấp đã kết thúc, chỉ còn để đọc.', 'This dispute has ended, read only.')}
         </span>
       )}
       {retention && (
-        <span style={{ fontSize: 10.5, fontWeight: 600, color: ink, opacity: 0.55 }} data-testid="dispute-chat-retention">
+        <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.55 }} data-testid="dispute-chat-retention">
           {retention}
         </span>
       )}
 
       <div ref={listRef} style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflowY: 'auto' }}>
         {s.disputeChatLoading && messages.length === 0 && (
-          <span style={{ fontSize: 11.5, color: ink, opacity: 0.6 }}>{T('Đang tải…', 'Loading…')}</span>
+          <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6 }}>{T('Đang tải…', 'Loading…')}</span>
         )}
         {!s.disputeChatLoading && messages.length === 0 && !s.disputeChatError && (
-          <span style={{ fontSize: 11.5, color: ink, opacity: 0.6 }} data-testid="dispute-chat-empty">
+          <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6 }} data-testid="dispute-chat-empty">
             {T('Chưa có tin nhắn nào.', 'No messages yet.')}
           </span>
         )}
@@ -310,7 +310,7 @@ export default function DisputeChatPanel({ bookingId, refundClaimId }) {
             data-testid="dispute-chat-message"
             data-highlighted={highlightedId === m.id || undefined}
           >
-            <div style={{ fontSize: 10, color: ink, opacity: 0.55 }}>
+            <div style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.55 }}>
               {m.sender_role === 'organizer' ? T('Người tổ chức', 'Organizer')
                 : m.sender_role === 'guest' ? T('Khách', 'Guest')
                 : m.sender_role === 'admin' ? T('banbe', 'banbe') : T('Hệ thống', 'System')}
@@ -330,7 +330,7 @@ export default function DisputeChatPanel({ bookingId, refundClaimId }) {
                       style={{ display: 'block', marginTop: 4, width: bw, aspectRatio: String(r), maxHeight: 240, objectFit: 'cover', borderRadius: 10, border: `1px solid ${rule}`, cursor: 'pointer' }}
                     />
                   ) : (
-                    <div data-testid="dispute-chat-attachment-pending" style={{ marginTop: 4, fontSize: 11.5, color: ink, opacity: 0.6 }}>{T('Đang tải tệp…', 'Loading attachment…')}</div>
+                    <div data-testid="dispute-chat-attachment-pending" style={{ marginTop: 4, fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6 }}>{T('Đang tải tệp…', 'Loading attachment…')}</div>
                   )
                 ) : (
                   <a href={u || undefined} target="_blank" rel="noreferrer" data-testid="dispute-chat-attachment" style={{ display: 'inline-block', marginTop: 4, fontSize: 12.5, color: ink }}>
@@ -383,7 +383,7 @@ export default function DisputeChatPanel({ bookingId, refundClaimId }) {
         </div>
       )}
       {flash && (
-        <p style={{ fontSize: 11.5, color: flash.kind === 'err' ? alert : ink, margin: 0 }} data-testid={flash.kind === 'err' ? 'dispute-chat-flash-error' : 'dispute-chat-flash'}>{flash.text}</p>
+        <p style={{ fontSize: 'var(--bb-text-meta)', color: flash.kind === 'err' ? alert : ink, margin: 0 }} data-testid={flash.kind === 'err' ? 'dispute-chat-flash-error' : 'dispute-chat-flash'}>{flash.text}</p>
       )}
       {isRefund && meta?.found && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} data-testid="dispute-chat-actions">
@@ -429,7 +429,7 @@ export default function DisputeChatPanel({ bookingId, refundClaimId }) {
         </div>
       )}
       {s.disputeChatError && (
-        <p style={{ fontSize: 11.5, color: alert, margin: 0 }} data-testid="dispute-chat-error">
+        <p style={{ fontSize: 'var(--bb-text-meta)', color: alert, margin: 0 }} data-testid="dispute-chat-error">
           {s.disputeChatError}
         </p>
       )}

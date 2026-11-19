@@ -86,7 +86,7 @@ export default function AdminDobCorrections() {
         {loading && <p style={{ fontSize: 13, opacity: 0.65, marginTop: 18 }}>{T('Đang tải…', 'Loading…')}</p>}
         {!loading && pending.length === 0 && <p style={{ fontSize: 13, opacity: 0.65, marginTop: 18 }} data-testid="admin-dob-empty">{T('Không có yêu cầu nào đang chờ.', 'No requests waiting.')}</p>}
         {pending.map(r => card(r, true))}
-        {done.length > 0 && <span style={{ display: 'block', fontSize: 11.5, fontWeight: 600, marginTop: 24 }}>{T('Đã xử lý', 'Handled')}</span>}
+        {done.length > 0 && <span style={{ display: 'block', fontSize: 'var(--bb-text-meta)', fontWeight: 600, marginTop: 24 }}>{T('Đã xử lý', 'Handled')}</span>}
         {done.map(r => card(r, false))}
       </div>
     </div>

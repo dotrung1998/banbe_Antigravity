@@ -78,8 +78,8 @@ export function TypeTag({ type, label }) {
   const [fg, bg] = postTint(type);
   return (
     <span data-testid={`project-type-tag-${type}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 999, whiteSpace: 'nowrap',
-      fontSize: 11, fontWeight: 800, letterSpacing: 0.6, textTransform: 'uppercase', color: fg, background: bg }}>
-      <span aria-hidden style={{ fontSize: 11 }}>{POST_ICON[type]}</span>{label}
+      fontSize: 'var(--bb-text-kicker)', fontWeight: 800, letterSpacing: 0.6, textTransform: 'uppercase', color: fg, background: bg }}>
+      <span aria-hidden style={{ fontSize: 'var(--bb-text-meta)' }}>{POST_ICON[type]}</span>{label}
     </span>
   );
 }

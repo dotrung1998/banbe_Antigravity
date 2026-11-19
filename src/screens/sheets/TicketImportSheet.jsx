@@ -48,14 +48,14 @@ export function ImportSheet() {
         {T('Nhập mã nhận vé mà người tặng (hoặc người đặt vé nhóm) gửi cho bạn. Mã này khác với mã QR dùng điểm danh. Nếu bạn nhận được vé PDF, bấm nút "Mở trong banbe" trong PDF để mã tự điền.',
           'Enter the claim code you received from the giver or from whoever booked the group. It is different from the check-in QR code. If you have the PDF, click its "Open in banbe" button and the code fills itself in.')}
       </p>
-      <label style={{ display: 'block', fontSize: 11.5, color: ink, margin: '16px 0 5px' }}>{T('Mã nhận vé', 'Claim code')}</label>
+      <label style={{ display: 'block', fontSize: 'var(--bb-text-meta)', color: ink, margin: '16px 0 5px' }}>{T('Mã nhận vé', 'Claim code')}</label>
       <input
         value={s.importCode} onChange={(e) => setImportCode(e.target.value)} placeholder="CLAIM-… / ATT-…"
         autoCapitalize="characters" autoComplete="off" spellCheck={false}
         style={{ ...fieldGlass({ padding: '13px 14px', border: 'none' }), width: '100%', boxSizing: 'border-box', fontSize: 14, color: ink, outline: 'none', letterSpacing: '0.04em' }}
         data-testid="ticket-import-code"
       />
-      <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.7, margin: '12px 0 0' }}>
+      <p style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.5, color: ink, opacity: 0.7, margin: '12px 0 0' }}>
         {s.user?.email
           ? T(`Đang đăng nhập với ${s.user.email}. Vé được tặng chỉ nhập được bằng đúng email người nhận. Vé nhóm (mã ATT-) chỉ cần mã và email đã xác minh.`,
               `Signed in as ${s.user.email}. A gifted ticket needs the recipient's email. A group ticket (ATT- code) needs only the code and a verified email.`)
@@ -69,7 +69,7 @@ export function ImportSheet() {
       >
         {s.importBusy ? T('Đang nhập…', 'Importing…') : T('Nhập vé', 'Import ticket')}
       </div>
-      <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.7, margin: '14px 0 0' }}>
+      <p style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.5, color: ink, opacity: 0.7, margin: '14px 0 0' }}>
         {T('Bạn không cần tài khoản để tham dự: mã QR trên vé PDF là đủ. Nhập vé chỉ để lưu vé vào tài khoản.', "You don't need an account to attend: the QR on the PDF is enough. Importing only saves the ticket to your account.")}
       </p>
     </SheetFrame>

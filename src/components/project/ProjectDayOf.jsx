@@ -57,9 +57,9 @@ export default function ProjectDayOf({ p, ui }) {
                 aria-label={fmt(dstr, { weekday: 'long', day: 'numeric', month: 'long' }) + (isEvent ? T(', ngày diễn ra', ', event day') : '') + (due ? T(`, ${due} việc đến hạn`, due === 1 ? ', 1 task due' : `, ${due} tasks due`) : '')}
                 style={{ minHeight: 64, borderRadius: 14, border: 0, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
                   background: on ? ink : isEvent ? clayBg : fieldSolid, color: on ? paper : isEvent ? clay : ink }}>
-                <span style={{ fontSize: 11, fontWeight: 700, opacity: 0.8 }}>{fmt(dstr, { weekday: 'narrow' })}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 700, opacity: 0.8 }}>{fmt(dstr, { weekday: 'narrow' })}</span>
                 <strong style={{ fontSize: 17 }}>{Number(dstr.slice(8))}</strong>
-                <span style={{ fontSize: 10.5, fontWeight: 700, minHeight: 12, whiteSpace: 'nowrap' }}>{due ? T(`${due} việc`, `${due} due`) : isEvent ? '★' : ''}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 700, minHeight: 12, whiteSpace: 'nowrap' }}>{due ? T(`${due} việc`, `${due} due`) : isEvent ? '★' : ''}</span>
               </button>
             );
           })}

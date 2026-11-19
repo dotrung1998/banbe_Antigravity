@@ -145,13 +145,13 @@ export default function HomeShellV5({
                   <button key={k} type="button" data-testid={`home-browse-${k}`} onClick={() => pickType(k)}
                     style={{ padding: '14px 0 12px', border: 'none', borderRadius: 16, background: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, fontFamily: 'inherit', fontSize: 13, color: 'inherit', cursor: 'pointer' }}>
                     <span style={{ width: 52, height: 52, display: 'grid', placeItems: 'center', marginBottom: 4 }}><CategoryGlyph cat={k} size={28} strokeWidth={1.5} /></span>
-                    <span>{typeName(k)}</span><small style={{ fontSize: 11.5, opacity: 0.64 }}>{evN(n)}</small>
+                    <span>{typeName(k)}</span><small style={{ fontSize: 'var(--bb-text-meta)', opacity: 0.64 }}>{evN(n)}</small>
                   </button>
                 ))}
                 <button type="button" data-testid="home-browse-find" onClick={onBrowseType ? () => onBrowseType('all') : onFindType}
                   style={{ padding: '14px 0 12px', border: 'none', borderRadius: 16, background: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, fontFamily: 'inherit', fontSize: 13, color: 'inherit', cursor: 'pointer' }}>
                   <span style={{ width: 52, height: 52, display: 'grid', placeItems: 'center', marginBottom: 4 }}><Icon d={SEARCH} size={28} /></span>
-                  <span>{T('Tìm một loại', 'Find a type')}</span><small style={{ fontSize: 11.5, opacity: 0.64 }}>{T(`${TYPE_DEFS.length} loại`, `${TYPE_DEFS.length} types`)}</small>
+                  <span>{T('Tìm một loại', 'Find a type')}</span><small style={{ fontSize: 'var(--bb-text-meta)', opacity: 0.64 }}>{T(`${TYPE_DEFS.length} loại`, `${TYPE_DEFS.length} types`)}</small>
                 </button>
               </div>
             </div>
@@ -212,7 +212,7 @@ export default function HomeShellV5({
                   <GlassMenuDivider />
                   <GlassMenuItem testId="home-view-hosting" checked={hosting}
                     onClick={() => { onTab('hosting'); onReturnToEvents?.(); }}>
-                    {T('Tổ chức', 'Hosting')} <small style={{ fontSize: 11.5, fontWeight: 400, opacity: 0.6 }}>{T('chế độ host', 'host view')}</small>
+                    {T('Tổ chức', 'Hosting')} <small style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 400, opacity: 0.6 }}>{T('chế độ host', 'host view')}</small>
                   </GlassMenuItem>
                 </>
               )}
@@ -261,7 +261,7 @@ export default function HomeShellV5({
           background: 'linear-gradient(180deg, rgba(22,20,15,.62) 0%, rgba(22,20,15,.16) 36%, rgba(22,20,15,.5) 74%, #16140f 100%)' }} />
         <div style={{ position: 'relative' }}>
           {/* The date is the hero's kicker now (the band keeps no second line): small, tracked, quiet, over the photo. */}
-          <div data-testid="home-date" style={{ padding: '18px 24px 0', fontSize: 11, fontWeight: 600, letterSpacing: '.14em', textTransform: 'uppercase', color: 'rgba(255,255,255,.58)' }}>{dateLabel}</div>
+          <div data-testid="home-date" style={{ padding: '18px 24px 0', fontSize: 'var(--bb-text-kicker)', fontWeight: 600, letterSpacing: '.14em', textTransform: 'uppercase', color: 'rgba(255,255,255,.58)' }}>{dateLabel}</div>
           {!hosting && (
             <>
               <div ref={rail} onScroll={onScroll} data-hscroll data-testid="home-hero-rail"
@@ -276,7 +276,7 @@ export default function HomeShellV5({
                       color: '#fff', fontFamily: 'inherit', cursor: 'pointer', opacity: i === idx ? 1 : 0.6, transition: 'opacity .3s', background: e.img ? `#2a2620 center/cover no-repeat url("${e.img}")` : '#2a2620' }}>
                     <span aria-hidden style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,rgba(0,0,0,.25) 0%,rgba(0,0,0,0) 30%,rgba(0,0,0,.05) 50%,rgba(0,0,0,.78) 100%)' }} />
                     <span style={{ position: 'absolute', top: 12, left: 12, right: 12, display: 'flex', justifyContent: 'space-between' }}>
-                      {e.dateBadge && <span style={{ height: 28, padding: '0 10px', borderRadius: 999, background: 'rgba(247,244,236,.85)', color: '#1B1916', fontSize: 11.5, fontWeight: 700, display: 'flex', alignItems: 'center', letterSpacing: '.02em', textTransform: 'uppercase' }}>{e.dateBadge}</span>}
+                      {e.dateBadge && <span style={{ height: 28, padding: '0 10px', borderRadius: 999, background: 'rgba(247,244,236,.85)', color: '#1B1916', fontSize: 'var(--bb-text-kicker)', fontWeight: 700, display: 'flex', alignItems: 'center', letterSpacing: '.02em', textTransform: 'uppercase' }}>{e.dateBadge}</span>}
                       {onToggleSave && (
                         <button type="button" onClick={(ev) => { ev.stopPropagation(); onToggleSave(e.key); }}
                           aria-pressed={!!e.saved} aria-label={e.saved ? T('Bỏ lưu sự kiện', 'Remove from saved') : T('Lưu sự kiện', 'Save event')}
@@ -287,7 +287,7 @@ export default function HomeShellV5({
                       )}
                     </span>
                     <span style={{ position: 'absolute', left: 16, right: 16, bottom: 16, display: 'block' }}>
-                      {e.metaLine && <span style={{ display: 'block', fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', opacity: 0.85, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.metaLine}</span>}
+                      {e.metaLine && <span style={{ display: 'block', fontSize: 'var(--bb-text-kicker)', letterSpacing: '.12em', textTransform: 'uppercase', opacity: 0.85, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.metaLine}</span>}
                       <span style={{ display: 'block', fontFamily: "var(--bb-font-title, 'Be Vietnam Pro', system-ui, sans-serif)", fontSize: 26, fontWeight: 300, lineHeight: 1.12, margin: '6px 0', letterSpacing: '-.01em' }}>{e.name}</span>
                       <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13, opacity: 0.9 }}><span>{e.priceLabel}</span><span>{e.left}</span></span>
                     </span>
@@ -423,8 +423,8 @@ export default function HomeShellV5({
                     <button key={it.key} type="button" data-testid={`home-event-${it.key}`} onClick={() => onOpenEvent(it.key)}
                       style={{ flex: '0 0 168px', textAlign: 'left', border: 'none', background: 'none', padding: 0, color: 'inherit', fontFamily: 'inherit', cursor: 'pointer' }}>
                       <div style={{ position: 'relative', height: 204, borderRadius: 14, background: e.img ? `var(--bb-block, #EEE8DA) center/cover no-repeat url("${e.img}")` : 'var(--bb-block, #EEE8DA)' }}>
-                        <span style={{ position: 'absolute', top: 8, left: 8, height: 26, padding: '0 10px', borderRadius: 999, background: 'rgba(247,244,236,.9)', color: '#1B1916', fontSize: 11.5, fontWeight: 700, display: 'flex', alignItems: 'center', textTransform: 'uppercase' }}>{badgeDate(it.startsAt, e.isReal ? e.tz : null)}</span>
-                        {it.soldOut && <span style={{ position: 'absolute', left: 8, bottom: 8, height: 26, padding: '0 12px', borderRadius: 999, background: 'var(--bb-alert)', color: 'var(--bb-on-alert, #fff)', fontSize: 11.5, fontWeight: 700, display: 'flex', alignItems: 'center' }}>{T('HẾT CHỖ', 'SOLD OUT')}</span>}
+                        <span style={{ position: 'absolute', top: 8, left: 8, height: 26, padding: '0 10px', borderRadius: 999, background: 'rgba(247,244,236,.9)', color: '#1B1916', fontSize: 'var(--bb-text-meta)', fontWeight: 700, display: 'flex', alignItems: 'center', textTransform: 'uppercase' }}>{badgeDate(it.startsAt, e.isReal ? e.tz : null)}</span>
+                        {it.soldOut && <span style={{ position: 'absolute', left: 8, bottom: 8, height: 26, padding: '0 12px', borderRadius: 999, background: 'var(--bb-alert)', color: 'var(--bb-on-alert, #fff)', fontSize: 'var(--bb-text-meta)', fontWeight: 700, display: 'flex', alignItems: 'center' }}>{T('HẾT CHỖ', 'SOLD OUT')}</span>}
                       </div>
                       <div style={{ fontSize: 15, marginTop: 10, lineHeight: 1.25 }}>{e.name}</div>
                       <div style={{ fontSize: 12, opacity: 0.64, marginTop: 3 }}>{[e.isReal ? e.area : e.locationLabel, it.priceVnd === 0 ? T('Miễn phí', 'Free') : trStatus(e.price)].filter(Boolean).join(' · ')}</div>

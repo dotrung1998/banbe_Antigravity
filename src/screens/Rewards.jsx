@@ -129,36 +129,36 @@ export default function Rewards() {
             {/* Balance + streak */}
             <div style={{ display: 'flex', gap: 10 }}>
               <div data-testid="rewards-balance" style={{ ...fieldGlass({ flex: 1, padding: '16px 16px', borderRadius: 14, display: 'flex', flexDirection: 'column', gap: 4 }) }}>
-                <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>{T('Số dư xu', 'Coin balance')}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>{T('Số dư xu', 'Coin balance')}</span>
                 <span style={{ ...display(30) }} aria-label={T(`${r.balance} xu`, `${r.balance} coins`)}>{r.balance}</span>
-                {r.balance < 0 && <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>{T('Số dư âm do điểm danh bị huỷ. Kiếm thêm để về 0.', 'Negative because a check-in was undone. Earn coins to get back to 0.')}</span>}
+                {r.balance < 0 && <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>{T('Số dư âm do điểm danh bị huỷ. Kiếm thêm để về 0.', 'Negative because a check-in was undone. Earn coins to get back to 0.')}</span>}
               </div>
               {ws ? (
                 <div data-testid="rewards-week-streak" style={{ ...fieldGlass({ flex: 1, padding: '16px 16px', borderRadius: 14, display: 'flex', flexDirection: 'column', gap: 4 }) }}>
-                  <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>{T('Chuỗi tuần', 'Week streak')}</span>
+                  <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>{T('Chuỗi tuần', 'Week streak')}</span>
                   <span style={{ ...display(30), display: 'flex', alignItems: 'center', gap: 6 }} aria-label={weeksLabel(T, ws.current)}><span aria-hidden="true">🔥</span>{ws.current}</span>
-                  <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>{T(`Dài nhất: ${ws.longest} tuần`, `Longest: ${weeksLabel(T, ws.longest)}`)}</span>
+                  <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>{T(`Dài nhất: ${ws.longest} tuần`, `Longest: ${weeksLabel(T, ws.longest)}`)}</span>
                   {(() => { const h = weekStreakHint(T, ws, lang); return (
                     <>
-                      <span data-testid="rewards-streak-status" style={{ fontSize: 11.5, fontWeight: 600, color: ink, marginTop: 6 }}>{h.status}</span>
-                      <span data-testid="rewards-streak-how" style={{ fontSize: 11, lineHeight: 1.4, color: ink, opacity: 0.75 }}>{h.how}</span>
+                      <span data-testid="rewards-streak-status" style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, marginTop: 6 }}>{h.status}</span>
+                      <span data-testid="rewards-streak-how" style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.4, color: ink, opacity: 0.75 }}>{h.how}</span>
                     </>
                   ); })()}
                   {ws.graceMax > 0 && (
-                    <span data-testid="rewards-grace" style={{ fontSize: 11, color: ink, opacity: 0.75, marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span data-testid="rewards-grace" style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.75, marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
                       <span aria-hidden="true">{'🛡'.repeat(ws.graceHeld)}{'·'.repeat(Math.max(0, ws.graceMax - ws.graceHeld))}</span>{graceLine(T, ws)}
                     </span>
                   )}
                 </div>
               ) : (
               <div data-testid="rewards-streak" style={{ ...fieldGlass({ flex: 1, padding: '16px 16px', borderRadius: 14, display: 'flex', flexDirection: 'column', gap: 4 }) }}>
-                <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>{T('Chuỗi ngày', 'Streak')}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>{T('Chuỗi ngày', 'Streak')}</span>
                 <span style={{ ...display(30), display: 'flex', alignItems: 'center', gap: 6 }}><span aria-hidden="true">🔥</span>{r.streak?.current ?? 0}</span>
-                <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>{T(`Dài nhất: ${r.streak?.longest ?? 0} ngày`, `Longest: ${r.streak?.longest ?? 0} days`)}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>{T(`Dài nhất: ${r.streak?.longest ?? 0} ngày`, `Longest: ${r.streak?.longest ?? 0} days`)}</span>
                 {(() => { const h = streakHint(T, r.streak?.active_today === true); return (
                   <>
-                    <span data-testid="rewards-streak-status" style={{ fontSize: 11.5, fontWeight: 600, color: ink, marginTop: 6 }}>{h.status}</span>
-                    <span data-testid="rewards-streak-how" style={{ fontSize: 11, lineHeight: 1.4, color: ink, opacity: 0.75 }}>{h.how}</span>
+                    <span data-testid="rewards-streak-status" style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, marginTop: 6 }}>{h.status}</span>
+                    <span data-testid="rewards-streak-how" style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.4, color: ink, opacity: 0.75 }}>{h.how}</span>
                   </>
                 ); })()}
                 )}
@@ -169,14 +169,14 @@ export default function Rewards() {
             {/* Next badge (goal gradient, 192): the closest visible badge, with honest numbers. */}
             {nb && (
               <section data-testid="rewards-next-badge" style={{ ...fieldGlass({ padding: '14px 16px', borderRadius: 14, display: 'flex', flexDirection: 'column', gap: 6 }) }}>
-                <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>{T('Huy hiệu tiếp theo', 'Next badge')}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>{T('Huy hiệu tiếp theo', 'Next badge')}</span>
                 <span style={{ fontSize: 14, fontWeight: 600, color: ink }}>{nextBadgeLine(T, nb, lang)}</span>
                 <div role="progressbar" aria-valuemin={0} aria-valuemax={nb.target} aria-valuenow={nb.progress}
                   aria-label={`${lang === 'en' ? nb.title_en : nb.title_vi}: ${nb.progress} / ${nb.target}`}
                   style={{ height: 6, borderRadius: 3, background: rule, overflow: 'hidden' }}>
                   <div style={{ width: `${Math.round((Math.min(nb.progress, nb.target) / nb.target) * 100)}%`, height: '100%', background: ink }} />
                 </div>
-                <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>{nb.progress} / {nb.target}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>{nb.progress} / {nb.target}</span>
               </section>
             )}
 
@@ -245,7 +245,7 @@ export default function Rewards() {
                               style={{ height: 6, borderRadius: 3, background: rule, overflow: 'hidden' }}>
                               <div style={{ width: `${Math.round((Math.min(g.next.progress, g.next.target) / g.next.target) * 100)}%`, height: '100%', background: ink }} />
                             </div>
-                            <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>{Math.min(g.next.progress, g.next.target)} / {g.next.target}</span>
+                            <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>{Math.min(g.next.progress, g.next.target)} / {g.next.target}</span>
                           </>
                         ) : <span style={{ fontSize: 12, color: ink, opacity: 0.75 }}>{T('Đã đạt mọi cấp ✓', 'Every tier earned ✓')}</span>}
                       </div>
@@ -261,7 +261,7 @@ export default function Rewards() {
                       style={{ ...fieldGlass({ padding: '12px 14px', borderRadius: 14, display: 'flex', flexDirection: 'column', gap: 6, opacity: b.earned ? 1 : 0.92 }) }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
                         <span style={{ fontSize: 13.5, fontWeight: 600, color: ink }}>{b.earned ? '✓ ' : ''}{lang === 'en' ? b.title_en : b.title_vi}</span>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: ink, opacity: 0.8 }}>{b.earned ? T('Đã đạt', 'Earned') : T('Chưa đạt', 'Locked')}</span>
+                        <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.8 }}>{b.earned ? T('Đã đạt', 'Earned') : T('Chưa đạt', 'Locked')}</span>
                       </div>
                       <span style={{ fontSize: 12, color: ink, opacity: 0.75 }}>{lang === 'en' ? b.desc_en : b.desc_vi}</span>
                       <div role="progressbar" aria-valuemin={0} aria-valuemax={b.target} aria-valuenow={Math.min(b.progress, b.target)}
@@ -269,7 +269,7 @@ export default function Rewards() {
                         style={{ height: 6, borderRadius: 3, background: rule, overflow: 'hidden' }}>
                         <div style={{ width: `${pct}%`, height: '100%', background: ink }} />
                       </div>
-                      <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>{Math.min(b.progress, b.target)} / {b.target}</span>
+                      <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>{Math.min(b.progress, b.target)} / {b.target}</span>
                     </div>
                   );
                 })}
@@ -298,7 +298,7 @@ export default function Rewards() {
                       <img src={designUrl(manifest, c.design_id)} alt="" style={{ width: 40, height: 60, objectFit: 'contain', flex: 'none' }} />
                       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
                         <span style={{ fontSize: 13.5, fontWeight: 600, color: ink }}>{nameOf(c.design_id)}</span>
-                        <span style={{ fontSize: 11.5, color: ink, opacity: 0.75 }}>
+                        <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.75 }}>
                           {c.unlocked ? T('Đã mở khoá', 'Unlocked') : need > 0 ? T(`${c.price} xu ▪︎ cần thêm ${need}`, `${c.price} coins ▪︎ ${need} more needed`) : T(`${c.price} xu`, `${c.price} coins`)}
                         </span>
                       </div>
@@ -329,7 +329,7 @@ export default function Rewards() {
                     <div key={o.code} data-testid={`offer-${o.code}`} style={{ ...fieldGlass({ padding: '12px 14px', borderRadius: 14, display: 'flex', flexDirection: 'column', gap: 4 }) }}>
                       <span style={{ fontSize: 13.5, fontWeight: 600, color: ink }}>{lang === 'en' ? o.title_en : o.title_vi}</span>
                       {(lang === 'en' ? o.desc_en : o.desc_vi) && <span style={{ fontSize: 12, color: ink, opacity: 0.75 }}>{lang === 'en' ? o.desc_en : o.desc_vi}</span>}
-                      <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>{T('Chưa khả dụng', 'Not available yet')}</span>
+                      <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>{T('Chưa khả dụng', 'Not available yet')}</span>
                     </div>
                   ))}
                 </div>
@@ -349,7 +349,7 @@ export default function Rewards() {
                     <div key={h.id} data-testid="rewards-history-row" style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '11px 14px', borderBottom: i < arr.length - 1 ? `1px solid ${rule}` : 'none' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                         <span style={{ fontSize: 12.5, color: ink }}>{h.type === 'redemption' && h.item_code ? `${historyLabel(h, T)} ▪︎ ${nameOf(h.item_code)}` : historyLabel(h, T)}</span>
-                        <span style={{ fontSize: 11, color: ink, opacity: 0.6 }}>{new Date(h.created_at).toLocaleDateString(lang === 'en' ? 'en-US' : 'vi-VN')}</span>
+                        <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6 }}>{new Date(h.created_at).toLocaleDateString(lang === 'en' ? 'en-US' : 'vi-VN')}</span>
                       </div>
                       <span style={{ fontSize: 13, fontWeight: 700, color: ink, flex: 'none' }} aria-label={T(`${h.amount} xu`, `${h.amount} coins`)}>{h.amount > 0 ? `+${h.amount}` : h.amount}</span>
                     </div>
@@ -375,7 +375,7 @@ export default function Rewards() {
                       <option key={id} value={id}>{T(vi, en)}{id === deviceHint ? T(' (gợi ý theo thiết bị)', ' (suggested from your device)') : ''}</option>
                     ))}
                   </select>
-                  <span style={{ fontSize: 11.5, color: ink, opacity: 0.75 }}>
+                  <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.75 }}>
                     {tz.pending
                       ? T(`Đổi sang ${tz.pending} có hiệu lực từ ngày kế tiếp.`, `The change to ${tz.pending} takes effect from the next day.`)
                       : tz.chosen ? T('Đổi múi giờ có hiệu lực từ ngày kế tiếp, tối đa 2 lần mỗi 30 ngày.', 'A change takes effect from the next day, at most twice per 30 days.')
@@ -398,7 +398,7 @@ export default function Rewards() {
               <ul style={{ margin: 0, paddingInlineStart: 18, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {redemptionTermsLines(T, !!ws).map((l, i) => <li key={i} style={{ fontSize: 12.5, lineHeight: 1.5, color: ink }}>{l}</li>)}
               </ul>
-              <p style={{ fontSize: 11, color: ink, opacity: 0.6, margin: '12px 0 0' }}>{T(`Phiên bản quy tắc ${r.rules?.version ?? 1}. Các con số là đề xuất MVP và có thể thay đổi. Mọi thay đổi có số phiên bản mới.`, `Rules version ${r.rules?.version ?? 1}. Numbers are an MVP proposal and may change. Any change gets a new version.`)}</p>
+              <p style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6, margin: '12px 0 0' }}>{T(`Phiên bản quy tắc ${r.rules?.version ?? 1}. Các con số là đề xuất MVP và có thể thay đổi. Mọi thay đổi có số phiên bản mới.`, `Rules version ${r.rules?.version ?? 1}. Numbers are an MVP proposal and may change. Any change gets a new version.`)}</p>
             </section>
           </>
         )}

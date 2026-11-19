@@ -63,7 +63,7 @@ export default function LangPick() {
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             <span style={{ ...display(19, { color: ink }) }}>Tiếng Việt</span>
-            <span style={{ fontSize: 11.5, color: ink }}>Mặc định</span>
+            <span style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>Mặc định</span>
           </div>
           <span style={{ fontSize: 15, color: ink }}>›</span>
         </div>
@@ -76,7 +76,7 @@ export default function LangPick() {
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             <span style={{ ...display(19, { color: ink }) }}>English</span>
-            <span style={{ fontSize: 11.5, color: ink }}>Switch anytime</span>
+            <span style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>Switch anytime</span>
           </div>
           <span style={{ fontSize: 15, color: ink }}>›</span>
         </div>

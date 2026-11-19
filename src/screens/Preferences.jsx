@@ -82,7 +82,7 @@ function GlassCard({ T }) {
         <span style={{ fontSize: 12, fontWeight: 600, color: ink, opacity: 0.6 }}>{T('Khu vực', 'Area')}</span>
         <span style={{ ...display(22) }}>{T('Tất cả khu vực', 'All areas')}</span>
         <span style={{ fontSize: 12, color: ink, opacity: 0.62 }}>{T('Chạm để mở bộ lọc khu vực', 'Tap to open the area filter')}</span>
-        <span style={{ ...glassCapsuleInactive, alignSelf: 'flex-start', fontSize: 11.5, fontWeight: 600, color: ink, padding: '8px 12px', borderRadius: 999 }}>{T('Khu vực', 'Area')}</span>
+        <span style={{ ...glassCapsuleInactive, alignSelf: 'flex-start', fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, padding: '8px 12px', borderRadius: 999 }}>{T('Khu vực', 'Area')}</span>
       </div>
       <input
         type="range" min={0} max={100} step={5} value={pct}
@@ -100,7 +100,7 @@ function GlassCard({ T }) {
 function Section({ title, children }) {
   return (
     <div style={{ marginTop: 28 }}>
-      <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{title}</span>
+      <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{title}</span>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>{children}</div>
     </div>
   );
@@ -111,7 +111,7 @@ function Choice({ active, title, subtitle, onClick, testId, titleFont, titleWeig
     <div onClick={onClick} data-testid={testId} style={{ ...cardGlass({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '17px 18px', cursor: 'pointer' }), border: active ? `1.5px solid ${ink}` : `1px solid ${rule}` }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
         <span style={{ ...display(17, { color: ink }), ...(titleFont ? { fontFamily: titleFont, fontWeight: titleWeight || 600 } : null) }}>{title}</span>
-        <span style={{ fontSize: 11.5, color: ink }}>{subtitle}</span>
+        <span style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{subtitle}</span>
       </div>
       <span style={{ fontSize: 15, color: ink }}>{active ? '✓' : '›'}</span>
     </div>

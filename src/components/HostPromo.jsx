@@ -12,7 +12,7 @@ import { supabase } from '../lib/supabase.js';
 import { getHostPromoConsent, setHostPromoConsent } from '../lib/accountGate.js';
 import { paper, ink, display, fieldGlass, inkButton, alert } from '../theme.js';
 
-const small = { fontSize: 11.5, lineHeight: 1.55, color: ink, opacity: 0.7 };
+const small = { fontSize: 'var(--bb-text-meta)', lineHeight: 1.55, color: ink, opacity: 0.7 };
 
 export function PromoConsentSection() {
   const { T } = useBanBe();
@@ -39,7 +39,7 @@ export function PromoConsentSection() {
 
   return (
     <div data-testid="promo-consent" style={{ marginTop: 28 }}>
-      <div style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Tin nhắn quảng bá từ host', 'Host promotional messages')}</div>
+      <div style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Tin nhắn quảng bá từ host', 'Host promotional messages')}</div>
       <div
         onClick={disabled ? undefined : () => (enabled ? save(false) : setConfirming(true))}
         role="switch" aria-checked={enabled} data-testid="promo-consent-toggle"

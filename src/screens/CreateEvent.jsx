@@ -617,7 +617,7 @@ export default function CreateEvent() {
         </div>
       )}
       <div style={{ padding: '14px 22px 40px', display: 'flex', flexDirection: 'column' }}>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Dành cho người tổ chức', 'For organizers')}</span>
+        <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Dành cho người tổ chức', 'For organizers')}</span>
         <h1 style={{ ...display(26, { margin: '8px 0 0' }) }}>
           {s.createEditEventId ? T('Chỉnh sửa và gửi lại', 'Correct and resubmit') : T('Tạo sự kiện, hoàn toàn miễn phí', 'Create an event, completely free')}
         </h1>
@@ -838,12 +838,12 @@ export default function CreateEvent() {
             autoComplete="off"
           />
           {s.createAddressSearching && (
-            <p style={{ fontSize: 11, color: ink, opacity: 0.6, margin: 0 }}>{T('Đang tìm địa chỉ…', 'Searching addresses…')}</p>
+            <p style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6, margin: 0 }}>{T('Đang tìm địa chỉ…', 'Searching addresses…')}</p>
           )}
           {s.createAddressSearchError && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <p style={{ fontSize: 11, color: alert, margin: 0, flex: 1 }}>{s.createAddressSearchError}</p>
-              <span onClick={retryCreateAddressSearch} data-testid="create-location-retry" style={{ fontSize: 11, fontWeight: 600, color: ink, cursor: 'pointer', textDecoration: 'underline', flexShrink: 0 }}>
+              <p style={{ fontSize: 'var(--bb-text-meta)', color: alert, margin: 0, flex: 1 }}>{s.createAddressSearchError}</p>
+              <span onClick={retryCreateAddressSearch} data-testid="create-location-retry" style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, cursor: 'pointer', textDecoration: 'underline', flexShrink: 0 }}>
                 {T('Thử lại', 'Retry')}
               </span>
             </div>
@@ -864,11 +864,11 @@ export default function CreateEvent() {
                   <span style={{ fontSize: 13, fontWeight: 600, color: ink }}>
                     {sug.addressLine}{sug.isVenue ? ' ' + T('(địa điểm)', '(venue)') : ''}
                   </span>
-                  <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>
+                  <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>
                     {[sug.district, sug.city, sug.postalCode].filter(Boolean).join(', ')}
                   </span>
                   {sug.precision === 'street' && (
-                    <span style={{ fontSize: 10.5, color: ink, opacity: 0.55 }}>
+                    <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.55 }}>
                       {T('Chưa có số nhà trong dữ liệu · ghim ở giữa đường', 'No house number in the map data · pin at the street centre')}
                     </span>
                   )}
@@ -877,20 +877,20 @@ export default function CreateEvent() {
               {/* Nominatim's usage policy requires attribution wherever its results are shown, same as
                   MapExplore's own MapLibre attribution elsewhere in this app. With MapKit live the results
                   are Apple Maps data, so the credit says that instead. */}
-              <div style={{ padding: '6px 12px', fontSize: 9.5, color: ink, opacity: 0.45, borderTop: `1px solid ${rule}` }}>
+              <div style={{ padding: '6px 12px', fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65, borderTop: `1px solid ${rule}` }}>
                 {usingMapKit ? T('Kết quả từ Apple Maps', 'Results from Apple Maps') : '© OpenStreetMap contributors'}
               </div>
             </div>
           )}
           {s.createLocConfirmed && (
             <div style={{ ...cardGlass({ padding: 10 }), display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="create-location-confirmed">
-              <span style={{ fontSize: 11.5, color: ink, opacity: 0.85 }}>✓ {s.createLocLabel}</span>
-              <span style={{ fontSize: 10.5, color: ink, opacity: 0.6 }}>
+              <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.85 }}>✓ {s.createLocLabel}</span>
+              <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6 }}>
                 {s.createLocPrecision === 'street'
                   ? T('Ghim ở giữa đường/phố. Dữ liệu bản đồ chưa có số nhà này.', 'Pinned at the street centre. The map data has no house number for this address.')
                   : T('Sẽ hiện ghim trên bản đồ tại toạ độ này.', 'Will show a map pin at this exact point.')}
               </span>
-              <div onClick={clearCreateAddressSelection} data-testid="create-location-adjust" style={{ alignSelf: 'flex-start', fontSize: 11, fontWeight: 600, color: ink, cursor: 'pointer', textDecoration: 'underline', opacity: 0.75 }}>
+              <div onClick={clearCreateAddressSelection} data-testid="create-location-adjust" style={{ alignSelf: 'flex-start', fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, cursor: 'pointer', textDecoration: 'underline', opacity: 0.75 }}>
                 {T('Đổi địa chỉ', 'Change address')}
               </div>
             </div>
@@ -1054,7 +1054,7 @@ export default function CreateEvent() {
         <Guided field="photos" attn={attn} id="create-section-photos" style={{ marginTop: 22, scrollMarginTop: 90 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
             <FormLabel icon="photo" field="photos" text={T('Hình ảnh', 'Photos')} required />
-            <span style={{ fontSize: 10.5, color: ink }}>{photos.length}/{MAX_PHOTOS} ({T(`tối thiểu ${MIN_PHOTOS}`, `min ${MIN_PHOTOS}`)})</span>
+            <span style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{photos.length}/{MAX_PHOTOS} ({T(`tối thiểu ${MIN_PHOTOS}`, `min ${MIN_PHOTOS}`)})</span>
           </div>
           <Insight testId="create-photos-insight" check={recipeById.photos} T={T}
             line={recipeById.photos.source === 'data'
@@ -1072,18 +1072,18 @@ export default function CreateEvent() {
                   <div style={{ position: 'relative', flex: 'none', width: 64, height: 64, borderRadius: 10, overflow: 'hidden' }}>
                     <div style={bg(p.url, { width: '100%', height: '100%' })} />
                     {isCover && (
-                      <span style={{ position: 'absolute', bottom: 0, left: 0, right: 0, fontSize: 8.5, fontWeight: 700, textAlign: 'center', padding: '2px 0', background: ink, color: paper }}>
+                      <span style={{ position: 'absolute', bottom: 0, left: 0, right: 0, fontSize: 'var(--bb-text-meta)', fontWeight: 700, textAlign: 'center', padding: '2px 0', background: ink, color: paper }}>
                         {T('Ảnh bìa', 'Cover')}
                       </span>
                     )}
                   </div>
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
-                    <span style={{ fontSize: 11.5, color: ink, opacity: 0.65 }}>{T(`Ảnh ${i + 1}`, `Photo ${i + 1}`)}</span>
+                    <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65 }}>{T(`Ảnh ${i + 1}`, `Photo ${i + 1}`)}</span>
                     <span
                       onClick={() => setCoverKey(p.url)}
                       data-testid={`create-photo-set-cover-${i}`}
                       style={{
-                        fontSize: 11, fontWeight: 600, cursor: isCover ? 'default' : 'pointer', alignSelf: 'flex-start',
+                        fontSize: 'var(--bb-text-meta)', fontWeight: 600, cursor: isCover ? 'default' : 'pointer', alignSelf: 'flex-start',
                         padding: '4px 10px', borderRadius: 999, border: `1px solid ${isCover ? 'transparent' : 'rgba(27,25,22,0.16)'}`,
                         background: isCover ? ink : 'transparent', color: isCover ? paper : ink,
                       }}
@@ -1125,9 +1125,9 @@ export default function CreateEvent() {
               </div>
             )}
           </div>
-          {photoError && <p style={{ fontSize: 11.5, color: alert, margin: '8px 0 0' }}>{photoError}</p>}
+          {photoError && <p style={{ fontSize: 'var(--bb-text-meta)', color: alert, margin: '8px 0 0' }}>{photoError}</p>}
           {!photoError && attemptedReview && fieldErrors.photos && (
-            <p style={{ fontSize: 11.5, color: alert, margin: '8px 0 0' }}>
+            <p style={{ fontSize: 'var(--bb-text-meta)', color: alert, margin: '8px 0 0' }}>
               {T(`Cần tối thiểu ${MIN_PHOTOS} và tối đa ${MAX_PHOTOS} ảnh khả dụng.`, `Minimum ${MIN_PHOTOS}, maximum ${MAX_PHOTOS} available photos.`)}
             </p>
           )}
@@ -1201,7 +1201,7 @@ export default function CreateEvent() {
         )}
         {s.createError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0', textAlign: 'center' }}>{s.createError}</p>}
         {s.createMediaError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0', textAlign: 'center' }}>{s.createMediaError}</p>}
-        <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: '12px auto 0', textAlign: 'center', maxWidth: '23ch' }}>{T('Hoàn toàn miễn phí: không phí đăng, không phí giao dịch, không phí ẩn.', 'Completely free: no listing fee, no transaction fee, no hidden fees.')}</p>
+        <p style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.5, color: ink, margin: '12px auto 0', textAlign: 'center', maxWidth: '23ch' }}>{T('Hoàn toàn miễn phí: không phí đăng, không phí giao dịch, không phí ẩn.', 'Completely free: no listing fee, no transaction fee, no hidden fees.')}</p>
       </div>
       {reviewOpen && (
         <ReviewStep
@@ -1284,7 +1284,7 @@ export default function CreateEvent() {
  * navigation/back-stack state to reconcile.
  */
 /** Small section heading in the Review step's Private tab (event name / recipe / details / included / photos). */
-const reviewHeading = { fontSize: 11.5, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: ink, opacity: 0.6 };
+const reviewHeading = { fontSize: 'var(--bb-text-kicker)', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: ink, opacity: 0.6 };
 
 function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe, onBack, onConfirm, onConfirmed }) {
   const [tab, setTab] = useState('private');
@@ -1346,7 +1346,7 @@ function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe
 
   const row = (label, value) => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 3, padding: '12px 0', borderBottom: `1px solid ${rule}` }}>
-      <span style={{ fontSize: 10.5, color: ink, opacity: 0.6 }}>{label}</span>
+      <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6 }}>{label}</span>
       <span style={{ fontSize: 13.5, color: ink, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{value}</span>
     </div>
   );
@@ -1376,7 +1376,7 @@ function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe
       </div>
       {/* The scrolling content starts below a hairline, never right against the tabs (owner, 2026-10-21). */}
       <div style={{ padding: '14px 22px 12px', flex: 'none', borderBottom: `1px solid ${rule}` }}>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Xem lại trước khi gửi', 'Review before submitting')}</span>
+        <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Xem lại trước khi gửi', 'Review before submitting')}</span>
         <div style={{ display: 'flex', gap: 6, marginTop: 14, padding: 3, background: 'rgba(27,25,22,0.06)', borderRadius: 999 }}>
           {tabBtn('private', T('Nội bộ (Host)', 'Private (Host)'))}
           {tabBtn('public', T('Xem trước công khai', 'Public preview'))}
@@ -1471,7 +1471,7 @@ function ReviewStep({ T, s, items, coverKey, createCatLabel, recipe, onFixRecipe
             onBack: () => setTab('private'),
             footer: (
               <>
-                <div style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.6, textAlign: 'center', margin: '0 0 8px' }}>
+                <div style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.6, textAlign: 'center', margin: '0 0 8px' }}>
                   {T('Xem trước: khách sẽ thấy đúng trang này', 'Preview: this is exactly what guests will see')}
                 </div>
                 {confirmBlock}
@@ -1571,14 +1571,14 @@ function Field({ label, value, onChange, placeholder, style }) {
   );
 }
 
-const labelStyle = { fontSize: 11.5, color: ink };
+const labelStyle = { fontSize: 'var(--bb-text-meta)', color: ink };
 const fieldInput = { ...insetField({ padding: '13px 14px' }), fontSize: 14, fontFamily: FACE, color: ink, outline: 'none', minWidth: 0, width: '100%', boxSizing: 'border-box', border: 'none' };
 
 // Note 48 form style (iOS parity): icon + uppercase label, large rounded outlined inputs, big pick tiles.
 const bigInput = { width: '100%', boxSizing: 'border-box', fontSize: 16, padding: '15px 16px', borderRadius: 14, border: `1px solid ${rule}`, background: paper, color: ink, fontFamily: FACE, outline: 'none' };
 const fieldCol = { display: 'flex', flexDirection: 'column', gap: 8 };
 const hintText = { fontSize: 12.5, lineHeight: 1.5, color: ink, margin: 0, opacity: 0.7 };
-const errText = { fontSize: 11.5, color: alert, margin: '6px 0 0' };
+const errText = { fontSize: 'var(--bb-text-meta)', color: alert, margin: '6px 0 0' };
 const subLabel = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, fontWeight: 500, color: ink, marginTop: 4 };
 // Note 69: long fields are at least twice the height of a one-line box (Event name, ~52px).
 const LONG_MIN = 104;
@@ -1781,7 +1781,7 @@ function FormLabel({ icon, text, required, tag, tagTone, field }) {
       {done && <DoneMark field={field} pop={marks.fresh(field)} />}
       <span style={{ flex: 1 }} />
       {tag && (
-        <span data-tone={tagTone || undefined} style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 999, fontVariantNumeric: 'tabular-nums',
+        <span data-tone={tagTone || undefined} style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, padding: '3px 8px', borderRadius: 999, fontVariantNumeric: 'tabular-nums',
           background: tagTone === 'error' ? 'rgba(var(--bb-alert-rgb),0.14)' : tagTone === 'warning' ? 'var(--bb-honey-bg)' : 'rgba(var(--bb-fg-rgb),0.08)',
           color: tagTone === 'error' ? 'var(--bb-alert)' : tagTone === 'warning' ? 'var(--bb-honey)' : undefined }}>{tag}</span>
       )}
@@ -1826,7 +1826,7 @@ function PickTile({ label, sub, selected, onClick, testId }) {
         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1,
         border: selected ? '1px solid transparent' : `1px solid ${rule}`, background: selected ? ink : paper, color: selected ? paper : ink }}>
       <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
-      {sub && <span data-testid={testId ? `${testId}-sub` : undefined} style={{ fontSize: 10.5, fontWeight: 500, opacity: 0.7 }}>{sub}</span>}
+      {sub && <span data-testid={testId ? `${testId}-sub` : undefined} style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 500, opacity: 0.7 }}>{sub}</span>}
     </button>
   );
 }
@@ -1901,7 +1901,7 @@ function PriceMarket({ price, mine, T, catLabel, currency = 'VND', onChange }) {
           style={{ display: 'block', width: '100%', marginTop: 2 }}
         />
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, opacity: 0.6 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--bb-text-meta)', opacity: 0.6 }}>
         <span>{short(price.min)}</span>
         <span style={{ fontWeight: 600 }}>{T('‹ Kéo để chọn giá ›', '‹ Drag to set your price ›')}</span>
         <span>{short(price.max)}</span>

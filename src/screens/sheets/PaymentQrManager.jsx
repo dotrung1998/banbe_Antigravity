@@ -30,7 +30,7 @@ function QrImage({ url, failed, size = 210 }) {
   return (
     <div style={{ width: size, height: size, background: '#FFFFFF', padding: 6, borderRadius: 12, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       {url ? <img src={url} alt="QR" data-testid="payment-uploaded-qr" style={{ maxWidth: '100%', maxHeight: '100%', display: 'block' }} />
-        : <span style={{ fontSize: 11, color: '#666' }}>{failed ? 'QR' : '…'}</span>}
+        : <span style={{ fontSize: 'var(--bb-text-meta)', color: '#666' }}>{failed ? 'QR' : '…'}</span>}
     </div>
   );
 }
@@ -69,7 +69,7 @@ function PayActions({ payload, T }) {
   );
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%', alignItems: 'center' }}>
-      <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{qrKindLabel(c, T)}</span>
+      <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65 }}>{qrKindLabel(c, T)}</span>
       {c.kind === 'vietqr' && (
         <div style={{ fontSize: 12.5, color: ink, textAlign: 'center', wordBreak: 'break-all' }}>
           {T('Số tài khoản', 'Account')}: <b>{c.info.account}</b>
@@ -85,7 +85,7 @@ function PayActions({ payload, T }) {
         () => copy(c.link).then(() => flash(T('Đã chép liên kết.', 'Link copied.'))), 'payqr-copy')}
       {c.kind === 'text' && btn(T('Chép nội dung mã', 'Copy QR content'),
         () => copy(c.text).then(() => flash(T('Đã chép nội dung mã.', 'QR content copied.'))), 'payqr-copy')}
-      {note && <span style={{ fontSize: 11.5, color: ink, textAlign: 'center' }}>{note}</span>}
+      {note && <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, textAlign: 'center' }}>{note}</span>}
     </div>
   );
 }
@@ -109,10 +109,10 @@ export function GuestPaymentQr({ orgId, path }) {
   if (!path || failed) return null;
   return (
     <div style={{ margin: '20px 22px 0' }} data-testid="payment-uploaded-qr-card">
-      <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Mã QR của người tổ chức', "Organizer's payment QR")}</span>
+      <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Mã QR của người tổ chức', "Organizer's payment QR")}</span>
       <div style={{ ...cardGlass({ marginTop: 10, padding: 18, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }) }}>
         <QrImage url={url} failed={failed} />
-        <span style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.7, textAlign: 'center' }}>
+        <span style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.5, color: ink, opacity: 0.7, textAlign: 'center' }}>
           {T('Quét bằng app ngân hàng hoặc ví, rồi nhập đúng số tiền và nội dung chuyển khoản bên dưới.',
              'Scan with your banking or wallet app, then enter the exact amount and the reference shown here.')}
         </span>
@@ -194,7 +194,7 @@ export function HostPaymentQr() {
 
   return (
     <div style={{ margin: '20px 22px 0' }} data-testid="payout-qr-section">
-      <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Mã QR nhận tiền', 'Payment QR code')}</span>
+      <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Mã QR nhận tiền', 'Payment QR code')}</span>
       <p style={{ fontSize: 12, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
         {T('Tải ảnh mã QR của ngân hàng hoặc ví bạn dùng (VietQR, MoMo, Zelle, Venmo, Cash App…). Khách sẽ thấy mã này khi thanh toán.',
            'Upload the QR from the bank or wallet you get paid on (VietQR, MoMo, Zelle, Venmo, Cash App…). Guests see it when they pay.')}
@@ -202,7 +202,7 @@ export function HostPaymentQr() {
       {hasQr && (
         <div style={{ ...cardGlass({ marginTop: 12, padding: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }) }}>
           <QrImage url={url} failed={failed} size={180} />
-          {payload && <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>{qrKindLabel(classifyQr(payload), T)}</span>}
+          {payload && <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>{qrKindLabel(classifyQr(payload), T)}</span>}
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>

@@ -67,7 +67,7 @@ export default function Disputes() {
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
                 <span style={{ ...display(16) }}>{d.guest_name || T('Khách', 'Guest')}</span>
-                <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>{d.event_name} ▪︎ {d.organizer_name}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>{d.event_name} ▪︎ {d.organizer_name}</span>
               </div>
               <span style={{ ...display(19, { whiteSpace: 'nowrap' }) }}>{formatVnd(d.total_vnd)}</span>
             </div>
@@ -93,7 +93,7 @@ export default function Disputes() {
                 />
               ) : (
                 <div style={{ ...insetField({ padding: '20px 12px', textAlign: 'center' }) }} data-testid="dispute-proof-loading">
-                  <span style={{ fontSize: 11.5, color: ink, opacity: 0.6 }}>{T('Đang tải ảnh biên lai…', 'Loading receipt image…')}</span>
+                  <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6 }}>{T('Đang tải ảnh biên lai…', 'Loading receipt image…')}</span>
                 </div>
               )
             )}
@@ -118,8 +118,8 @@ export default function Disputes() {
               <div style={{ ...insetField({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }) }} data-testid="dispute-audit-trail">
                 {s.auditTrail.map(a => (
                   <div key={a.id} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{a.action}</span>
-                    <span style={{ fontSize: 10.5, color: ink, opacity: 0.65 }}>
+                    <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{a.action}</span>
+                    <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65 }}>
                       {new Date(a.at).toISOString().replace('T', ' ').replace('Z', '')}
                       {a.actor_kind ? ` ▪︎ ${a.actor_kind}` : ''}{a.ip ? ` ▪︎ ${a.ip}` : ''}
                     </span>
@@ -153,7 +153,7 @@ export default function Disputes() {
                 pending purge in 72h) so this is the one chance to notice
                 and re-send before the transcript is gone for good. */}
             {s.disputeEmailError && (
-              <p style={{ fontSize: 11.5, color: alert, margin: 0 }} data-testid="dispute-email-error">
+              <p style={{ fontSize: 'var(--bb-text-meta)', color: alert, margin: 0 }} data-testid="dispute-email-error">
                 {T('Email xác nhận chưa gửi được: ', "Confirmation email didn't send: ") + s.disputeEmailError}
               </p>
             )}
@@ -168,7 +168,7 @@ export default function Disputes() {
 
         {closed.length > 0 && (
           <>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, marginTop: 8 }}>{T('Đã xử lý', 'Resolved')}</span>
+            <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, marginTop: 8 }}>{T('Đã xử lý', 'Resolved')}</span>
             {closed.map(d => {
               const isExpanded = expandedClosed === d.booking_id;
               return (
@@ -214,8 +214,8 @@ export default function Disputes() {
                         <div style={{ ...insetField({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }) }} data-testid="dispute-audit-trail-closed">
                           {s.auditTrail.map(a => (
                             <div key={a.id} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                              <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{a.action}</span>
-                              <span style={{ fontSize: 10.5, color: ink, opacity: 0.65 }}>
+                              <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{a.action}</span>
+                              <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65 }}>
                                 {new Date(a.at).toISOString().replace('T', ' ').replace('Z', '')}
                                 {a.actor_kind ? ` ▪︎ ${a.actor_kind}` : ''}{a.ip ? ` ▪︎ ${a.ip}` : ''}
                               </span>
@@ -238,7 +238,7 @@ export default function Disputes() {
 function Line({ label, value }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-      <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{label}</span>
+      <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65 }}>{label}</span>
       <span style={{ fontSize: 12, fontWeight: 600, color: ink, wordBreak: 'break-all', textAlign: 'right' }}>{value}</span>
     </div>
   );

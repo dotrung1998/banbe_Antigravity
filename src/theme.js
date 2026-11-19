@@ -181,7 +181,7 @@ export const CHIP_COLORS = {
 };
 
 export const photoChip = (bg, extra) => ({
-  position: 'absolute', fontSize: 10, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase',
+  position: 'absolute', fontSize: 'var(--bb-text-kicker)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase',
   padding: '6px 10px', borderRadius: 12, color: '#FFFFFF', textShadow: '0 1px 2px rgba(27,25,22,0.4)',
   background: 'linear-gradient(165deg, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.12) 34%, rgba(255,255,255,0) 62%), ' + bg,
   backdropFilter: 'blur(16px) saturate(1.6)', WebkitBackdropFilter: 'blur(16px) saturate(1.6)',

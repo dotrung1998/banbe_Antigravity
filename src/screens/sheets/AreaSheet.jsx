@@ -129,7 +129,7 @@ export default function AreaSheet({ embedded = false, onDone }) {
   );
   const rowBase = { display: 'flex', alignItems: 'baseline', gap: 8, padding: embedded ? '9px 0' : '13px 0', borderBottom: `1px solid ${rule}`, cursor: 'pointer', fontSize: 14.5, color: ink };
   const legacyCaption = (
-    <span style={{ fontSize: 10.5, fontWeight: 400, color: ink, opacity: 0.55 }}>{T('khu vực quen thuộc', 'familiar area')}</span>
+    <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 400, color: ink, opacity: 0.55 }}>{T('khu vực quen thuộc', 'familiar area')}</span>
   );
 
   const centeredBackdrop = { position: 'absolute', inset: 0, zIndex: 21, background: 'rgba(12,12,12,0.32)', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '4px 16px 86px', boxSizing: 'border-box', animation: 'banbeFade 0.2s ease both' };
@@ -176,7 +176,7 @@ export default function AreaSheet({ embedded = false, onDone }) {
             style={{ position: 'absolute', top: 20, right: 20, color: ink, opacity: 0.6, cursor: 'pointer', padding: 4, lineHeight: 0 }}
           ><svg width={13} height={13} viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round"><path d="M2 2l8 8M10 2l-8 8" /></svg></span>
         )}
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>Khu vực</span>
+        <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>Khu vực</span>
         <span data-testid="area-sheet-current" style={{ fontSize: 12, color: ink, opacity: 0.65, marginTop: 4 }}>
           {T('Đang xem: ', 'Showing: ')}{curArea.key === LOCATION_ALL ? T('Tất cả khu vực', 'All areas') : curArea.label}
         </span>
@@ -194,7 +194,7 @@ export default function AreaSheet({ embedded = false, onDone }) {
         <div data-testid="area-sheet-tree" style={{ display: 'flex', flexDirection: 'column', marginTop: 6, overflowY: 'auto', minHeight: 0, maxHeight: embedded ? '60vh' : 380 }}>
           {s.screen === 'mapExplore' && !embedded && cityRows.length > 0 && (
             <div data-testid="area-sheet-cities" style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: ink, opacity: 0.6, letterSpacing: '0.04em', textTransform: 'uppercase', padding: '10px 0 2px' }}>{T('Thành phố', 'Cities')}</span>
+              <span style={{ fontSize: 'var(--bb-text-kicker)', fontWeight: 600, color: ink, opacity: 0.6, letterSpacing: '0.04em', textTransform: 'uppercase', padding: '10px 0 2px' }}>{T('Thành phố', 'Cities')}</span>
               {cityRows.map(({ id, count }) => {
                 const c = CITY_BY_ID.get(id);
                 if (!c) return null;
@@ -204,12 +204,12 @@ export default function AreaSheet({ embedded = false, onDone }) {
                     style={rowBase}>
                     {spacer}
                     <span style={{ flex: 1 }}>{lang === 'en' ? c.en : c.vi}</span>
-                    <span style={{ fontSize: 11, color: ink }}>{count ? countLabel(count) : T('Chưa có sự kiện', 'No events yet')}</span>
+                    <span style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{count ? countLabel(count) : T('Chưa có sự kiện', 'No events yet')}</span>
                     <span aria-hidden style={{ fontSize: 13, color: ink, opacity: 0.6 }}>›</span>
                   </div>
                 );
               })}
-              <span style={{ fontSize: 11, fontWeight: 600, color: ink, opacity: 0.6, letterSpacing: '0.04em', textTransform: 'uppercase', padding: '14px 0 2px' }}>{T('Khu vực', 'Areas')}</span>
+              <span style={{ fontSize: 'var(--bb-text-kicker)', fontWeight: 600, color: ink, opacity: 0.6, letterSpacing: '0.04em', textTransform: 'uppercase', padding: '14px 0 2px' }}>{T('Khu vực', 'Areas')}</span>
             </div>
           )}
           {!search && (
@@ -254,11 +254,11 @@ export default function AreaSheet({ embedded = false, onDone }) {
                     <span>{label}</span>
                     {node.legacy && legacyCaption}
                     {isMatch && node.depth > 0 && (
-                      <span style={{ fontSize: 11, fontWeight: 400, color: ink, opacity: 0.55 }}>{pathText(node)}</span>
+                      <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 400, color: ink, opacity: 0.55 }}>{pathText(node)}</span>
                     )}
                   </span>
                   {expandable && !on && curArea.key !== LOCATION_ALL && locationAncestorIds(tree, curArea.key).includes(node.id) && <span aria-hidden style={{ width: 5, height: 5, borderRadius: '50%', background: ink, flex: 'none', alignSelf: 'center' }} />}
-                  <span style={{ fontSize: 11, color: ink, fontWeight: 400, marginLeft: 'auto' }}>{countLabel(node.count)}</span>
+                  <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, fontWeight: 400, marginLeft: 'auto' }}>{countLabel(node.count)}</span>
                   {check(on)}
                 </button>
               </div>
@@ -277,7 +277,7 @@ export default function AreaSheet({ embedded = false, onDone }) {
       {/* Inline navigation bar: "Khu vực" over the current pick, Done at the trailing edge (iOS's principal toolbar item). */}
       <div style={{ position: 'relative', flex: 'none', minHeight: 48, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 80px' }}>
         <span style={{ fontSize: 16, fontWeight: 600, whiteSpace: 'nowrap' }}>Khu vực</span>
-        <span data-testid="area-sheet-current" style={{ fontSize: 11.5, color: ink, opacity: 0.6, marginTop: 1, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span data-testid="area-sheet-current" style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6, marginTop: 1, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {T('Đang xem: ', 'Showing: ')}{currentName}
         </span>
         <button type="button" onClick={closeArea} data-testid="filter-area-done"
@@ -340,7 +340,7 @@ export default function AreaSheet({ embedded = false, onDone }) {
                       <span>{label}</span>
                       {node.legacy && legacyCaption}
                       {isMatch && node.depth > 0 && (
-                        <span style={{ fontSize: 11, fontWeight: 400, color: ink, opacity: 0.55 }}>{pathText(node)}</span>
+                        <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 400, color: ink, opacity: 0.55 }}>{pathText(node)}</span>
                       )}
                     </span>
                     {contains && <span aria-hidden style={{ width: 6, height: 6, borderRadius: '50%', background: clay, flex: 'none' }} />}

@@ -480,12 +480,12 @@ export default function ProfileShareSheet({ open, onClose, kindLabel, name, subt
             style={{ width: CARD_W * 0.92, height: CARD_H * 0.92, borderRadius: 26, boxShadow: '0 6px 14px rgba(0,0,0,0.18)', display: 'block', opacity: loaded ? 1 : 0.35, transition: 'opacity 0.2s' }}
           />
         </div>
-        <p style={{ fontSize: 11, color: ink, opacity: 0.65, lineHeight: 1.5, margin: '0 0 14px' }}>
+        <p style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65, lineHeight: 1.5, margin: '0 0 14px' }}>
           {T('Người nhận quét mã QR bằng camera điện thoại để mở trong ứng dụng banbe (cần cài sẵn ứng dụng).', 'Recipients scan the QR with their phone camera to open it in the banbe app (the app must be installed).')}
         </p>
 
         {canEdit && (<>
-        <div style={{ fontSize: 11.5, fontWeight: 600, color: ink, marginBottom: 8 }}>{T('Phong cách', 'Style')}</div>
+        <div style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, marginBottom: 8 }}>{T('Phong cách', 'Style')}</div>
         <div style={{ display: 'flex', gap: 12, overflowX: 'auto', padding: '4px 4px 8px' }}>
           {SHARE_CARD_PRESETS.map(p => (
             <button key={p.nameEN} onClick={() => pickPreset(p)} data-testid={`${idPrefix}-preset-${p.nameEN}`}
@@ -495,7 +495,7 @@ export default function ProfileShareSheet({ open, onClose, kindLabel, name, subt
                 background: `linear-gradient(135deg, ${p.topHex}, ${p.bottomHex})`,
                 boxShadow: `0 0 0 1px ${rule}${presetActive(p) ? `, 0 0 0 3px ${paper}, 0 0 0 5.5px ${ink}` : ''}`,
               }} />
-              <span style={{ fontSize: 10.5 }}>{T(p.name, p.nameEN)}</span>
+              <span style={{ fontSize: 'var(--bb-text-meta)' }}>{T(p.name, p.nameEN)}</span>
             </button>
           ))}
         </div>
@@ -534,7 +534,7 @@ export default function ProfileShareSheet({ open, onClose, kindLabel, name, subt
             <button onClick={nativeShare} data-testid={`${idPrefix}-native-share`} style={{ ...pill, flex: 1, borderRadius: 14, padding: '13px 0' }}>{T('Chia sẻ…', 'Share…')}</button>
           )}
         </div>
-        <p aria-live="polite" style={{ minHeight: 16, textAlign: 'center', fontSize: 11.5, color: flash.startsWith(T('Không', 'Could not')) ? alert : ink, opacity: 0.8, margin: '10px 0 0' }}>{flash}</p>
+        <p aria-live="polite" style={{ minHeight: 16, textAlign: 'center', fontSize: 'var(--bb-text-meta)', color: flash.startsWith(T('Không', 'Could not')) ? alert : ink, opacity: 0.8, margin: '10px 0 0' }}>{flash}</p>
       </div>
     </NativeSheet>
   );
@@ -560,7 +560,7 @@ export function ShareCardRow({ host = false, onClick, testId, marginTop = 14 }) 
         <span style={{ fontSize: 15, fontWeight: 600 }}>
           {host ? T('Chia sẻ thẻ tổ chức của bạn', 'Share your host card') : T('Chia sẻ thẻ hồ sơ của bạn', 'Share your profile card')}
         </span>
-        <span style={{ fontSize: 11.5, opacity: 0.8 }}>{T('Thẻ có mã QR, tuỳ chỉnh màu và ảnh nền', 'A card with a QR code, pick your colours and background')}</span>
+        <span style={{ fontSize: 'var(--bb-text-meta)', opacity: 0.8 }}>{T('Thẻ có mã QR, tuỳ chỉnh màu và ảnh nền', 'A card with a QR code, pick your colours and background')}</span>
       </div>
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--bb-honey)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ flex: 'none' }}>
         <path d="M12 3v12M7 8l5-5 5 5M5 14v6h14v-6" />

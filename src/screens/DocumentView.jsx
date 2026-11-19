@@ -124,7 +124,7 @@ export default function DocumentView() {
                 rows={2} data-testid="document-replace-reason"
                 style={{ fontSize: 12.5, padding: 10, borderRadius: 10, border: `1px solid rgba(27,25,22,0.16)`, fontFamily: "var(--bb-face, 'Be Vietnam Pro'), sans-serif", resize: 'vertical' }}
               />
-              {errorMessage && <p style={{ fontSize: 11.5, color: alert, margin: 0 }} data-testid="document-replace-error">{errorMessage}</p>}
+              {errorMessage && <p style={{ fontSize: 'var(--bb-text-meta)', color: alert, margin: 0 }} data-testid="document-replace-error">{errorMessage}</p>}
               <div style={{ display: 'flex', gap: 8 }}>
                 <div onClick={() => { setReplacing(false); setPendingFile(null); setUploadError(''); }} style={{ flex: 1, fontSize: 12, textAlign: 'center', color: ink, opacity: 0.7, padding: '10px 0', cursor: 'pointer' }}>
                   {T('Huỷ', 'Cancel')}

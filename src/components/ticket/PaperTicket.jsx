@@ -12,7 +12,7 @@ export default function PaperTicket({ strip, holderLabel, title, tiles, onOpenDe
         {strip}
         <div style={{ padding: '4px 8px 0' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-            <div style={{ flex: 1, minWidth: 0, fontSize: 10.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: ink3, overflowWrap: 'anywhere' }}>{holderLabel}</div>
+            <div style={{ flex: 1, minWidth: 0, fontSize: 'var(--bb-text-kicker)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: ink3, overflowWrap: 'anywhere' }}>{holderLabel}</div>
             {/* The name and this pill both open the Event details sheet. */}
             {onOpenDetails && (
               <button type="button" className="bb-press" onClick={(e) => onOpenDetails(e.currentTarget)} aria-haspopup="dialog" data-testid="confirmed-view-event"
@@ -37,7 +37,7 @@ export default function PaperTicket({ strip, holderLabel, title, tiles, onOpenDe
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {shown.map(t => (
               <div key={t.key} data-testid={`confirmed-tile-${t.key}`} style={{ flex: '1 1 96px', minWidth: 0, boxSizing: 'border-box', background: blockInset, borderRadius: 14, padding: '9px 12px' }}>
-                <div style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: ink3 }}>{t.label}</div>
+                <div style={{ fontSize: 'var(--bb-text-kicker)', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: ink3 }}>{t.label}</div>
                 <div style={{ marginTop: 2, fontSize: 14, fontWeight: 600, lineHeight: 1.3, color: ink, ...(t.key === 'date' ? { whiteSpace: 'nowrap' } : { overflowWrap: 'anywhere' }) }}>{t.value}</div>
               </div>
             ))}

@@ -114,7 +114,7 @@ export default function RefundAccounts() {
       <div style={{ padding: '14px 22px 0' }}>
         <h1 style={{ ...display(24, { margin: 0, display: 'flex', alignItems: 'center', gap: 10 }) }}><RowIcon kind="banknote" size={34} accent={ROW_ACCENT_COLORS.payments} />{T('Tài Khoản Nhận Hoàn Tiền', 'Refund Accounts')}</h1>
         {s.refundDestinations.length > 1 && (
-          <p style={{ fontSize: 11.5, color: ink, opacity: 0.6, margin: '6px 0 0' }}>{T('Kéo để sắp xếp', 'Drag to reorder')}</p>
+          <p style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6, margin: '6px 0 0' }}>{T('Kéo để sắp xếp', 'Drag to reorder')}</p>
         )}
       </div>
 
@@ -124,7 +124,7 @@ export default function RefundAccounts() {
         </p>
       )}
       {!formOpen && s.refundDestinationsReordering && (
-        <p style={{ margin: '14px 22px 0', fontSize: 11.5, color: ink, opacity: 0.6 }} data-testid="refund-account-reorder-saving">
+        <p style={{ margin: '14px 22px 0', fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6 }} data-testid="refund-account-reorder-saving">
           {T('Đang lưu thứ tự…', 'Saving order…')}
         </p>
       )}
@@ -176,12 +176,12 @@ export default function RefundAccounts() {
                       style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', cursor: 'pointer' }}
                     >
                       <span style={{ ...display(14) }}>{d.label || T('Tài khoản', 'Account')}</span>
-                      <span style={{ fontSize: 11.5, color: ink, opacity: 0.6 }}>
+                      <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6 }}>
                         {d.bank_name} ▪︎ {maskAccountNumber(d.account_number)}
                       </span>
                     </div>
                     {d.is_default ? (
-                      <span style={{ flex: 'none', fontSize: 11, fontWeight: 600, color: ink, opacity: 0.55 }}>{T('Mặc định', 'Default')}</span>
+                      <span style={{ flex: 'none', fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.55 }}>{T('Mặc định', 'Default')}</span>
                     ) : (
                       <span
                         onClick={() => setOpenMenuId(openMenuId === d.id ? null : d.id)}
@@ -194,11 +194,11 @@ export default function RefundAccounts() {
                   </div>
                   {openMenuId === d.id && (
                     <div style={{ padding: '10px 14px 14px 42px', display: 'flex', flexDirection: 'column', gap: 8, borderBottom: i < arr.length - 1 ? `1px solid ${rule}` : 'none' }}>
-                      <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>
+                      <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>
                         {revealedId === d.id ? d.account_number : maskAccountNumber(d.account_number)} ▪︎ {d.account_holder_name}
                       </span>
                       <div style={{ display: 'flex', gap: 14 }}>
-                        <span onClick={() => setRevealedId(revealedId === d.id ? null : d.id)} style={{ fontSize: 11.5, color: ink, textDecoration: 'underline', cursor: 'pointer' }}>
+                        <span onClick={() => setRevealedId(revealedId === d.id ? null : d.id)} style={{ fontSize: 'var(--bb-text-meta)', color: ink, textDecoration: 'underline', cursor: 'pointer' }}>
                           {revealedId === d.id ? T('Ẩn', 'Hide') : T('Hiện số TK', 'Reveal')}
                         </span>
                         <span
@@ -209,21 +209,21 @@ export default function RefundAccounts() {
                               setTimeout(() => setCopiedId(cur => (cur === d.id ? null : cur)), 1500);
                             } catch { /* clipboard unavailable */ }
                           }}
-                          style={{ fontSize: 11.5, color: ink, textDecoration: 'underline', cursor: 'pointer' }}
+                          style={{ fontSize: 'var(--bb-text-meta)', color: ink, textDecoration: 'underline', cursor: 'pointer' }}
                         >
                           {copiedId === d.id ? T('Đã sao chép', 'Copied') : T('Sao chép', 'Copy')}
                         </span>
-                        <span onClick={() => openEditForm(d)} style={{ fontSize: 11.5, color: ink, textDecoration: 'underline', cursor: 'pointer' }}>{T('Sửa', 'Edit')}</span>
+                        <span onClick={() => openEditForm(d)} style={{ fontSize: 'var(--bb-text-meta)', color: ink, textDecoration: 'underline', cursor: 'pointer' }}>{T('Sửa', 'Edit')}</span>
                         {!d.is_default && (
-                          <span onClick={() => setDefaultRefundDestination(d.id)} style={{ fontSize: 11.5, color: ink, textDecoration: 'underline', cursor: 'pointer' }}>{T('Đặt mặc định', 'Set default')}</span>
+                          <span onClick={() => setDefaultRefundDestination(d.id)} style={{ fontSize: 'var(--bb-text-meta)', color: ink, textDecoration: 'underline', cursor: 'pointer' }}>{T('Đặt mặc định', 'Set default')}</span>
                         )}
-                        <span onClick={() => setConfirmDeleteId(d.id)} style={{ fontSize: 11.5, color: alert, textDecoration: 'underline', cursor: 'pointer' }}>{T('Xoá', 'Delete')}</span>
+                        <span onClick={() => setConfirmDeleteId(d.id)} style={{ fontSize: 'var(--bb-text-meta)', color: alert, textDecoration: 'underline', cursor: 'pointer' }}>{T('Xoá', 'Delete')}</span>
                       </div>
                       {confirmDeleteId === d.id && (
                         <div style={{ display: 'flex', gap: 10 }}>
-                          <span style={{ fontSize: 11.5, color: ink, flex: 1 }}>{T('Xoá tài khoản này?', 'Delete this account?')}</span>
-                          <span onClick={() => setConfirmDeleteId(null)} style={{ fontSize: 11.5, color: ink, cursor: 'pointer' }}>{T('Huỷ', 'Cancel')}</span>
-                          <span onClick={async () => { await deleteRefundDestination(d.id); setConfirmDeleteId(null); }} style={{ fontSize: 11.5, color: alert, cursor: 'pointer' }}>{T('Xoá', 'Delete')}</span>
+                          <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, flex: 1 }}>{T('Xoá tài khoản này?', 'Delete this account?')}</span>
+                          <span onClick={() => setConfirmDeleteId(null)} style={{ fontSize: 'var(--bb-text-meta)', color: ink, cursor: 'pointer' }}>{T('Huỷ', 'Cancel')}</span>
+                          <span onClick={async () => { await deleteRefundDestination(d.id); setConfirmDeleteId(null); }} style={{ fontSize: 'var(--bb-text-meta)', color: alert, cursor: 'pointer' }}>{T('Xoá', 'Delete')}</span>
                         </div>
                       )}
                     </div>

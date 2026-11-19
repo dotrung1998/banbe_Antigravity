@@ -134,7 +134,7 @@ export default function OrganizerProfile() {
               {/* Organizer Team pass (2026-09-27, Stage 3) — a SEPARATE
                   long-form intro, never overwriting orgRegDesc above. */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>{T('Giới thiệu chi tiết (không bắt buộc)', 'Long-form intro (optional)')}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>{T('Giới thiệu chi tiết (không bắt buộc)', 'Long-form intro (optional)')}</span>
                 <textarea
                   value={s.orgRegIntroLong} onChange={orgRegIntroLongType} rows={5} maxLength={4000}
                   data-testid="organizer-profile-intro-long-input"
@@ -159,7 +159,7 @@ export default function OrganizerProfile() {
                   {T('Huỷ', 'Cancel')}
                 </span>
               </div>
-              {s.orgProfileError && <p style={{ fontSize: 11.5, color: alert, margin: 0 }}>{s.orgProfileError}</p>}
+              {s.orgProfileError && <p style={{ fontSize: 'var(--bb-text-meta)', color: alert, margin: 0 }}>{s.orgProfileError}</p>}
             </div>
   );
   const qrEl = qrOpen && (
@@ -243,7 +243,7 @@ export default function OrganizerProfile() {
         <div style={{ ...cardGlass({ margin: '14px 20px 0', padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }) }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
             <span style={{ fontSize: 13, color: ink }}>{T('Xem trong ứng dụng banbe', 'Open in the banbe app')}</span>
-            <span style={{ fontSize: 11.5, lineHeight: 1.45, color: ink, opacity: 0.7 }}>{T('Chưa có ứng dụng? Bạn vẫn xem được mọi thứ ngay tại đây.', "Don't have it? Everything here works in the browser too.")}</span>
+            <span style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.45, color: ink, opacity: 0.7 }}>{T('Chưa có ứng dụng? Bạn vẫn xem được mọi thứ ngay tại đây.', "Don't have it? Everything here works in the browser too.")}</span>
           </div>
           <a
             href={`banbe://organizer/${s.eventKey}`}
@@ -360,7 +360,7 @@ export default function OrganizerProfile() {
 
       {!!s.organizerProfileUpcoming.length && (
         <div style={{ margin: '22px 20px 0' }}>
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Sự kiện sắp tới', 'Upcoming events')}</span>
+          <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Sự kiện sắp tới', 'Upcoming events')}</span>
           <div style={{ display: 'flex', flexDirection: 'column', marginTop: 8 }}>
             {s.organizerProfileUpcoming.map((e, i, arr) => (
               <div key={e.key} onClick={() => goEvent(e.key)} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '10px 0', borderBottom: i < arr.length - 1 ? `1px solid ${rule}` : 'none', cursor: 'pointer' }}>
@@ -381,9 +381,9 @@ export default function OrganizerProfile() {
             onClick={() => setPastOpen(o => !o)}
             style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
           >
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Sự kiện đã qua', 'Past events')}</span>
-            <span style={{ fontSize: 11, fontWeight: 600, color: ink, background: 'rgba(27,25,22,0.08)', borderRadius: 999, padding: '2px 7px' }}>{s.organizerProfilePast.length}</span>
-            <span style={{ marginLeft: 'auto', fontSize: 11, color: ink, display: 'inline-block', transform: pastOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}>▾</span>
+            <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Sự kiện đã qua', 'Past events')}</span>
+            <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, background: 'rgba(27,25,22,0.08)', borderRadius: 999, padding: '2px 7px' }}>{s.organizerProfilePast.length}</span>
+            <span style={{ marginLeft: 'auto', fontSize: 'var(--bb-text-meta)', color: ink, display: 'inline-block', transform: pastOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}>▾</span>
           </div>
           {pastOpen && (
             <div style={{ display: 'flex', flexDirection: 'column', marginTop: 8 }}>
@@ -400,8 +400,8 @@ export default function OrganizerProfile() {
 
       <div style={{ margin: '22px 20px 30px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <span style={{ fontSize: 11.5, color: ink }}>{T('Ảnh của', 'Photos by')} {org.name}</span>
-          <span style={{ fontSize: 11, color: ink }}>{T('do người tổ chức đăng', 'posted by the organizer')}</span>
+          <span style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{T('Ảnh của', 'Photos by')} {org.name}</span>
+          <span style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{T('do người tổ chức đăng', 'posted by the organizer')}</span>
         </div>
         {/* STAGE B (2026-09-25) — real event_photos rows (loadOrganizerPhotos
             above), not the static demo `orgGallery` this used to render.
@@ -457,7 +457,7 @@ export default function OrganizerProfile() {
       />
 
       {s.profileLinkCopiedFlash && (
-        <p style={{ textAlign: 'center', fontSize: 11.5, color: ink, opacity: 0.7, margin: '10px 0 0' }}>{T('Đã sao chép link tổ chức', "Organizer link copied")}</p>
+        <p style={{ textAlign: 'center', fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7, margin: '10px 0 0' }}>{T('Đã sao chép link tổ chức', "Organizer link copied")}</p>
       )}
     </div>
   );

@@ -301,14 +301,14 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
               style={{ ...navBtn, width: 'auto', display: 'inline-flex', gap: 6, padding: '0 12px', borderRadius: 999, fontSize: 13.5, fontWeight: 600, margin: '0 0 0 8px' }}>
               <Icon d={GRID} size={15} />
               <span>{T('Loại', 'Type')}</span>
-              <span aria-hidden="true" style={{ fontSize: 10, opacity: 0.55 }}>▾</span>
+              <span aria-hidden="true" style={{ fontSize: 'var(--bb-text-meta)', opacity: 0.55 }}>▾</span>
             </button>
             {/* Filters closes the chip row: an icon the size of the nav circles, the number of filters on as a badge. */}
             <button type="button" onClick={() => setFiltersOpen(true)} data-testid="browse-filters-button"
               aria-label={nFilters ? T(`Bộ lọc, đang bật ${nFilters}`, `Filters, ${nFilters} on`) : T('Bộ lọc', 'Filters')}
               style={{ ...navBtn, position: 'relative', margin: '0 20px 0 8px' }}>
               <Icon d={SLIDERS} size={18} />
-              {nFilters > 0 && <span data-testid="browse-filter-badge" style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, padding: '0 4px', boxSizing: 'border-box', borderRadius: 999, background: 'var(--bb-fg)', color: 'var(--bb-bg)', boxShadow: '0 0 0 2px var(--bb-bg)', fontSize: 11, fontWeight: 700, display: 'grid', placeItems: 'center' }}>{nFilters}</span>}
+              {nFilters > 0 && <span data-testid="browse-filter-badge" style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, padding: '0 4px', boxSizing: 'border-box', borderRadius: 999, background: 'var(--bb-fg)', color: 'var(--bb-bg)', boxShadow: '0 0 0 2px var(--bb-bg)', fontSize: 'var(--bb-text-meta)', fontWeight: 700, display: 'grid', placeItems: 'center' }}>{nFilters}</span>}
             </button>
           </div>
 

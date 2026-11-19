@@ -12,7 +12,7 @@ const Chevron = ({ stroke }) => (
   <svg aria-hidden width="7" height="12" viewBox="0 0 8 14" fill="none" stroke={stroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1.5 1.5 6.5 7l-5 5.5" /></svg>
 );
 
-const sectionLabel = { fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: ink3, margin: '22px 0 8px' };
+const sectionLabel = { fontSize: 'var(--bb-text-kicker)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: ink3, margin: '22px 0 8px' };
 
 export default function EventDetailsSheet({
   title, cover, tiles, about, included, orgName, onMessage, place, hostNote, distance, directionsUrl, policyNote, over,
@@ -55,7 +55,7 @@ export default function EventDetailsSheet({
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
               {shown.map(t => (
                 <div key={t.key} data-testid={`event-details-tile-${t.key}`} style={{ flex: '1 1 96px', minWidth: 0, boxSizing: 'border-box', background: block, borderRadius: 14, padding: '9px 12px' }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: ink3 }}>{t.label}</div>
+                  <div style={{ fontSize: 'var(--bb-text-kicker)', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: ink3 }}>{t.label}</div>
                   <div style={{ marginTop: 2, fontSize: 14, fontWeight: 600, lineHeight: 1.3, color: ink, overflowWrap: 'anywhere' }}>{t.value}</div>
                 </div>
               ))}
@@ -112,7 +112,7 @@ export default function EventDetailsSheet({
                 </div>
                 {hostNote && (
                   <div data-testid="event-details-host-note" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    <span style={{ fontSize: 11.5, fontWeight: 600, color: ink2 }}>{T('Lời nhắn từ host', 'Note from the host')}</span>
+                    <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink2 }}>{T('Lời nhắn từ host', 'Note from the host')}</span>
                     <span style={{ fontSize: 13, lineHeight: 1.5, color: ink, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{hostNote}</span>
                   </div>
                 )}

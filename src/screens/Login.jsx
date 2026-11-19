@@ -135,7 +135,7 @@ export default function Login() {
       </div>
 
       <div style={{ display: 'flex', gap: 16, marginTop: 24, borderBottom: `1px solid ${rule}` }}>
-        {['login', 'signup'].map(mode => <span key={mode} onClick={() => changeAuthMode(mode)} style={{ fontSize: 11.5, color: ink, fontWeight: s.authMode === mode ? 600 : 400, borderBottom: s.authMode === mode ? `2px solid ${ink}` : '2px solid transparent', paddingBottom: 6, marginBottom: -1, cursor: 'pointer' }}>{mode === 'login' ? T('Đăng nhập', 'Log in') : T('Đăng ký', 'Sign up')}</span>)}
+        {['login', 'signup'].map(mode => <span key={mode} onClick={() => changeAuthMode(mode)} style={{ fontSize: 'var(--bb-text-meta)', color: ink, fontWeight: s.authMode === mode ? 600 : 400, borderBottom: s.authMode === mode ? `2px solid ${ink}` : '2px solid transparent', paddingBottom: 6, marginBottom: -1, cursor: 'pointer' }}>{mode === 'login' ? T('Đăng nhập', 'Log in') : T('Đăng ký', 'Sign up')}</span>)}
       </div>
       <h2 style={{ ...display(25, { lineHeight: 1.2, margin: '16px 0 0' }) }}>{s.authMode === 'signup' ? T('Tạo tài khoản banbe', 'Create your banbe account') : T('Chào mừng trở lại', 'Welcome back')}</h2>
       <p style={{ fontSize: 13.5, lineHeight: 1.55, color: ink, margin: '12px 0 0' }}>{T('Một tài khoản cho tất cả. Muốn tổ chức sự kiện, bạn chỉ cần bật chế độ tổ chức trong Tài khoản.', 'One account for everything. To host events, just switch on organizer mode from your Account.')}</p>
@@ -151,9 +151,9 @@ export default function Login() {
         <div aria-disabled="true" data-testid="login-facebook"
           style={{ ...oauthBtn, opacity: 0.62, borderStyle: 'dashed', cursor: 'not-allowed', pointerEvents: 'none' }}>
           {T('Tiếp tục với Facebook', 'Continue with Facebook')}
-          <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, border: `1px solid ${rule}` }}>{T('Sắp có', 'Coming soon')}</span>
+          <span style={{ marginLeft: 8, fontSize: 'var(--bb-text-meta)', fontWeight: 600, padding: '2px 8px', borderRadius: 999, border: `1px solid ${rule}` }}>{T('Sắp có', 'Coming soon')}</span>
         </div>
-        <p style={{ fontSize: 11.5, lineHeight: 1.4, color: ink, opacity: 0.7, margin: '-2px 0 0', textAlign: 'center' }} data-testid="login-facebook-note">{T('Đăng nhập Facebook đang được phát triển.', 'Facebook login is under development.')}</p>
+        <p style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.4, color: ink, opacity: 0.7, margin: '-2px 0 0', textAlign: 'center' }} data-testid="login-facebook-note">{T('Đăng nhập Facebook đang được phát triển.', 'Facebook login is under development.')}</p>
       </div>
 
       {awaitingCode ? (

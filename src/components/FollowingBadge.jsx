@@ -8,7 +8,7 @@ export default function FollowingBadge({ T, testId = 'following-badge', style })
     <span
       data-testid={testId}
       aria-label={label}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 600, color: ink, opacity: 0.8, whiteSpace: 'nowrap', ...style }}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.8, whiteSpace: 'nowrap', ...style }}
     >
       <span aria-hidden="true">✓</span>{label}
     </span>

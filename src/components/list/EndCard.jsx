@@ -56,7 +56,7 @@ export default function EndCard({ card: data, variant, onAction, T }) {
     <div data-testid="list-end-card" data-kind={data.kind} className="bb-end"
       style={{ ...card, flex: fill ? 1 : 'none', margin: '6px 20px 14px', padding: mid ? '16px 20px' : '20px', borderRadius: 22, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'flex-start', textAlign: 'left' }}>
       <style>{CSS}</style>
-      {c.eyebrow && <span style={{ fontSize: 11, letterSpacing: '0.13em', textTransform: 'uppercase', color: 'var(--bb-fg-3)', fontWeight: 700 }}>{tx(c.eyebrow)}</span>}
+      {c.eyebrow && <span style={{ fontSize: 'var(--bb-text-kicker)', letterSpacing: '0.13em', textTransform: 'uppercase', color: 'var(--bb-fg-3)', fontWeight: 700 }}>{tx(c.eyebrow)}</span>}
       <div style={{ fontFamily: SERIF, fontSize: mid ? 19 : 22, fontWeight: 400, lineHeight: 1.18, letterSpacing: '-0.02em', margin: mid ? '6px 0 0' : '8px 0 6px' }}>{tx(c.title)}</div>
       {c.body && !mid && <p style={{ fontSize: 13, lineHeight: 1.55, color: 'var(--bb-fg-2)', margin: 0 }}>{tx(c.body)}</p>}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: mid ? 12 : 16 }}>

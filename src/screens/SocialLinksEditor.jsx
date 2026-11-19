@@ -17,7 +17,7 @@ export const LINK_PLATFORMS = [
 export function SocialLinksEditor({ T, links, open, onToggleOpen, onAdd, onSetField, onRemove, testPrefix }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div onClick={onToggleOpen} data-testid={`${testPrefix}-toggle`} style={{ fontSize: 11.5, fontWeight: 600, color: ink, cursor: 'pointer' }}>
+      <div onClick={onToggleOpen} data-testid={`${testPrefix}-toggle`} style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, cursor: 'pointer' }}>
         {T('Thêm liên kết', 'Add links')} {open ? '▾' : '▸'}
       </div>
       {open && (

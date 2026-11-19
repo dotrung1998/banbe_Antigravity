@@ -246,7 +246,7 @@ export default function QrScanSheet() {
         <span style={{ fontSize: 14 }} data-testid="scanner-guest-age">
           {guest.age != null ? T(`${guest.age} tuổi`, `Age ${guest.age}`) : T('Chưa có ngày sinh trong hồ sơ', 'No date of birth on file')}
         </span>
-        {guest.attendeeId && <span style={{ fontSize: 11.5, opacity: 0.65 }}>{T('Vé cá nhân (1 người)', 'Individual ticket (1 person)')}</span>}
+        {guest.attendeeId && <span style={{ fontSize: 'var(--bb-text-meta)', opacity: 0.65 }}>{T('Vé cá nhân (1 người)', 'Individual ticket (1 person)')}</span>}
         {guest.alreadyCheckedIn && <span style={{ fontSize: 12.5, color: alert }}>{T('Khách này đã được điểm danh.', 'This guest is already checked in.')}</span>}
       </div>
     );

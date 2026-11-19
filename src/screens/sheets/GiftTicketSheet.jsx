@@ -39,7 +39,7 @@ function SheetFrame({ onClose, title, testId, children }) {
 }
 
 const inputStyle = { ...fieldGlass({ padding: '13px 14px', border: 'none' }), width: '100%', boxSizing: 'border-box', fontSize: 14, color: ink, outline: 'none' };
-const labelStyle = { display: 'block', fontSize: 11.5, color: ink, margin: '14px 0 5px' };
+const labelStyle = { display: 'block', fontSize: 'var(--bb-text-meta)', color: ink, margin: '14px 0 5px' };
 const btn = (filled, busy) => ({ marginTop: 14, textAlign: 'center', fontSize: 15, fontWeight: 600, padding: 15, borderRadius: 999, background: filled ? ink : 'transparent', color: filled ? paper : ink, border: filled ? 'none' : `1px solid ${rule}`, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 });
 
 /**
@@ -122,7 +122,7 @@ export default function GiftTicketSheet({ bookingId, seats, eventName, pdfBase, 
             <div>{email.trim()}</div>
             <div style={{ opacity: 0.7 }}>{dob}</div>
           </div>
-          <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.7, margin: '12px 0 0' }}>
+          <p style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.5, color: ink, opacity: 0.7, margin: '12px 0 0' }}>
             {T('Vé này sẽ không còn là vé vào cửa của bạn. Bạn vẫn sở hữu giao dịch và quyền hoàn tiền nếu người tổ chức huỷ sự kiện.', 'This will no longer be your admission ticket. You still own the transaction and any refund right if the organizer cancels.')}
           </p>
           {err && <p style={{ fontSize: 12, color: alert, margin: '12px 0 0' }} data-testid="gift-error">{err}</p>}

@@ -71,7 +71,7 @@ function InboxRow({ c, onOpen, onStar, onArchive, onDelete, T, disputeActive }) 
           {/* Bug 1a (2026-09-21 follow-up) — was hardcoded "Star" text
               regardless of state; the icon already flips ★/☆ but the label
               never followed. */}
-          <span style={{ fontSize: 10, fontWeight: 600 }}>{c.starred ? T('Bỏ đánh dấu', 'Unstar') : T('Đánh dấu', 'Star')}</span>
+          <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600 }}>{c.starred ? T('Bỏ đánh dấu', 'Unstar') : T('Đánh dấu', 'Star')}</span>
         </div>
         <div
           onClick={(e) => { e.stopPropagation(); onArchive(); setOffset(0); }}
@@ -79,7 +79,7 @@ function InboxRow({ c, onOpen, onStar, onArchive, onDelete, T, disputeActive }) 
           style={{ width: ACTION_WIDTH, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, background: ink, color: paper, cursor: 'pointer' }}
         >
           <span style={{ fontSize: 16, lineHeight: 1 }}>{c.archived ? '📤' : '🗄'}</span>
-          <span style={{ fontSize: 10, fontWeight: 600 }}>{c.archived ? T('Bỏ lưu trữ', 'Unarchive') : T('Lưu trữ', 'Archive')}</span>
+          <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600 }}>{c.archived ? T('Bỏ lưu trữ', 'Unarchive') : T('Lưu trữ', 'Archive')}</span>
         </div>
         {/* Message-host pass — hide-for-me delete; confirmed by the sheet in
             Inbox() (see deleteThreadForMe in BanBeContext.jsx). */}
@@ -89,7 +89,7 @@ function InboxRow({ c, onOpen, onStar, onArchive, onDelete, T, disputeActive }) 
           style={{ width: ACTION_WIDTH, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, background: 'color-mix(in srgb, var(--bb-alert) 72%, #000)', color: 'var(--bb-on-alert)', cursor: 'pointer' }}
         >
           <span style={{ fontSize: 16, lineHeight: 1 }}>🗑</span>
-          <span style={{ fontSize: 10, fontWeight: 600 }}>{T('Xoá', 'Delete')}</span>
+          <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600 }}>{T('Xoá', 'Delete')}</span>
         </div>
       </div>
       <div
@@ -125,7 +125,7 @@ function InboxRow({ c, onOpen, onStar, onArchive, onDelete, T, disputeActive }) 
           {c.otherAvatarUrl ? (
             <div style={{ ...bg(c.otherAvatarUrl, { width: 24, height: 24, borderRadius: '50%' }), position: 'absolute', right: -2, bottom: -2, border: `2px solid ${paper}` }} />
           ) : (
-            <div style={{ width: 24, height: 24, borderRadius: '50%', position: 'absolute', right: -2, bottom: -2, border: `2px solid ${paper}`, background: ink, color: paper, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ width: 24, height: 24, borderRadius: '50%', position: 'absolute', right: -2, bottom: -2, border: `2px solid ${paper}`, background: ink, color: paper, fontSize: 'var(--bb-text-meta)', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {(c.name || '?').trim().charAt(0).toUpperCase()}
             </div>
           )}
@@ -142,7 +142,7 @@ function InboxRow({ c, onOpen, onStar, onArchive, onDelete, T, disputeActive }) 
             <span style={{ fontSize: 15, lineHeight: 1.2, fontWeight: unread ? 600 : 400, color: ink }}>{c.name}</span>
           </div>
           {disputeActive && (
-            <span data-testid="inbox-row-dispute" style={{ fontSize: 11.5, fontWeight: 700, color: alert }}>{T('Tranh chấp đang diễn ra', 'Dispute in progress')}</span>
+            <span data-testid="inbox-row-dispute" style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 700, color: alert }}>{T('Tranh chấp đang diễn ra', 'Dispute in progress')}</span>
           )}
           <span style={{ fontSize: 13, color: unread ? ink : ink2, fontWeight: unread ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.snippet}</span>
         </div>
@@ -387,7 +387,7 @@ export default function Inbox() {
               style={{ flex: 1, height: 38, border: 'none', borderRadius: 999, fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 background: tab === k ? ink : 'transparent', color: tab === k ? paper : ink3 }}>
               {label}
-              {n > 0 && <span style={{ minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, background: alert, color: 'var(--bb-on-alert)', fontSize: 10, fontWeight: 700, display: 'grid', placeItems: 'center' }}>{n}</span>}
+              {n > 0 && <span style={{ minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, background: alert, color: 'var(--bb-on-alert)', fontSize: 'var(--bb-text-meta)', fontWeight: 700, display: 'grid', placeItems: 'center' }}>{n}</span>}
             </button>
           ))}
         </div>

@@ -55,7 +55,7 @@ export default function Billing() {
         <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '12px 22px 0' }}>{s.billingError}</p>
       )}
 
-      <p style={{ fontSize: 11.5, lineHeight: 1.6, color: ink, opacity: 0.65, margin: '20px 22px 40px' }}>
+      <p style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.6, color: ink, opacity: 0.65, margin: '20px 22px 40px' }}>
         {T('Thay đổi ở đây chỉ áp dụng cho chứng từ phát hành sau đó. Hoá đơn đã thanh toán giữ nguyên thông tin lúc phát hành.',
            'Changes apply to documents issued afterwards. Anything already paid keeps the details it was issued with.')}
       </p>
@@ -70,7 +70,7 @@ function Field({ label, value, onChange, placeholder, testid, multiline }) {
   };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-      <label style={{ fontSize: 11.5, color: ink }}>{label}</label>
+      <label style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{label}</label>
       {multiline
         ? <textarea rows={2} value={value} onChange={onChange} placeholder={placeholder} style={style} data-testid={testid} />
         : <input value={value} onChange={onChange} placeholder={placeholder} style={style} data-testid={testid} />}

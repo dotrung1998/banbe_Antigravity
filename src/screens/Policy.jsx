@@ -68,11 +68,11 @@ function PolicyView({ state, flags, backFromPolicy, acceptPolicyGate, declinePol
           : gateActive
           ? <span style={{ fontSize: 12, color: ink, opacity: 0.7 }}>Đọc và đồng ý để tiếp tục / Read and agree to continue</span>
           : <span onClick={backFromPolicy} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>‹ Quay lại / Back</span>}
-        <span style={{ fontSize: 11, color: ink, opacity: 0.5 }}>Phiên bản / Version {POLICY_VERSION}</span>
+        <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.5 }}>Phiên bản / Version {POLICY_VERSION}</span>
       </div>
 
       <div style={{ padding: gateActive ? '18px 22px 100px' : '18px 22px 60px' }}>
-        <p style={{ fontSize: 11, color: ink, opacity: 0.55, margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+        <p style={{ fontSize: 'var(--bb-text-kicker)', color: ink, opacity: 0.55, margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
           Điều khoản và quyền riêng tư · v1.1 · Terms and privacy
         </p>
         <h1 style={{ ...display(22, { margin: '0 0 4px' }) }}>Điều khoản sử dụng và Thông báo quyền riêng tư banbe</h1>
@@ -129,7 +129,7 @@ function PolicyView({ state, flags, backFromPolicy, acceptPolicyGate, declinePol
               I agree to the Terms of Use (Part A) and consent to CÓMPANY CO., LTD processing my personal data under the Privacy Notice (Part B), including hosts of events I book receiving my phone number, and storage outside Vietnam.
             </span>
           </label>
-          <p style={{ fontSize: 11, color: ink, opacity: 0.6, margin: '10px 0 0' }}>
+          <p style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6, margin: '10px 0 0' }}>
             Ô đánh dấu không được chọn sẵn. Mỗi điểm trong tóm tắt mở tới điều tương ứng bên dưới.
             <br />
             The box is never pre-ticked. Each point in the summary opens the matching section below.

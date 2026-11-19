@@ -126,7 +126,7 @@ export default function PhotoPager({ id, imgs, T, height = '100%', radius = 14, 
       </div>
       {children}
       <span data-testid={`photo-pager-counter-${id}`} aria-hidden="true"
-        style={{ position: 'absolute', right: 10, bottom: 10, padding: '3px 8px', borderRadius: 999, background: 'rgba(12,12,12,0.55)', color: '#fff', fontSize: 11, fontWeight: 600, fontVariantNumeric: 'tabular-nums', pointerEvents: 'none' }}>
+        style={{ position: 'absolute', right: 10, bottom: 10, padding: '3px 8px', borderRadius: 999, background: 'rgba(12,12,12,0.55)', color: '#fff', fontSize: 'var(--bb-text-meta)', fontWeight: 600, fontVariantNumeric: 'tabular-nums', pointerEvents: 'none' }}>
         {index + 1}/{n}
       </span>
       <div aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, bottom: 5, display: 'flex', justifyContent: 'center', gap: 5, pointerEvents: 'none' }}>

@@ -20,7 +20,7 @@ export function LongIntroPreview({ T, text }) {
         <span
           onClick={() => setExpanded(x => !x)}
           data-testid="long-intro-toggle"
-          style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7, cursor: 'pointer' }}
+          style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.7, cursor: 'pointer' }}
         >
           {expanded ? T('Thu gọn', 'Show less') : T('Đọc thêm', 'Read more')}
         </span>
@@ -48,7 +48,7 @@ export function SocialLinksRow({ links }) {
           rel="noopener noreferrer nofollow"
           data-testid={`social-link-${l.platform}`}
           style={{
-            fontSize: 11, fontWeight: 600, color: ink, textDecoration: 'none',
+            fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, textDecoration: 'none',
             padding: '7px 12px', borderRadius: 999, border: `1px solid ${rule}`,
           }}
         >

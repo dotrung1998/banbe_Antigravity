@@ -105,7 +105,7 @@ export default function EventRecap() {
           <p style={{ fontSize: 13.5, color: ink, opacity: 0.7 }}>{T('Đang tải…', 'Loading…')}</p>
         ) : (
           <>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7 }}>{T('Sự kiện đã kết thúc', 'This event has ended')}</span>
+            <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.7 }}>{T('Sự kiện đã kết thúc', 'This event has ended')}</span>
             <h1 onClick={() => goEvent(id)} role="link" data-testid="event-recap-title" style={{ ...display(26, { margin: '6px 0 0', cursor: 'pointer' }) }}>{ev.name}</h1>
             {when && <p style={{ fontSize: 13, color: ink, opacity: 0.7, margin: '6px 0 0' }}>{when}</p>}
 
@@ -152,7 +152,7 @@ export default function EventRecap() {
                         aria-label={T('Ghi chú cho host', 'Note for the host')} data-testid="event-recap-note" rows={3}
                         style={{ width: '100%', boxSizing: 'border-box', marginTop: 12, padding: '10px 12px', borderRadius: 12, border: `1px solid ${rule}`, background: paper, color: ink, fontFamily: 'inherit', fontSize: 14, lineHeight: 1.45, resize: 'vertical' }}
                       />
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', fontSize: 11.5, color: ink, opacity: 0.6, marginTop: 4 }} data-testid="event-recap-counter">
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6, marginTop: 4 }} data-testid="event-recap-counter">
                         {noteLength(note)}/{FEEDBACK.noteMax}
                       </div>
                       <button type="button" onClick={save} disabled={!canSaveFeedback(rating, note) || !dirty || busy} data-testid="event-recap-save"

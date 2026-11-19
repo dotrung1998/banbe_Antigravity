@@ -58,7 +58,7 @@ export function DisputeBlock({ kind, dispute }) {
   if (kind === 'payment') {
     return (
       <div style={{ borderTop: `1px solid ${rule}`, paddingTop: 4 }} data-testid="conversation-dispute" data-kind="payment">
-        <span style={{ fontSize: 11.5, fontWeight: 700, color: alert }} data-testid="conversation-dispute-label">{T('Đang tranh chấp', 'Dispute in progress')}</span>
+        <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 700, color: alert }} data-testid="conversation-dispute-label">{T('Đang tranh chấp', 'Dispute in progress')}</span>
         <DisputeChatPanel bookingId={dispute.booking_id} />
       </div>
     );

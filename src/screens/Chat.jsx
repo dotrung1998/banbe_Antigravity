@@ -184,15 +184,15 @@ export default function Chat() {
     <div style={{ position: 'absolute', inset: 0, animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Chat">
       <div style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 22px 14px', borderBottom: `1px solid ${rule}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
-          <span onClick={chatBackFn} data-testid="chat-back" style={{ fontSize: 11, color: ink, cursor: 'pointer' }}>‹ {chatBackLabel}</span>
+          <span onClick={chatBackFn} data-testid="chat-back" style={{ fontSize: 'var(--bb-text-meta)', color: ink, cursor: 'pointer' }}>‹ {chatBackLabel}</span>
           <span style={{ ...display(18) }}>{headerTitle}</span>
           {/* Task 3b — event date + name subtitle directly under the title. */}
-          <span style={{ fontSize: 11.5, color: ink, opacity: 0.65 }}>{[ev.dayLong || ev.when, ev.name].filter(Boolean).join(' · ')}</span>
+          <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65 }}>{[ev.dayLong || ev.when, ev.name].filter(Boolean).join(' · ')}</span>
         </div>
         <div
           onClick={() => goEvent(s.eventKey)}
           data-testid="chat-details"
-          style={{ ...fieldGlass({ padding: '6px 12px', borderRadius: 999, flex: 'none' }), fontSize: 11.5, fontWeight: 600, color: ink, cursor: 'pointer' }}
+          style={{ ...fieldGlass({ padding: '6px 12px', borderRadius: 999, flex: 'none' }), fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, cursor: 'pointer' }}
         >
           {T('Chi tiết', 'Details')}
         </div>
@@ -214,7 +214,7 @@ export default function Chat() {
             rows.push(
               <div key="unread-divider" data-testid="chat-unread-divider" style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '4px 0', opacity: 0.55 }}>
                 <div style={{ flex: 1, height: 1, background: rule }} />
-                <span style={{ fontSize: 10.5, color: alert, fontWeight: 600 }}>({T('Chưa đọc', 'Unread')})</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', color: alert, fontWeight: 600 }}>({T('Chưa đọc', 'Unread')})</span>
                 <div style={{ flex: 1, height: 1, background: rule }} />
               </div>
             );
@@ -228,14 +228,14 @@ export default function Chat() {
             const refundActive = hostsRefund && !hostsRefund.dispute_closed_at && !hostsRefund.resolved_at;
             rows.push(
               <div key={m.id ?? i} data-testid="chat-system-card" data-status={sysCard.status} style={{ ...cardGlass({ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }), border: `1px solid ${sysCard.status === 'notfound' || hostsPayment || refundActive ? alert : rule}` }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: sysCard.status === 'confirmed' ? ink : alert }}>
+                <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 700, color: sysCard.status === 'confirmed' ? ink : alert }}>
                   {T(sysCard.label.vi, sysCard.label.en)}
                 </span>
                 <span style={{ fontSize: 12.5, color: ink, opacity: 0.75, lineHeight: 1.4 }}>{localizeSystemMessage(m.text, s.lang)}</span>
                 <div
                   onClick={() => goEvent(s.eventKey)}
                   data-testid="chat-system-card-details"
-                  style={{ alignSelf: 'flex-start', fontSize: 11.5, fontWeight: 600, color: ink, textDecoration: 'underline', cursor: 'pointer' }}
+                  style={{ alignSelf: 'flex-start', fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, textDecoration: 'underline', cursor: 'pointer' }}
                 >
                   {T('Xem chi tiết', 'Show details')}
                 </div>
@@ -263,15 +263,15 @@ export default function Chat() {
           rows.push(
             <div key={m.id ?? (m.isGreeting ? 'greeting' : i)} data-testid={m.isGreeting ? 'chat-greeting' : undefined} data-message-id={m.id ?? undefined} style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: m.who === 'me' ? 'flex-end' : 'flex-start' }}>
               {m.createdAt && (
-                <span style={{ fontSize: 10, color: ink, opacity: 0.5, padding: '0 4px' }}>{senderLabel} · {formatTime(m.createdAt)}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.5, padding: '0 4px' }}>{senderLabel} · {formatTime(m.createdAt)}</span>
               )}
               {m.isGreeting && (
-                <span data-testid="chat-greeting-label" style={{ fontSize: 10, color: ink, opacity: 0.5, padding: '0 4px' }}>{senderLabel}</span>
+                <span data-testid="chat-greeting-label" style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.5, padding: '0 4px' }}>{senderLabel}</span>
               )}
               {repliedTo && (
                 <div data-testid="chat-reply-reference" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', borderLeft: `2px solid ${rule}`, opacity: 0.7 }}>
                   {repliedToUrl && <img src={repliedToUrl} alt="" style={{ width: 22, height: 22, objectFit: 'cover', borderRadius: 5 }} />}
-                  <span style={{ fontSize: 10.5, color: ink }}>{T('Trả lời ảnh', 'Replying to a photo')}</span>
+                  <span style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{T('Trả lời ảnh', 'Replying to a photo')}</span>
                 </div>
               )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: m.who === 'me' ? 'flex-end' : 'flex-start' }}>
@@ -327,7 +327,7 @@ export default function Chat() {
                     border: m.announcementCategory ? `1.5px solid ${alert}` : m.who === 'me' ? 'none' : `1px solid ${rule}`,
                   }}>
                     {m.announcementCategory && (
-                      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: alert, marginBottom: 5 }}>
+                      <div style={{ fontSize: 'var(--bb-text-kicker)', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: alert, marginBottom: 5 }}>
                         📣 {T('Thông báo từ host', 'Host announcement')}
                       </div>
                     )}

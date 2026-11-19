@@ -301,7 +301,7 @@ export default function ChatPhotoViewer() {
         }}
       >
         {replyError && (
-          <div data-testid="chat-photo-reply-error" style={{ fontSize: 11.5, color: '#ff8a8a', marginBottom: 6 }}>{replyError}</div>
+          <div data-testid="chat-photo-reply-error" style={{ fontSize: 'var(--bb-text-meta)', color: '#ff8a8a', marginBottom: 6 }}>{replyError}</div>
         )}
         <div style={{ display: 'flex', gap: 6, marginBottom: 8, overflowX: 'auto' }}>
           {QUICK_EMOJI.map(e => (

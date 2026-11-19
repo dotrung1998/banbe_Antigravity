@@ -49,7 +49,7 @@ export default function AnnouncementSheet({ eventKey, eventName, lang, T, send, 
         <div style={{ padding: '20px 22px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
           <div style={{ minWidth: 0 }}>
             <h2 style={{ ...display(21, { margin: 0 }) }}>📣 {T('Thông báo cho khách', 'Announce to guests')}</h2>
-            <div style={{ fontSize: 11.5, opacity: 0.65, marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{eventName}</div>
+            <div style={{ fontSize: 'var(--bb-text-meta)', opacity: 0.65, marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{eventName}</div>
           </div>
           <span onClick={onClose} data-testid="announcement-close" style={{ fontSize: 12.5, cursor: 'pointer', flex: 'none' }}>{sent != null ? T('Xong', 'Done') : T('Đóng', 'Close')}</span>
         </div>
@@ -69,12 +69,12 @@ export default function AnnouncementSheet({ eventKey, eventName, lang, T, send, 
                 data-testid="announcement-text"
                 style={{ ...fieldGlass({ padding: '12px 14px', width: '100%', boxSizing: 'border-box', fontSize: 14, lineHeight: 1.45, resize: 'none', fontFamily: 'inherit', color: ink, border: `1px solid ${alert}` }) }}
               />
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, opacity: 0.65, margin: '4px 2px 0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--bb-text-meta)', opacity: 0.65, margin: '4px 2px 0' }}>
                 <span>{templateId ? T('Từ mẫu, bạn có thể sửa', 'From a template, you can edit it') : T('Tin nhắn tuỳ chỉnh', 'Custom message')}</span>
                 <span style={{ color: tooLong ? alert : ink }}>{trimmed.length}/{ANNOUNCEMENT_MAX}</span>
               </div>
 
-              <div style={{ fontSize: 11.5, fontWeight: 600, margin: '14px 0 8px' }}>{T('Gửi nhanh', 'Quick send')}</div>
+              <div style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, margin: '14px 0 8px' }}>{T('Gửi nhanh', 'Quick send')}</div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {quick.map(t => (
                   <span key={t.id} onClick={() => pick(t)} data-testid={`announcement-quick-${t.id}`} style={chip(templateId === t.id)}>{t[lang].replace(/[!.]$/, '').split(',')[0]}</span>

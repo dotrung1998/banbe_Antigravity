@@ -64,7 +64,7 @@ export function UnifiedTypeGrid({ counts, selected, total, onPick, onClear, onOp
             <button key={k} type="button" data-testid={`${idPrefix}-${k}`} aria-pressed={on} onClick={() => onPick(k)}
               style={{ ...tile, background: on ? 'var(--bb-block)' : 'none', opacity: n === 0 && !on ? 0.42 : 1 }}>
               <span style={glyph(on)}><CategoryGlyph cat={k} size={gs} strokeWidth={1.5} /></span>
-              <span style={{ fontWeight: on ? 600 : 400 }}>{typeName(k, T)}</span><small style={{ fontSize: 11.5, opacity: 0.64 }}>{evN(n, T)}</small>
+              <span style={{ fontWeight: on ? 600 : 400 }}>{typeName(k, T)}</span><small style={{ fontSize: 'var(--bb-text-meta)', opacity: 0.64 }}>{evN(n, T)}</small>
             </button>
           );
         })}
@@ -73,12 +73,12 @@ export function UnifiedTypeGrid({ counts, selected, total, onPick, onClear, onOp
             aria-label={T(`${typeName(picked, T)}, đang chọn. Đổi loại`, `${typeName(picked, T)}, selected. Change type`)}
             style={{ ...tile, background: 'var(--bb-block)' }}>
             <span style={glyph(true)}><CategoryGlyph cat={picked} size={gs} strokeWidth={1.5} /></span>
-            <span style={{ fontWeight: 600 }}>{typeName(picked, T)}</span><small style={{ fontSize: 11.5, opacity: 0.64 }}>{evN(counts[picked] || 0, T)} · {T('đổi', 'change')}</small>
+            <span style={{ fontWeight: 600 }}>{typeName(picked, T)}</span><small style={{ fontSize: 'var(--bb-text-meta)', opacity: 0.64 }}>{evN(counts[picked] || 0, T)} · {T('đổi', 'change')}</small>
           </button>
         ) : (
           <button type="button" data-testid={`${idPrefix}-find`} aria-pressed="false" aria-haspopup="dialog" onClick={onOpenSheet} style={{ ...tile, background: 'none' }}>
             <span style={{ ...glyph(false), border: '1.5px dashed var(--bb-rule)', boxSizing: 'border-box' }}><Icon d={SEARCH} size={compact ? 20 : 26} sw={1.5} /></span>
-            <span>{T('Tất cả loại', 'All types')}</span><small style={{ fontSize: 11.5, opacity: 0.64 }}>{T(`${KEYS.length} loại`, `${KEYS.length} types`)}</small>
+            <span>{T('Tất cả loại', 'All types')}</span><small style={{ fontSize: 'var(--bb-text-meta)', opacity: 0.64 }}>{T(`${KEYS.length} loại`, `${KEYS.length} types`)}</small>
           </button>
         )}
       </div>

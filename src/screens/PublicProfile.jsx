@@ -285,7 +285,7 @@ export default function PublicProfile() {
       )}
 
       {s.profileLinkCopiedFlash && (
-        <p style={{ textAlign: 'center', fontSize: 11.5, color: ink, opacity: 0.7, margin: '10px 0 0' }}>{T('Đã sao chép link hồ sơ', 'Profile link copied')}</p>
+        <p style={{ textAlign: 'center', fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7, margin: '10px 0 0' }}>{T('Đã sao chép link hồ sơ', 'Profile link copied')}</p>
       )}
       <ProfileShareSheet
         open={shareCardOpen}

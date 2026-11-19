@@ -104,7 +104,7 @@ export default function QuickSheetV5({ onClose }) {
               {shortcuts.map(([icon, label, fn, badge], i) => (
                 <button key={`${icon}${i}`} type="button" onClick={go(fn)} data-testid={`quick-${icon}`} style={{ position: 'relative', padding: '16px 0 12px', border: 'none', background: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, fontFamily: 'inherit', fontSize: 12, color: 'inherit', cursor: 'pointer' }}>
                   <RowIcon kind={icon} size={24} /><span style={{ opacity: 0.8 }}>{label}</span>
-                  {badge > 0 && <span style={{ position: 'absolute', top: 8, right: 16, minWidth: 17, height: 17, padding: '0 4px', borderRadius: 999, background: 'var(--bb-alert)', color: 'var(--bb-on-alert)', fontSize: 10, fontWeight: 700, display: 'grid', placeItems: 'center' }}>{badge}</span>}
+                  {badge > 0 && <span style={{ position: 'absolute', top: 8, right: 16, minWidth: 17, height: 17, padding: '0 4px', borderRadius: 999, background: 'var(--bb-alert)', color: 'var(--bb-on-alert)', fontSize: 'var(--bb-text-meta)', fontWeight: 700, display: 'grid', placeItems: 'center' }}>{badge}</span>}
                 </button>
               ))}
             </div>

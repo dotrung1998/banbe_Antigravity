@@ -130,7 +130,7 @@ export default function HostSetupSheet() {
   };
 
   const revealing = phase === 'reveal';
-  const label = { fontSize: 11, fontWeight: 600, letterSpacing: 0.6, textTransform: 'uppercase', color: ink, opacity: 0.55, margin: '26px 0 10px' };
+  const label = { fontSize: 'var(--bb-text-kicker)', fontWeight: 600, letterSpacing: 0.6, textTransform: 'uppercase', color: ink, opacity: 0.55, margin: '26px 0 10px' };
   const input = fieldGlass({ borderRadius: 12, width: '100%', boxSizing: 'border-box', border: 'none', outline: 'none', padding: '14px 16px', fontSize: 15, color: ink, fontFamily: 'inherit' });
 
   return (

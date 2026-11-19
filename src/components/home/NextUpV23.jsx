@@ -16,7 +16,7 @@ const notch = (side) => ({
   position: 'absolute', top: -9, [side]: -1, width: 10, height: 18, boxSizing: 'border-box', borderRadius: side === 'left' ? '0 9px 9px 0' : '9px 0 0 9px',
   background: 'color-mix(in srgb, var(--bb-bg) 93%, #000)', boxShadow: 'inset 0 2px 3px rgba(0,0,0,.22)', zIndex: 2,
 });
-const cellLabel = { fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--bb-fg-3)' };
+const cellLabel = { fontSize: 'var(--bb-text-kicker)', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--bb-fg-3)' };
 
 function Card({ it, T, onAction, single }) {
   const { g, ev, status, chip, people } = it;
@@ -29,9 +29,9 @@ function Card({ it, T, onAction, single }) {
         <div aria-hidden style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(6,5,4,.30) 0%, rgba(6,5,4,0) 34%, rgba(6,5,4,.25) 55%, rgba(6,5,4,.78) 100%)' }} />
         {ev.badge && (
           <div data-testid="home-nextup-date" style={{ position: 'absolute', top: 12, left: 12, minWidth: 52, padding: '7px 8px 6px', borderRadius: 14, background: 'rgba(247,244,236,.92)', color: '#1B1916', textAlign: 'center', lineHeight: 1 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em' }}>{ev.badge.weekday}</div>
+            <div style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 700, letterSpacing: '0.06em' }}>{ev.badge.weekday}</div>
             <div style={{ fontSize: 24, fontWeight: 700, margin: '3px 0 2px', letterSpacing: '-0.02em' }}>{ev.badge.day}</div>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em' }}>{ev.badge.month}</div>
+            <div style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 700, letterSpacing: '0.06em' }}>{ev.badge.month}</div>
           </div>
         )}
         {chip && (
@@ -40,7 +40,7 @@ function Card({ it, T, onAction, single }) {
           </span>
         )}
         <div style={{ position: 'absolute', left: 16, right: 16, bottom: 18, color: '#fff' }}>
-          {ev.kicker && <div style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', opacity: 0.88, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.kicker}</div>}
+          {ev.kicker && <div style={{ fontSize: 'var(--bb-text-kicker)', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', opacity: 0.88, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.kicker}</div>}
           <div style={{ ...display(26, { color: '#fff', lineHeight: 1.15, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{ev.name}</div>
         </div>
       </div>

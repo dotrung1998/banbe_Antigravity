@@ -673,7 +673,7 @@ export default function StoryViewer() {
           ))}
         </div>
 
-        <span style={{ position: 'absolute', top: 62, left: 16, color: 'rgba(255,255,255,0.85)', fontSize: 11, fontWeight: 600, opacity: chromeHidden ? 0 : 1, transition: 'opacity 0.15s ease' }}>
+        <span style={{ position: 'absolute', top: 62, left: 16, color: 'rgba(255,255,255,0.85)', fontSize: 'var(--bb-text-meta)', fontWeight: 600, opacity: chromeHidden ? 0 : 1, transition: 'opacity 0.15s ease' }}>
           {group.orgName}
         </span>
 
@@ -685,7 +685,7 @@ export default function StoryViewer() {
           <svg width={16} height={16} viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="m2 2 10 10M12 2 2 12" /></svg>
         </div>
 
-        <span style={{ position: 'absolute', bottom: 40, left: 18, color: 'rgba(255,255,255,0.75)', fontSize: 10.5, letterSpacing: '0.04em', textShadow: '0 1px 3px rgba(12,12,12,0.55)', opacity: chromeHidden ? 0 : 1, transition: 'opacity 0.15s ease' }}>
+        <span style={{ position: 'absolute', bottom: 40, left: 18, color: 'rgba(255,255,255,0.75)', fontSize: 'var(--bb-text-meta)', letterSpacing: '0.04em', textShadow: '0 1px 3px rgba(12,12,12,0.55)', opacity: chromeHidden ? 0 : 1, transition: 'opacity 0.15s ease' }}>
           banbe ▪︎ {T('story', 'story')}
         </span>
       </div>

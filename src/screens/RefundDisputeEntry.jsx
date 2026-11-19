@@ -68,12 +68,12 @@ export default function RefundDisputeEntry({ refundClaimId, amountVnd, eventName
                  "You and the other side aren't agreed on this refund yet. Open the temporary chat to sort it out directly.")}
         </p>
         {(eventName || amountVnd != null) && (
-          <p style={{ fontSize: 11.5, color: ink, opacity: 0.6, margin: '4px 0 0' }}>
+          <p style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6, margin: '4px 0 0' }}>
             {[eventName, amountVnd != null ? formatVnd(amountVnd) : null].filter(Boolean).join(' ▪︎ ')}
           </p>
         )}
         {chat?.last_message_body && (
-          <p style={{ fontSize: 11.5, color: ink, opacity: 0.7, margin: '6px 0 0' }}>
+          <p style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7, margin: '6px 0 0' }}>
             {T('Tin nhắn mới nhất: ', 'Latest message: ')}{chat.last_message_body}
           </p>
         )}

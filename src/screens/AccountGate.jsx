@@ -57,7 +57,7 @@ function DobFields({ value, onChange, prefix }) {
   const refs = [useRef(null), useRef(null), useRef(null)];
   const field = (key, label, ph, max, idx) => (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: key === 'year' ? 1.4 : 1, minWidth: 0 }}>
-      <span style={{ fontSize: 11.5, fontWeight: 600 }}>{label}</span>
+      <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600 }}>{label}</span>
       <input
         ref={refs[idx]} value={value[key]} placeholder={ph} inputMode="numeric" autoComplete="off" data-testid={`${prefix}-${key}`}
         onChange={(e) => {

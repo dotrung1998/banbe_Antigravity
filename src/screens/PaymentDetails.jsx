@@ -33,9 +33,9 @@ function RefundProofImage({ path, T }) {
   const isPdf = /\.pdf$/i.test(path);
   return (
     <div style={{ marginTop: 8 }} data-testid="refund-proof">
-      <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Ảnh chuyển khoản từ host', "Host's transfer proof")}</span>
+      <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Ảnh chuyển khoản từ host', "Host's transfer proof")}</span>
       {!url ? (
-        <p style={{ fontSize: 11.5, color: ink, opacity: 0.6, margin: '4px 0 0' }}>{T('Đang tải…', 'Loading…')}</p>
+        <p style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6, margin: '4px 0 0' }}>{T('Đang tải…', 'Loading…')}</p>
       ) : isPdf ? (
         <a href={url} target="_blank" rel="noreferrer" style={{ display: 'block', fontSize: 12.5, color: ink, marginTop: 4 }}>{T('Mở tệp PDF', 'Open PDF')}</a>
       ) : (
@@ -262,8 +262,8 @@ export default function PaymentDetails() {
       {isHolding && (
         <div style={{ ...cardGlass({ margin: '16px 22px 0', padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14 }) }} data-testid="payment-countdown">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Giữ chỗ còn', 'Seat held for')}</span>
-            <span style={{ fontSize: 11.5, lineHeight: 1.45, color: ink, opacity: 0.7 }}>
+            <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Giữ chỗ còn', 'Seat held for')}</span>
+            <span style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.45, color: ink, opacity: 0.7 }}>
               {T('Chuyển khoản rồi bấm "Tôi đã chuyển khoản" trước khi hết giờ.',
                  'Transfer, then tap "I have transferred" before this runs out.')}
             </span>
@@ -284,7 +284,7 @@ export default function PaymentDetails() {
                'The organizer is checking your transfer against their statement. The seat will not be released while you wait.')}
           </p>
           {booking.transaction_id && (
-            <p style={{ fontSize: 11.5, color: ink, opacity: 0.7, margin: '8px 0 0' }}>
+            <p style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7, margin: '8px 0 0' }}>
               {T('Mã giao dịch đã gửi: ', 'Transaction ID submitted: ')}<strong>{booking.transaction_id}</strong>
             </p>
           )}
@@ -293,7 +293,7 @@ export default function PaymentDetails() {
               is at risk" countdown. */}
           {booking.verify_due_at && (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 12, borderTop: `1px solid ${rule}` }}>
-              <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>
+              <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>
                 {T('Người tổ chức xác nhận trong', "Organizer confirms within")}
               </span>
               <span style={{ ...display(18, { fontVariantNumeric: 'tabular-nums' }) }} data-testid="payment-organizer-countdown">
@@ -324,13 +324,13 @@ export default function PaymentDetails() {
               — a guest should get to choose when their 2 nudges are worth
               using, not discover the cap only once it's too late. */}
           {nudgeCount < 2 && (
-            <p style={{ fontSize: 10.5, color: ink, opacity: 0.55, textAlign: 'center', margin: '6px 0 0' }} data-testid="payment-nudge-limit-note">
+            <p style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.55, textAlign: 'center', margin: '6px 0 0' }} data-testid="payment-nudge-limit-note">
               {T('Bạn chỉ có thể nhắc tối đa 2 lần, hãy chọn thời điểm phù hợp.',
                  "You can only nudge up to 2 times, choose the right moment.")}
             </p>
           )}
           {s.nudgeError && (
-            <p style={{ fontSize: 11.5, color: alert, margin: '8px 0 0' }}>{s.nudgeError}</p>
+            <p style={{ fontSize: 'var(--bb-text-meta)', color: alert, margin: '8px 0 0' }}>{s.nudgeError}</p>
           )}
         </div>
       )}
@@ -381,7 +381,7 @@ export default function PaymentDetails() {
             <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
               {booking.cancel_reason || T('Không có lý do cụ thể được nêu.', 'No specific reason was given.')}
             </p>
-            <p style={{ fontSize: 11.5, lineHeight: 1.55, color: ink, opacity: 0.6, margin: '8px 0 0' }}>
+            <p style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.55, color: ink, opacity: 0.6, margin: '8px 0 0' }}>
               {T('Chỗ đã được trả lại. Bạn có thể tìm sự kiện khác hoặc nhắn cho người tổ chức nếu có thắc mắc.',
                  'The seat has been released. You can look for another event, or message the organizer if you have questions.')}
             </p>
@@ -600,7 +600,7 @@ export default function PaymentDetails() {
                     the guest can go check their bank. */}
                 {(refundClaim.resend_reference || refundClaim.resend_bank_name) && (
                   <div style={{ ...fieldGlass({ marginTop: 10, padding: '10px 12px' }) }}>
-                    <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>
+                    <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>
                       {T('Thông tin chuyển khoản mới nhất', 'Latest transfer info')}
                     </span>
                     {refundClaim.resend_bank_name && <p style={{ fontSize: 12, color: ink, margin: '4px 0 0' }}>{refundClaim.resend_bank_name}</p>}
@@ -627,9 +627,9 @@ export default function PaymentDetails() {
       )}
 
       <div style={{ ...cardGlass({ margin: '14px 22px 0', padding: '18px 20px' }) }}>
-        <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>{T('Số tiền', 'Amount')}</span>
+        <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>{T('Số tiền', 'Amount')}</span>
         <div style={{ ...display(30, { marginTop: 4 }) }} data-testid="payment-amount">{formatVnd(booking.total_vnd)}</div>
-        <div style={{ fontSize: 11.5, color: ink, opacity: 0.7, marginTop: 4 }}>
+        <div style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7, marginTop: 4 }}>
           {booking.qty} {T('vé', booking.qty === 1 ? 'ticket' : 'tickets')}
         </div>
       </div>
@@ -665,10 +665,10 @@ export default function PaymentDetails() {
           {org?.pay_qr_path ? <GuestPaymentQr orgId={org.id} path={org.pay_qr_path} /> : null}
           {!org?.pay_qr_path && qrPayload && (
             <div style={{ margin: '20px 22px 0' }}>
-              <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Quét để chuyển khoản', 'Scan to pay')}</span>
+              <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Quét để chuyển khoản', 'Scan to pay')}</span>
               <div style={{ ...cardGlass({ marginTop: 10, padding: 18, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }) }}>
                 <VietQr payload={qrPayload} />
-                <span style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.7, textAlign: 'center' }}>
+                <span style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.5, color: ink, opacity: 0.7, textAlign: 'center' }}>
                   {T('Mở app ngân hàng, quét mã: số tiền và nội dung đã được điền sẵn.',
                      'Open your banking app and scan: the amount and reference are filled in already.')}
                 </span>
@@ -678,7 +678,7 @@ export default function PaymentDetails() {
 
           {rows.length > 0 && (
             <div style={{ margin: '20px 22px 0' }}>
-              <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Hoặc chuyển thủ công', 'Or transfer manually')}</span>
+              <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Hoặc chuyển thủ công', 'Or transfer manually')}</span>
               <div style={{ ...fieldGlass({ marginTop: 10, display: 'flex', flexDirection: 'column' }) }}>
                 {rows.map(([label, value, key], i) => (
                   <CopyRow key={key} label={label} value={value} T={T}
@@ -690,16 +690,16 @@ export default function PaymentDetails() {
           )}
 
           <div style={{ margin: '16px 22px 0' }}>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Nội dung chuyển khoản', 'Transfer reference')}</span>
+            <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Nội dung chuyển khoản', 'Transfer reference')}</span>
             <div onClick={() => copyPayField('reference', reference)}
                  style={{ ...cardGlass({ marginTop: 10, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, cursor: 'pointer' }) }}
                  data-testid="payment-reference">
               <span style={{ ...display(20, { letterSpacing: '0.14em' }) }}>{reference}</span>
-              <span style={{ flex: 'none', fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.75 }}>
+              <span style={{ flex: 'none', fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.75 }}>
                 {s.paymentCopied === 'reference' ? T('Đã chép', 'Copied') : T('Chép', 'Copy')}
               </span>
             </div>
-            <p style={{ fontSize: 11.5, lineHeight: 1.55, color: ink, opacity: 0.7, margin: '8px 2px 0' }}>
+            <p style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.55, color: ink, opacity: 0.7, margin: '8px 2px 0' }}>
               {T('Ghi đúng mã này để khoản chuyển của bạn được xác nhận nhanh, tự động ngay khi tiền tới nếu Chủ sự kiện đã kết nối ngân hàng.',
                  'Use this exact reference so your transfer is confirmed quickly, automatically the moment the money lands if the host has connected their bank.')}
             </p>
@@ -713,17 +713,17 @@ export default function PaymentDetails() {
               receipt with no transaction id is not reconcilable. */}
           {isHolding && (
             <div style={{ margin: '22px 22px 0' }}>
-              <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Sau khi chuyển', 'After you transfer')}</span>
+              <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Sau khi chuyển', 'After you transfer')}</span>
               <div style={{ ...fieldGlass({ marginTop: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }) }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                  <label style={{ fontSize: 11.5, color: ink }}>{T('Mã giao dịch', 'Transaction ID')}</label>
+                  <label style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{T('Mã giao dịch', 'Transaction ID')}</label>
                   <input
                     value={s.paymentTxnId} onChange={paymentTxnType}
                     placeholder={T('Ví dụ FT24123456789', 'e.g. FT24123456789')}
                     data-testid="payment-txn-id"
                     style={{ ...fieldGlass({ padding: '13px 14px', border: 'none' }), fontSize: 14, color: ink, outline: 'none', fontFamily: 'inherit' }}
                   />
-                  <span style={{ fontSize: 11, lineHeight: 1.45, color: ink, opacity: 0.65 }}>
+                  <span style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.45, color: ink, opacity: 0.65 }}>
                     {T('Tìm trong biên lai của app ngân hàng.', 'Find it on the receipt in your banking app.')}
                   </span>
                 </div>
@@ -744,7 +744,7 @@ export default function PaymentDetails() {
                   <span style={{ fontSize: 13.5, color: ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {file ? file.name : T('Chọn ảnh biên lai', 'Choose a receipt image')}
                   </span>
-                  <span style={{ flex: 'none', fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.75 }}>
+                  <span style={{ flex: 'none', fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.75 }}>
                     {file ? T('Đổi', 'Change') : T('Chọn', 'Choose')}
                   </span>
                 </div>
@@ -756,7 +756,7 @@ export default function PaymentDetails() {
                 >
                   {s.paymentSubmitting ? T('Đang gửi…', 'Sending…') : T('Tôi đã chuyển khoản', "I have transferred")}
                 </div>
-                <span style={{ fontSize: 11, lineHeight: 1.45, color: ink, opacity: 0.65 }}>
+                <span style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.45, color: ink, opacity: 0.65 }}>
                   {T('Bấm nút này sẽ dừng đồng hồ và khoá chỗ của bạn cho tới khi người tổ chức xác nhận.',
                      'Tapping this stops the clock and locks your seat until the organizer confirms.')}
                 </span>
@@ -776,14 +776,14 @@ export default function PaymentDetails() {
            data-testid="payment-billing-link">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, paddingRight: 12 }}>
           <span style={{ fontSize: 14, color: ink }}>{T('Thông tin xuất hoá đơn', 'Billing details')}</span>
-          <span style={{ fontSize: 11.5, lineHeight: 1.45, color: ink, opacity: 0.7 }}>
+          <span style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.45, color: ink, opacity: 0.7 }}>
             {T('Tên và địa chỉ in trên hoá đơn, biên nhận.', 'The name and address printed on your documents.')}
           </span>
         </div>
         <span style={{ fontSize: 15, color: ink, lineHeight: 1, flex: 'none' }}>›</span>
       </div>
 
-      <p style={{ fontSize: 11.5, lineHeight: 1.6, color: ink, opacity: 0.65, margin: '20px 22px 40px' }}>
+      <p style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.6, color: ink, opacity: 0.65, margin: '20px 22px 40px' }}>
         {T('banbe không thu tiền và không giữ tiền. Bạn chuyển trực tiếp cho người tổ chức. Nếu họ hủy, họ có trách nhiệm hoàn tiền cho bạn.',
            'banbe does not collect or hold money. You pay the organizer directly. If they cancel, they are responsible for refunding you.')}
       </p>
@@ -826,10 +826,10 @@ function CopyRow({ label, value, copied, onCopy, last, T }) {
     <div onClick={onCopy}
          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '13px 16px', borderBottom: last ? 'none' : `1px solid ${rule}`, cursor: 'pointer' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-        <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{label}</span>
+        <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65 }}>{label}</span>
         <span style={{ fontSize: 14, fontWeight: 600, color: ink, wordBreak: 'break-all' }}>{value}</span>
       </div>
-      <span style={{ flex: 'none', fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.75 }}>
+      <span style={{ flex: 'none', fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.75 }}>
         {copied ? T('Đã chép', 'Copied') : T('Chép', 'Copy')}
       </span>
     </div>

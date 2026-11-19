@@ -15,7 +15,7 @@ export default function ActionCenter({ items, onSeeAll, T, inset = 20 }) {
 
   return (
     <div style={{ margin: `10px ${inset}px 0`, display: 'flex', flexDirection: 'column', gap: 8 }} data-testid="action-center">
-      <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7 }}>{T('Việc cần xử lý', 'Things to do')}</span>
+      <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.7 }}>{T('Việc cần xử lý', 'Things to do')}</span>
       {visible.map(item => (
         <div
           key={item.id}
@@ -24,12 +24,12 @@ export default function ActionCenter({ items, onSeeAll, T, inset = 20 }) {
           style={{ ...fieldGlass({ padding: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, cursor: 'pointer' }) }}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: item.severity === 'overdue' ? alert : ink }}>{item.label}</span>
+            <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: item.severity === 'overdue' ? alert : ink }}>{item.label}</span>
             <span style={{ fontSize: 12.5, lineHeight: 1.4, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {item.detail}
             </span>
           </div>
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7, flex: 'none', marginLeft: 12 }}>{item.ctaLabel} ›</span>
+          <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.7, flex: 'none', marginLeft: 12 }}>{item.ctaLabel} ›</span>
         </div>
       ))}
       {hasMore && (

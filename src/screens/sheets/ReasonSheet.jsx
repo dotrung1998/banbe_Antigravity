@@ -18,7 +18,7 @@ export default function ReasonSheet() {
     return (
       <div onClick={s.reasonPromptBusy ? undefined : closeReasonPrompt} style={{ position: 'absolute', inset: 0, zIndex: 23, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>
         <div onClick={(e) => e.stopPropagation()} style={{ background: paper, padding: '26px 24px 36px', display: 'flex', flexDirection: 'column', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Xác nhận điểm danh', 'Confirm check-in')}</span>
+          <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Xác nhận điểm danh', 'Confirm check-in')}</span>
           <p style={{ fontSize: 13, lineHeight: 1.5, color: ink, margin: '8px 0 0' }}>
             {prompt.guestName
               ? T('Bạn có chắc muốn xác nhận ' + prompt.guestName + ' đã tới?', 'Are you sure ' + prompt.guestName + ' has arrived?')
@@ -56,7 +56,7 @@ export default function ReasonSheet() {
   return (
     <div onClick={s.reasonPromptBusy ? undefined : closeReasonPrompt} style={{ position: 'absolute', inset: 0, zIndex: 23, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: paper, padding: '26px 24px 36px', display: 'flex', flexDirection: 'column', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{title}</span>
+        <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{title}</span>
         {subtitle && <p style={{ fontSize: 13, lineHeight: 1.5, color: ink, margin: '8px 0 0' }}>{subtitle}</p>}
         <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, opacity: 0.7, margin: '6px 0 0' }}>
           {prompt.kind === 'rejectGuest'

@@ -278,7 +278,7 @@ export default function PhotoViewer() {
   // Faint, but never illegible: the blur underneath can land on any colour,
   // so the white sits on the same soft shadow the on-photo chips use.
   const caption = {
-    fontSize: 10.5, letterSpacing: '0.04em',
+    fontSize: 'var(--bb-text-meta)', letterSpacing: '0.04em',
     color: 'rgba(255,255,255,0.72)', textShadow: '0 1px 3px rgba(27,25,22,0.55)',
     pointerEvents: 'none', maxWidth: 'calc(100% - 130px)',
     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
@@ -421,7 +421,7 @@ export default function PhotoViewer() {
             <span key={i} style={{ width: i === index ? 7 : 6, height: i === index ? 7 : 6, borderRadius: '50%', background: `rgba(255,255,255,${i === index ? 0.95 : 0.35})` }} />
           ))}
           {gallery.length > 8 && (
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: 'rgba(255,255,255,0.9)', textShadow: '0 1px 3px rgba(27,25,22,0.55)' }}>{index + 1} / {gallery.length}</span>
+            <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: 'rgba(255,255,255,0.9)', textShadow: '0 1px 3px rgba(27,25,22,0.55)' }}>{index + 1} / {gallery.length}</span>
           )}
         </div>
         {/* Top-aligned, not bottom: the row is as tall as the 34px icon

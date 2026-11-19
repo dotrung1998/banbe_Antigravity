@@ -225,7 +225,7 @@ export default function Search({ overlay = false }) {
       place: d.area, priceLabel: priceOf(d), isFree: d.price === 'Miễn phí' || d.priceVnd === 0,
       saved: (s.favorites || []).includes(d.key) };
   }) : [];
-  const metaChipStyle = { display: 'inline-flex', alignItems: 'center', gap: 5, height: 26, padding: '0 10px', borderRadius: 999, background: 'var(--bb-block)', color: ink2, fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap' };
+  const metaChipStyle = { display: 'inline-flex', alignItems: 'center', gap: 5, height: 26, padding: '0 10px', borderRadius: 999, background: 'var(--bb-block)', color: ink2, fontSize: 'var(--bb-text-meta)', fontWeight: 600, whiteSpace: 'nowrap' };
   const udSChip = { flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, height: 38, padding: '0 14px', borderRadius: 999, background: 'var(--bb-surface-2)', color: ink, border: 'none', fontFamily: 'inherit', fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap', cursor: 'pointer' };
   const goMap = () => {
     commit();
@@ -339,7 +339,7 @@ export default function Search({ overlay = false }) {
 
       {ud && recent.length > 0 && !query && (
         <div data-testid="search-recent-block">
-          <div style={{ padding: '18px 20px 8px', fontSize: 11, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--bb-fg-3)' }}>{T('Gần đây', 'Recent')}</div>
+          <div style={{ padding: '18px 20px 8px', fontSize: 'var(--bb-text-kicker)', fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--bb-fg-3)' }}>{T('Gần đây', 'Recent')}</div>
           <div data-hscroll style={{ display: 'flex', gap: 8, overflowX: 'auto', padding: '0 20px 2px', scrollbarWidth: 'none' }}>
             {recent.map(r => (
               <button key={r} type="button" onClick={() => setQ(r)} data-testid="search-recent" style={udSChip}>
@@ -369,7 +369,7 @@ export default function Search({ overlay = false }) {
               {parts.length ? <><b style={{ fontWeight: 600 }}>{T('Bộ lọc:', 'Filters:')}</b> {parts.join(' · ')}</> : T('Bộ lọc', 'Filters')}
               <span style={{ color: 'var(--bb-fg-3)' }}> · {parts.length ? when : T(`loại, giá, sắp xếp · ${when}`, `type, price, sort · ${when}`)}</span>
             </span>
-            {udOwned > 0 && <span style={{ minWidth: 20, height: 20, padding: '0 6px', borderRadius: 999, background: 'var(--bb-clay)', color: '#fff', fontSize: 11.5, fontWeight: 700, display: 'grid', placeItems: 'center' }}>{udOwned}</span>}
+            {udOwned > 0 && <span style={{ minWidth: 20, height: 20, padding: '0 6px', borderRadius: 999, background: 'var(--bb-clay)', color: '#fff', fontSize: 'var(--bb-text-meta)', fontWeight: 700, display: 'grid', placeItems: 'center' }}>{udOwned}</span>}
             <span aria-hidden="true" style={{ opacity: 0.5 }}>›</span>
           </button>
         );
@@ -508,7 +508,7 @@ export default function Search({ overlay = false }) {
           ))}
           {!udRows.length && (
             <div data-testid="search-empty" style={{ margin: '0 20px', padding: '16px 18px', borderRadius: 16, background: 'var(--bb-block)' }}>
-              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--bb-fg-3)' }}>{T('Tìm kiếm', 'Search')}</div>
+              <div style={{ fontSize: 'var(--bb-text-kicker)', fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--bb-fg-3)' }}>{T('Tìm kiếm', 'Search')}</div>
               <b style={{ display: 'block', fontSize: 16, fontWeight: 500, margin: '6px 0 4px' }}>{T('Không có sự kiện nào khớp.', 'Nothing matches.')}</b>
               <p style={{ margin: '0 0 12px', fontSize: 13, color: ink2 }}>
                 {query ? T(`Không có gì khớp “${query}”. Thử một từ khác hoặc bỏ bộ lọc.`, `Nothing matches “${query}”. Try another word or drop the filters.`)

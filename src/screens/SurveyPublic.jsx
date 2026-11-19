@@ -74,7 +74,7 @@ function RespondVerifyInline({ T }) {
         placeholder={T('Email của bạn', 'Your email')} data-testid="survey-respond-email-input"
         style={{ padding: '10px 12px', borderRadius: 8, border: `1px solid ${rule}`, fontSize: 13.5, boxSizing: 'border-box' }}
       />
-      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 11.5, cursor: 'pointer' }}>
+      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 'var(--bb-text-meta)', cursor: 'pointer' }}>
         <input
           type="checkbox" checked={s.surveyRespondConsent}
           onChange={(e) => set({ surveyRespondConsent: e.target.checked })}

@@ -116,7 +116,7 @@ export default function KeychainSettings() {
   };
 
   const designsOf = (gid) => manifest.designs.filter(d => d.group === gid);
-  const label = { fontSize: 11.5, color: ink };
+  const label = { fontSize: 'var(--bb-text-meta)', color: ink };
 
   return (
     <div ref={rootRef} style={{ display: 'flex', flexDirection: 'column', gap: 10, scrollMarginTop: 12 }} data-testid="keychain-settings">
@@ -141,7 +141,7 @@ export default function KeychainSettings() {
               <Chip onClick={enableTilt} testId="keychain-tilt">{T('Bật nghiêng', 'Enable tilt')}</Chip>
             )}
           </div>
-          {tilt && <span role="status" style={{ fontSize: 11, color: ink, opacity: 0.7 }}>{tilt}</span>}
+          {tilt && <span role="status" style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>{tilt}</span>}
         </div>
 
         {manifest.groups.filter(g => g.id !== 'rewards' || rewardsLive).map(g => (
@@ -200,7 +200,7 @@ export default function KeychainSettings() {
           )}
           <input ref={fileRef} type="file" accept={KEYCHAIN_INPUT_ACCEPT} style={{ display: 'none' }} onChange={onPick} data-testid="keychain-upload-input" />
         </div>
-        <span style={{ fontSize: 10.5, color: ink, opacity: 0.55 }}>
+        <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.55 }}>
           {T('PNG/WebP, tối đa 512 px, 256 KB, tối đa 3 ảnh. Ảnh được nén lại và xoá metadata trên thiết bị của bạn.', 'PNG/WebP, up to 512 px and 256 KB, max 3 images. Re-encoded on your device, metadata removed.')}
         </span>
       </>)}

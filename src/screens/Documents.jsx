@@ -104,7 +104,7 @@ export default function Documents() {
                 <span style={{ ...display(15, { lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>
                   {headline}
                 </span>
-                <span style={{ fontSize: 11.5, lineHeight: 1.3, color: ink, opacity: 0.7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <span style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.3, color: ink, opacity: 0.7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {doc.number} ▪︎ {party}
                 </span>
                 {/* Was invisible outside a bare version-count on Attendance
@@ -115,11 +115,11 @@ export default function Documents() {
                     row simply stops matching the query (and this label)
                     once purge_after passes, no separate hide-it step. */}
                 {doc.superseded_at ? (
-                  <span style={{ fontSize: 10.5, lineHeight: 1.3, color: ink, opacity: 0.6 }} data-testid="document-version-label">
+                  <span style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.3, color: ink, opacity: 0.6 }} data-testid="document-version-label">
                     {T('Bản cũ · xoá sau 24h', 'Old copy · deletes in 24h')}
                   </span>
                 ) : bookingsWithOldCopy.has(doc.booking_id) && (
-                  <span style={{ fontSize: 10.5, lineHeight: 1.3, color: ink, opacity: 0.6 }} data-testid="document-version-label">
+                  <span style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.3, color: ink, opacity: 0.6 }} data-testid="document-version-label">
                     {T('Bản hiện tại', 'Current copy')}
                   </span>
                 )}
@@ -141,7 +141,7 @@ export default function Documents() {
               </div>
               <span
                 onClick={(e) => { e.stopPropagation(); downloadDocument(doc); }}
-                style={{ flex: 'none', fontSize: 11, fontWeight: 600, color: ink, border: '1px solid rgba(27,25,22,0.16)', borderRadius: 12, padding: '6px 10px', cursor: 'pointer' }}
+                style={{ flex: 'none', fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, border: '1px solid rgba(27,25,22,0.16)', borderRadius: 12, padding: '6px 10px', cursor: 'pointer' }}
                 data-testid="document-download"
               >
                 {T('Tải về', 'Download')}

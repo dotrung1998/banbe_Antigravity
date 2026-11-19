@@ -94,7 +94,7 @@ export function SubmittedEventsRow({ submitted, grouped = false }) {
               aria-label={T(`${total} mục mới`, `${total} new item(s)`)}
               title={String(total)}
               data-testid="account-group-submittedEvents-badge"
-              style={{ fontSize: 11, fontWeight: 700, color: paper, background: alert, borderRadius: 999, padding: '2px 7px', minWidth: 18, textAlign: 'center' }}
+              style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 700, color: paper, background: alert, borderRadius: 999, padding: '2px 7px', minWidth: 18, textAlign: 'center' }}
             >
               {total > 99 ? '99+' : total}
             </span>
@@ -114,9 +114,9 @@ export function SubmittedEventsRow({ submitted, grouped = false }) {
             <div key={r.id} data-testid={`account-pending-${r.id}`} style={{ borderTop: `1px solid ${rule}`, padding: '13px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
                 <span style={{ ...display(15) }}>{r.name}</span>
-                <span style={{ fontSize: 10.5, fontWeight: 600, color: ink, opacity: 0.65, flex: 'none' }}>{T('Đang chờ Banbe duyệt', 'Waiting for Banbe to review')}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.65, flex: 'none' }}>{T('Đang chờ Banbe duyệt', 'Waiting for Banbe to review')}</span>
               </div>
-              {r.submitted_at && <span style={{ fontSize: 11, color: ink, opacity: 0.6 }}>{T(`Gửi lúc ${fmt(r.submitted_at)}`, `Submitted ${fmt(r.submitted_at)}`)}</span>}
+              {r.submitted_at && <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6 }}>{T(`Gửi lúc ${fmt(r.submitted_at)}`, `Submitted ${fmt(r.submitted_at)}`)}</span>}
               <span onClick={() => setViewing(r)} data-testid={`account-view-pending-${r.id}`} style={{ fontSize: 12, fontWeight: 600, color: ink, border: `1px solid ${rule}`, borderRadius: 999, padding: '7px 16px', alignSelf: 'flex-start', cursor: 'pointer' }}>
                 {T('Xem', 'View')}
               </span>

@@ -52,7 +52,7 @@ export default function DeleteAccountSheet() {
   };
   const dobField = (key, label, ph, max) => (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 5, flex: key === 'year' ? 1.4 : 1, minWidth: 0 }}>
-      <span style={{ fontSize: 11, fontWeight: 600, color: ink }}>{label}</span>
+      <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{label}</span>
       <input
         value={dob[key]} placeholder={ph} inputMode="numeric" autoComplete="off" data-testid={`delete-account-dob-${key}`}
         onChange={(e) => setDob({ ...dob, [key]: digitsOnly(e.target.value, max) })}
@@ -68,7 +68,7 @@ export default function DeleteAccountSheet() {
   const identityAndPermanence = (
     <>
         <div style={{ ...cardGlass({ marginTop: 18, padding: '14px 16px' }) }} data-testid="delete-account-identity">
-          <span style={{ fontSize: 11, opacity: 0.65, color: ink }}>{T('Tài khoản đang đăng nhập', 'Currently signed in as')}</span>
+          <span style={{ fontSize: 'var(--bb-text-meta)', opacity: 0.65, color: ink }}>{T('Tài khoản đang đăng nhập', 'Currently signed in as')}</span>
           <div style={{ fontSize: 15, fontWeight: 600, color: ink, marginTop: 2 }}>{identityLabel}</div>
           {s.user?.email && <div style={{ fontSize: 12, color: ink, opacity: 0.7 }}>{s.user.email}</div>}
         </div>
@@ -164,7 +164,7 @@ export default function DeleteAccountSheet() {
                 <div onClick={s.deleteAccountReauthBusy ? undefined : submitDob} data-testid="delete-account-dob-verify" style={{ ...inkButton({ borderRadius: 12, padding: 11, fontSize: 13 }), opacity: s.deleteAccountReauthBusy ? 0.5 : 1 }}>
                   {s.deleteAccountReauthBusy ? T('Đang kiểm tra…', 'Checking…') : T('Xác minh', 'Verify')}
                 </div>
-                {(dobProblem || s.deleteAccountReauthError) && <span style={{ fontSize: 11.5, color: alert }} data-testid="delete-account-dob-error">{dobProblem || s.deleteAccountReauthError}</span>}
+                {(dobProblem || s.deleteAccountReauthError) && <span style={{ fontSize: 'var(--bb-text-meta)', color: alert }} data-testid="delete-account-dob-error">{dobProblem || s.deleteAccountReauthError}</span>}
                 <span role="button" onClick={() => { setDobProblem(''); setReauthMode('email'); }} data-testid="delete-account-use-email" style={linkStyle}>{T('Dùng mã gửi qua email thay thế', 'Use an emailed code instead')}</span>
               </div>
             )
@@ -193,7 +193,7 @@ export default function DeleteAccountSheet() {
               <div onClick={verifyDeleteAccountReauthCode} data-testid="delete-account-reauth-verify" style={{ ...inkButton({ borderRadius: 12, padding: 11, fontSize: 13 }), opacity: s.deleteAccountReauthBusy ? 0.6 : 1 }}>
                 {s.deleteAccountReauthBusy ? T('Đang kiểm tra…', 'Checking…') : T('Xác minh', 'Verify')}
               </div>
-              {s.deleteAccountReauthError && <span style={{ fontSize: 11.5, color: alert }}>{s.deleteAccountReauthError}</span>}
+              {s.deleteAccountReauthError && <span style={{ fontSize: 'var(--bb-text-meta)', color: alert }}>{s.deleteAccountReauthError}</span>}
             </div>
           )}
           {reauthMode === 'email' && !s.deleteAccountReauthVerified && (

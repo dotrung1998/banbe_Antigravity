@@ -93,11 +93,11 @@ export default function AdminRetention() {
             <div style={{ ...fieldGlass({ overflowX: 'auto' }) }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontVariantNumeric: 'tabular-nums' }}>
                 <thead>
-                  <tr style={{ fontSize: 11.5, textAlign: 'right', opacity: 0.7 }}>
-                    <th style={{ ...cell, fontSize: 11.5, textAlign: 'left', fontWeight: 600 }}>{T('Loại', 'Kind')}</th>
-                    <th style={{ ...cell, fontSize: 11.5, fontWeight: 600 }}>{T('Đã gửi', 'Sent')}</th>
-                    <th style={{ ...cell, fontSize: 11.5, fontWeight: 600 }}>{T('Đã đọc', 'Read')}</th>
-                    <th style={{ ...cell, fontSize: 11.5, fontWeight: 600 }}>{T('Phút tới khi đọc (trung vị)', 'Median min to read')}</th>
+                  <tr style={{ fontSize: 'var(--bb-text-meta)', textAlign: 'right', opacity: 0.7 }}>
+                    <th style={{ ...cell, fontSize: 'var(--bb-text-meta)', textAlign: 'left', fontWeight: 600 }}>{T('Loại', 'Kind')}</th>
+                    <th style={{ ...cell, fontSize: 'var(--bb-text-meta)', fontWeight: 600 }}>{T('Đã gửi', 'Sent')}</th>
+                    <th style={{ ...cell, fontSize: 'var(--bb-text-meta)', fontWeight: 600 }}>{T('Đã đọc', 'Read')}</th>
+                    <th style={{ ...cell, fontSize: 'var(--bb-text-meta)', fontWeight: 600 }}>{T('Phút tới khi đọc (trung vị)', 'Median min to read')}</th>
                   </tr>
                 </thead>
                 <tbody>

@@ -165,7 +165,7 @@ function ExpandedPanel({ photoUrl, title, subtitle, metaLine, onClose: onCloseNo
           <div style={{ padding: '14px 22px 22px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, width: '100%', boxSizing: 'border-box' }}>
             <span style={{ ...display(18), textAlign: 'center' }}>{title}</span>
             {subtitle && <span style={{ fontSize: 12.5, color: ink, opacity: 0.75, textAlign: 'center' }}>{subtitle}</span>}
-            {metaLine && <span style={{ fontSize: 11, color: ink, opacity: 0.6, textAlign: 'center' }}>{metaLine}</span>}
+            {metaLine && <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6, textAlign: 'center' }}>{metaLine}</span>}
             <div style={{ marginTop: 6, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>{children}</div>
           </div>
         </div>
@@ -447,15 +447,15 @@ export default function PulseViewer() {
             }} />
             <div style={{ flex: 1, minWidth: 0, padding: '10px 10px 10px 14px', display: 'flex', flexDirection: 'column', gap: 3, justifyContent: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: ink, opacity: 0.5 }}>#{i + 1}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 700, color: ink, opacity: 0.5 }}>#{i + 1}</span>
                 <span style={{ ...display(14, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{item.event_name}</span>
               </div>
-              <span data-testid="pulse-organizer-identity" style={{ fontSize: 11.5, color: ink, opacity: 0.75 }}>
+              <span data-testid="pulse-organizer-identity" style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.75 }}>
                 {item.organizer_name}{item.organizer_verified ? ' ✓' : ''}
                 {s.followedOrgIds.includes(item.organizer_id) && <FollowingBadge T={T} testId="pulse-following-badge" style={{ marginInlineStart: 8, opacity: 1 }} />}
               </span>
               {!!item.included && (
-                <span style={{ fontSize: 10, color: ink, opacity: 0.55, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.55, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {T('Bao gồm: ', 'Includes: ')}{item.included}
                 </span>
               )}
@@ -470,17 +470,17 @@ export default function PulseViewer() {
                 number is a field the RPC actually returns. */}
             <div style={{ width: 82, flex: 'none', padding: '10px 12px 10px 0', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', gap: 3 }} data-testid="pulse-rank-breakdown">
               {!!item.cat_label && (
-                <span style={{ fontSize: 9.5, fontWeight: 600, padding: '3px 7px', borderRadius: 999, background: fieldSolid, color: ink, whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, padding: '3px 7px', borderRadius: 999, background: fieldSolid, color: ink, whiteSpace: 'nowrap' }}>
                   {item.cat_label}
                 </span>
               )}
-              <span style={{ fontSize: 9.5, color: ink, opacity: 0.65, whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65, whiteSpace: 'nowrap' }}>
                 {T(`${item.booking_count ?? 0} vé`, `${item.booking_count ?? 0} bkgs`)}
               </span>
-              <span style={{ fontSize: 9.5, color: ink, opacity: 0.65, whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65, whiteSpace: 'nowrap' }}>
                 {T(`${item.checkin_count ?? 0} check-in`, `${item.checkin_count ?? 0} chk-in`)}
               </span>
-              <span style={{ fontSize: 9.5, color: ink, opacity: 0.5, whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.5, whiteSpace: 'nowrap' }}>
                 {T(`${item.follow_count ?? 0} theo dõi`, `${item.follow_count ?? 0} follows`)}
               </span>
             </div>
@@ -518,10 +518,10 @@ export default function PulseViewer() {
               </div>
               <div style={{ flex: 1, minWidth: 0, padding: '10px 10px 10px 14px', display: 'flex', flexDirection: 'column', gap: 3, justifyContent: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: ink, opacity: 0.5 }}>#{i + 1}</span>
+                  <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 700, color: ink, opacity: 0.5 }}>#{i + 1}</span>
                   <span style={{ ...display(14, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{item.event_name}</span>
                 </div>
-                <span style={{ fontSize: 11.5, color: ink, opacity: 0.75 }}>
+                <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.75 }}>
                   {item.organizer_name}{item.organizer_verified ? ' ✓' : ''}
                   {s.followedOrgIds.includes(item.organizer_id) && <FollowingBadge T={T} testId="pulse-following-badge" style={{ marginInlineStart: 8, opacity: 1 }} />}
                 </span>
@@ -531,7 +531,7 @@ export default function PulseViewer() {
                 <span
                   onClick={(e) => { e.stopPropagation(); togglePhotoLike(item.photo_id); }}
                   data-testid="pulse-photo-quick-like"
-                  style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: ink, cursor: 'pointer' }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--bb-text-meta)', color: ink, cursor: 'pointer' }}
                 >
                   <span>{eng.likeCount}</span>
                   <span style={{ display: 'flex', color: eng.likedByMe ? ink : ink, opacity: eng.likedByMe ? 1 : 0.55 }}>
@@ -541,7 +541,7 @@ export default function PulseViewer() {
                 <span
                   onClick={(e) => { e.stopPropagation(); sharePhoto(item); }}
                   data-testid="pulse-photo-quick-share"
-                  style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: ink, opacity: 0.7, cursor: 'pointer' }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7, cursor: 'pointer' }}
                 >
                   <span>{eng.shareCount}</span>
                   <ShareGlyph size={13} />

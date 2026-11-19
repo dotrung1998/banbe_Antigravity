@@ -98,7 +98,7 @@ export default function TicketStubPager({ attendees, qrMode, qrLabel, reduceMoti
                 {checked && <Zigzag />}
                 <TicketQr mode={mode} value={a.admission_token} size={220} pad={10} label={qrLabel} />
                 <span data-testid={`confirmed-stub-name-${a.seat_no}`} style={{ ...display(17, { marginTop: 14, overflowWrap: 'anywhere' }) }}>{a.name}</span>
-                <span style={{ marginTop: 10, fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: ink3 }}>{T('Mã vào cửa', 'Entry code')}</span>
+                <span style={{ marginTop: 10, fontSize: 'var(--bb-text-kicker)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: ink3 }}>{T('Mã vào cửa', 'Entry code')}</span>
                 <span style={{ marginTop: 4, fontSize: 29, fontWeight: 600, letterSpacing: '0.14em', fontFamily: 'ui-monospace, Menlo, monospace', color: ink, opacity: live ? 1 : 0.35, whiteSpace: 'nowrap' }}>
                   {live ? formatEntryCode(a.ticket_code) : '••• •••'}
                 </span>

@@ -10,7 +10,7 @@ import {
   INTERESTS, GOALS, everyone, normalizeCriteria, criteriaIsEveryone, criteriaSummary, criteriaPlain, eligibilityGuidance, evaluateCriteria,
 } from '../lib/eventPrefs.js';
 
-const small = { fontSize: 11.5, lineHeight: 1.55, color: ink, opacity: 0.7 };
+const small = { fontSize: 'var(--bb-text-meta)', lineHeight: 1.55, color: ink, opacity: 0.7 };
 
 function Chip({ text, selected, onClick, testId }) {
   return (
@@ -75,7 +75,7 @@ export function ReservationCriteriaPicker({ criteria, onChange, loadState }) {
   const empty = declared && !normalizeCriteria(c).interests && !normalizeCriteria(c).goals;
   return (
     <div style={{ marginTop: 0 }} data-testid="create-criteria">
-      <label style={{ fontSize: 11.5, color: ink }}>{T('Điều kiện đặt chỗ', 'Reservation criteria')}</label>
+      <label style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{T('Điều kiện đặt chỗ', 'Reservation criteria')}</label>
       <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
         {[
           { key: 'everyone', vi: 'Mọi người', en: 'Everyone' },
@@ -96,7 +96,7 @@ export function ReservationCriteriaPicker({ criteria, onChange, loadState }) {
         })}
       </div>
       {loadState === 'loading' && <p style={{ ...small, margin: '6px 0 0' }}>{T('Đang tải điều kiện hiện tại…', 'Loading current criteria…')}</p>}
-      {loadState === 'failed' && <p style={{ fontSize: 11.5, color: alert, margin: '6px 0 0' }} data-testid="create-criteria-load-failed">{T('Không tải được điều kiện hiện tại. Hãy mở lại sự kiện để sửa.', 'Could not load the current criteria. Reopen the event to edit it.')}</p>}
+      {loadState === 'failed' && <p style={{ fontSize: 'var(--bb-text-meta)', color: alert, margin: '6px 0 0' }} data-testid="create-criteria-load-failed">{T('Không tải được điều kiện hiện tại. Hãy mở lại sự kiện để sửa.', 'Could not load the current criteria. Reopen the event to edit it.')}</p>}
       {declared && (
         <>
           <Group kind="interests" title={T('Sở thích', 'Interests')} options={INTERESTS} group={c.interests} onChange={(g) => setGroup('interests', g)} vi={vi} T={T} />

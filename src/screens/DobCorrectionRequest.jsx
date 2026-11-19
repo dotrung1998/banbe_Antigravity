@@ -49,7 +49,7 @@ export default function DobCorrectionRequest() {
 
   if (req?.status === 'pending') {
     return (
-      <span style={{ fontSize: 11.5, color: ink, opacity: 0.75 }} data-testid="dob-correction-pending">
+      <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.75 }} data-testid="dob-correction-pending">
         {T(`Yêu cầu sửa thành ${fmt(req.requested_dob, s.lang)} đang chờ quản trị viên xem xét.`, `Your request to change it to ${fmt(req.requested_dob, s.lang)} is waiting for an admin.`)}
       </span>
     );
@@ -57,12 +57,12 @@ export default function DobCorrectionRequest() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {req?.status === 'rejected' && (
-        <span style={{ fontSize: 11.5, color: ink, opacity: 0.75 }} data-testid="dob-correction-rejected">
+        <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.75 }} data-testid="dob-correction-rejected">
           {T('Yêu cầu sửa trước đó đã bị từ chối', 'Your last correction request was declined')}{req.decision_note ? `: ${req.decision_note}` : '.'}
         </span>
       )}
       {!open ? (
-        <span role="button" onClick={() => setOpen(true)} style={{ fontSize: 11.5, fontWeight: 600, color: ink, textDecoration: 'underline', cursor: 'pointer' }} data-testid="dob-correction-open">
+        <span role="button" onClick={() => setOpen(true)} style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, textDecoration: 'underline', cursor: 'pointer' }} data-testid="dob-correction-open">
           {T('Sai ngày sinh? Yêu cầu sửa', 'Wrong? Request a correction')}
         </span>
       ) : (
@@ -74,7 +74,7 @@ export default function DobCorrectionRequest() {
           <textarea value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} rows={2}
             placeholder={T('Lý do (ví dụ: nhập nhầm khi đăng ký)', 'Reason (for example: mistyped at sign-up)')}
             style={{ ...input, resize: 'vertical', width: '100%' }} data-testid="dob-correction-reason" />
-          <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>
+          <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65 }}>
             {T('Quản trị viên sẽ xem xét. Ngày sinh chỉ đổi khi yêu cầu được duyệt.', 'An admin reviews it. Your birthday only changes if the request is approved.')}
           </span>
           {err && <span style={{ fontSize: 12, color: alert }} data-testid="dob-correction-error">{err}</span>}

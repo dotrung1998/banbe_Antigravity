@@ -50,7 +50,7 @@ export default function EventPlanTitle({ title, titleStyle }) {
 }
 
 const tileBtn = { position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, padding: 0, border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit' };
-const caption = { fontSize: 10, fontWeight: 600, color: ink2, lineHeight: 1, whiteSpace: 'nowrap' };
+const caption = { fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink2, lineHeight: 1, whiteSpace: 'nowrap' };
 
 /** The two calendar tiles. `onMessage(text | '')` gets the status line (the stub shows it full width). */
 // `chips` (v2.3, note 81): the same two choices as slim pills for the ticket stub's "Save the date" row.

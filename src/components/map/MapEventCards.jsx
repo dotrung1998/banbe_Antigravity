@@ -24,7 +24,7 @@ export function seatStatus(f, T) {
   return null;
 }
 
-const kickStyle = { fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: clay, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
+const kickStyle = { fontSize: 'var(--bb-text-kicker)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: clay, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
 
 export function MapCarousel({ events, selectedId, onOpen, seatsOf, isHit, T, style }) {
   const scrollerRef = useRef(null);
@@ -103,7 +103,7 @@ export function MapPreview({ ev, distance, seatsOf, onBack, onDetails, onReserve
       <div data-testid="map-preview-stub" style={{ display: 'flex', alignItems: 'center', gap: 12, paddingTop: 12, borderTop: `1px dashed ${rule}` }}>
         {p && (
           <span aria-hidden="true" style={{ width: 52, height: 56, flex: 'none', borderRadius: 12, background: block, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-            <small style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: clay }}>{wd}</small>
+            <small style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 700, letterSpacing: '0.1em', color: clay }}>{wd}</small>
             <b style={{ fontSize: 20, fontWeight: 600, lineHeight: 1 }}>{p.day}</b>
           </span>
         )}

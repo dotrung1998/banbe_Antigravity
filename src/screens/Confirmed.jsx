@@ -404,7 +404,7 @@ export default function Confirmed() {
         {copy && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, margin: '0 6px 12px' }}>
             <img src="/banbe-wordmark.png" alt="banbe" crossOrigin="anonymous" style={{ width: 56, height: 'auto', display: 'block', flex: 'none', opacity: 0.7 }} />
-            <span data-testid="confirmed-status" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 600, color: ink }}>
+            <span data-testid="confirmed-status" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>
               <span aria-hidden style={{ width: 7, height: 7, borderRadius: '50%', background: toneColor }} />{copy.label}
             </span>
           </div>
@@ -430,7 +430,7 @@ export default function Confirmed() {
               <TicketStubPager attendees={attendees} qrMode={qrMode} qrLabel={qrLabel} reduceMotion={reduceMotion} onActive={setStubIdx} T={T} />
             ) : isPaid && isGifted ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }} data-testid="confirmed-gifted">
-                <span style={{ fontSize: 11, fontWeight: 600, color: ink2 }}>{T('Đã tặng', 'Gifted')}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink2 }}>{T('Đã tặng', 'Gifted')}</span>
                 <span style={{ fontSize: 17, fontWeight: 600, color: ink, overflowWrap: 'anywhere' }}>{s.booking.recipient_name}</span>
               </div>
             ) : (
@@ -438,14 +438,14 @@ export default function Confirmed() {
                 <TicketQr mode={qrMode} value={s.booking.admission_token || s.booking.id} size={220} pad={10} label={qrLabel} />
                 {s.booking.code && (
                   <>
-                    <span style={{ marginTop: 16, fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: ink3 }}>{T('Mã vào cửa', 'Entry code')}</span>
+                    <span style={{ marginTop: 16, fontSize: 'var(--bb-text-kicker)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: ink3 }}>{T('Mã vào cửa', 'Entry code')}</span>
                     {/* A locked / void / ended ticket shows a mask, never the real code. */}
                     <span data-testid="confirmed-entry-code" style={{ marginTop: 4, fontSize: 29, fontWeight: 600, letterSpacing: '0.14em', fontFamily: 'ui-monospace, Menlo, monospace', color: ink, opacity: qrShows ? 1 : 0.35, whiteSpace: 'nowrap' }}>
                       {qrShows ? formatEntryCode(s.booking.code) : '••• •••'}
                     </span>
                   </>
                 )}
-                {qrShows && <span style={{ marginTop: 8, fontSize: 11.5, color: ink2 }}>{T('Đưa mã này ở cửa', 'Show this code at the door')}</span>}
+                {qrShows && <span style={{ marginTop: 8, fontSize: 'var(--bb-text-meta)', color: ink2 }}>{T('Đưa mã này ở cửa', 'Show this code at the door')}</span>}
               </>
             )}
           </PaperTicket>
@@ -456,7 +456,7 @@ export default function Confirmed() {
             style={{ marginTop: 14, width: '100%', boxSizing: 'border-box', minHeight: 52, padding: '10px 18px', border: 'none', borderRadius: 16, background: ink, color: paper, fontFamily: 'inherit', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, textAlign: 'left' }}>
             <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
               <span style={{ fontSize: 14.5, fontWeight: 600 }}>{T('Xem thông tin chuyển khoản', 'See payment details')}</span>
-              <span style={{ fontSize: 11.5, lineHeight: 1.4 }}>{T('Số tài khoản, số tiền và nội dung cần ghi.', 'Account number, amount and the reference to use.')}</span>
+              <span style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.4 }}>{T('Số tài khoản, số tiền và nội dung cần ghi.', 'Account number, amount and the reference to use.')}</span>
             </span>
             <span aria-hidden style={{ fontSize: 17, flex: 'none', lineHeight: 1 }}>›</span>
           </button>
@@ -466,7 +466,7 @@ export default function Confirmed() {
             {giftedSeats.map(g => (
               <div key={g.id} style={{ ...cardGlass({ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 12 }) }} data-testid={`confirmed-gifted-seat-${g.id}`}>
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: ink, opacity: 0.65 }}>{T('Đã tặng', 'Gifted')}</span>
+                  <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.65 }}>{T('Đã tặng', 'Gifted')}</span>
                   <span style={{ fontSize: 14, fontWeight: 600, color: ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.recipient_name}</span>
                 </div>
                 <span onClick={() => runDownload([giftPdfOf(g)])} title={T('Tải lại vé PDF', 'Re-download the PDF')} data-testid={`confirmed-gifted-seat-download-${g.id}`}
@@ -514,7 +514,7 @@ export default function Confirmed() {
                        style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px', borderRadius: 16, cursor: 'pointer', fontSize: 14, color: ink }}>
                     <Icon kind="calendar" size={18} />
                     <span>{T('Lịch Apple ▪︎ Ứng dụng khác', 'Apple Calendar ▪︎ Other apps')}
-                      <span style={{ display: 'block', fontSize: 11, opacity: 0.6, marginTop: 2 }}>{T('Tải file .ics', 'Downloads an .ics file')}</span>
+                      <span style={{ display: 'block', fontSize: 'var(--bb-text-meta)', opacity: 0.6, marginTop: 2 }}>{T('Tải file .ics', 'Downloads an .ics file')}</span>
                     </span>
                   </div>
                 </div>
@@ -539,7 +539,7 @@ export default function Confirmed() {
           </GlassMenu>
         )}
         {[walletMsg && showQr && !hasNamed && !isGifted && walletEligible ? walletMsg : '', s.receiptRequestError].filter(Boolean).map(m => (
-          <p key={m} style={{ fontSize: 11, color: alert, textAlign: 'center', margin: 0 }}>{m}</p>
+          <p key={m} style={{ fontSize: 'var(--bb-text-meta)', color: alert, textAlign: 'center', margin: 0 }}>{m}</p>
         ))}
       </div>
       {/* Note 78: the policy paragraph is unchanged and only collapsed. Hidden for an expired hold, as before (the strip explains it). */}

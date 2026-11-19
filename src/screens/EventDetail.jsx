@@ -800,7 +800,7 @@ export default function EventDetail({ preview = null } = {}) {
                 <div style={bg(ev.img, { width: 64, height: 64, borderRadius: 12, flex: 'none' })} />
                 <div style={{ minWidth: 0 }}>
                   <div style={{ ...display(15, { lineHeight: 1.2 }) }}>{ev.name}</div>
-                  <div style={{ fontSize: 11.5, color: ink, opacity: 0.7, marginTop: 2 }}>{ev.when}</div>
+                  <div style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7, marginTop: 2 }}>{ev.when}</div>
                 </div>
               </div>
               <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, opacity: 0.7, margin: '14px 0 0' }}>
@@ -852,7 +852,7 @@ export default function EventDetail({ preview = null } = {}) {
                 full text just shows directly, no expand affordance needed. */}
             {introParagraphs.length > 0 && (
               <div data-testid="event-intro-section" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Giới thiệu sự kiện', 'About this event')}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Giới thiệu sự kiện', 'About this event')}</span>
                 {/* Note 69: the host's chosen font and colour (details.intro_font / intro_color, migration 207). */}
                 {introParagraphs.map((p, i) => (
                   <p key={i} data-intro-font={introStyle(ev.details).font || 'sans'}
@@ -862,7 +862,7 @@ export default function EventDetail({ preview = null } = {}) {
             )}
             {includedItems.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Bao gồm', 'Included')}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Bao gồm', 'Included')}</span>
                 {includedItems.map((it, i) => (
                   <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     <span style={{ ...display(15) }}>{it.label}</span>

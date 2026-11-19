@@ -119,7 +119,7 @@ export function RowIcon({ kind, size = 22, accent }) {
 function RowGroup({ title, testId, top = 30, children }) {
   return (
     <section data-testid={testId} style={{ marginTop: top }}>
-      <h2 style={{ margin: '0 20px 4px', fontSize: 11, fontWeight: 400, letterSpacing: '.12em', textTransform: 'uppercase', color: ink3 }}>{title}</h2>
+      <h2 style={{ margin: '0 20px 4px', fontSize: 'var(--bb-text-kicker)', fontWeight: 400, letterSpacing: '.12em', textTransform: 'uppercase', color: ink3 }}>{title}</h2>
       <MoreList testId={`${testId}-list`}>{children}</MoreList>
     </section>
   );
@@ -525,7 +525,7 @@ export default function Account() {
                   }}>
                   {m.label}
                   {m.badge > 0 && (
-                    <span aria-hidden style={{ fontSize: 11, fontWeight: 700, minWidth: 18, padding: '1px 6px', boxSizing: 'border-box', borderRadius: 999, background: on ? paper : alert, color: on ? ink : paper }}>{m.badge}</span>
+                    <span aria-hidden style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 700, minWidth: 18, padding: '1px 6px', boxSizing: 'border-box', borderRadius: 999, background: on ? paper : alert, color: on ? ink : paper }}>{m.badge}</span>
                   )}
                 </button>
               );
@@ -574,7 +574,7 @@ export default function Account() {
               <span
                 role="status"
                 aria-label={T(`${s.myOrganizerInvites.length} lời mời`, `${s.myOrganizerInvites.length} invite(s)`)}
-                style={{ fontSize: 11, fontWeight: 700, color: paper, background: alert, borderRadius: 999, padding: '2px 7px', minWidth: 18, textAlign: 'center' }}
+                style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 700, color: paper, background: alert, borderRadius: 999, padding: '2px 7px', minWidth: 18, textAlign: 'center' }}
                 data-testid="account-team-invite-banner-badge"
               >
                 {s.myOrganizerInvites.length}

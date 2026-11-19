@@ -13,7 +13,7 @@ import {
   budgetRegionCurrency, normalizeForSave, prefsEqual,
 } from '../lib/eventPrefs.js';
 
-const small = { fontSize: 11.5, lineHeight: 1.55, color: ink, opacity: 0.7 };
+const small = { fontSize: 'var(--bb-text-meta)', lineHeight: 1.55, color: ink, opacity: 0.7 };
 
 function Chip({ text, selected, onClick, testId, compact }) {
   return (

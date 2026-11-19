@@ -123,7 +123,7 @@ export default function ToastStack() {
               style={{
                 ...cardGlass({ padding: '6px 12px' }),
                 border: `1px solid ${rule}`, cursor: 'pointer',
-                fontSize: 11.5, fontWeight: 600, color: ink,
+                fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink,
               }}
             >
               Xem thêm ({hiddenCount})
@@ -137,7 +137,7 @@ export default function ToastStack() {
               style={{
                 ...cardGlass({ padding: '6px 12px' }),
                 border: `1px solid ${rule}`, cursor: 'pointer',
-                fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.75,
+                fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.75,
               }}
             >
               Tắt tất cả

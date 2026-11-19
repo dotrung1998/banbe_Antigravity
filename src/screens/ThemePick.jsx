@@ -19,7 +19,7 @@ export default function ThemePick() {
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
         <span style={{ ...display(19, { color: ink }) }}>{title}</span>
-        <span style={{ fontSize: 11.5, color: ink }}>{subtitle}</span>
+        <span style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{subtitle}</span>
       </div>
       <span style={{ fontSize: 15, color: ink }}>{active ? '✓' : '›'}</span>
     </div>
@@ -33,7 +33,7 @@ export default function ThemePick() {
       }}
       data-screen-label="Appearance"
     >
-      <span style={{ fontSize: 11.5, color: ink }}>{T('Hiển thị', 'Appearance')}</span>
+      <span style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{T('Hiển thị', 'Appearance')}</span>
       <span style={{ ...display(27, { lineHeight: 1.2, color: ink, marginTop: 8 }) }}>
         {T('Bạn thích nền sáng hay tối?', 'Light or dark?')}
       </span>

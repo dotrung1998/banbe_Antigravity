@@ -108,15 +108,15 @@ export default function Reserve() {
         <div style={bg(ev.img, { flex: 'none', width: 52, height: 52 })} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
           <span style={{ ...display(15) }}>{ev.name}</span>
-          <span style={{ fontSize: 11.5, color: ink }}>{ev.when} ▪︎ {s.qty} {T('chỗ', 'seats')} ▪︎ {trStatus(totalStr)}</span>
+          <span style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{ev.when} ▪︎ {s.qty} {T('chỗ', 'seats')} ▪︎ {trStatus(totalStr)}</span>
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, margin: '20px 22px 0' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <label style={{ fontSize: 11.5, color: ink }}>{T('Tên', 'Name')}</label>
+            <label style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{T('Tên', 'Name')}</label>
             {hasName && (
-              <span onClick={goEditName} style={{ fontSize: 11, color: ink, opacity: 0.6, cursor: 'pointer' }} data-testid="reserve-name-change-in-account">
+              <span onClick={goEditName} style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6, cursor: 'pointer' }} data-testid="reserve-name-change-in-account">
                 {T('Đổi trong Tài khoản', 'Change in Account')}
               </span>
             )}
@@ -134,7 +134,7 @@ export default function Reserve() {
               <div
                 onClick={s.reserveNameSaving ? undefined : submitNameAtHold}
                 style={{
-                  alignSelf: 'flex-start', fontSize: 11.5, fontWeight: 600, color: ink,
+                  alignSelf: 'flex-start', fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink,
                   border: '1px solid rgba(27,25,22,0.16)', borderRadius: 10, padding: '6px 10px',
                   cursor: s.reserveNameSaving ? 'default' : 'pointer', opacity: s.reserveNameSaving ? 0.6 : 1,
                 }}
@@ -143,32 +143,32 @@ export default function Reserve() {
                 {s.reserveNameSaving ? T('Đang lưu…', 'Saving…') : T('Lưu tên', 'Save name')}
               </div>
               {s.reserveNameError && (
-                <span style={{ fontSize: 11, color: alert }}>{s.reserveNameError}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', color: alert }}>{s.reserveNameError}</span>
               )}
             </>
           )}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          <label style={{ fontSize: 11.5, color: ink }}>Email</label>
+          <label style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>Email</label>
           <div style={{ ...fieldGlass({ padding: '13px 14px' }), fontSize: 14, fontFamily: FACE, color: ink, opacity: 0.75 }} data-testid="reserve-email-readonly">
             {s.user?.email || ''}
           </div>
         </div>
       </div>
       <div style={{ margin: '22px 22px 0' }}>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Số vé', 'Tickets')}</span>
+        <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Số vé', 'Tickets')}</span>
         <div style={{ ...fieldGlass({ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, padding: '12px 14px' }) }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span style={{ fontSize: 14, fontWeight: 600, color: ink }}>{s.qty} {T('vé', 'tickets')}</span>
-            <span style={{ fontSize: 11.5, color: ink }}>{qtyTotalLabel}</span>
+            <span style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{qtyTotalLabel}</span>
           </div>
           <CountStepper value={s.qty} min={1} max={addMax} unit={T('vé', 'tickets')} testId="reserve-qty"
             onChange={(n) => (n > s.qty ? qtyPlus() : qtyMinus())} />
         </div>
       </div>
       <div style={{ margin: '22px 22px 0' }} data-testid="reserve-attendees">
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Người tham dự', 'Attendees')}</span>
-        <p style={{ fontSize: 11.5, color: ink, opacity: 0.65, margin: '4px 0 0' }}>
+        <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Người tham dự', 'Attendees')}</span>
+        <p style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65, margin: '4px 0 0' }}>
           {adding
             ? T('Mỗi vé cần tên và ngày sinh của người sẽ tham dự.', 'Each ticket needs the name and date of birth of the person attending.')
             : T('Mỗi vé cần tên và ngày sinh của người sẽ tham dự. Vé 1 là của bạn và dùng ngày sinh trong hồ sơ.', 'Each ticket needs the name and date of birth of the person attending. Ticket 1 is yours and uses the birthday on your profile.')}
@@ -176,7 +176,7 @@ export default function Reserve() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
           {s.attendeeDrafts.slice(0, s.qty).map((a, i) => (
             <div key={i} style={{ ...fieldGlass({ padding: 13, display: 'flex', flexDirection: 'column', gap: 8 }) }} data-testid={`reserve-attendee-${i}`}>
-              <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7 }}>{T('Vé', 'Ticket')} {i + 1}</span>
+              <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.7 }}>{T('Vé', 'Ticket')} {i + 1}</span>
               <input
                 value={a.name} onChange={(e) => setAttendeeField(i, 'name', e.target.value)}
                 placeholder={T('Họ và tên', 'Full name')} autoComplete="off"

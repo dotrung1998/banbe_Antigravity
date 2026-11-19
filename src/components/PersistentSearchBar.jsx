@@ -159,7 +159,7 @@ export default function PersistentSearchBar() {
               style={{ ...photoPill({ position: 'relative', borderRadius: '50%' }), ...collapse(!atHome), overflow: atHome ? 'hidden' : 'visible', height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, color: ink, marginLeft: atHome ? 0 : 8 }}>
               <svg aria-hidden="true" width={19} height={19} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></svg>
               {h.badge > 0 && (
-                <span aria-hidden="true" style={{ position: 'absolute', top: -2, right: -2, minWidth: 18, height: 18, padding: '0 5px', boxSizing: 'border-box', borderRadius: 9, background: clay, color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', fontVariantNumeric: 'tabular-nums' }}>{h.badge}</span>
+                <span aria-hidden="true" style={{ position: 'absolute', top: -2, right: -2, minWidth: 18, height: 18, padding: '0 5px', boxSizing: 'border-box', borderRadius: 9, background: clay, color: '#fff', fontSize: 'var(--bb-text-meta)', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', fontVariantNumeric: 'tabular-nums' }}>{h.badge}</span>
               )}
             </button>
           )}

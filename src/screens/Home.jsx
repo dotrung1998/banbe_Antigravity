@@ -1097,7 +1097,7 @@ export default function Home({ browse = false }) {
               {(g.orgName || '?').charAt(0).toUpperCase()}
             </div>
           </div>
-          <span style={{ fontSize: 9.5, color: ink, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 56 }}>{g.orgName}</span>
+          <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 56 }}>{g.orgName}</span>
         </div>
       ))}
     </div>
@@ -1228,7 +1228,7 @@ export default function Home({ browse = false }) {
                 )}
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.title}</div>
-                  <div style={{ fontSize: 11, color: ink, opacity: 0.65, marginTop: 2, display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65, marginTop: 2, display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                     <span>{card.host_name}</span>
                     {card.closes_at && (
                       <>
@@ -1313,7 +1313,7 @@ export default function Home({ browse = false }) {
             </svg>
             </span>
             {s.unreadNotifications > 0 && (
-              <span aria-hidden="true" data-testid="home-notifications-badge" style={{ position: 'absolute', top: 2, right: 2, minWidth: 16, height: 16, borderRadius: 8, padding: '0 4px', boxSizing: 'border-box', background: 'var(--bb-alert)', color: 'var(--bb-on-alert)', fontSize: 10, fontWeight: 700, lineHeight: '16px', textAlign: 'center' }}>
+              <span aria-hidden="true" data-testid="home-notifications-badge" style={{ position: 'absolute', top: 2, right: 2, minWidth: 16, height: 16, borderRadius: 8, padding: '0 4px', boxSizing: 'border-box', background: 'var(--bb-alert)', color: 'var(--bb-on-alert)', fontSize: 'var(--bb-text-meta)', fontWeight: 700, lineHeight: '16px', textAlign: 'center' }}>
                 {s.unreadNotifications > 9 ? '9+' : s.unreadNotifications}
               </span>
             )}
@@ -1330,7 +1330,7 @@ export default function Home({ browse = false }) {
           <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
           <span style={{ opacity: 0.6, fontWeight: 500, flex: 'none' }}>{T('Gần', 'Near')}</span>
           <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{areaName}</span>
-          <span aria-hidden="true" style={{ fontSize: 9, marginLeft: 2, flex: 'none' }}>▾</span>
+          <span aria-hidden="true" style={{ fontSize: 'var(--bb-text-meta)', marginLeft: 2, flex: 'none' }}>▾</span>
         </button>
         {/* Quick language + light/dark switch, same plain-text style as the location pill and right beside it.
             Each shows what a tap switches TO (same convention the old capsules used). */}
@@ -1714,23 +1714,23 @@ export default function Home({ browse = false }) {
                       // Honest placeholder — never a static demo photo
                       // standing in for a real one (roadmap's own rule).
                       <div style={{ ...cardGlass({ width: 168, height: 110 }), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <span style={{ fontSize: 11, color: ink, opacity: 0.55 }}>{T('Chưa có ảnh', 'No photo yet')}</span>
+                        <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.55 }}>{T('Chưa có ảnh', 'No photo yet')}</span>
                       </div>
                     )}
                     <span
                       onClick={(ev) => { ev.stopPropagation(); toggleFav(e.key); }}
                       data-testid={`weekend-save-${e.key}`}
-                      style={e.saved ? photoChip(CHIP_COLORS.going, { top: 6, right: 6, fontSize: 9, padding: '4px 8px', borderRadius: 12 }) : lightChip({ top: 6, right: 6, fontSize: 9, padding: '4px 8px', borderRadius: 12 })}
+                      style={e.saved ? photoChip(CHIP_COLORS.going, { top: 6, right: 6, fontSize: 'var(--bb-text-meta)', padding: '4px 8px', borderRadius: 12 }) : lightChip({ top: 6, right: 6, fontSize: 'var(--bb-text-meta)', padding: '4px 8px', borderRadius: 12 })}
                     >
                       {e.saved ? T('Đã lưu', 'Saved') : T('Lưu', 'Save')}
                     </span>
                     {e.soldOut && (
-                      <span style={photoChip(CHIP_COLORS.cancelled, { bottom: 6, left: 6, fontSize: 9, padding: '4px 8px', borderRadius: 12 })}>{T('Hết chỗ', 'Sold out')}</span>
+                      <span style={photoChip(CHIP_COLORS.cancelled, { bottom: 6, left: 6, fontSize: 'var(--bb-text-meta)', padding: '4px 8px', borderRadius: 12 })}>{T('Hết chỗ', 'Sold out')}</span>
                     )}
                   </div>
                   <div style={{ ...display(14, { marginTop: 7, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{e.name}</div>
-                  <div style={{ fontSize: 11, color: ink, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{trStatus(e.when)}{e.area ? ' ▪︎ ' + e.area : ''}</div>
-                  <div style={{ fontSize: 11, color: ink, marginTop: 1, display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                  <div style={{ fontSize: 'var(--bb-text-meta)', color: ink, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{trStatus(e.when)}{e.area ? ' ▪︎ ' + e.area : ''}</div>
+                  <div style={{ fontSize: 'var(--bb-text-meta)', color: ink, marginTop: 1, display: 'flex', justifyContent: 'space-between', gap: 6 }}>
                     <span>{e.priceDisplay}</span>
                     <span>{e.seatsDisplay}</span>
                   </div>
@@ -1763,7 +1763,7 @@ export default function Home({ browse = false }) {
       {/* Note 49: surveys need an account (the discovery RPC is authenticated-only) — hidden for a guest. */}
       {surveySection}
 
-      <div style={{ padding: '6px 20px 8px', fontSize: 11, color: ink }}>
+      <div style={{ padding: '6px 20px 8px', fontSize: 'var(--bb-text-meta)', color: ink }}>
         {T('Vài buổi vui dành cho riêng bạn tuần này. Không xếp hạng, không quảng cáo, không lướt vô tận.', 'A few fun gatherings made just for you this week. No ratings, no ads, no endless scrolling.')}
       </div>
       {/* Simple Shell: hosting is one tap away in the header's mode switch, so this link only shows with the switch off. */}

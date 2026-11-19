@@ -152,7 +152,7 @@ export default function AccountSearchResults({ query }) {
       {groups.map((gr, gi) => (
         <div key={gr.t.key}>
           <div data-testid="account-search-section" style={{ paddingTop: gi === 0 ? 14 : 22 }}>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T(gr.t.vi, gr.t.en)}</span>
+            <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T(gr.t.vi, gr.t.en)}</span>
           </div>
           <div style={{ ...fieldGlass({ marginTop: 10, display: 'flex', flexDirection: 'column', overflow: 'hidden' }) }}>
             {gr.items.map((en, i) => (
@@ -169,7 +169,7 @@ export default function AccountSearchResults({ query }) {
                 <RowIcon kind={en.icon} />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
                   <span style={{ fontSize: 14, color: ink }}>{T(en.vi, en.en)}</span>
-                  <span style={{ fontSize: 11, color: ink, opacity: 0.55 }}>{T(en.secVi, en.secEn)}</span>
+                  <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.55 }}>{T(en.secVi, en.secEn)}</span>
                 </div>
                 <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
               </div>

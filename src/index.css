@@ -2,7 +2,8 @@
   box-sizing: border-box;
 }
 
-:root { --bb-glass: 0.82; } /* Liquid Glass opacity, set from Preferences (src/lib/glassOpacity.js) */
+/* --bb-text-meta is the type floor (audit 2026-11-19 row 24); --bb-text-kicker is for uppercase, tracked kickers only. */
+:root { --bb-glass: 0.82; --bb-text-meta: 12px; --bb-text-kicker: 11px; } /* Liquid Glass opacity, set from Preferences (src/lib/glassOpacity.js) */
 /* Map controls: Glass | Static colour (src/lib/mapSurface.js). photoPill reads these through its --bb-rt-* fallbacks, so
    scoping them to .bb-mapsurf turns every map control and Home's search bar solid without touching the others. */
 :root[data-map-surface="solid"] .bb-mapsurf {
@@ -894,13 +895,13 @@ input::placeholder, textarea::placeholder {
 /* Account: 28 px face, full opacity, 2 px ring (paper on the ink capsule when active, a hairline otherwise). */
 .bb-dock-simple__avatar { display: block; width: 100%; height: 100%; border-radius: 50%; box-shadow: 0 0 0 2px rgba(var(--bb-fg-rgb), 0.14); }
 .bb-dock-simple__avatar[data-on="true"] { box-shadow: 0 0 0 2px var(--bb-bg); }
-.bb-dock-simple__avatar .bb-home-head__disc { border: 0; font-size: 11px !important; }
+.bb-dock-simple__avatar .bb-home-head__disc { border: 0; font-size: var(--bb-text-meta) !important; }
 /* Count badge: a clay (Saved) or alert capsule at the glyph's top-trailing corner, ringed in the pill's own fill so it
    never touches the glyph. */
 .bb-dock-simple__badge {
   position: absolute; top: -7px; left: calc(100% - 9px);
   min-width: 16px; height: 16px; padding: 0 4.5px; box-sizing: border-box; border-radius: 999px;
-  font-size: 10.5px; font-weight: 700; line-height: 16px; text-align: center; white-space: nowrap;
+  font-size: var(--bb-text-meta); font-weight: 700; line-height: 16px; text-align: center; white-space: nowrap;
   font-variant-numeric: tabular-nums; letter-spacing: 0;
   box-shadow: 0 0 0 2px var(--bb-dock-ring, var(--bb-bg));
   background: var(--bb-alert); color: var(--bb-on-alert);
@@ -956,7 +957,7 @@ input::placeholder, textarea::placeholder {
 .bb-tknob::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--bb-bg); border: 2px solid var(--bb-fg); box-sizing: border-box; box-shadow: 0 1px 4px rgba(27,25,22,0.3); transition: transform .18s cubic-bezier(.2,.85,.25,1), box-shadow .18s; }
 .bb-tknob.act::before, .bb-tknob:focus-visible::before { transform: scale(2.2); box-shadow: 0 3px 10px rgba(27,25,22,0.38); }
 .bb-tknob:focus-visible::before { outline: 2px solid var(--bb-clay); outline-offset: 2px; }
-.bb-tknob-bubble { position: absolute; bottom: 26px; left: 50%; transform: translateX(-50%); background: var(--bb-fg); color: var(--bb-bg); font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 8px; white-space: nowrap; pointer-events: none; font-variant-numeric: tabular-nums; transition: opacity .15s; }
+.bb-tknob-bubble { position: absolute; bottom: 26px; left: 50%; transform: translateX(-50%); background: var(--bb-fg); color: var(--bb-bg); font-size: var(--bb-text-meta); font-weight: 700; padding: 2px 8px; border-radius: 8px; white-space: nowrap; pointer-events: none; font-variant-numeric: tabular-nums; transition: opacity .15s; }
 @media (prefers-reduced-motion: reduce) { .bb-tknob::before, .bb-tknob-bubble { transition: none; } }
 
 /* Map E+ list sheet (note 79): while a pull is in progress the sheet and its veil follow the finger with no easing, and the
@@ -1041,7 +1042,7 @@ input::placeholder, textarea::placeholder {
 }
 .bb-home-head__contextarea {
   max-width: 100%; display: flex; align-items: center; gap: 3px;
-  font-size: 10.5px; font-weight: 500; line-height: 1.1; color: var(--bb-fg-3);
+  font-size: var(--bb-text-meta); font-weight: 500; line-height: 1.1; color: var(--bb-fg-3);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .bb-home-head__contextarea > svg { flex: none; width: 10px; height: 10px; opacity: .7; }
@@ -1098,7 +1099,7 @@ input::placeholder, textarea::placeholder {
 .bb-home-head__arealabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* "Everywhere" is a quiet label, not a second placeholder. */
 .bb-home-head__areafallback { color: var(--bb-fg-3); font-weight: 500; }
-.bb-home-head__chev { flex: none; font-size: 9.5px; opacity: .5; }
+.bb-home-head__chev { flex: none; font-size: var(--bb-text-meta); opacity: .5; }
 
 @media (prefers-reduced-motion: reduce) {
   .bb-home-head__bar { animation: none; }
@@ -1133,7 +1134,7 @@ input::placeholder, textarea::placeholder {
     radial-gradient(120% 80% at 100% 0%, rgba(var(--bb-clay-rgb),.32), transparent 62%);
 }
 .bb-hero-empty__kicker {
-  display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 600; letter-spacing: .14em;
+  display: flex; align-items: center; gap: 7px; font-size: var(--bb-text-kicker); font-weight: 600; letter-spacing: .14em;
   text-transform: uppercase; color: rgba(255,255,255,.72); overflow-wrap: anywhere;
 }
 .bb-hero-empty__fan { position: relative; height: 96px; margin: auto 0 22px; flex: none; }

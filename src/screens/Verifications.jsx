@@ -42,7 +42,7 @@ function RefundDiagnosticsPanel({ s, T }) {
     : 'not-hidden-by-focus';
 
   const row = (label, value) => (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 11, fontFamily: 'monospace' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 'var(--bb-text-meta)', fontFamily: 'monospace' }}>
       <span style={{ opacity: 0.6 }}>{label}</span>
       <span style={{ textAlign: 'right', wordBreak: 'break-all' }}>{String(value)}</span>
     </div>
@@ -50,7 +50,7 @@ function RefundDiagnosticsPanel({ s, T }) {
 
   return (
     <div data-testid="refund-diagnostics-panel" style={{ ...cardGlass({ padding: 12, display: 'flex', flexDirection: 'column', gap: 4 }), border: `1px dashed ${alert}` }}>
-      <span style={{ fontSize: 10.5, fontWeight: 700, color: alert, marginBottom: 2 }}>DIAGNOSTICS (refund queue)</span>
+      <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 700, color: alert, marginBottom: 2 }}>DIAGNOSTICS (refund queue)</span>
       {row('supabase.auth.getUser() id', authUserId)}
       {row('app-state user id (s.user.id)', s.user?.id || '(null)')}
       {row('profile role (s.accountType)', s.accountType)}
@@ -210,7 +210,7 @@ export default function Verifications() {
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
                 <span style={{ ...display(16) }}>{v.guest_name || T('Khách', 'Guest')}</span>
-                <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>{v.event_name} ▪︎ {v.qty} {T('vé', 'tix')}</span>
+                <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>{v.event_name} ▪︎ {v.qty} {T('vé', 'tix')}</span>
               </div>
               <span style={{ ...display(19, { whiteSpace: 'nowrap' }) }}>{formatVnd(v.total_vnd)}</span>
             </div>
@@ -244,13 +244,13 @@ export default function Verifications() {
                 />
               ) : (
                 <div style={{ ...insetField({ padding: '20px 12px', textAlign: 'center' }) }} data-testid="verification-proof-loading">
-                  <span style={{ fontSize: 11.5, color: ink, opacity: 0.6 }}>{T('Đang tải ảnh biên lai…', 'Loading receipt image…')}</span>
+                  <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6 }}>{T('Đang tải ảnh biên lai…', 'Loading receipt image…')}</span>
                 </div>
               )
             )}
 
             {v.escalated && (
-              <span style={{ fontSize: 11, fontWeight: 600, color: alert }}>
+              <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: alert }}>
                 {T('Đã chuyển cảnh báo khẩn', 'Escalated as urgent')}
               </span>
             )}
@@ -283,7 +283,7 @@ export default function Verifications() {
                   data-testid="verification-reason"
                   style={{ ...insetField({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }}
                 />
-                <p style={{ fontSize: 11, lineHeight: 1.45, color: ink, opacity: 0.7, margin: 0 }}>
+                <p style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.45, color: ink, opacity: 0.7, margin: 0 }}>
                   {reasonFor.kind === 'escalate'
                     ? T('banbe sẽ xem xét và đưa ra quyết định. Chỗ của khách vẫn được giữ trong lúc chờ.',
                         "banbe will review and decide. The guest's seat stays held while you wait.")
@@ -332,7 +332,7 @@ export default function Verifications() {
           that view is meant to be exactly one booking's own detail. */}
       {!focusId && myOpenDisputes.length > 0 && (
         <div style={{ margin: '0 22px 40px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7 }} data-testid="verifications-disputes-title">
+          <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.7 }} data-testid="verifications-disputes-title">
             {T('Đang chờ banbe quyết định', "Awaiting banbe's decision")}
           </span>
           {myOpenDisputes.map(d => (
@@ -389,7 +389,7 @@ export default function Verifications() {
                 diagTapTimerRef.current = setTimeout(() => { diagTapCountRef.current = 0; }, 1200);
                 if (diagTapCountRef.current >= 5) { diagTapCountRef.current = 0; setDiagOpen(v => !v); }
               }}
-              style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7, cursor: 'default' }} data-testid="refund-queue-title"
+              style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, opacity: 0.7, cursor: 'default' }} data-testid="refund-queue-title"
             >
               {T('Hoàn tiền', 'Refunds')}
             </span>
@@ -399,7 +399,7 @@ export default function Verifications() {
                 already chose/snapshotted their own destination, the host
                 only reviews it and transfers externally, then marks sent. */}
             {(hasRows || showEmpty) && (
-              <span style={{ fontSize: 11, color: ink, opacity: 0.6 }} data-testid="refund-queue-explainer">
+              <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6 }} data-testid="refund-queue-explainer">
                 {T(
                   'Khách đã chọn tài khoản nhận hoàn tiền của họ. Bạn chuyển khoản trực tiếp cho khách rồi đánh dấu đã hoàn tiền. Không cần tạo phương thức nhận tiền riêng.',
                   'The guest has already chosen their own refund destination. You transfer to them directly, then mark it sent. No receiving payment method of your own is needed here.'
@@ -430,7 +430,7 @@ export default function Verifications() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
                     <span style={{ ...display(16) }}>{c.guestName || T('Khách', 'Guest')}</span>
-                    <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>{c.eventName}</span>
+                    <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>{c.eventName}</span>
                   </div>
                   <span style={{ ...display(19, { whiteSpace: 'nowrap' }) }}>{formatVnd(c.amount_vnd)}</span>
                 </div>
@@ -456,7 +456,7 @@ export default function Verifications() {
                   // claim with no valid recipient snapshot is NEVER
                   // actionable here, exactly like Attendance's own Refund
                   // Center — never a "Mark refund sent" CTA for it.
-                  <span style={{ fontSize: 11, color: alert }} data-testid="refund-queue-needs-destination">
+                  <span style={{ fontSize: 'var(--bb-text-meta)', color: alert }} data-testid="refund-queue-needs-destination">
                     {T('Khách chưa chọn tài khoản nhận hoàn tiền.', "The guest hasn't chosen a refund destination yet.")}
                   </span>
                 ) : refundNoteFor === c.id ? (
@@ -471,7 +471,7 @@ export default function Verifications() {
                         they're asked to confirm they received the money. */}
                     <label style={{ ...insetField({ padding: '11px 12px', display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }), fontSize: 13, color: ink }}>
                       <span>{refundProof ? T('Đã chọn ảnh chuyển khoản', 'Transfer proof selected') : T('Đính kèm ảnh chuyển khoản (không bắt buộc)', 'Attach transfer proof (optional)')}</span>
-                      <span style={{ fontSize: 11.5, fontWeight: 600, opacity: 0.75 }}>{refundProof ? T('Đổi', 'Change') : T('Chọn', 'Choose')}</span>
+                      <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, opacity: 0.75 }}>{refundProof ? T('Đổi', 'Change') : T('Chọn', 'Choose')}</span>
                       <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} data-testid="refund-queue-proof"
                         onChange={(e) => setRefundProof(e.target.files?.[0] || null)} />
                     </label>
@@ -508,11 +508,11 @@ export default function Verifications() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
                     <span style={{ ...display(16) }}>{c.guestName || T('Khách', 'Guest')}</span>
-                    <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>{c.eventName}</span>
+                    <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>{c.eventName}</span>
                   </div>
                   <span style={{ ...display(19, { whiteSpace: 'nowrap' }) }}>{formatVnd(c.amount_vnd)}</span>
                 </div>
-                <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>
+                <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>
                   {T('Đang chờ khách xác nhận đã nhận tiền.', 'Awaiting guest confirmation.')}
                 </span>
               </div>
@@ -534,7 +534,7 @@ function waitLabel(since, T) {
 function Line({ label, value, mono, urgent, testid }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }} data-testid={testid}>
-      <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{label}</span>
+      <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65 }}>{label}</span>
       <span style={{ fontSize: 12, fontWeight: 600, color: urgent ? alert : ink, letterSpacing: mono ? '0.06em' : 0, wordBreak: 'break-all', fontVariantNumeric: 'tabular-nums' }}>{value}</span>
     </div>
   );

@@ -60,7 +60,7 @@ export default function TicketStubV23({ block, time, countdown, placeLine, mapsU
   const stampEl = stamp && (
     <span ref={stampRef} data-testid="event-stub-stamp" data-kind={stamp.kind} role="status"
       style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 5, height: 28, padding: '0 10px', border: '1.5px solid currentColor', borderRadius: 8, background: 'var(--bb-surface-1)', color: confirmed ? 'var(--bb-update)' : 'var(--bb-honey)',
-        fontSize: 10.5, fontWeight: 800, letterSpacing: '0.16em', textTransform: 'uppercase', whiteSpace: 'nowrap', transform: 'rotate(-6deg)' }}>
+        fontSize: 'var(--bb-text-kicker)', fontWeight: 800, letterSpacing: '0.16em', textTransform: 'uppercase', whiteSpace: 'nowrap', transform: 'rotate(-6deg)' }}>
       <span aria-hidden style={{ position: 'absolute', inset: 2, border: '1px solid currentColor', borderRadius: 5, opacity: 0.45 }} />
       {confirmed ? <IconOk /> : <IconHeld />}<b style={{ fontWeight: 800 }}>{stamp.text}</b>
     </span>
@@ -72,9 +72,9 @@ export default function TicketStubV23({ block, time, countdown, placeLine, mapsU
         {block && (
           <div data-testid="event-fact-when" aria-label={`${block.weekday} ${block.day} ${block.month}`}
             style={{ flex: 'none', width: 72, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '2px 16px 2px 0', borderRight: '1px solid var(--bb-rule)', color: 'var(--bb-clay-ink)' }}>
-            <small style={{ fontFamily: SERIF, fontSize: 10.5, letterSpacing: '0.17em', fontWeight: 600, textTransform: 'uppercase', lineHeight: 1 }}>{block.month}</small>
+            <small style={{ fontFamily: SERIF, fontSize: 'var(--bb-text-kicker)', letterSpacing: '0.17em', fontWeight: 600, textTransform: 'uppercase', lineHeight: 1 }}>{block.month}</small>
             <b style={{ fontFamily: SERIF, fontSize: 38, fontWeight: 400, lineHeight: 1, margin: '5px 0 6px', color: 'var(--bb-fg)', letterSpacing: '-0.035em' }}>{block.day}</b>
-            <span style={{ fontSize: 10, color: 'var(--bb-fg-3)', letterSpacing: '0.16em', fontWeight: 600, whiteSpace: 'nowrap', lineHeight: 1 }}>{block.weekday}</span>
+            <span style={{ fontSize: 'var(--bb-text-meta)', color: 'var(--bb-fg-3)', letterSpacing: '0.16em', fontWeight: 600, whiteSpace: 'nowrap', lineHeight: 1 }}>{block.weekday}</span>
           </div>
         )}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>

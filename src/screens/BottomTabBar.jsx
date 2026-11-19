@@ -778,7 +778,7 @@ export default function BottomTabBar({ collapsed }) {
             })() : (
               <div style={{ position: 'relative', width: ICON_SIZE, height: ICON_SIZE, opacity: activeIndex === i ? 1 : 0.72 }}>
                 {item.key === 'profile' && s.user
-                  ? <span aria-hidden style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--bb-clay, #9C5B3B)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'grid', placeItems: 'center' }}>{String(s.user.name || s.user.email || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()}</span>
+                  ? <span aria-hidden style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--bb-clay, #9C5B3B)', color: '#fff', fontSize: 'var(--bb-text-meta)', fontWeight: 700, display: 'grid', placeItems: 'center' }}>{String(s.user.name || s.user.email || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()}</span>
                   : ICONS[item.icon](activeIndex === i ? '#1B1916' : ink, activeIndex === i)}
                 {item.badge > 0 && (() => {
                   const cap = item.badgeCap ?? 9;
@@ -795,7 +795,7 @@ export default function BottomTabBar({ collapsed }) {
                       title={String(item.badge)}
                       style={{
                         position: 'absolute', top: -5, right: -7, minWidth: 14, height: 14, padding: displayText.length > 1 ? '0 4px' : '0 3px',
-                        borderRadius: 999, background: item.tone === 'clay' ? 'var(--bb-clay, #9C5B3B)' : alert, color: item.tone === 'clay' ? '#fff' : 'var(--bb-on-alert)', fontSize: 9, fontWeight: 700,
+                        borderRadius: 999, background: item.tone === 'clay' ? 'var(--bb-clay, #9C5B3B)' : alert, color: item.tone === 'clay' ? '#fff' : 'var(--bb-on-alert)', fontSize: 'var(--bb-text-meta)', fontWeight: 700,
                         lineHeight: '14px', textAlign: 'center', whiteSpace: 'nowrap',
                       }}
                     >
@@ -807,7 +807,7 @@ export default function BottomTabBar({ collapsed }) {
             )}
             {/* Prototype v2's dock is icon-only; the label stays as the aria-label above. */}
             {!simpleShell && (
-              <span aria-hidden style={{ fontSize: 11, lineHeight: 1.1, fontWeight: activeIndex === i ? 700 : 500, opacity: activeIndex === i ? 1 : 0.75, color: activeIndex === i ? '#1B1916' : ink }}>{item.label}</span>
+              <span aria-hidden style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.1, fontWeight: activeIndex === i ? 700 : 500, opacity: activeIndex === i ? 1 : 0.75, color: activeIndex === i ? '#1B1916' : ink }}>{item.label}</span>
             )}
           </div>
         )))}

@@ -32,7 +32,7 @@ export default function Security() {
 
         {s.user ? (
           <>
-            <div style={{ fontSize: 11.5, fontWeight: 600, color: ink, margin: '28px 0 0' }}>{T('Mật khẩu', 'Password')}</div>
+            <div style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, margin: '28px 0 0' }}>{T('Mật khẩu', 'Password')}</div>
             <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '10px 0 0' }}>
               {T(
                 'Đặt mật khẩu để đăng nhập bằng email và mật khẩu, thay vì chờ mã gửi qua email mỗi lần.',
@@ -91,7 +91,7 @@ export default function Security() {
                 <div onClick={sendSecurityPasswordReset} style={{ fontSize: 12.5, fontWeight: 600, color: ink, textDecoration: 'underline', cursor: 'pointer', marginTop: 18 }}>
                   {T('Quên mật khẩu hiện tại?', 'Forgotten your current password?')}
                 </div>
-                <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.65, margin: '8px 0 0' }}>
+                <p style={{ fontSize: 'var(--bb-text-meta)', lineHeight: 1.5, color: ink, opacity: 0.65, margin: '8px 0 0' }}>
                   {T('Chúng tôi sẽ gửi link đặt lại mật khẩu tới email của bạn.', "We'll email you a link to reset it.")}
                 </p>
               </>

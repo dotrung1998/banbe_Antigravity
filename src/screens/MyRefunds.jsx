@@ -61,12 +61,12 @@ export default function MyRefunds() {
                     <span style={{ fontSize: 13, fontWeight: 600, color: ink }}>{formatVnd(c.amount_vnd)}</span>
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                    <span style={{ fontSize: 11.5, fontWeight: 600, color: overdue ? alert : ink, opacity: overdue ? 1 : 0.7 }}>
+                    <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: overdue ? alert : ink, opacity: overdue ? 1 : 0.7 }}>
                       {overdue ? T('Quá hạn hoàn tiền.', 'Refund overdue.') : T(...label)}
                     </span>
                   </div>
                   {c.status === 'owed' && c.refund_due_at && (
-                    <p style={{ fontSize: 11, color: ink, opacity: 0.6, margin: '4px 0 0' }}>
+                    <p style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6, margin: '4px 0 0' }}>
                       {T(`Trước ${formatShortDate(c.refund_due_at)}`, `Before ${formatShortDate(c.refund_due_at, 'en')}`)}
                     </p>
                   )}

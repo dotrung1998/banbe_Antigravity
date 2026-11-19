@@ -1592,7 +1592,7 @@ export default function MapExplore() {
   // a second format.
   const eventWhen = (ev) => (ev.startsAt ? cardDateBadge(Date.parse(ev.startsAt), ev.tz, T) : '');
   const nearDistance = (ev) => (s.located === true && s.userCoords && ev.hasLocation ? distanceLabel(haversineKm(s.userCoords, ev), en) : null);
-  const sectionLabel = { padding: '12px 0 4px', fontSize: 11.5, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: ink2 };
+  const sectionLabel = { padding: '12px 0 4px', fontSize: 'var(--bb-text-kicker)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: ink2 };
   // Solid chip (content sits on an opaque layer). 36pt tall.
   const catChip = (active, muted) => ({
     flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, padding: '0 12px', borderRadius: RADIUS.pill,
@@ -2136,7 +2136,7 @@ export default function MapExplore() {
                     </>
                   ) : icon(<><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></>, 19)}
                   {(cat ? others : filterBadge) > 0 && (
-                    <span data-testid="map-ud-filter-badge" style={{ position: 'absolute', top: -3, right: -3, minWidth: 20, height: 20, padding: '0 5px', borderRadius: 999, background: clay, color: '#fff', fontSize: 11.5, fontWeight: 700, display: 'grid', placeItems: 'center', boxShadow: `0 0 0 2px ${paper}` }}>
+                    <span data-testid="map-ud-filter-badge" style={{ position: 'absolute', top: -3, right: -3, minWidth: 20, height: 20, padding: '0 5px', borderRadius: 999, background: clay, color: '#fff', fontSize: 'var(--bb-text-meta)', fontWeight: 700, display: 'grid', placeItems: 'center', boxShadow: `0 0 0 2px ${paper}` }}>
                       {cat ? others : filterBadge}
                     </span>
                   )}
@@ -2346,7 +2346,7 @@ export default function MapExplore() {
       <MapListSheet open={listOpen} onClose={() => setListOpen(false)} top={listTop} scrollRef={listRef} mapButtonBottom={dockClear + 24} T={T}>
         <div data-testid="map-full-count" style={{ padding: '2px 16px 6px', flex: 'none' }}>
           {mapCity && (
-            <div data-testid="map-sheet-city" style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: clay, display: 'flex', alignItems: 'center', gap: 4, paddingTop: 4 }}>
+            <div data-testid="map-sheet-city" style={{ fontSize: 'var(--bb-text-kicker)', fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: clay, display: 'flex', alignItems: 'center', gap: 4, paddingTop: 4 }}>
               <svg aria-hidden="true" width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z" /><circle cx="12" cy="11" r="2" /></svg>
               {mapCity}
             </div>

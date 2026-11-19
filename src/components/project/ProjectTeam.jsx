@@ -91,7 +91,7 @@ function Matrix({ p, ui }) {
     <div data-testid="project-team-matrix" style={{ background: block, borderRadius: 20, padding: 12 }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead data-testid="project-team-matrix-head"><tr><th scope="col" style={{ ...head, textAlign: 'left' }}><span style={{ position: 'absolute', left: -9999 }}>{T('Việc', 'Action')}</span></th>
-          {short.map((n, i) => <th key={n} scope="col" title={p.roleName(MATRIX_COLUMNS[i])} style={{ ...head, width: 38, fontSize: 11, color: i === mine ? paper : ink3 }}>
+          {short.map((n, i) => <th key={n} scope="col" title={p.roleName(MATRIX_COLUMNS[i])} style={{ ...head, width: 38, fontSize: 'var(--bb-text-meta)', color: i === mine ? paper : ink3 }}>
             <abbr title={p.roleName(MATRIX_COLUMNS[i])} aria-current={i === mine ? 'true' : undefined}
               style={{ textDecoration: 'none', display: 'inline-block', minWidth: 32, padding: '3px 0', borderRadius: 999, fontWeight: i === mine ? 900 : 700, background: i === mine ? ink : 'transparent' }}>{n}</abbr></th>)}</tr></thead>
         <tbody>

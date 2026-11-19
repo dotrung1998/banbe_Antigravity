@@ -126,7 +126,7 @@ function SectionTitle({ children, count }) {
     <h2 style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '14px 0 0', fontSize: 14, fontWeight: 600, color: muted(0.75), fontFamily: 'inherit' }}>
       {children}
       {count != null && (
-        <span style={{ fontSize: 11.5, fontWeight: 700, padding: '1px 7px', borderRadius: 999, background: muted(0.08), color: muted(0.7) }}>{count}</span>
+        <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 700, padding: '1px 7px', borderRadius: 999, background: muted(0.08), color: muted(0.7) }}>{count}</span>
       )}
     </h2>
   );
@@ -164,12 +164,12 @@ function DailyBars({ metric, height = 104, T }) {
           return (
             <span style={{
               position: 'absolute', left: `${((i + 0.5) * slot)}%`, bottom: h + 3, transform: 'translateX(-50%)',
-              fontSize: 10.5, fontWeight: 700, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+              fontSize: 'var(--bb-text-meta)', fontWeight: 700, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
             }}>{RP.compact(peak.value, metric.kind, T)}</span>
           );
         })()}
       </div>
-      <div aria-hidden style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 10.5, color: muted(0.55), fontVariantNumeric: 'tabular-nums' }}>
+      <div aria-hidden style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 'var(--bb-text-meta)', color: muted(0.55), fontVariantNumeric: 'tabular-nums' }}>
         <span>{RP.formatDay(pts[0].date)}</span>
         <span>{RP.formatDay(pts[pts.length - 1].date)}</span>
       </div>
@@ -204,10 +204,10 @@ function SeriesStats({ metric, T }) {
     <div style={{ display: 'flex', flexWrap: 'wrap', rowGap: 10 }}>
       {items.map(([label, value, detail], i) => (
         <div key={label} style={{ flex: '1 1 30%', minWidth: 92, paddingLeft: i ? 12 : 0, borderLeft: i ? `1px solid ${muted(0.12)}` : 'none' }}>
-          <div style={{ fontSize: 11.5, color: muted(0.6), whiteSpace: 'nowrap' }}>{label}</div>
+          <div style={{ fontSize: 'var(--bb-text-meta)', color: muted(0.6), whiteSpace: 'nowrap' }}>{label}</div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginTop: 2 }}>
             <span style={{ fontSize: 14, fontWeight: 600, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{value}</span>
-            {detail && <span style={{ fontSize: 11.5, color: muted(0.6) }}>{detail}</span>}
+            {detail && <span style={{ fontSize: 'var(--bb-text-meta)', color: muted(0.6) }}>{detail}</span>}
           </div>
         </div>
       ))}
@@ -263,7 +263,7 @@ function KpiTile({ metric, role, onOpen, T }) {
       </div>
       {/* One line, stepping down for long amounts (iOS's minimumScaleFactor), so "₫" never wraps on its own. */}
       <div style={{ fontSize: metric.valueText.length > 10 ? 19 : metric.valueText.length > 7 ? 22 : 26, fontWeight: 700, fontVariantNumeric: 'tabular-nums', marginTop: 8, whiteSpace: 'nowrap', lineHeight: 1.1 }}>{metric.valueText}</div>
-      <div style={{ fontSize: 11.5, color: muted(0.6), marginTop: 3 }}>{meaning}</div>
+      <div style={{ fontSize: 'var(--bb-text-meta)', color: muted(0.6), marginTop: 3 }}>{meaning}</div>
       <div style={{ flex: 1, minHeight: 10 }} />
       {metric.summary?.hasActivity && (
         <div data-testid={`reports-kpi-strip-${metric.key}`}><Sparkline metric={metric} /></div>
@@ -296,7 +296,7 @@ function AttentionCard({ item, onOpen, T }) {
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 11.5, fontWeight: 700, color: tint, padding: '3px 8px', borderRadius: 999, background: `color-mix(in srgb, ${tint} 14%, transparent)` }}>{badge}</span>
+            <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 700, color: tint, padding: '3px 8px', borderRadius: 999, background: `color-mix(in srgb, ${tint} 14%, transparent)` }}>{badge}</span>
             <span style={{ flex: 1 }} />
             <span style={{ fontSize: 19, fontWeight: 700, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{item.valueText}</span>
           </div>
@@ -318,7 +318,7 @@ function TrendCard({ metric, role, onOpen, T }) {
         <Glyph name={RP.symbolFor(metric.key)} size={26} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 600 }}>{metric.title}</div>
-          <div style={{ fontSize: 11.5, color: muted(0.6) }}>{RP.meaning(metric, role, T)}</div>
+          <div style={{ fontSize: 'var(--bb-text-meta)', color: muted(0.6) }}>{RP.meaning(metric, role, T)}</div>
         </div>
         <span style={{ fontSize: 19, fontWeight: 700, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{metric.valueText}</span>
       </div>
@@ -437,7 +437,7 @@ function DetailSheet({ raw, rangeLabel, pngRangeLabel, onClose, onCsv, T }) {
               <div key={row.id} style={{ background: 'var(--bb-field)', borderRadius: 14, padding: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
                   <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600 }}>{row.title}</span>
-                  {row.flagged && <span style={{ fontSize: 11.5, fontWeight: 600, color: alert }}>⚠ {T('Quá hạn', 'Overdue')}</span>}
+                  {row.flagged && <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: alert }}>⚠ {T('Quá hạn', 'Overdue')}</span>}
                 </div>
                 {row.fields.map((f, i) => (
                   <div key={i} style={{ display: 'flex', gap: 10, marginTop: 6, fontSize: 12.5 }}>

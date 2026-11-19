@@ -96,14 +96,14 @@ export default function AdminEvents() {
         </div>
         {s.adminEvents.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flex: 'none' }}>
-            <span onClick={expandAll} data-testid="admin-events-expand-all" style={{ fontSize: 11.5, fontWeight: 600, color: ink, cursor: 'pointer' }}>{T('Mở tất cả', 'Expand all')}</span>
-            <span onClick={collapseAll} data-testid="admin-events-collapse-all" style={{ fontSize: 11.5, fontWeight: 600, color: ink, cursor: 'pointer' }}>{T('Thu gọn tất cả', 'Collapse all')}</span>
+            <span onClick={expandAll} data-testid="admin-events-expand-all" style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, cursor: 'pointer' }}>{T('Mở tất cả', 'Expand all')}</span>
+            <span onClick={collapseAll} data-testid="admin-events-collapse-all" style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, cursor: 'pointer' }}>{T('Thu gọn tất cả', 'Collapse all')}</span>
           </div>
         )}
       </div>
 
       {s.adminEventError && (
-        <p style={{ fontSize: 11.5, color: alert, margin: '10px 22px 0' }} data-testid="admin-events-error">{s.adminEventError}</p>
+        <p style={{ fontSize: 'var(--bb-text-meta)', color: alert, margin: '10px 22px 0' }} data-testid="admin-events-error">{s.adminEventError}</p>
       )}
 
       <div style={{ margin: '18px 22px 40px', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -124,12 +124,12 @@ export default function AdminEvents() {
               >
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
                   <span style={{ ...display(16) }} data-testid="admin-event-name">{e.name}</span>
-                  <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>{e.organizerName || T('Không rõ người tổ chức', 'Unknown host')}</span>
-                  <span style={{ fontSize: 10.5, color: ink, opacity: 0.55 }}>
+                  <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.7 }}>{e.organizerName || T('Không rõ người tổ chức', 'Unknown host')}</span>
+                  <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.55 }}>
                     {T('Mã', 'ID')} {e.key} ▪︎ {T('Gửi lúc', 'Submitted')} {submittedLabel}
                   </span>
                   {remindById[e.key]?.admin_remind_count > 0 && (
-                    <span data-testid={`admin-event-reminded-${e.key}`} style={{ fontSize: 11, fontWeight: 600, color: alert }}>
+                    <span data-testid={`admin-event-reminded-${e.key}`} style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: alert }}>
                       {T(`Host đã nhắc duyệt ${remindById[e.key].admin_remind_count}/2 lần`, `Host reminded ${remindById[e.key].admin_remind_count}/2 times`)}
                       {remindById[e.key].last_admin_reminded_at ? ` ▪︎ ${T('gần nhất', 'last')} ${new Date(remindById[e.key].last_admin_reminded_at).toLocaleString()}` : ''}
                     </span>
@@ -137,7 +137,7 @@ export default function AdminEvents() {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flex: 'none' }}>
                   <span style={{ ...display(19, { whiteSpace: 'nowrap' }) }}>{e.priceVnd ? formatMoney(e.priceVnd, rowCurrency(e)) : T('Miễn phí', 'Free')}</span>
-                  <span data-testid="admin-event-toggle" style={{ fontSize: 11, fontWeight: 600, color: ink, textDecoration: 'underline' }}>
+                  <span data-testid="admin-event-toggle" style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink, textDecoration: 'underline' }}>
                     {isOpen ? T('Thu gọn', 'Collapse') : T('Mở rộng', 'Expand')}
                   </span>
                 </div>
@@ -153,7 +153,7 @@ export default function AdminEvents() {
                     </div>
                   ) : (
                     <div style={{ ...insetField({ padding: '30px 12px', textAlign: 'center' }) }}>
-                      <span style={{ fontSize: 11.5, color: ink, opacity: 0.55 }}>{T('Chưa có ảnh', 'No photo yet')}</span>
+                      <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.55 }}>{T('Chưa có ảnh', 'No photo yet')}</span>
                     </div>
                   )}
 
@@ -177,7 +177,7 @@ export default function AdminEvents() {
                     <Line label={T('Địa chỉ', 'Address')} value={addressLabel} />
                     <Line label={T('Đã xác minh (chủ nhà tự khai)', 'Address confirmed (host-provided)')} value={e.addressVerified ? T('Có', 'Yes') : T('Không', 'No')} />
                     {e.lat != null && e.lng != null && (
-                      <a href={mapsUrl(e)} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>
+                      <a href={mapsUrl(e)} target="_blank" rel="noreferrer" style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>
                         {T('Mở trên Google Maps', 'Open in Google Maps')} ({e.lat.toFixed(5)}, {e.lng.toFixed(5)})
                       </a>
                     )}
@@ -185,7 +185,7 @@ export default function AdminEvents() {
 
                   {e.intro && (
                     <div style={{ ...insetField({ padding: '10px 12px' }) }}>
-                      <span style={{ fontSize: 10.5, color: ink, opacity: 0.65 }}>{T('Giới thiệu sự kiện', 'Event introduction')}</span>
+                      <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65 }}>{T('Giới thiệu sự kiện', 'Event introduction')}</span>
                       <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink, margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>{e.intro}</p>
                     </div>
                   )}
@@ -248,7 +248,7 @@ export default function AdminEvents() {
 function Line({ label, value }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-      <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{label}</span>
+      <span style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.65 }}>{label}</span>
       <span style={{ fontSize: 12, fontWeight: 600, color: ink, wordBreak: 'break-word', textAlign: 'right', maxWidth: '70%' }}>{value}</span>
     </div>
   );
