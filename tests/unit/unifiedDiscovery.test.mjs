@@ -47,3 +47,18 @@ test('mapPlottable keeps only docs with a located map row; unloaded rows keep al
   assert.deepEqual(mapPlottable(docs, slugRows).map(d => d.key), ['demo']);
   assert.deepEqual(mapPoints([{ key: 'demo' }], slugRows), [{ lat: 4, lng: 5 }]);
 });
+
+// Bug 2026-11-19: web and iOS Home listed different "Near you" events. One rule, shared cases (iOS reads them too).
+test('Near you: every open event, the filters, soonest first; total before the owned filters', () => {
+  const ny = fx.nearYou;
+  const ms = (x) => (x == null ? null : Date.parse(x));
+  const now = ms(ny.now);
+  const items = ny.items.map(i => ({ priceVnd: null, booked: null, capacity: null, soldOut: false, details: {}, ...i, startsAt: ms(i.startsAt), endsAt: ms(i.endsAt) }));
+  const byKey = new Map(items.map(i => [i.key, i]));
+  for (const [k, want] of Object.entries(ny.open)) assert.equal(U.isOpenItem(byKey.get(k), now), want, k);
+  for (const c of ny.cases) {
+    const r = U.nearYou(items, c.filters, c.sort, now, { tabOwnsTime: c.tabOwnsTime });
+    assert.deepEqual(r.rows.map(x => x.key), c.rows, c.name);
+    assert.equal(r.total, c.total, c.name);
+  }
+});

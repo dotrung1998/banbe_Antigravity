@@ -260,6 +260,7 @@ export function untilLabel(n) {
 }
 
 export function agoLabel(h) {
+  h = Math.floor(h);
   return h < 24 ? (h <= 1 ? '1 giờ trước' : h + ' giờ trước') : (Math.floor(h / 24) === 1 ? '1 ngày trước' : Math.floor(h / 24) + ' ngày trước');
 }
 

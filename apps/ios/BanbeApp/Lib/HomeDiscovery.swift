@@ -40,14 +40,18 @@ enum HomeDiscovery {
         /// The venue's IANA zone (events.tz, migration 195). With it, date options are judged in THAT zone
         /// (`dateWindowInZone`); without it, the fixed offset (Vietnam) as before.
         var tz: String?
+        /// The shared "still open" facts (UnifiedDiscovery.isOpenItem, web twin): cancelled, and the moment it is over
+        /// (EventEnd.endsAt: the host's end time, else 12 h after the start; nil = unknown).
+        var cancelled: Bool
+        var endsAt: Date?
 
         init(key: String, startsAt: Date?, priceVnd: Int?, catKeys: [String], booked: Int? = nil, capacity: Int? = nil,
              soldOut: Bool = false, distanceKm: Double? = nil, popularity: Double? = nil, currency: String = "VND",
-             details: EventDetails = [:], tz: String? = nil) {
+             details: EventDetails = [:], tz: String? = nil, cancelled: Bool = false, endsAt: Date? = nil) {
             self.key = key; self.startsAt = startsAt; self.priceVnd = priceVnd; self.catKeys = catKeys
             self.booked = booked; self.capacity = capacity; self.soldOut = soldOut
             self.distanceKm = distanceKm; self.popularity = popularity; self.currency = currency; self.details = details
-            self.tz = tz
+            self.tz = tz; self.cancelled = cancelled; self.endsAt = endsAt
         }
     }
 

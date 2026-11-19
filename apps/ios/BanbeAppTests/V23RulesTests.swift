@@ -54,13 +54,18 @@ final class V23RulesTests: XCTestCase {
     // MARK: End cards
 
     func testShortlistAndBrowseEndCards() {
-        let f = ListEnd.shortlistEnd(tab: "foryou", tabLabel: ViEn("Dành cho bạn", "For You"), total: 9, shown: 6, filtersOn: true)
+        let f = ListEnd.shortlistEnd(total: 9, shown: 6, filtersOn: true)
         XCTAssertEqual(f.kind, "filters")
         XCTAssertEqual(f.title.en, "3 more are just outside your filters.")
         XCTAssertEqual(f.slimmed.actions.map(\.act), ["clear-filters"])
         XCTAssertNil(f.slimmed.body)
-        let t = ListEnd.shortlistEnd(tab: "tonight", tabLabel: ViEn("Tối nay", "Tonight"), total: 3, shown: 3, filtersOn: false)
-        XCTAssertEqual(t.title.en, "That’s tonight. The good seats go first.")
+        // Web twin (tests/unit/pager.test.mjs): the end names the whole list, never a tab.
+        let t = ListEnd.shortlistEnd(total: 3, shown: 3, filtersOn: false)
+        XCTAssertEqual(t.kind, "end")
+        XCTAssertEqual(t.eyebrow?.en, "3 events in all")
+        XCTAssertEqual(t.title.en, "You’ve seen every event.")
+        XCTAssertEqual(f.actions.first?.label.en, "Show all 9")
+        XCTAssertEqual(ListEnd.shortlistEnd(total: 4, shown: 4, filtersOn: true).kind, "end")
         let ty = ListEnd.browseEnd(type: "gallery", typeName: ViEn("Phòng tranh", "Gallery"), count: 9, hidden: 0,
                                    others: [.init(key: "fashion", name: ViEn("Thời trang", "Fashion"), count: 8)])
         XCTAssertEqual(ty.title.vi, "Vẫn tò mò? Thời trang có 8 sự kiện.")

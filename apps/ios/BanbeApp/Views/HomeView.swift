@@ -205,8 +205,6 @@ struct HomeView: View {
                     // Survey discovery is authenticated-only server-side
                     // (get_public_survey_discovery); hide it for guests.
                     if app.isSignedIn { surveyDiscoveryRow }
-                    tagline
-                    hostLink
                     }
                 }
                 .padding(.bottom, BottomTabBar.contentClearance)
@@ -766,9 +764,7 @@ struct HomeView: View {
                 .environmentObject(app)
         }
         if !app.homeStories.isEmpty { storyRow.padding(.top, 20) }
-        if app.isSignedIn { surveyDiscoveryRow }
-        tagline
-        hostLink
+        if app.isSignedIn { surveyDiscoveryRow.padding(.top, 28) }
     }
 
     /// The in-place Browse by type (note 99) — one block, rendered above the "Near you" list.
@@ -777,7 +773,7 @@ struct HomeView: View {
         Group {
             if app.unifiedDiscoveryEnabled {
                 UnifiedBrowseSection(counts: snap.udCounts, onToggle: { toggleUnifiedType($0) },
-                                     onClear: { app.pickFilter("all") }, onOpenSheet: { udTypeSheetOpen = true })
+                                     onClear: { app.pickFilter("all"); alignNearYouAfterPick() }, onOpenSheet: { udTypeSheetOpen = true })
             } else {
                 HomeBrowseSection(counts: snap.categoryCounts, onPick: { app.openBrowse(type: $0, scope: "all") },
                                   onFind: { app.openBrowse(type: "all", scope: "all") }, seeAllTotal: snap.browseTotal)
@@ -789,6 +785,7 @@ struct HomeView: View {
             UnifiedTypeSheet(counts: snap.udCounts, selected: app.homeFilters.cats.first) { key in
                 udTypeSheetOpen = false
                 app.pickFilter(key)
+                alignNearYouAfterPick()
             }
             .environmentObject(app)
         }
@@ -823,6 +820,17 @@ struct HomeView: View {
     private func toggleUnifiedType(_ key: String) {
         Haptics.selection()
         app.pickFilter(app.homeFilters.cats.first == key ? "all" : key)
+        alignNearYouAfterPick()
+    }
+
+    /// Type tile tapped (select, switch or deselect): the "Near you" header goes to just under the folded band, always
+    /// (same anchor as the rail's See all; web twin: `pickTypeAndAlign`). Waits a beat so the filtered list has laid
+    /// out; Reduce Motion jumps (the `.onChange(of: nearYouScrollToken)` handler animates only when it is off).
+    private func alignNearYouAfterPick() {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            nearYouScrollToken += 1
+        }
     }
 
     /// End-card and empty-state actions of the Shortlist (web twin: `onShortlistAction`).
@@ -872,8 +880,6 @@ struct HomeView: View {
         if pulseHasItems { PulseTickerView().padding(.horizontal, 20).padding(.vertical, 10) }
         if !snap.relaxHints.isEmpty && !snap.items.isEmpty { relaxHintsRow(snap.relaxHints) }
         if app.isSignedIn { surveyDiscoveryRow }
-        tagline
-        hostLink
     }
 
     /// "Area · date · price", the one-line summary under By type (web twin: `shellFilterSummary`).
@@ -1019,21 +1025,21 @@ struct HomeView: View {
             } label: {
                 HStack(spacing: 8) {
                     Text(app.T("Góp ý cho sự kiện sắp tới", "Help Shape Upcoming Events"))
-                        .font(.app(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
+                        .font(BanbeTheme.display(20)).foregroundStyle(app.palette.ink)
                     if !app.homeSurveyDiscoveryLoading && app.homeSurveyDiscoveryError.isEmpty && !app.homeSurveyDiscovery.isEmpty {
                         // Honest LOADED count, never a fabricated total —
                         // "+" only when the server told us more exist
                         // (`hasMore`), never guessed from a page-size cap.
                         Text(app.homeSurveyDiscoveryHasMore ? "\(app.homeSurveyDiscovery.count)+" : "\(app.homeSurveyDiscovery.count)")
-                            .font(.app(size: 10.5, weight: .semibold))
-                            .padding(.horizontal, 7).padding(.vertical, 2)
+                            .font(.app(size: 13, weight: .semibold))
+                            .padding(.horizontal, 10).padding(.vertical, 2)
                             .background(app.palette.ink.opacity(0.1), in: Capsule())
-                            .foregroundStyle(app.palette.ink.opacity(0.7))
+                            .foregroundStyle(app.palette.ink.opacity(0.75))
                     }
                     Spacer()
                     Image(systemName: "chevron.down")
-                        .font(.app(size: 11, weight: .semibold))
-                        .foregroundStyle(app.palette.ink.opacity(0.5))
+                        .font(.app(size: 14, weight: .bold))
+                        .foregroundStyle(app.palette.ink.opacity(0.55))
                         .rotationEffect(.degrees(app.homeSurveyDiscoveryExpanded ? 180 : 0))
                 }
                 .padding(.horizontal, 20)
@@ -1291,7 +1297,7 @@ struct HomeView: View {
         var live: [LiveLine.Update] = []
         var browseTotal = 0
         /// Note 99 (unified_discovery): events per type for the shared search + time + price (type tiles, type sheet),
-        /// and every event matching the shared search + filters (state bar, map banner: the Map's same results).
+        /// and the "Near you" list's own count (state bar, map banner: "same results" means exactly the list).
         var udCounts: [String: Int] = [:]
         var udTotal = 0
     }
@@ -1370,14 +1376,15 @@ struct HomeView: View {
     }
 
     /// Note 80 (web twin: `heroLists` in Home.jsx): For You (ranked matches, else the soonest), Tonight and Weekend, each
-    /// at most 5 open events (not sold out, not cancelled, not started more than an hour ago), every filter kept
+    /// at most 5 open events (not sold out, not cancelled, not past its end), every filter kept
     /// except the date.
     private func makeHeroLists(items: [HomeDiscovery.Item], byKey: [String: CatalogEvent], forYou: [ForYouMatch],
                                filters: HomeDiscovery.Filters, now: Date) -> [HomeHeroTab: [DiscoveryCardModel]] {
-        func open(_ it: HomeDiscovery.Item) -> Bool {
-            guard !it.soldOut, byKey[it.key]?.cancelled == false, let start = it.startsAt else { return false }
-            return start >= now.addingTimeInterval(-3600)
-        }
+        // One "still on" rule with web (UnifiedDiscovery.isOpenItem: not cancelled, a start, not past its end). It
+        // used to drop anything that had merely started over an hour ago, which web stopped doing (audit row 6).
+        func open(_ it: HomeDiscovery.Item) -> Bool { !it.soldOut && UnifiedDiscovery.isOpenItem(it, now: now) }
+        // Web builds the rails from `qItems`: the shared query narrows them too (unified discovery).
+        let items = queryNarrowed(items, byKey: byKey)
         func shape(_ its: [HomeDiscovery.Item]) -> [DiscoveryCardModel] {
             its.prefix(app.homeV23Enabled ? 4 : 5).compactMap { it in byKey[it.key].map { app.discoveryCardModel($0, item: it, now: now) } }
         }
@@ -1394,30 +1401,35 @@ struct HomeView: View {
         return [.foryou: shape(ranked.isEmpty ? soonest : ranked), .tonight: byDate("today"), .weekend: byDate("weekend")]
     }
 
+    /// Unified discovery: the shared query narrows Home's lists with Search's own matcher (web: `qItems`).
+    private func queryNarrowed(_ items: [HomeDiscovery.Item], byKey: [String: CatalogEvent]) -> [HomeDiscovery.Item] {
+        let q = app.unifiedDiscoveryEnabled ? app.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        guard !q.isEmpty else { return items }
+        return items.filter { it in byKey[it.key].map { SearchMatch.matches(doc: SearchMatch.buildDoc(for: $0), query: q) } ?? false }
+    }
+
     private func fillV23(_ snap: inout Snapshot, items: [HomeDiscovery.Item], byKey: [String: CatalogEvent], forYou: [ForYouMatch],
                          filters f: HomeDiscovery.Filters, now: Date) {
         var counts: [HomeHeroTab: Int] = [:]
-        var lists: [HomeHeroTab: [HomeDiscovery.Item]] = [:]
         for t in HomeHeroTab.allCases {
-            let l = app.v23TabItems(t, items: items, byKey: byKey, forYou: forYou, now: now)
-            lists[t] = l
-            counts[t] = l.count
+            counts[t] = app.v23TabItems(t, items: items, byKey: byKey, forYou: forYou, now: now).count
         }
         snap.tabCounts = counts
-        var tabAll = lists[shownHeroTab] ?? []
+        // "Near you" (bug 2026-11-19): ONE rule with web, UnifiedDiscovery.nearYou + its shared fixture. Every open event
+        // Home lists (never the For You ranking of the open tab, which made it 7 here and 15 on web), Home's filters,
+        // soonest first; total = before the Filters-owned filters (the tab's time stays applied with unified discovery).
+        // The shared query narrows the list with Search's own matcher; the shared date is already in `f`.
+        let pool = queryNarrowed(items, byKey: byKey)
         if app.unifiedDiscoveryEnabled {
-            // The shared query narrows the Shortlist with Search's own matcher; the shared date is already in `f`.
-            let q = app.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-            let matchQ: (HomeDiscovery.Item) -> Bool = { it in
-                q.isEmpty || byKey[it.key].map { SearchMatch.matches(doc: SearchMatch.buildDoc(for: $0), query: q) } ?? false
-            }
-            tabAll = tabAll.filter(matchQ)
-            let live = items.filter { byKey[$0.key]?.cancelled == false && matchQ($0) }
-            snap.udCounts = HomeDiscovery.categoryCounts(live, f, keys: EventTypes.keys, now: now)
-            snap.udTotal = HomeDiscovery.apply(live, f, now: now).count
+            // Type tiles count the same open events the list shows (web: categoryCountMap over the open items).
+            snap.udCounts = HomeDiscovery.categoryCounts(pool.filter { UnifiedDiscovery.isOpenItem($0, now: now) }, f,
+                                                         keys: EventTypes.keys, now: now)
         }
-        snap.shortTotal = tabAll.count
-        snap.shortRows = HomeDiscovery.apply(tabAll, f, now: now).compactMap { it in byKey[it.key].map { app.v23Row($0, item: it, now: now) } }
+        let near = UnifiedDiscovery.nearYou(pool, filters: f, sort: app.homeSort, now: now, tabOwnsTime: app.unifiedDiscoveryEnabled)
+        snap.shortTotal = near.total
+        snap.shortRows = near.rows.compactMap { it in byKey[it.key].map { app.v23Row($0, item: it, now: now) } }
+        // The map banner and the state bar promise "same results": exactly the list's count (web: shortlist.rows.length).
+        snap.udTotal = snap.shortRows.count
         snap.browseTotal = HomeDiscovery.apply(items, .default, now: now).filter { byKey[$0.key]?.cancelled == false }.count
         let byItem = Dictionary(items.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
         snap.live = LiveLine.updates(
@@ -1820,17 +1832,6 @@ struct HomeView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var tagline: some View {
-        Text(app.T(
-            "Vài buổi vui dành cho riêng bạn tuần này. Không xếp hạng, không quảng cáo, không lướt vô tận.",
-            "A few fun gatherings made just for you this week. No ratings, no ads, no endless scrolling."
-        ))
-        .font(.app(size: 11))
-        .foregroundStyle(app.palette.ink)
-        .padding(.horizontal, 20)
-        .padding(.top, 6)
-    }
-
     /// Retention roadmap P1 ("Cuối tuần này") — real live+public events for the applicable weekend
     /// (app.weekendEvents), never demo cards. After the main feed on purpose: it's a discovery section, not a
     /// personal one. Note 50: a compact rail (web parity), hidden while the weekend date filter is on, and it
@@ -1874,21 +1875,7 @@ struct HomeView: View {
             .accessibilityIdentifier("home.weekendSection")
         }
     }
-    private var hostLink: some View {
-        SwipeSafeButton {
-            if app.hasHosted { app.switchToHost() } else { app.goHostIntro() }
-        } label: {
-            Text((app.hasHosted
-                  ? app.T("Trang tổ chức của bạn", "Your host page")
-                  : app.T("Dành cho người tổ chức ▪︎ hoàn toàn miễn phí", "For organizers ▪︎ completely free")) + " ›")
-                .font(.app(size: 14.5, weight: .semibold))
-                .foregroundStyle(app.palette.ink)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20)
-                .padding(.top, 16)
-        }
-        .buttonStyle(.plain)
-    }
+
 }
 
 // Task 1 (2026-09-22 twelfth follow-up) — see AppState.swift's own comment

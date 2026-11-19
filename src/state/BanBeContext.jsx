@@ -2356,7 +2356,10 @@ export function BanBeProvider({ children }) {
   const loadHomeLiveEvents = useCallback(async () => {
     // + capacity/details (migration 203) so a bundled catalogue event shows the type facts its real row carries.
     const { data } = await withR2Columns(() => supabase.from('events')
-      .select(['slug, status, starts_at, cancelled_at, cancel_reason, capacity', ...detailsColumnList()].join(', '))
+      // + end_time/end_open (migration 220): the one "is it over" rule (liveEventOverrides) and Home's open check read
+      // a catalogue event's real end, like iOS's loadHomeLiveEvents (bug 2026-11-19: web kept an event that ended at
+      // 21:00 until 12 h after its start while iOS dropped it).
+      .select(['slug, status, starts_at, cancelled_at, cancel_reason, capacity', ...detailsColumnList(), ...endColumnList()].join(', '))
       .in('slug', EVENTS.map(e => e.key)));
     const map = {};
     for (const row of data || []) map[row.slug] = row;

@@ -1,6 +1,7 @@
-// Home Shortlist (v2.3, note 81, switch home_v23): every event Home lists, narrowed by Home's filters, four large rows
-// a page at least (more when the screen has room, see fittedPageSize), in Home's own order (soonest, or the chosen
-// sort). It is INDEPENDENT of the hero tabs above: those switch the
+// Home Shortlist (v2.3, note 81, switch home_v23): every open event Home lists, narrowed by Home's filters, four large
+// rows a page at least (more when the screen has room, see fittedPageSize), soonest first unless a sort is chosen. The
+// rows come from unifiedDiscovery.nearYou (iOS twin UnifiedDiscovery.nearYou, shared fixture). It is INDEPENDENT of the
+// For You ranking: the hero tabs switch the
 // rail only, so the list never empties (or changes) just because For You is the open tab. A short last page ends with an
 // end card (src/lib/listEnd.js).
 import Pager from '../list/Pager.jsx';
@@ -25,7 +26,7 @@ export default function ShortlistV23({ T, lang, rows, total, filterBadge, onFilt
   const card = shortlistEnd({ total, shown: n, filtersOn });
   return (
     <section data-testid="home-shortlist-section" aria-labelledby="home-shortlist-title" style={{ paddingTop: 28 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, padding: '0 20px 12px' }}>
+      <div data-testid="home-shortlist-header" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, padding: '0 20px 12px' }}>
         <div style={{ minWidth: 0 }}>
           <h3 id="home-shortlist-title" style={{ fontSize: 19, fontWeight: 400, margin: 0, letterSpacing: '-.01em' }}>{T('Gần bạn', 'Near you')}</h3>
           <button type="button" onClick={onFilters} data-testid="home-filter-summary"

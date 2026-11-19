@@ -67,10 +67,8 @@ extension AppState {
     /// (not cancelled, not started more than an hour ago). Web twin: `tabItems` in Home.jsx.
     func v23TabItems(_ tab: HomeHeroTab, items: [HomeDiscovery.Item], byKey: [String: CatalogEvent],
                      forYou: [ForYouMatch], now: Date) -> [HomeDiscovery.Item] {
-        func open(_ it: HomeDiscovery.Item) -> Bool {
-            guard byKey[it.key]?.cancelled == false, let start = it.startsAt else { return false }
-            return start >= now.addingTimeInterval(-3600)
-        }
+        // One "still on" rule with web's tabItems (UnifiedDiscovery.isOpenItem: not cancelled, a start, not past its end).
+        func open(_ it: HomeDiscovery.Item) -> Bool { byKey[it.key]?.cancelled == false && UnifiedDiscovery.isOpenItem(it, now: now) }
         switch tab {
         case .tonight, .weekend:
             var f = HomeDiscovery.Filters.default

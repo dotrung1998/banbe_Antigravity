@@ -4,25 +4,25 @@ import SwiftUI
 
 // MARK: - Shortlist
 
-/// The tab's events (For You, Tonight, Weekend) narrowed by Home's filters, four large rows a page at least (more when
-/// the screen has room, see Pager.fittedPageSize), in the tab's own order. A short last page ends with an end card.
+/// "Near you": every open event Home lists, narrowed by Home's filters (UnifiedDiscovery.nearYou, web twin), four large
+/// rows a page at least (more when the screen has room, see Pager.fittedPageSize), soonest first. A short last page
+/// ends with an end card. Header, end card and empty state are word for word web's ShortlistV23.jsx.
 struct ShortlistV23View: View {
     @EnvironmentObject private var app: AppState
     let tab: HomeHeroTab
     let rows: [V23Row]
-    /// The tab's events before Home's filters.
+    /// The list before the Filters-owned filters (UnifiedDiscovery.nearYou `total`).
     let total: Int
     let filterBadge: Int
     let onFilters: () -> Void
     let onAction: (String) -> Void
 
-    private var label: ViEn { ViEn(tab.vi, tab.en) }
     /// Prototype v2 (note 99): the list is "Near you", always soonest first — the tab's own name is the band above it.
     private var sub: ViEn { ViEn("gần nhất trước", "soonest first") }
 
     var body: some View {
         let n = rows.count
-        let card = ListEnd.shortlistEnd(tab: tab.rawValue, tabLabel: label, total: total, shown: n, filtersOn: filterBadge > 0)
+        let card = ListEnd.shortlistEnd(total: total, shown: n, filtersOn: filterBadge > 0)
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .bottom, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -61,13 +61,14 @@ struct ShortlistV23View: View {
                      row: { r in EventRowV23View(row: r, onToggleSave: { app.toggleFavorite(r.key) }) { app.goEvent(r.key) } },
                      end: { v in EndCardView(model: card, variant: v, onAction: onAction) },
                      empty: {
-                         EndCardView(model: total > 0
-                            ? EndCardModel(kind: "empty", eyebrow: label,
-                                           title: ViEn("Không có gì trong Gần bạn khớp bộ lọc.", "Nothing in Near you matches these filters."),
+                         // Web twin: the filters decide which empty card it is (ShortlistV23.jsx `filtersOn`).
+                         EndCardView(model: filterBadge > 0
+                            ? EndCardModel(kind: "empty", eyebrow: ViEn("Bộ lọc", "Filters"),
+                                           title: ViEn("Không có sự kiện nào khớp bộ lọc.", "Nothing matches these filters."),
                                            body: ViEn("Xoá bộ lọc để xem lại mọi thứ.", "Clear the filters to see everything again."),
                                            actions: [.init(act: "clear-filters", label: ViEn("Xoá bộ lọc", "Clear filters"), primary: true, testId: "home.shortlistClear")])
-                            : EndCardModel(kind: "empty", eyebrow: label,
-                                           title: ViEn("\(label.vi) chưa có sự kiện.", "Nothing in \(label.en) yet."),
+                            : EndCardModel(kind: "empty", eyebrow: ViEn("Sự kiện", "Events"),
+                                           title: ViEn("Chưa có sự kiện nào.", "Nothing on yet."),
                                            body: ViEn("Duyệt theo loại để tìm thứ đang diễn ra.", "Browse by type to find something on."),
                                            actions: [.init(act: "types", label: ViEn("Duyệt theo loại", "Browse by type"), primary: true, testId: "home.shortlistTypes")]),
                                      variant: .solo, onAction: onAction)

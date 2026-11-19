@@ -47,7 +47,7 @@ import { useReducedMotion } from '../lib/useReducedMotion.js';
 import { browseFilters as toBrowseFilters, typeCounts as browseTypeCounts } from '../lib/browse.js';
 import HomeShellV5 from '../components/home/HomeShellV5.jsx';
 import { UnifiedStateBar, UnifiedTypeGrid, UnifiedTypeSheet, UnifiedMapBanner } from '../components/home/UnifiedHomeParts.jsx';
-import { DATE_FOR_TAB, tabForDate, ownedFilterCount } from '../lib/unifiedDiscovery.js';
+import { DATE_FOR_TAB, tabForDate, ownedFilterCount, isOpenItem as isOpenDiscoveryItem, nearYou } from '../lib/unifiedDiscovery.js';
 import { buildEventSearchDoc, matchesSearchQuery } from '../lib/search.js';
 import { searchBarStore } from '../lib/searchBarStore.js';
 import QuickSheetV5 from '../components/home/QuickSheetV5.jsx';
@@ -62,7 +62,7 @@ import { savedComingUp, fillText, whenLabel } from '../lib/quickWins.js';
 import { rowTimeZone, wallClockToMs } from '../lib/eventMarket.js';
 import NextUpV23 from '../components/home/NextUpV23.jsx';
 import { nextUpGroups, nextUpStatus, nextUpChip, peopleLine, dateBadge } from '../lib/nextUp.js';
-import { endsNextDay, isEventOver } from '../lib/eventEnd.js';
+import { endsNextDay, isEventOver, eventEndsAt } from '../lib/eventEnd.js';
 import {
   applyDiscoveryFilters, sortEvents, fillBadge, activeFilterCount, optionCounts, relaxationHints, DEFAULT_FILTERS,
   categoryCounts, categoryRowKeys, categorySheetKeys,
@@ -296,8 +296,9 @@ export default function Home({ browse = false }) {
   // `liveEventOverrides` is reused here exactly as `withLive` reuses it for
   // a static row — the only difference is there's no static counterpart to
   // merge onto, so it's called with `staticEv: null`.
-  const discoveryShaped = useMemo(() => (s.discoveryEvents || [])
-    .filter(e => !EVENTS.some(se => se.key === e.key))
+  // Every real row shaped (the catalogue-backed ones too: For You ranks over all of them, like iOS); the feed below
+  // takes `discoveryShaped`, which leaves out the rows the static catalogue already lists by the same key.
+  const discoveryAllShaped = useMemo(() => (s.discoveryEvents || [])
     .map(e => {
       // `tz`: dates read in the venue's zone (migration 195).
       const overrides = liveEventOverrides(
@@ -354,15 +355,18 @@ export default function Home({ browse = false }) {
         capacity: e.capacity ?? null, lat: e.lat, lng: e.lng, description: e.description || '',
       };
     }), [s.discoveryEvents]);
+  const discoveryShaped = useMemo(() => discoveryAllShaped.filter(e => !EVENTS.some(se => se.key === e.key)), [discoveryAllShaped]);
 
-  // "For You" (34-onboarding-for-you-criteria.md): REAL discoverable events only
-  // (discoveryShaped never contains the static demo catalogue), under the current
-  // area filter. Recomputed when preferences change (eventPrefs is replaced on save).
+  // "For You" (34-onboarding-for-you-criteria.md): REAL discoverable events only, under the current area filter.
+  // Recomputed when preferences change (eventPrefs is replaced on save).
+  // Bug 2026-11-19: every real row is a candidate, including the ones whose key the static catalogue also lists
+  // (bepnho …). They used to be left out here (discoveryShaped drops them for the feed's dedupe) while iOS ranked them
+  // (forYouCandidates = every discoveryEvents row), so web's For You rail missed "Bếp Nhỏ №12" tomorrow.
   const forYouRanked = useMemo(() => {
     if (!s.eventPrefs || prefsIsEmpty(s.eventPrefs)) return [];
-    return forYouRankEvents(discoveryShaped.map(withLive).filter(e => curArea.match(e)), s.eventPrefs, true, Date.now());
+    return forYouRankEvents(discoveryAllShaped.map(withLive).filter(e => curArea.match(e)), s.eventPrefs, true, Date.now());
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [discoveryShaped, s.eventPrefs, s.eventPrefsVersion, curArea, s.homeLiveEvents]);
+  }, [discoveryAllShaped, s.eventPrefs, s.eventPrefsVersion, curArea, s.homeLiveEvents]);
   const hasForYou = forYouRanked.length > 0;
   const forYouOrder = useMemo(() => new Map(forYouRanked.map((m, i) => [m.key, i])), [forYouRanked]);
   // Refresh discovery when the preferences version changes (not on first mount,
@@ -428,7 +432,10 @@ export default function Home({ browse = false }) {
     if (!b.startsAtRaw) return -1;
     return new Date(a.startsAtRaw) - new Date(b.startsAtRaw);
   }), [discoveryShaped]);
-  const feed = useMemo(() => [...realEventsSorted, ...EVENTS]
+  // A catalogue event whose live row has not loaded (yet) is stood in for by its discovery row (same id == slug), so
+  // it keeps its real date instead of the demo catalogue's shifted July one (iOS twin: AppState.feed).
+  const realAllByKey = useMemo(() => new Map(discoveryAllShaped.map(e => [e.key, e])), [discoveryAllShaped]);
+  const feed = useMemo(() => [...realEventsSorted, ...EVENTS.map(e => (s.homeLiveEvents[e.key] ? e : realAllByKey.get(e.key) || e))]
     .map(withLive)
     // Ended events leave the feed (they live on the host's profile under "Past events"). One rule for every
     // surface (audit 2026-11-19 row 6): the host's end time, else 12h after the start when the server cron has
@@ -454,7 +461,7 @@ export default function Home({ browse = false }) {
         goingLabel: trStatus('Đang tham gia' + ((s.tickets[e.key] || 1) > 1 ? ' ▪︎ ' + s.tickets[e.key] + ' vé' : '')),
         saveLabel: saved ? T('Đã lưu', 'Saved') : T('Lưu', 'Save'),
       };
-    }), [realEventsSorted, forYouActive, forYouOrder, s.tickets, s.homeLiveEvents, curArea, isSaved, isGoing, trStatus, stripKm, T]);
+    }), [realEventsSorted, realAllByKey, forYouActive, forYouOrder, s.tickets, s.homeLiveEvents, curArea, isSaved, isGoing, trStatus, stripKm, T]);
 
   // Popular sort + "Popular this week" label: the same Banbe Pulse score the Pulse viewer ranks by (note 17).
   const pulseScore = useMemo(() => new Map((s.pulseDaily || []).map(p => [p.event_id, Number(p.score) || 0])), [s.pulseDaily]);
@@ -479,6 +486,10 @@ export default function Home({ browse = false }) {
       tz: e.isReal ? e.tz : undefined,
       booked: fillRow ? fillRow.booked : null, capacity: fillRow ? fillRow.capacity : null,
       soldOut: !!e.soldOut, distanceKm, popularity: pulseScore.get(e.key) ?? null, details: e.details || {}, ev: e,
+      // The shared "still open" facts (unifiedDiscovery.isOpenItem, iOS twin): cancelled, and when it is over (the
+      // host's end time, else 12 h after the start; eventEndsAt).
+      cancelled: !!e.cancelled,
+      endsAt: eventEndsAt({ startsAt, tz: e.tz, endTime: e.endTime ?? live?.end_time, endOpen: e.endOpen ?? live?.end_open }),
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [feed, s.eventFill, s.homeLiveEvents, located, s.userCoords, pulseScore]);
@@ -524,9 +535,11 @@ export default function Home({ browse = false }) {
   });
   // Category row (web + iOS twin): the counts are what tapping each category shows, with the very same filter the
   // feed renders with (categoryCounts); the row only lists categories that have events here, most first.
-  const categoryCountMap = useMemo(() => categoryCounts(qItems, homeFilters, TYPE_KEYS, nowMs),
+  // v2.3: counted over the same open events "Near you" lists (unifiedDiscovery.isOpenItem), so a type tile's number is
+  // exactly the list it opens (iOS twin: udCounts in HomeView.fillV23).
+  const categoryCountMap = useMemo(() => categoryCounts(v23 ? qItems.filter(it => isOpenDiscoveryItem(it, nowMs)) : qItems, homeFilters, TYPE_KEYS, nowMs),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-    [qItems, homeFilters, Math.floor(nowMs / 60000)]);
+    [v23, qItems, homeFilters, Math.floor(nowMs / 60000)]);
   const categoryRow = categoryRowKeys(categoryCountMap, TYPE_KEYS, homeFilters.cats);
   const [categorySheetOpen, setCategorySheetOpen] = useState(false);
   const filterBadge = activeFilterCount(homeFilters);
@@ -573,8 +586,8 @@ export default function Home({ browse = false }) {
   // One "is this still on" rule for every Home rail and list (audit 2026-11-19 row 6). It used to drop anything
   // that had merely STARTED more than an hour ago, which is why the type tiles and their lists disagreed; the
   // event's own end time (or 12h after the start when none is stated) decides now.
-  const isOpenItem = useCallback((it) => !it.ev.cancelled && Number.isFinite(it.startsAt)
-    && !isEventOver({ startsAt: it.startsAt, tz: it.tz || it.ev.tz, endTime: it.ev.endTime, endOpen: it.ev.endOpen }, nowMs),
+  // The rule itself is shared with iOS (unifiedDiscovery.isOpenItem; the item carries `cancelled` and `endsAt`).
+  const isOpenItem = useCallback((it) => isOpenDiscoveryItem(it, nowMs),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [nowMs]);
 
@@ -645,18 +658,15 @@ export default function Home({ browse = false }) {
   // The Shortlist follows the FILTERS, not the hero tab: it is every event Home lists, narrowed by Home's filters and
   // in Home's own order (homeSort, else the feed's). The tabs above only switch the rail, so the list under it never
   // empties just because For You is open. total = before the filters.
-  const shortlistBase = useMemo(() => {
-    if (!v23) return null;
-    const open = isOpenItem;
-    return applyDiscoveryFilters(qItems, DEFAULT_FILTERS, nowMs).filter(open);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [v23, qItems, Math.floor(nowMs / 60000)]);
+  // Bug 2026-11-19: ONE rule with iOS (unifiedDiscovery.nearYou + its shared fixture). Every open event, Home's filters,
+  // soonest first by start (it used to keep the feed's For You ranking order); total = before the Filters-owned
+  // filters, so with unified discovery the tab's time stays applied ("N of M" never counts another tab's events).
   const shortlist = useMemo(() => {
-    if (!shortlistBase) return null;
-    const narrowed = applyDiscoveryFilters(shortlistBase, homeFilters, nowMs);
-    return { rows: (s.homeSort && s.homeSort !== 'soonest' ? sortEvents(narrowed, s.homeSort) : narrowed).map(shapeRow), total: shortlistBase.length };
+    if (!v23) return null;
+    const r = nearYou(qItems, homeFilters, s.homeSort || 'soonest', nowMs, { tabOwnsTime: ud });
+    return { rows: r.rows.map(shapeRow), total: r.total };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shortlistBase, homeFilters, s.homeSort, shapeRow, Math.floor(nowMs / 60000)]);
+  }, [v23, ud, qItems, homeFilters, s.homeSort, shapeRow, Math.floor(nowMs / 60000)]);
   // v2.3 live line (note 81): the daily Pulse ranking + real seat fill + the Tonight / Weekend counts, only for events
   // Home actually lists (so every update can be opened). One list for the ticker, the Reduced form and Live now.
   const [liveIndex, setLiveIndex] = useState(0);
@@ -701,13 +711,22 @@ export default function Home({ browse = false }) {
 
   // Prototype v2: the rail's end card ("Xem tất cả N · trong Gần bạn hoặc trên bản đồ") scrolls Home down to the
   // "Gần bạn" list. It does NOT open a separate Browse-by-type screen.
-  const scrollToNearby = () => {
-    const el = document.querySelector('[data-testid="home-shortlist-section"]');
+  // `alignHeader` (type tiles, owner 2026-11-19): puts the "Near you" header row itself just under the FOLDED app bar
+  // (58 px; the scroll viewport already starts below the --bb-strip-h strip, so only the bar is subtracted), always,
+  // so the tap shows as many events as possible. Reduce Motion jumps instead of animating.
+  const scrollToNearby = (alignHeader = false) => {
+    const el = document.querySelector(alignHeader ? '[data-testid="home-shortlist-header"]' : '[data-testid="home-shortlist-section"]');
     if (!el) return;
     const sc = document.querySelector('[data-testid="app-scroll-viewport"]');
     const box = el.getBoundingClientRect();
-    const top = (sc ? sc.scrollTop : window.scrollY) + box.top - (sc ? sc.getBoundingClientRect().top : 0) - 70;
-    (sc || window).scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    const top = (sc ? sc.scrollTop : window.scrollY) + box.top - (sc ? sc.getBoundingClientRect().top : 0) - (alignHeader ? 58 + 8 : 70);
+    const reduce = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    (sc || window).scrollTo({ top: Math.max(0, top), behavior: reduce ? 'auto' : 'smooth' });
+  };
+  const pickTypeAndAlign = (k) => {
+    pickFilter(k);
+    // After the filter re-render has laid out, so the header's position is the final one.
+    requestAnimationFrame(() => requestAnimationFrame(() => scrollToNearby(true)));
   };
 
   const heroSeeAll = (tab) => {
@@ -821,8 +840,8 @@ export default function Home({ browse = false }) {
         else if (isGoing(e.key)) { tag = 'Đã thanh toán'; status = e.untilLabel + tixStr; chip = CHIP_COLORS.going; }
         else { tag = 'Đã lưu'; status = e.untilLabel; chip = CHIP_COLORS.saved; }
         // Reminder: a ticket-holder's event within 24h of starting, or ongoing.
-        const reminder = isGoing(e.key) && e.key !== heldKey ? reminderPhase(e.startDate) : null;
-        if (reminder) { tag = reminder === 'live' ? 'Đang diễn ra' : 'Sắp diễn ra'; chip = CHIP_COLORS.reminder; }
+        const reminder = isGoing(e.key) && e.key !== heldKey && !e.cancelled && e.endedHoursAgo == null ? reminderPhase(e.startDate) : null;
+        if (reminder) { tag = reminder === 'live' ? 'Đang diễn ra' : 'Sắp diễn ra'; chip = CHIP_COLORS.reminder; status = e.untilLabel + tixStr; }
         return {
           key: e.key, name: e.name, photoUrl: e.img, endedHoursAgo: e.endedHoursAgo, reminder,
           startMs: e.startDate instanceof Date ? e.startDate.getTime() : NaN, tz: null,
@@ -951,8 +970,6 @@ export default function Home({ browse = false }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [missingFillKeys.join(',')]);
 
-  const homeHostLinkLabel = hasHosted ? T('Trang tổ chức của bạn', 'Your host page') : T('Dành cho người tổ chức ▪︎ hoàn toàn miễn phí', 'For organizers ▪︎ completely free');
-  const homeHostLink = hasHosted ? () => switchToHost('home') : becomeHost;
 
   // Header row: drop the "Home" title first when the wordmark + shortcuts + search would not fit
   // (same rule as iOS ViewThatFits; every control keeps its 44px touch target).
@@ -1393,7 +1410,7 @@ export default function Home({ browse = false }) {
           unifiedChrome={ud}
           unifiedBrowse={ud ? (
             <UnifiedTypeGrid counts={shellTypeCounts} selected={homeFilters.cats?.[0] || null} total={categoryCountMap.all ?? shownItems.length}
-              onPick={(k) => pickFilter(homeFilters.cats?.[0] === k ? 'all' : k)} onClear={() => pickFilter('all')}
+              onPick={(k) => pickTypeAndAlign(homeFilters.cats?.[0] === k ? 'all' : k)} onClear={() => pickTypeAndAlign('all')}
               onOpenSheet={() => setTypeSheetOpen(true)} T={T} />
           ) : null}
           onBrowseType={v23 ? (k) => { if (ud) { pickFilter(k); return; } openBrowse({ type: k, scope: 'all' }); } : null}
@@ -1766,10 +1783,7 @@ export default function Home({ browse = false }) {
       <div style={{ padding: '6px 20px 8px', fontSize: 'var(--bb-text-meta)', color: ink }}>
         {T('Vài buổi vui dành cho riêng bạn tuần này. Không xếp hạng, không quảng cáo, không lướt vô tận.', 'A few fun gatherings made just for you this week. No ratings, no ads, no endless scrolling.')}
       </div>
-      {/* Simple Shell: hosting is one tap away in the header's mode switch, so this link only shows with the switch off. */}
-      {simpleShell ? <div style={{ height: 40 }} /> : (
-        <div onClick={homeHostLink} style={{ padding: '4px 20px 44px', fontSize: 14.5, fontWeight: 600, letterSpacing: '-0.01em', color: ink, cursor: 'pointer' }}>{homeHostLinkLabel} ›</div>
-      )}
+      <div style={{ height: 40 }} />
       </div>
       </>
       )}

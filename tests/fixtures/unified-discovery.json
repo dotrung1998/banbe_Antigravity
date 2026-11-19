@@ -32,5 +32,31 @@
   "ownedFilterCount": [
     { "filters": { "date": "today", "cats": [], "free": false, "priceMin": null, "priceMax": null, "seatsLeft": false, "almostFull": false, "typeFilters": [] }, "sort": "soonest", "expect": 0 },
     { "filters": { "date": "any", "cats": ["music"], "free": true, "priceMin": null, "priceMax": null, "seatsLeft": true, "almostFull": false, "typeFilters": [] }, "sort": "price", "expect": 4 }
-  ]
+  ],
+  "nearYou": {
+    "_comment": "Bug 2026-11-19 (web and iOS Home listed different events): items arrive in a For You RANKING order, not by start. Near you = every open item (not cancelled, a start, not past endsAt) narrowed by the filters, soonest first; total = before the Filters-owned filters (with tabOwnsTime the tab's date stays applied). 'started' began 3 h ago but is not over: it stays (iOS used to drop anything started over an hour ago). 'comnhamai' is a supper club whose SECOND category is music. now = 22:05 Thursday in Vietnam.",
+    "now": "2026-11-19T15:05:00Z",
+    "items": [
+      {"key": "buachay", "startsAt": "2026-11-28T11:30:00Z", "catKeys": ["supper"]},
+      {"key": "canhchua", "startsAt": "2026-11-25T11:30:00Z", "catKeys": ["supper"]},
+      {"key": "dembass", "startsAt": "2026-11-24T13:00:00Z", "catKeys": ["music"]},
+      {"key": "sax", "startsAt": "2026-12-01T02:00:00Z", "catKeys": ["music"]},
+      {"key": "trang", "startsAt": "2026-12-02T13:00:00Z", "catKeys": ["music"]},
+      {"key": "comnhamai", "startsAt": "2026-11-22T11:00:00Z", "catKeys": ["supper", "music"]},
+      {"key": "bepnho12", "startsAt": "2026-11-20T12:00:00Z", "catKeys": ["supper"]},
+      {"key": "started", "startsAt": "2026-11-19T12:00:00Z", "endsAt": "2026-11-19T16:00:00Z", "catKeys": ["supper"]},
+      {"key": "over", "startsAt": "2026-11-19T01:00:00Z", "endsAt": "2026-11-19T13:00:00Z", "catKeys": ["supper"]},
+      {"key": "cancelled", "startsAt": "2026-11-26T12:00:00Z", "cancelled": true, "catKeys": ["music"]},
+      {"key": "nostart", "startsAt": null, "catKeys": ["supper"]}
+    ],
+    "open": {"buachay": true, "started": true, "over": false, "cancelled": false, "nostart": false},
+    "cases": [
+      {"name": "For You tab, Supper club", "filters": {"date": "any", "cats": ["supper"]}, "sort": "soonest", "tabOwnsTime": true, "rows": ["started", "bepnho12", "comnhamai", "canhchua", "buachay"], "total": 8},
+      {"name": "For You tab, Music (second category counts)", "filters": {"date": "any", "cats": ["music"]}, "sort": "soonest", "tabOwnsTime": true, "rows": ["comnhamai", "dembass", "sax", "trang"], "total": 8},
+      {"name": "For You tab, no type: every open event, soonest first", "filters": {"date": "any", "cats": []}, "sort": "soonest", "tabOwnsTime": true, "rows": ["started", "bepnho12", "comnhamai", "dembass", "canhchua", "buachay", "sax", "trang"], "total": 8},
+      {"name": "Weekend tab, Music: total is the weekend's events", "filters": {"date": "weekend", "cats": ["music"]}, "sort": "soonest", "tabOwnsTime": true, "rows": ["comnhamai"], "total": 2},
+      {"name": "Classic Home: the date is an owned filter, so total ignores it", "filters": {"date": "weekend", "cats": ["music"]}, "sort": "soonest", "tabOwnsTime": false, "rows": ["comnhamai"], "total": 8},
+      {"name": "Unknown sort falls back to soonest", "filters": {"date": "any", "cats": ["music"]}, "sort": "", "tabOwnsTime": true, "rows": ["comnhamai", "dembass", "sax", "trang"], "total": 8}
+    ]
+  }
 }

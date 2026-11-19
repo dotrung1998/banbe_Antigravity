@@ -327,6 +327,30 @@ enum EventEnd {
 
     static func defaultEnd(_ start: String?) -> String { hm(start).map { fmt($0 + 180) } ?? "" }
 
+    /// The note 38 window used when an event states no end: 12 hours after its start.
+    static let overFallback: TimeInterval = 12 * 3600
+
+    /// The moment an event is over (web twin `eventEndsAt`, src/lib/eventEnd.js), ONE rule for every surface: the
+    /// host's end time on the venue's clock (at or before the start = the next day), else 12 h after the start when
+    /// it is open-ended or not stated. Nil when the start is unknown (then nothing claims it is over).
+    static func endsAt(start: Date?, timeZone: TimeZone?, endTime: String?, endOpen: Bool) -> Date? {
+        guard let start else { return nil }
+        if mode(endTime: endTime, endOpen: endOpen) == .time, let endTime {
+            var cal = Calendar(identifier: .gregorian)
+            cal.timeZone = timeZone ?? TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
+            let c = cal.dateComponents([.hour, .minute], from: start)
+            let startTime = fmt((c.hour ?? 0) * 60 + (c.minute ?? 0))
+            return endDate(start: start, startTime: startTime, endTime: endTime) ?? start.addingTimeInterval(overFallback)
+        }
+        return start.addingTimeInterval(overFallback)
+    }
+
+    /// True once the event is past its end (web twin `isEventOver`, without the status: callers drop 'ended' rows).
+    static func isOver(start: Date?, timeZone: TimeZone?, endTime: String?, endOpen: Bool, now: Date) -> Bool {
+        guard let end = endsAt(start: start, timeZone: timeZone, endTime: endTime, endOpen: endOpen) else { return false }
+        return now >= end
+    }
+
     static func error(mode: Mode?, start: String?, end: String?) -> String? {
         if mode == .open { return nil }
         guard mode == .time, let e = hm(end) else { return "missing" }

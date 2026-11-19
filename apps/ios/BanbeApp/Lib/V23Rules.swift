@@ -94,8 +94,9 @@ struct EndCardModel: Equatable {
 }
 
 enum ListEnd {
-    /// Home Shortlist end card. total = the tab's events before Home's filters, shown = after.
-    static func shortlistEnd(tab: String, tabLabel: ViEn, total: Int, shown: Int, filtersOn: Bool) -> EndCardModel {
+    /// Home "Near you" end card (web twin `shortlistEnd`, src/lib/listEnd.js). The list follows Home's filters, not the
+    /// For You ranking, so its copy talks about events only. total = before the Filters-owned filters, shown = after.
+    static func shortlistEnd(total: Int, shown: Int, filtersOn: Bool) -> EndCardModel {
         let hidden = max(0, total - shown)
         if filtersOn && hidden > 0 {
             return EndCardModel(
@@ -109,9 +110,8 @@ enum ListEnd {
         }
         return EndCardModel(
             kind: "end",
-            eyebrow: ViEn("Hết mục \(tabLabel.vi)", "End of \(tabLabel.en)"),
-            title: tab == "tonight" ? ViEn("Tối nay chỉ có vậy. Chỗ đẹp hết trước.", "That’s tonight. The good seats go first.")
-                : ViEn("Bạn đã xem hết các gợi ý.", "You’ve seen every pick."),
+            eyebrow: ViEn("Tất cả \(total) sự kiện", "\(total) \(total == 1 ? "event" : "events") in all"),
+            title: ViEn("Bạn đã xem hết các sự kiện.", "You’ve seen every event."),
             body: ViEn("Duyệt theo loại hoặc mở bản đồ để xem thêm quanh bạn.", "Browse by type or open the map to see more around you."),
             actions: [.init(act: "types", label: ViEn("Duyệt mọi loại", "Browse every type"), primary: true),
                       .init(act: "map", label: ViEn("Mở bản đồ", "Open the map"))])

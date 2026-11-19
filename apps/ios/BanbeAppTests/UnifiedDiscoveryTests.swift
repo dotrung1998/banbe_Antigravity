@@ -130,4 +130,52 @@ final class UnifiedDiscoveryTests: XCTestCase {
             XCTAssertEqual(UnifiedDiscovery.ownedFilterCount(f, sort: c["sort"] as? String), c["expect"] as? Int)
         }
     }
+
+    // MARK: Near you (bug 2026-11-19: web and iOS Home listed different events), shared with tests/unit/unifiedDiscovery.test.mjs
+
+    func testNearYouSharedFixture() throws {
+        let root = try fixture("unified-discovery.json")
+        let ny = try XCTUnwrap(root["nearYou"] as? [String: Any])
+        let iso = ISO8601DateFormatter()
+        func date(_ v: Any?) -> Date? { (v as? String).flatMap { iso.date(from: $0) } }
+        let now = try XCTUnwrap(date(ny["now"]))
+        let items: [HomeDiscovery.Item] = (ny["items"] as? [[String: Any]] ?? []).map { j in
+            HomeDiscovery.Item(key: j["key"] as? String ?? "", startsAt: date(j["startsAt"]), priceVnd: nil,
+                               catKeys: j["catKeys"] as? [String] ?? [], cancelled: j["cancelled"] as? Bool ?? false,
+                               endsAt: date(j["endsAt"]))
+        }
+        XCTAssertEqual(items.count, 11)
+        let byKey = Dictionary(items.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
+        for (k, want) in ny["open"] as? [String: Bool] ?? [:] {
+            XCTAssertEqual(UnifiedDiscovery.isOpenItem(try XCTUnwrap(byKey[k]), now: now), want, k)
+        }
+        let cases = ny["cases"] as? [[String: Any]] ?? []
+        XCTAssertFalse(cases.isEmpty)
+        for c in cases {
+            let name = c["name"] as? String ?? ""
+            let j = c["filters"] as? [String: Any] ?? [:]
+            var f = HomeDiscovery.Filters.default
+            f.date = j["date"] as? String ?? "any"
+            f.cats = j["cats"] as? [String] ?? []
+            let r = UnifiedDiscovery.nearYou(items, filters: f, sort: c["sort"] as? String, now: now,
+                                             tabOwnsTime: c["tabOwnsTime"] as? Bool ?? false)
+            XCTAssertEqual(r.rows.map(\.key), c["rows"] as? [String], name)
+            XCTAssertEqual(r.total, c["total"] as? Int, name)
+        }
+    }
+
+    /// The "is it over" moment matches web's eventEndsAt: the host's end on the venue clock (past midnight = next day),
+    /// else 12 h after the start.
+    func testEventEndsAt() {
+        let vn = TimeZone(identifier: "Asia/Ho_Chi_Minh")
+        let start = ISO8601DateFormatter().date(from: "2026-11-19T12:00:00Z")!   // 19:00 in Vietnam
+        XCTAssertEqual(EventEnd.endsAt(start: start, timeZone: vn, endTime: "21:00", endOpen: false),
+                       ISO8601DateFormatter().date(from: "2026-11-19T14:00:00Z"))
+        XCTAssertEqual(EventEnd.endsAt(start: start, timeZone: vn, endTime: "01:00", endOpen: false),
+                       ISO8601DateFormatter().date(from: "2026-11-19T18:00:00Z"))
+        XCTAssertEqual(EventEnd.endsAt(start: start, timeZone: vn, endTime: nil, endOpen: true), start.addingTimeInterval(12 * 3600))
+        XCTAssertNil(EventEnd.endsAt(start: nil, timeZone: vn, endTime: "21:00", endOpen: false))
+        XCTAssertTrue(EventEnd.isOver(start: start, timeZone: vn, endTime: "21:00", endOpen: false,
+                                      now: ISO8601DateFormatter().date(from: "2026-11-19T15:05:00Z")!))
+    }
 }

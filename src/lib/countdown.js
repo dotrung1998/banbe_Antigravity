@@ -99,7 +99,7 @@ export function pickSoonest(bookings, phase, dateField) {
 
 function hoursSince(iso, now) {
   if (!iso) return null;
-  return Math.max(0, (now - new Date(iso).getTime()) / 3600000);
+  return Math.max(0, Math.floor((now - new Date(iso).getTime()) / 3600000));
 }
 
 // 2026-09-25 fix pass — root cause of "wrong displayed months": every

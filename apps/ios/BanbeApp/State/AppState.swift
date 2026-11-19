@@ -2851,15 +2851,24 @@ final class AppState: ObservableObject {
         // by key against the static catalogue defensively, even though a
         // real event's generated id can't structurally collide with one.
         let realKeys = Set(EventCatalog.all.map(\.key))
-        let combined = discoveryEvents.filter { !realKeys.contains($0.key) } + EventCatalog.all
+        // A catalogue event whose live row has not loaded (yet) is stood in for by its discovery row (same id == slug),
+        // so it keeps its real date and status instead of the demo catalogue's shifted July one (web twin: Home.jsx
+        // `feed`). Bug 2026-11-19: iOS showed "Bếp Nhỏ №12 TMRW" for a Saturday event.
+        let discoveryByKey = Dictionary(discoveryEvents.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
+        let catalogue = EventCatalog.all.map { homeLiveEvents[$0.key] == nil ? (discoveryByKey[$0.key] ?? $0) : $0 }
+        let combined = discoveryEvents.filter { !realKeys.contains($0.key) } + catalogue
+        let now = Date()
         // Split into intermediate steps — Swift's type-checker couldn't
         // resolve the original single chained expression (this many
         // `.filter` closures in one statement) in reasonable time.
         let categoryAndArea = combined
             .map(withLive)
             .filter { !$0.inviteOnly }
-            // Ended events leave the feed; they live on the host's profile under "Past events".
+            // Ended events leave the feed; they live on the host's profile under "Past events". One "is it over" rule
+            // with web (audit 2026-11-19 row 6, `isEventOver`): the server's ended status, or past the host's end time
+            // (else 12 h after the start) while the hourly cron has not flipped the row yet.
             .filter { $0.endedHoursAgo == nil }
+            .filter { !EventEnd.isOver(start: $0.startDate, timeZone: $0.eventTimeZone, endTime: $0.endTime, endOpen: $0.endOpen, now: now) }
             .filter { matchesArea($0) }
         let attendance = categoryAndArea
             .filter { !filterAttending || isGoing($0.key) }

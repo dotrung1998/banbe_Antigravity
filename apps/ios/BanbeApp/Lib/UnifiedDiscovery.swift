@@ -107,4 +107,31 @@ enum UnifiedDiscovery {
         default: return "all"
         }
     }
+
+    // MARK: Home "Near you" (bug 2026-11-19: web and iOS listed different events)
+
+    /// Open = Home may still offer it: not cancelled, a known start, not past its end (`endsAt`, nil = unknown).
+    /// Web twin `isOpenItem`; shared cases in tests/fixtures/unified-discovery.json "nearYou".
+    static func isOpenItem(_ it: HomeDiscovery.Item, now: Date) -> Bool {
+        guard !it.cancelled, it.startsAt != nil else { return false }
+        if let end = it.endsAt, now >= end { return false }
+        return true
+    }
+
+    /// The list under Home's hero, the map banner, the state bar and the end card, on both apps (web twin `nearYou`):
+    /// every open item (area + query already applied) narrowed by Home's filters, soonest first by start unless a sort
+    /// is picked. The For You RANKING is never the base. `total` = before the filters the Filters button owns; with
+    /// unified discovery (`tabOwnsTime`) the tab's time stays applied, so "N of M" never counts another tab's events.
+    /// The map banner and the state bar show `rows.count`, exactly the list.
+    static func nearYou(_ items: [HomeDiscovery.Item], filters: HomeDiscovery.Filters, sort: String?, now: Date,
+                        tabOwnsTime: Bool, offsetMin: Int = HomeDiscovery.defaultOffsetMin)
+        -> (rows: [HomeDiscovery.Item], total: Int) {
+        let open = items.filter { isOpenItem($0, now: now) }
+        var timeOnly = HomeDiscovery.Filters.default
+        timeOnly.date = filters.date
+        let base = tabOwnsTime ? HomeDiscovery.apply(open, timeOnly, now: now, offsetMin: offsetMin) : open
+        let narrowed = HomeDiscovery.apply(base, filters, now: now, offsetMin: offsetMin)
+        let mode = sort.flatMap { HomeDiscovery.sortModes.contains($0) ? $0 : nil } ?? "soonest"
+        return (HomeDiscovery.sort(narrowed, mode: mode), base.count)
+    }
 }

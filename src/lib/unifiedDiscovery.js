@@ -2,6 +2,8 @@
 // Pure rules shared by Home.jsx, Search.jsx and MapExplore.jsx; iOS twin Lib/UnifiedDiscovery.swift, fixture
 // tests/fixtures/unified-discovery.json.
 
+import { applyDiscoveryFilters, normalizeFilters, sortEvents, DEFAULT_FILTERS, SORT_MODES, DEFAULT_OFFSET_MIN } from './homeDiscovery.js';
+
 /** Home's tabs ARE the shared time: For You = any time, Tonight = today, Weekend = the weekend. */
 export const DATE_FOR_TAB = { foryou: 'any', tonight: 'today', weekend: 'weekend' };
 
@@ -89,4 +91,37 @@ export function mapPoints(docs, mapRows) {
 /** True when any point lies outside `bounds` (`inBoundsFn` is mapDiscovery's inBounds). */
 export function anyOutside(points, bounds, inBoundsFn) {
   return (points || []).some(p => !inBoundsFn(p, bounds));
+}
+
+// ---- Home "Near you" (bug 2026-11-19: web and iOS listed different events) -------------------------------------
+// ONE rule for the list under Home's hero, the "See on the map · N" banner, the state bar and the end card, on both
+// apps (iOS twin UnifiedDiscovery.nearYou, shared cases in tests/fixtures/unified-discovery.json "nearYou"):
+//   * the base is every event Home lists in the area (and the shared query), still open: not cancelled, a known start,
+//     and not over (`endsAt` = eventEndsAt: the host's end time, else 12 h after the start). The For You RANKING is not
+//     a base: the list never shrinks to the matcher's picks just because For You is the open tab.
+//   * narrowed by Home's filters (with unified discovery the tab's time is `filters.date`),
+//   * soonest first by the start instant (the same instant as the venue's clock), unless a sort is picked,
+//   * total = the base before the filters the Filters button owns; with unified discovery the tab's time is NOT one
+//     of them (it has the tabs), so "N of M" and "Show all M" never count events of another tab.
+//   * the map banner and the state bar show rows.length, exactly the list.
+
+/** Open = Home may still offer it: not cancelled, a known start, not past its end (`endsAt`, ms, null = unknown). */
+export function isOpenItem(it, now) {
+  return !!it && !it.cancelled && Number.isFinite(it.startsAt) && !(it.endsAt != null && now >= it.endsAt);
+}
+
+/**
+ * @param {Array} items  Home's discovery items (area + query already applied), each with optional `cancelled`, `endsAt`
+ * @param {object} filters  Home's filters
+ * @param {string} sort  Home's sort ('soonest' when none)
+ * @param {number} now
+ * @param {{ tabOwnsTime?: boolean, offsetMin?: number }} [opts]  tabOwnsTime = unified discovery (the date is the tab)
+ * @returns {{ rows: Array, total: number }}
+ */
+export function nearYou(items, filters, sort, now, { tabOwnsTime = false, offsetMin = DEFAULT_OFFSET_MIN } = {}) {
+  const f = normalizeFilters(filters);
+  const open = (items || []).filter(it => isOpenItem(it, now));
+  const base = tabOwnsTime ? applyDiscoveryFilters(open, { ...DEFAULT_FILTERS, date: f.date }, now, offsetMin) : open;
+  const narrowed = applyDiscoveryFilters(base, f, now, offsetMin);
+  return { rows: sortEvents(narrowed, SORT_MODES.includes(sort) ? sort : 'soonest'), total: base.length };
 }

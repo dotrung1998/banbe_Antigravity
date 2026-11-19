@@ -75,6 +75,9 @@ extension AppState {
     func discoveryStart(for e: CatalogEvent, now: Date = Date()) -> Date? {
         guard Self.catalogKeys.contains(e.key) else { return e.startDate }
         if let live = homeLiveEvents[e.key]?.startsAt { return live }
+        // Bug 2026-11-19: before the live row arrives, the discovery row with the same id (== slug) has the real start.
+        // Without it a catalogue event showed its shifted demo date ("Bếp Nhỏ №12 TMRW" for a Saturday event).
+        if let row = realEventsByID[e.key] ?? nil, let real = row.startDate { return real }
         let label = EventCatalog.all.first(where: { $0.key == e.key })?.when ?? e.when
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = AppState.vietnamTimeZone
@@ -132,7 +135,11 @@ extension AppState {
             distanceKm: distance, popularity: (scores ?? pulseScores)[e.key], currency: e.currency,
             details: e.details,
             // Real events are judged in their venue zone; the demo catalogue keeps its fixed Vietnam offset.
-            tz: Self.catalogKeys.contains(e.key) ? nil : e.timeZoneID
+            tz: Self.catalogKeys.contains(e.key) ? nil : e.timeZoneID,
+            // The shared open check (UnifiedDiscovery.isOpenItem, web twin): cancelled, and the end (EventEnd.endsAt).
+            cancelled: e.cancelled,
+            endsAt: EventEnd.endsAt(start: discoveryStart(for: e, now: now), timeZone: e.eventTimeZone,
+                                    endTime: e.endTime, endOpen: e.endOpen)
         )
     }
 
