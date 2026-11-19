@@ -448,12 +448,20 @@ export default function MapExplore() {
     set({ searchQuery });
     searchBarStore.setSearchQuery(searchQuery);
   }, [ud, searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
+  // ...and the other way: the Search sheet (opened over this Map) edits the shared query, which the Map then shows.
+  useEffect(() => {
+    if (!ud) return;
+    const q = s.searchQuery || '';
+    if (q !== searchBarStore.get().mapQuery) searchBarStore.setMapQuery(q);
+  }, [ud, s.searchQuery]);
   // Map E+ (note 79): the list is a layer over the full-screen map. It opens from "List · N", closes with its Map button
   // or Esc, and starts closed, so a fresh open is the map itself (restored from a return snapshot when there is one).
   const [listOpen, setListOpen] = useState(() => restored?.listOpen ?? false);
   // The open neighbourhood ({ keys, label }) and its panel; the view it was opened from, to go back to. A pin, a list
   // row or the Back button from Event Detail returns with the panel as it was.
-  const [areaPanel, setAreaPanel] = useState(() => restored?.areaPanel ?? null);
+  const [areaPanel, setAreaPanel] = useState(() => (ud ? null : restored?.areaPanel ?? null));
+  // Unified: the first event of an area, in the list's order (the carousel opens on it after an area tap).
+  const areaFirstRef = useRef(null);
   const areaPanelRef = useRef(areaPanel);
   areaPanelRef.current = areaPanel;
   const areaOpenedAtRef = useRef(0);
@@ -1353,12 +1361,18 @@ export default function MapExplore() {
     }
     areaOpenedAtRef.current = Date.now();
     areaScrollToRef.current = opts.scrollTo || null;
-    setAreaPanel({ keys: g.keys, label: g.labels?.[0] || null });
+    // Unified (owner 2026-11-19): no neighbourhood list panel at all; the camera flies in and the horizontal carousel
+    // (centred on the area's first event, or the tapped one) is the only list.
+    const udArea = udRef.current;
+    if (udArea) {
+      const firstId = opts.reveal?.id || areaFirstRef.current?.(g.keys) || null;
+      if (firstId) { setSelectedId(firstId); setPreviewOpen(false); }
+    } else setAreaPanel({ keys: g.keys, label: g.labels?.[0] || null });
     setListOpen(false);
     searchInputRef.current?.blur();
     const size = { width: el.clientWidth || 390, height: el.clientHeight || geomRef.current.containerH };
     // Room under the fit: the panel (46%) and the time bar that rides above it.
-    const pad = { top: geomRef.current.topControlsBottom + CARD_GAP + 16, bottom: Math.round(geomRef.current.containerH * 0.46) + 12 + TIME_H + 16, left: 48, right: 48 };
+    const pad = { top: geomRef.current.topControlsBottom + CARD_GAP + 16, bottom: udArea ? UD_STACK_H + 40 : Math.round(geomRef.current.containerH * 0.46) + 12 + TIME_H + 16, left: 48, right: 48 };
     const mk = !!map.__isMapKit;
     const duration = reduceMotion() ? 0 : 700;
     if (opts.reveal) {
@@ -1379,6 +1393,7 @@ export default function MapExplore() {
     if (goBack && v) moveCamera('cluster', m => m.flyTo({ center: [v.center.lng, v.center.lat], zoom: v.zoom, duration: reduceMotion() ? 0 : 700 }));
   }, [moveCamera]);
   openAreaRef.current = openAreaPanel;
+  areaFirstRef.current = (keys) => visibleEvents.find(e => keys.includes((areaInfoById.get(e.id) || areaKey(e, CITIES)).key))?.id;
   openAreaForEventRef.current = (ev) => {
     if (!ev) return;
     // The events at this place may be named for slightly different areas (free text): the panel lists all of them.
@@ -1877,7 +1892,9 @@ export default function MapExplore() {
     && ((anyInArea && filtersActive) || matchingAnywhere.length > 0);
   // Unified (note 99): the selected event (only while it is one of the results), its carousel and its preview.
   const selectedEv = ud && selectedId ? visibleEvents.find(e => e.id === selectedId) || null : null;
-  const showPreview = !!selectedEv && previewOpen && !listOpen && !searchActive;
+  // Owner 2026-11-19: zooming out of pin level (to areas or cities) puts the event summary away.
+  useEffect(() => { if (ud && previewOpen && (levelNow === 'area' || levelNow === 'city')) setPreviewOpen(false); }, [ud, levelNow]); // eslint-disable-line react-hooks/exhaustive-deps
+  const showPreview = !!selectedEv && previewOpen && !listOpen && !searchActive && !(ud && (levelNow === 'area' || levelNow === 'city'));
   const carouselShown = !!selectedEv && !previewOpen && !areaPanel && !listOpen && !searchActive && !emptyOnly && levelNow !== 'city' && levelNow !== 'area';
   const chipsShown = !areaPanel && !listOpen && !searchActive && !emptyOnly && levelNow !== 'city' && chipsView.length > 0 && !carouselShown && !showPreview;
   const stackDrop = ((chipsShown || carouselShown) && !emptyOnly) || areaPanel ? 0 : (ud ? UD_SLOT_H : CHIPS_H) + STACK_GAP;
@@ -1918,6 +1935,12 @@ export default function MapExplore() {
   const filterBadge = ud ? ownedFilterCount(filters, s.homeSort)
     : activeFilterCount(filters) + (forYouActive ? 1 : 0) + (timeWin?.on ? 1 : 0) + (areaContext === 'map' ? 0 : 1);
   const pickedCategory = catFilter !== 'all' ? CATEGORY_DEFS.find(c => c.key === catFilter) : null;
+  // Unified: a type picked anywhere (the Filters sheet, Home) is scrolled into view in the chip row.
+  useEffect(() => {
+    if (!ud || catFilter === 'all') return;
+    const el = chipRowRef.current?.querySelector(`[data-testid="map-cat-${catFilter}"]`);
+    el?.scrollIntoView?.({ inline: 'center', block: 'nearest', behavior: reduceMotion() ? 'auto' : 'smooth' });
+  }, [ud, catFilter]);
   const categoryChipEl = (c) => {
     const active = catFilter === c.key;
     const n = categoryCountMap[c.key] ?? 0;
@@ -1976,7 +1999,10 @@ export default function MapExplore() {
     || (areaContext === 'area' && cityDest ? cityName(cityDest) : areaContext === 'area' && curArea.key !== 'all' ? curArea.label : T('Vùng bản đồ', 'Map area'));
 
   // Register with the persistent bar (re-registered each render so the callbacks are current; only the owner clears).
+  // Unified: the Map draws its own capsule and the shared bar is off here, so it does not register (the Search sheet can
+  // be open over the Map, and two owners re-registering every render would hand the bar back and forth forever).
   useLayoutEffect(() => {
+    if (ud) { searchBarStore.clear('map'); return; }
     searchBarStore.register({
       owner: 'map', placeholder: T('Tìm tên, loại, khu vực, thành phố…', 'Search name, type, area, city…'),
       back: closeMap, cancel: cancelSearch, badge: filterBadge, hasFilters: true, hidden: filterSheetOpen,
@@ -2016,7 +2042,63 @@ export default function MapExplore() {
       <div ref={topRef} data-testid="map-top" style={{ position: 'absolute', left: 0, right: 0, top: topInset, zIndex: 5, padding: '8px 0 0', display: 'flex', flexDirection: 'column', gap: 8, pointerEvents: 'none' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px', pointerEvents: 'auto' }}>
           {/* Empty 44px row: the persistent search bar (App.jsx) draws back, field and filters here. */}
-          <div data-search-bar-slot aria-hidden style={{ height: 44, flex: 1 }} />
+          {!ud && <div data-search-bar-slot aria-hidden style={{ height: 44, flex: 1 }} />}
+          {/* Unified (owner 2026-11-19): Home's kind of search. A capsule showing the shared query opens the same Search
+              sheet Home opens (over this Map); the Filters button shows the picked type itself. */}
+          {ud && (() => {
+            const glass = { ...photoPill({ position: 'static', borderRadius: RADIUS.pill }), color: ink };
+            const q = (s.searchQuery || '').trim();
+            const cat = (filters.cats || [])[0] ? CATEGORY_DEFS.find(c => c.key === filters.cats[0]) : null;
+            const others = filterBadge - (cat ? 1 : 0);
+            const icon = (d, size = 19, color = 'currentColor') => (
+              <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">{d}</svg>
+            );
+            return (
+              <>
+                <button type="button" onClick={closeMap} aria-label={T('Quay lại', 'Back')} data-testid="map-ud-back"
+                  style={{ ...glass, flex: 'none', width: 44, height: 44, padding: 0, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+                  {icon(<path d="M15 5l-7 7 7 7" />)}
+                </button>
+                <div style={{ ...glass, flex: 1, minWidth: 0, height: 44, display: 'flex', alignItems: 'center', padding: '0 4px 0 14px', gap: 8 }}>
+                  <button type="button" data-testid="map-ud-search" aria-haspopup="dialog"
+                    aria-label={q ? T(`Tìm kiếm: ${q}. Sửa`, `Search: ${q}. Edit`) : T('Tìm sự kiện', 'Search events')}
+                    onClick={() => set({ searchOverlayOpen: true })}
+                    style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', alignItems: 'center', gap: 10, border: 'none', background: 'none', padding: 0, color: 'inherit', fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
+                    {icon(<><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></>, 18, clay)}
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: q ? ink : ink3, fontWeight: q ? 600 : 400 }}>
+                      {q ? `“${q}”` : T('Tìm sự kiện, host, khu vực', 'Search events, hosts, areas')}
+                    </span>
+                  </button>
+                  {q && (
+                    <button type="button" data-testid="map-ud-search-clear" aria-label={T('Xoá từ khoá', 'Clear search')}
+                      onClick={() => { set({ searchQuery: '' }); searchBarStore.setSearchQuery(''); searchBarStore.setMapQuery(''); }}
+                      style={{ flex: 'none', width: 36, height: 36, border: 'none', borderRadius: '50%', background: 'none', color: ink2, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+                      {icon(<path d="m6 6 12 12M18 6 6 18" />, 15)}
+                    </button>
+                  )}
+                </div>
+                <button type="button" data-testid="map-ud-filters" aria-haspopup="dialog" onClick={() => setFilterSheetOpen(true)}
+                  aria-label={cat ? T(`Bộ lọc: ${cat.vi}${others ? `, thêm ${others}` : ''}`, `Filters: ${cat.en}${others ? `, ${others} more` : ''}`)
+                    : filterBadge ? T(`Bộ lọc, đang bật ${filterBadge}`, `Filters, ${filterBadge} on`) : T('Bộ lọc', 'Filters')}
+                  style={cat
+                    ? { flex: 'none', position: 'relative', maxWidth: 150, height: 44, padding: '0 14px 0 12px', borderRadius: 999, border: 'none', background: ink, color: paper, display: 'flex', alignItems: 'center', gap: 7, fontFamily: 'inherit', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', boxShadow: '0 4px 14px rgba(27,25,22,.18)' }
+                    : { ...glass, flex: 'none', position: 'relative', width: 44, height: 44, padding: 0, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+                  {cat ? (
+                    <>
+                      <CategoryGlyph cat={cat.key} size={17} />
+                      <span style={{ minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{T(cat.vi, cat.en)}</span>
+                      {icon(<><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></>, 15)}
+                    </>
+                  ) : icon(<><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></>, 19)}
+                  {(cat ? others : filterBadge) > 0 && (
+                    <span data-testid="map-ud-filter-badge" style={{ position: 'absolute', top: -3, right: -3, minWidth: 20, height: 20, padding: '0 5px', borderRadius: 999, background: clay, color: '#fff', fontSize: 11.5, fontWeight: 700, display: 'grid', placeItems: 'center', boxShadow: `0 0 0 2px ${paper}` }}>
+                      {cat ? others : filterBadge}
+                    </span>
+                  )}
+                </button>
+              </>
+            );
+          })()}
         </div>
 
         {/* ONE scrolling row (iOS parity): For You first, then every selected filter (Seats left, Free, Almost full, the
@@ -2319,6 +2401,7 @@ export default function MapExplore() {
       {filterSheetOpen && (
         <HomeFilterSheet
           mapMode
+          unified={ud}
           items={sheetItems}
           filters={sheetSeed}
           sort={ud ? (s.homeSort || 'soonest') : 'soonest'}

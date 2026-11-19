@@ -16,6 +16,7 @@ import { formatMoneyShort } from '../../lib/eventMarket.js';
 import { CategoryGlyph, CATEGORY_DEFS } from '../../components/home/HomeDiscoveryParts.jsx';
 import AreaSheet from './AreaSheet.jsx';
 import NativeSheet from '../../components/NativeSheet.jsx';
+import { UnifiedTypeGrid, UnifiedTypeSheet } from '../../components/home/UnifiedHomeParts.jsx';
 
 export const DATE_LABELS = {
   any: ['Mọi lúc', 'Any time'], tonight: ['Tối nay', 'Tonight'], today: ['Hôm nay', 'Today'], tomorrow: ['Ngày mai', 'Tomorrow'],
@@ -67,13 +68,16 @@ const MAP_DATE_OPTIONS = ['any', 'today', 'tomorrow', 'weekend'];
 
 // `browseMode` (v2.3 Browse by type / See all, note 81): the same sheet titled "Filter Music", with Location, When, Price and Seats
 // only (the type chips already choose the type, and the list keeps its own order), over that list's `items`.
-export default function HomeFilterSheet({ items, filters, sort, onApply, onClose, T, now, canSortNearest, areaLabel, simpleShell = false, mapMode = false, forYou = null, browseMode = false, title = null }) {
+// `unified` (note 99, switch unified_discovery; owner 2026-11-19): the type comes FIRST, as the compact Browse-by-type
+// tiles (5 busiest + "Tất cả loại" with its own searchable sheet), single choice, and replaces the Category pills.
+export default function HomeFilterSheet({ items, filters, sort, onApply, onClose, T, now, canSortNearest, areaLabel, simpleShell = false, mapMode = false, forYou = null, browseMode = false, title = null, unified = false }) {
   const dateOptions = mapMode ? MAP_DATE_OPTIONS : DATE_OPTIONS;
   const [draft, setDraft] = useState(() => normalizeFilters(filters));
   const [draftSort, setDraftSort] = useState(sort || 'soonest');
   const [forTwo, setForTwo] = useState(false);
   // The location picker slides up OVER this sheet; this sheet (and its draft) stays mounted underneath.
   const [areaOpen, setAreaOpen] = useState(false);
+  const [typeSheetOpen, setTypeSheetOpen] = useState(false);
   const patch = (p) => setDraft(d => normalizeFilters({ ...d, ...p }));
 
   const total = items.length;
@@ -132,6 +136,18 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
         {/* overscrollBehavior: contain — this is the only scroller in the overlay, and its overscroll must not chain to
             the page behind the sheet. */}
         <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', padding: '0 20px', flex: 1 }}>
+          {unified && !browseMode && (
+            <Section title={T('Loại', 'Type')} right={draft.cats.length > 0 && (
+              <button type="button" onClick={() => patch({ cats: [], typeFilters: [] })} data-testid="home-filter-type-all"
+                style={{ border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', padding: '6px 2px' }}>
+                {T('Xem tất cả', 'See all')}
+              </button>
+            )}>
+              <UnifiedTypeGrid compact idPrefix="home-filter-type" counts={catCounts} selected={draft.cats[0] || null} total={total} T={T}
+                onPick={(k) => patch({ cats: draft.cats[0] === k ? [] : [k], typeFilters: [] })}
+                onClear={() => patch({ cats: [], typeFilters: [] })} onOpenSheet={() => setTypeSheetOpen(true)} />
+            </Section>
+          )}
           {forYou && !browseMode && (
             <Section title={T('Dành cho bạn', 'For You')} right={
               <button type="button" role="switch" aria-checked={forYou.on} onClick={() => forYou.set(!forYou.on)} data-testid="home-filter-for-you"
@@ -210,7 +226,7 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
             </div>
           </Section>
 
-          {!browseMode && <Section title={T('Danh mục', 'Category')}>
+          {!browseMode && !unified && <Section title={T('Danh mục', 'Category')}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {CATEGORY_DEFS.filter(c => c.key !== 'all').map(c => {
                 const on = draft.cats.includes(c.key);
@@ -261,6 +277,11 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
       </div>
       {areaOpen && <AreaSheet embedded onDone={() => setAreaOpen(false)} />}
       {/* While the full-height location sheet is up, this sheet stays mounted behind it, blurred and dimmed. */}
+    {unified && typeSheetOpen && (
+        <UnifiedTypeSheet counts={catCounts} total={total} selected={draft.cats[0] || null} T={T}
+          onPick={(k) => { patch({ cats: k === 'all' ? [] : [k], typeFilters: [] }); setTypeSheetOpen(false); }}
+          onClose={() => setTypeSheetOpen(false)} />
+      )}
     </NativeSheet>
   );
 }

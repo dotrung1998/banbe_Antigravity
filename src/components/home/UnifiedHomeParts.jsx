@@ -45,12 +45,45 @@ export function UnifiedStateBar({ parts, count, onMap, onClear, T }) {
 }
 
 /** Browse by type that filters Home in place: 5 busiest types + "All types" (or the picked type when it is not a tile). */
-export function UnifiedTypeGrid({ counts, selected, total, onPick, onClear, onOpenSheet, T }) {
+// `compact` (the Filters sheet, owner 2026-11-19): the same tiles, smaller, without the heading or the page padding,
+// and with their own test ids (`idPrefix`) so they never clash with Home's grid underneath the sheet.
+export function UnifiedTypeGrid({ counts, selected, total, onPick, onClear, onOpenSheet, T, compact = false, idPrefix = 'home-browse' }) {
   const tiles = topTypes(counts, KEYS);
   const picked = pickedTileType(selected, tiles);
-  const tile = { padding: '14px 0 12px', border: 'none', borderRadius: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, fontFamily: 'inherit', fontSize: 13, color: 'inherit', cursor: 'pointer' };
-  const glyph = (on) => ({ width: 52, height: 52, display: 'grid', placeItems: 'center', marginBottom: 4, borderRadius: '50%',
+  const tile = { padding: compact ? '10px 0 8px' : '14px 0 12px', border: 'none', borderRadius: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: compact ? 2 : 4, fontFamily: 'inherit', fontSize: compact ? 12.5 : 13, color: 'inherit', cursor: 'pointer' };
+  const G = compact ? 40 : 52;
+  const glyph = (on) => ({ width: G, height: G, display: 'grid', placeItems: 'center', marginBottom: compact ? 2 : 4, borderRadius: '50%',
     background: on ? 'var(--bb-fg)' : 'transparent', color: on ? 'var(--bb-bg)' : 'inherit', transition: 'background .2s, color .2s' });
+  const gs = compact ? 22 : 28;
+  const grid = (
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
+        {tiles.map(k => {
+          const on = selected === k;
+          const n = counts[k] || 0;
+          return (
+            <button key={k} type="button" data-testid={`${idPrefix}-${k}`} aria-pressed={on} onClick={() => onPick(k)}
+              style={{ ...tile, background: on ? 'var(--bb-block)' : 'none', opacity: n === 0 && !on ? 0.42 : 1 }}>
+              <span style={glyph(on)}><CategoryGlyph cat={k} size={gs} strokeWidth={1.5} /></span>
+              <span style={{ fontWeight: on ? 600 : 400 }}>{typeName(k, T)}</span><small style={{ fontSize: 11.5, opacity: 0.64 }}>{evN(n, T)}</small>
+            </button>
+          );
+        })}
+        {picked ? (
+          <button type="button" data-testid={`${idPrefix}-find`} data-picked={picked} aria-pressed="true" aria-haspopup="dialog" onClick={onOpenSheet}
+            aria-label={T(`${typeName(picked, T)}, đang chọn. Đổi loại`, `${typeName(picked, T)}, selected. Change type`)}
+            style={{ ...tile, background: 'var(--bb-block)' }}>
+            <span style={glyph(true)}><CategoryGlyph cat={picked} size={gs} strokeWidth={1.5} /></span>
+            <span style={{ fontWeight: 600 }}>{typeName(picked, T)}</span><small style={{ fontSize: 11.5, opacity: 0.64 }}>{evN(counts[picked] || 0, T)} · {T('đổi', 'change')}</small>
+          </button>
+        ) : (
+          <button type="button" data-testid={`${idPrefix}-find`} aria-pressed="false" aria-haspopup="dialog" onClick={onOpenSheet} style={{ ...tile, background: 'none' }}>
+            <span style={{ ...glyph(false), border: '1.5px dashed var(--bb-rule)', boxSizing: 'border-box' }}><Icon d={SEARCH} size={compact ? 20 : 26} sw={1.5} /></span>
+            <span>{T('Tất cả loại', 'All types')}</span><small style={{ fontSize: 11.5, opacity: 0.64 }}>{T(`${KEYS.length} loại`, `${KEYS.length} types`)}</small>
+          </button>
+        )}
+      </div>
+  );
+  if (compact) return <div data-testid={idPrefix} data-unified="1">{grid}</div>;
   return (
     <div data-testid="home-browse" data-unified="1" style={{ padding: '28px 20px 0', scrollMarginTop: 'var(--bb-home-head-h)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
@@ -62,32 +95,7 @@ export function UnifiedTypeGrid({ counts, selected, total, onPick, onClear, onOp
           </button>
         )}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
-        {tiles.map(k => {
-          const on = selected === k;
-          const n = counts[k] || 0;
-          return (
-            <button key={k} type="button" data-testid={`home-browse-${k}`} aria-pressed={on} onClick={() => onPick(k)}
-              style={{ ...tile, background: on ? 'var(--bb-block)' : 'none', opacity: n === 0 && !on ? 0.42 : 1 }}>
-              <span style={glyph(on)}><CategoryGlyph cat={k} size={28} strokeWidth={1.5} /></span>
-              <span style={{ fontWeight: on ? 600 : 400 }}>{typeName(k, T)}</span><small style={{ fontSize: 11.5, opacity: 0.64 }}>{evN(n, T)}</small>
-            </button>
-          );
-        })}
-        {picked ? (
-          <button type="button" data-testid="home-browse-find" data-picked={picked} aria-pressed="true" aria-haspopup="dialog" onClick={onOpenSheet}
-            aria-label={T(`${typeName(picked, T)}, đang chọn. Đổi loại`, `${typeName(picked, T)}, selected. Change type`)}
-            style={{ ...tile, background: 'var(--bb-block)' }}>
-            <span style={glyph(true)}><CategoryGlyph cat={picked} size={28} strokeWidth={1.5} /></span>
-            <span style={{ fontWeight: 600 }}>{typeName(picked, T)}</span><small style={{ fontSize: 11.5, opacity: 0.64 }}>{evN(counts[picked] || 0, T)} · {T('đổi', 'change')}</small>
-          </button>
-        ) : (
-          <button type="button" data-testid="home-browse-find" aria-pressed="false" aria-haspopup="dialog" onClick={onOpenSheet} style={{ ...tile, background: 'none' }}>
-            <span style={{ ...glyph(false), border: '1.5px dashed var(--bb-rule)', boxSizing: 'border-box' }}><Icon d={SEARCH} size={26} sw={1.5} /></span>
-            <span>{T('Tất cả loại', 'All types')}</span><small style={{ fontSize: 11.5, opacity: 0.64 }}>{T(`${KEYS.length} loại`, `${KEYS.length} types`)}</small>
-          </button>
-        )}
-      </div>
+      {grid}
     </div>
   );
 }

@@ -1760,6 +1760,7 @@ export default function Home({ browse = false }) {
       <HomeFilterSheet
         items={discoveryItems} filters={homeFilters} sort={s.homeSort} now={nowMs} T={T}
         canSortNearest={!!(located && s.userCoords)}
+        unified={ud}
         areaLabel={curArea.key === 'all' ? '' : curArea.label}
         forYou={hasForYou ? { on: !!s.filterForYou, set: (v) => set({ filterForYou: v }) } : null}
         onClose={() => set({ homeFilterSheetOpen: false })}

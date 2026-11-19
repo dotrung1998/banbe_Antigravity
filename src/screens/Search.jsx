@@ -208,6 +208,8 @@ export default function Search({ overlay = false }) {
   const udSChip = { flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, height: 38, padding: '0 14px', borderRadius: 999, background: 'var(--bb-surface-2)', color: ink, border: 'none', fontFamily: 'inherit', fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap', cursor: 'pointer' };
   const goMap = () => {
     commit();
+    // Opened over the Map (unified): the Map is right underneath and already reads the shared query.
+    if (s.screen === 'mapExplore') { set({ searchOverlayOpen: false }); return; }
     const go = () => { searchBarStore.setMapQuery(query); set({ screen: 'mapExplore', mapExploreState: { focusSearch: false, searchQuery: query } }); };
     const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (reduce) { go(); return; }
@@ -293,8 +295,10 @@ export default function Search({ overlay = false }) {
       {ud && (
         <div style={{ flex: 'none', display: 'flex', flexWrap: 'wrap', gap: 6, padding: '10px 16px 0' }}>
           <span data-testid="search-source" style={metaChipStyle}>
-            <svg aria-hidden="true" width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z" /></svg>
-            {T('Từ Trang chủ', 'From Home')}
+            {s.screen === 'mapExplore'
+              ? <svg aria-hidden="true" width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z" /><path d="M9 4v14M15 6v14" /></svg>
+              : <svg aria-hidden="true" width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z" /></svg>}
+            {s.screen === 'mapExplore' ? T('Từ Bản đồ', 'From the Map') : T('Từ Trang chủ', 'From Home')}
           </span>
           <span style={{ ...metaChipStyle, background: 'none', border: `1px solid ${rule}`, color: ink2 }}>
             <svg aria-hidden="true" width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="var(--bb-moss, #4E6A30)" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 1-15 6.7L3 16M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M3 21v-5h5M21 3v5h-5" /></svg>

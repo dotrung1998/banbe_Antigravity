@@ -848,7 +848,9 @@ function Shell() {
   // every ordinary screen (Home included since 2026-11-22: its band is a paper app bar now), the night of a full-bleed
   // one or a photo. The full-screen dark viewers count as that edge too (a story, a photo, the post-sign-up intro), so
   // a pale strip never sits above them.
-  const darkTop = fullBleed || !!state.photoViewer || !!state.chatPhotoViewer || !!state.storyViewer || eventOnboardingActive;
+  // The Map is full-bleed but its top edge is the light (or theme-dark) map, not a photo: it takes the paper (owner
+  // 2026-11-19, the night strip read as a dark smear over the tiles).
+  const darkTop = (fullBleed && state.screen !== 'mapExplore') || !!state.photoViewer || !!state.chatPhotoViewer || !!state.storyViewer || eventOnboardingActive;
   useEffect(() => { setThemeColor(darkTop); }, [darkTop, state.screen, resolvedTheme]);
 
   return (
@@ -958,7 +960,7 @@ function Shell() {
           })}
         </div>
         {/* Search over Home (openSearch): Home stays mounted underneath — no blank flash, no reload on close. */}
-        {state.searchOverlayOpen && state.screen === 'home' && <Search overlay />}
+        {state.searchOverlayOpen && (state.screen === 'home' || (state.screen === 'mapExplore' && flagOn(state.featureFlags, 'unified_discovery'))) && <Search overlay />}
         {/* Notifications over Home (goNotifications from the bell): slides in from the right over the live Home. */}
         {state.notificationsOverlayOpen && state.screen === 'home' && <Notifications overlay />}
         {state.areaAsking && <AreaSheet />}

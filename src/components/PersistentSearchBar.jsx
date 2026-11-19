@@ -31,7 +31,10 @@ export default function PersistentSearchBar() {
   const udSheetSearch = !isMap
     && flagOn(s.featureFlags, 'simple_shell') && flagOn(s.featureFlags, 'home_v23') && flagOn(s.featureFlags, 'unified_discovery')
     && (s.screen === 'search' || (!!s.searchOverlayOpen && s.screen === 'home'));
-  const active = !udSheetSearch && (isMap || s.screen === 'search' || (!!s.searchOverlayOpen && s.screen === 'home'));
+  // Owner 2026-11-19: on the unified Map the search is Home's kind too (a capsule opening the Search sheet, drawn by
+  // MapExplore itself), so the live bar never shows there.
+  const udMap = isMap && flagOn(s.featureFlags, 'simple_shell') && flagOn(s.featureFlags, 'home_v23') && flagOn(s.featureFlags, 'unified_discovery');
+  const active = !udSheetSearch && !udMap && (isMap || s.screen === 'search' || (!!s.searchOverlayOpen && s.screen === 'home'));
   const wrapRef = useRef(null);
   const [entered, setEntered] = useState(false);
   const [lingering, setLingering] = useState(false);

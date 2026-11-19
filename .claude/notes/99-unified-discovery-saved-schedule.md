@@ -151,3 +151,24 @@ an Xong button — instead of the app's shared top search bar.
   Home and saved the query to recents. Switch-off path re-checked with the flags RPC stubbed false: no dialog,
   full-screen Search, shared bar and its input present.
 - Not device-verified; the owner's phone pass is still the final visual check.
+
+## Web Map follow-up (owner's phone pass), 2026-11-19
+- **Search like Home's**: the unified Map no longer uses the shared live bar (PersistentSearchBar steps aside on the
+  Map too, and MapExplore stops registering with it, which otherwise ping-ponged with the Search sheet: "Maximum update
+  depth exceeded"). Its own row: glass Back, a capsule (clay magnifier, the shared query or a placeholder, ×) that opens
+  the SAME Search bottom sheet over the Map (App.jsx mounts `<Search overlay />` on mapExplore when the switch is on;
+  its source chip says "Từ Bản đồ", and "Xem trên bản đồ" just closes it), and the Filters button.
+- **Filters button shows the type**: with a type picked it becomes an ink pill (glyph + name + sliders) with a badge for
+  the OTHER owned filters; otherwise the glass sliders circle with the count. The picked type also scrolls into view
+  in the chip row.
+- **Filters sheet**: `HomeFilterSheet unified` (Map and Home) leads with "Loại / Type" as the compact Browse-by-type
+  tiles (`UnifiedTypeGrid compact idPrefix="home-filter-type"`: 5 busiest + "Tất cả loại" opening the searchable type
+  sheet, single choice, "Xem tất cả" clears) and drops the Category pills.
+- **No old area list**: an area tap (bubble, area chip, stack) flies in at pin level and opens the horizontal carousel on
+  that area's first event; the 46 % neighbourhood panel never opens in unified mode (a restored snapshot's panel is
+  ignored too).
+- **Summary away on zoom out**: leaving pin level (area or city) closes the preview card.
+- **Top band**: the Map is no longer a night-strip screen (App.jsx `darkTop`), so the status strip takes the theme's
+  paper instead of the dark smear over the tiles.
+- Checks: build green, unit 1022/1022, `map-unified` 8 + `home-unified` 5 tests = 39/39 on chromium, firefox and
+  webkit. Not re-checked on a phone (the status strip in particular only shows on a real iPhone home-screen app).

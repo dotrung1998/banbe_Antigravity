@@ -173,9 +173,10 @@ test('the type and the time picked on the Map are still there after Home and bac
   await expect(page.getByTestId('map-cat-music')).toHaveAttribute('aria-selected', 'true');
   await page.getByTestId('map-time-chip').click();
   await page.getByTestId('map-time-day-today').click();
-  // The badge counts only what Filters owns: the type (1), not the time.
-  await expect(page.getByTestId('map-chip-filters')).toContainText('1');
-  await page.getByTestId('map-back').click();
+  // The Filters button shows the picked type itself (owner 2026-11-19); the time is not a Filters thing, so no badge.
+  await expect(page.getByTestId('map-ud-filters')).toContainText('Music');
+  await expect(page.getByTestId('map-ud-filter-badge')).toHaveCount(0);
+  await page.getByTestId('map-ud-back').click();
   await expect(page.locator('[data-screen-label="Home"]')).toBeVisible({ timeout: 10000 });
   // A fresh open from the dock (no return snapshot) still shows the shared type and day: they live in Home's state.
   await page.getByTestId('home-map-button').click();
@@ -202,4 +203,58 @@ test('switch off: the Map is as before (time bar row, map zoom control, a pin op
   await page.locator('[data-testid^="map-pin-"]').first().click();
   await expect(page.getByTestId('map-carousel')).toHaveCount(0);
   await expect(page.getByRole('heading', { level: 1, name: /Unified/ })).toBeVisible({ timeout: 10000 });
+});
+
+test('owner 2026-11-19: Home-style search capsule opens the Search sheet over the Map; no shared live bar', async ({ page }) => {
+  await openMap(page);
+  await expect(page.getByTestId('map-ud-search')).toBeVisible();
+  await expect(page.locator('[data-search-bar-slot]')).toHaveCount(0);
+  await page.getByTestId('map-ud-search').click();
+  await expect(page.getByTestId('search-source')).toContainText(/From the Map|Từ Bản đồ/, { timeout: 10000 });
+  await page.keyboard.type('jazz');
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('search-source')).toHaveCount(0);
+  await expect(page.getByTestId('map-ud-search')).toContainText('jazz');
+  await page.getByTestId('map-ud-search-clear').click();
+  await expect(page.getByTestId('map-ud-search')).not.toContainText('jazz');
+});
+
+test('owner 2026-11-19: Filters sheet leads with the compact type tiles and All types; the pick shows on the button', async ({ page }) => {
+  await openMap(page);
+  await page.getByTestId('map-ud-filters').click();
+  const grid = page.getByTestId('home-filter-type');
+  await expect(grid).toBeVisible({ timeout: 10000 });
+  await expect(page.locator('[data-testid^="home-filter-cat-"]')).toHaveCount(0); // the old Category pills are gone
+  await grid.getByTestId('home-filter-type-find').click();
+  await expect(page.getByTestId('home-type-sheet')).toBeVisible();
+  await page.getByTestId('home-type-sheet-music').click();
+  await expect(page.getByTestId('home-type-sheet')).toHaveCount(0);
+  await expect(grid.getByTestId('home-filter-type-music')).toHaveAttribute('aria-pressed', 'true');
+  await page.getByTestId('home-filter-apply').click();
+  await expect(page.getByTestId('map-ud-filters')).toContainText('Music');
+});
+
+test('owner 2026-11-19: an area tap never opens the old list panel, and zooming out puts the summary away', async ({ page }) => {
+  await openMap(page);
+  const bubble = page.locator('[data-testid^="map-areabubble-"]').first();
+  if (await bubble.count()) {
+    await bubble.click();
+    await page.waitForTimeout(1200);
+    await expect(page.getByTestId('map-area-panel')).toHaveCount(0);
+  }
+  for (let i = 0; i < 6 && !(await page.locator('[data-testid^="map-pin-"]').count()); i++) {
+    await page.getByTestId('map-zoom-in').click();
+    await page.waitForTimeout(500);
+  }
+  await page.locator('[data-testid^="map-pin-"]').first().click();
+  await page.locator('[data-testid^="map-mcard-"]').first().click();
+  await expect(page.getByTestId('map-preview')).toBeVisible();
+  // The zoom capsule sits under the summary (the prototype's bottom row), so zoom out the way a pinch does: the wheel.
+  await page.mouse.move(195, 300);
+  for (let i = 0; i < 12 && (await page.getByTestId('map-preview').count()); i++) {
+    await page.mouse.wheel(0, 600);
+    await page.waitForTimeout(400);
+  }
+  await expect(page.getByTestId('map-preview')).toHaveCount(0);
+  await expect(page.getByTestId('map-area-panel')).toHaveCount(0);
 });
