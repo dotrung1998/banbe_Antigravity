@@ -506,7 +506,8 @@ extension AppState {
                 ])
                 .execute().value
 
-            if let token = try? await SupabaseService.client.auth.session.accessToken {
+            let token = try? await SupabaseService.client.auth.session.accessToken
+            if let token {
                 var request = URLRequest(url: URL(string: "\(AppConfig.apiBaseURL)/api/notify")!)
                 request.httpMethod = "POST"
                 request.setValue("application/json", forHTTPHeaderField: "content-type")

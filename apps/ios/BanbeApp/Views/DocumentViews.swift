@@ -424,7 +424,8 @@ private struct DocumentWebView: UIViewRepresentable {
             }
             Task { @MainActor in
                 var request = URLRequest(url: url)
-                if let token = try? await SupabaseService.client.auth.session.accessToken {
+                let token = try? await SupabaseService.client.auth.session.accessToken
+                if let token {
                     request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
                 }
                 webView.load(request)
