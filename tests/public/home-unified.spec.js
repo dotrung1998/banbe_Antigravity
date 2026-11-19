@@ -68,7 +68,7 @@ test('tabs are the shared time: Weekend narrows the list, For You widens it agai
   const all = await total(page);
   await page.getByTestId('home-hero-tab-weekend').click();
   await expect(page.getByTestId('home-hero-tab-weekend')).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByTestId('home-state-bar')).toHaveCount(0); // time alone is the tab, not a filter
+  await expect(page.getByTestId('home-active-chip')).toHaveCount(0); // time alone is the tab, not a filter
   const weekend = await page.getByTestId('home-shortlist-range').count() ? await total(page) : 0;
   expect(weekend).toBeLessThan(all);
   await page.getByTestId('home-hero-tab-foryou').click();
@@ -88,12 +88,12 @@ test('a type tile filters Home in place, the state bar says so and clears it', a
   await tile.click();
   await expect(page.locator('[data-screen-label="Home"]')).toBeVisible(); // stays on Home
   await expect(grid.getByTestId(`home-browse-${key}`)).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByTestId('home-state-bar')).toBeVisible();
+  await expect(page.getByTestId('home-active-chip')).toBeVisible();
   await expect(page.getByTestId('home-shortlist-range')).toHaveText(new RegExp(`of ${n}$`)); // the list follows the type
   await expect(page.getByTestId('home-filter-summary')).toContainText(String(n));
   await expect(page.getByTestId('home-filter-badge')).toHaveText('1');
-  await page.getByTestId('home-state-bar-clear').click();
-  await expect(page.getByTestId('home-state-bar')).toHaveCount(0);
+  await page.getByTestId('home-active-chip-clear').click();
+  await expect(page.getByTestId('home-active-chip')).toHaveCount(0);
   await expect(grid.getByTestId(`home-browse-${key}`)).toHaveAttribute('aria-pressed', 'false');
 });
 

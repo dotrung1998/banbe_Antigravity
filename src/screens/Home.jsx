@@ -46,7 +46,7 @@ import { liveUpdates } from '../lib/liveLine.js';
 import { useReducedMotion } from '../lib/useReducedMotion.js';
 import { browseFilters as toBrowseFilters, typeCounts as browseTypeCounts } from '../lib/browse.js';
 import HomeShellV5 from '../components/home/HomeShellV5.jsx';
-import { UnifiedStateBar, UnifiedTypeGrid, UnifiedTypeSheet, UnifiedMapBanner } from '../components/home/UnifiedHomeParts.jsx';
+import { UnifiedTypeGrid, UnifiedTypeSheet, UnifiedMapBanner } from '../components/home/UnifiedHomeParts.jsx';
 import { DATE_FOR_TAB, tabForDate, ownedFilterCount, isOpenItem as isOpenDiscoveryItem, nearYou } from '../lib/unifiedDiscovery.js';
 import { buildEventSearchDoc, matchesSearchQuery } from '../lib/search.js';
 import { searchBarStore } from '../lib/searchBarStore.js';
@@ -1419,7 +1419,8 @@ export default function Home({ browse = false }) {
             <div data-reveal="2">
               <ShortlistV23 T={T} lang={s.lang === 'en' ? 'en' : 'vi'} rows={shortlist.rows} total={shortlist.total}
                 filterBadge={ud ? udOwned : filterBadge} onFilters={() => set({ homeFilterSheetOpen: true })} onOpenEvent={goEvent} onAction={onShortlistAction}
-                onToggleSave={toggleFav} />
+                onToggleSave={toggleFav}
+                active={ud && (udQuery || udOwned > 0) ? udParts : null} onClearActive={clearUnified} />
               {ud && shortlist.rows.length > 0 && (
                 <UnifiedMapBanner count={shortlist.rows.length} areaLabel={curArea.key !== 'all' ? areaName : ''} onOpen={openMapWithContext} T={T} />
               )}
@@ -1439,9 +1440,6 @@ export default function Home({ browse = false }) {
             {goerHero === 'none' && savedUpcomingEl}
             {/* Prototype v2 order: the live line and the shared-state bar sit between the hero and Browse by type. */}
             <LiveLine updates={live} index={Math.min(liveIndex, Math.max(0, live.length - 1))} onIndex={setLiveIndex} onOpen={() => setLiveOpen(true)} T={T} />
-            {ud && shortlist && (udQuery || udOwned > 0) && (
-              <UnifiedStateBar parts={udParts} count={shortlist.rows.length} onMap={openMapWithContext} onClear={clearUnified} T={T} />
-            )}
           </div>
         </HomeShellV5>
         {quickOpen && <QuickSheetV5 onClose={() => setQuickOpen(false)} />}

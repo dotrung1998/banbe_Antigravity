@@ -731,11 +731,6 @@ struct HomeView: View {
         }
         VStack(spacing: 0) {
             LiveLineView(updates: snap.live, index: $liveIndex, onOpen: { liveNowOpen = true })
-            if app.unifiedDiscoveryEnabled,
-               !app.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                || UnifiedDiscovery.ownedFilterCount(app.homeFilters, sort: app.homeSort) > 0 {
-                UnifiedStateBar(count: snap.udTotal, onMap: { app.goMapExploreFromHome() }, onClear: { clearUnified() })
-            }
             // Prototype v2 order (note 99): Browse by type sits above the "Near you" list.
             v23Browse(snap)
         }
@@ -747,7 +742,8 @@ struct HomeView: View {
             // Note 99: time has the tabs, so the Filters badge counts only what Filters owns.
             ShortlistV23View(tab: shownHeroTab, rows: snap.shortRows, total: snap.shortTotal,
                              filterBadge: app.unifiedDiscoveryEnabled ? UnifiedDiscovery.ownedFilterCount(app.homeFilters, sort: app.homeSort) : snap.filterBadge,
-                             onFilters: { app.homeFilterSheetOpen = true }, onAction: { shortlistAction($0) })
+                             onFilters: { app.homeFilterSheetOpen = true }, onAction: { shortlistAction($0) },
+                             activeParts: unifiedActiveParts, onClearActive: { clearUnified() })
             if app.unifiedDiscoveryEnabled && snap.udTotal > 0 {
                 UnifiedMapBanner(count: snap.udTotal, onOpen: { app.goMapExploreFromHome() })
             }
@@ -826,6 +822,17 @@ struct HomeView: View {
     /// Type tile tapped (select, switch or deselect): the "Near you" header goes to just under the folded band, always
     /// (same anchor as the rail's See all; web twin: `pickTypeAndAlign`). Waits a beat so the filtered list has laid
     /// out; Reduce Motion jumps (the `.onChange(of: nearYouScrollToken)` handler animates only when it is off).
+    /// What narrows "Near you" (search, type, time…), shown as one chip under its header (owner 2026-11-19: replaced the
+    /// state bar above Browse by type). Empty when nothing is on. Web twin: `udParts` → ShortlistV23 `active`.
+    private var unifiedActiveParts: [String] {
+        guard app.unifiedDiscoveryEnabled else { return [] }
+        let q = app.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty || UnifiedDiscovery.ownedFilterCount(app.homeFilters, sort: app.homeSort) > 0 else { return [] }
+        let f = app.homeFilters
+        return (q.isEmpty ? [] : ["“\(q)”"]) + UnifiedText.filterParts(app, f, sort: app.homeSort)
+            + [UnifiedText.time(app, f.date)].compactMap { $0 }
+    }
+
     private func alignNearYouAfterPick() {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 80_000_000)

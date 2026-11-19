@@ -16,6 +16,9 @@ struct ShortlistV23View: View {
     let filterBadge: Int
     let onFilters: () -> Void
     let onAction: (String) -> Void
+    /// What narrows the list, as one chip under the header with × to clear (web `active`). Empty = no chip.
+    var activeParts: [String] = []
+    var onClearActive: (() -> Void)? = nil
 
     /// Prototype v2 (note 99): the list is "Near you", always soonest first — the tab's own name is the band above it.
     private var sub: ViEn { ViEn("gần nhất trước", "soonest first") }
@@ -38,25 +41,45 @@ struct ShortlistV23View: View {
                 }
                 Spacer(minLength: 0)
                 Button(action: onFilters) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "slider.horizontal.3").font(.app(size: 15))
-                        Text(app.T("Bộ lọc", "Filters")).font(.app(size: 14, weight: .semibold))
-                        if filterBadge > 0 {
-                            Text("\(filterBadge)").font(.app(size: 12, weight: .bold)).foregroundStyle(app.palette.paper)
-                                .frame(minWidth: 20, minHeight: 20).padding(.horizontal, 3)
-                                .background(app.palette.ink, in: Capsule())
-                                .accessibilityIdentifier("home.filterBadge")
+                    Image(systemName: "slider.horizontal.3").font(.app(size: 16))
+                        .frame(width: 44, height: 44)
+                        .background(app.palette.block, in: Circle())
+                        .overlay(alignment: .topTrailing) {
+                            if filterBadge > 0 {
+                                Text("\(filterBadge)").font(.app(size: 11.5, weight: .bold)).foregroundStyle(app.palette.paper)
+                                    .frame(minWidth: 18, minHeight: 18).padding(.horizontal, 2)
+                                    .background(app.palette.ink, in: Capsule())
+                                    .overlay(Capsule().stroke(app.palette.paper, lineWidth: 2))
+                                    .offset(x: 2, y: -2)
+                                    .accessibilityIdentifier("home.filterBadge")
+                            }
                         }
-                    }
-                    .padding(.horizontal, 14).frame(minHeight: 44)
-                    .background(app.palette.block, in: Capsule())
-                    .contentShape(Capsule())
+                        .contentShape(Circle())
                 }
                 .buttonStyle(PressableButtonStyle())
                 .accessibilityLabel(filterBadge > 0 ? app.T("Bộ lọc, đang bật \(filterBadge)", "Filters, \(filterBadge) on") : app.T("Bộ lọc", "Filters"))
                 .accessibilityIdentifier("home.filtersButton")
             }
             .padding(.horizontal, 20).padding(.bottom, 12)
+            if !activeParts.isEmpty {
+                HStack(spacing: 0) {
+                    Text(activeParts.joined(separator: " · ")).font(.app(size: 13.5, weight: .semibold)).lineLimit(1)
+                        .padding(.leading, 14)
+                    Button(action: { Haptics.selection(); onClearActive?() }) {
+                        Image(systemName: "xmark").font(.app(size: 12, weight: .bold))
+                            .frame(width: 40, height: 36).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(app.T("Xoá tìm kiếm và bộ lọc", "Clear search and filters"))
+                    .accessibilityIdentifier("home.activeChip.clear")
+                }
+                .foregroundStyle(app.palette.paper)
+                .frame(minHeight: 36)
+                .background(app.palette.ink, in: Capsule())
+                .padding(.horizontal, 20).padding(.bottom, 12)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("home.activeChip")
+            }
             V23Pager(items: rows, key: \.key, listID: "home.shortlist",
                      row: { r in EventRowV23View(row: r, onToggleSave: { app.toggleFavorite(r.key) }) { app.goEvent(r.key) } },
                      end: { v in EndCardView(model: card, variant: v, onAction: onAction) },
