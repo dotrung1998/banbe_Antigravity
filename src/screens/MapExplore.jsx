@@ -1768,7 +1768,10 @@ export default function MapExplore() {
   // An active chip moves to the front (CSS order); scroll its row back there so it is never left out of view.
   const chipRowRef = useRef(null);
   const activeChipKey = `${catFilter}|${openNowOnly}|${filters.free}|${filters.almostFull}`;
-  useEffect(() => { chipRowRef.current?.scrollTo?.({ left: 0, behavior: 'smooth' }); }, [activeChipKey]);
+  // Audit 2026-11-19 row 35: the row also resets on the FIRST paint (not only when the active chip changes) and jumps
+  // instead of gliding, so it can never be caught mid-scroll showing a half chip at the left edge.
+  useEffect(() => { chipRowRef.current?.scrollTo?.({ left: 0 }); }, []);
+  useEffect(() => { chipRowRef.current?.scrollTo?.({ left: 0 }); }, [activeChipKey]);
   const clearChip = (testId) => (
     <button type="button" onClick={(e) => { e.stopPropagation(); clearFilters(); }} data-testid={testId}
       style={{ flex: 'none', minHeight: 44, padding: '0 10px', border: 'none', background: 'none', color: clay, fontSize: 13.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
