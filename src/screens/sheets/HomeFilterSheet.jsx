@@ -127,10 +127,12 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
         {/* Reset on the left, close (×) on the right; equal side columns keep the title centred. */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', padding: '10px 14px 8px' }}>
           <button type="button" onClick={() => { setDraft(normalizeFilters(DEFAULT_FILTERS)); setDraftSort('soonest'); }} data-testid="home-filter-reset"
-            style={{ justifySelf: 'start', border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 14, opacity: 0.75, cursor: 'pointer', padding: '8px 6px' }}>{T('Đặt lại', 'Reset')}</button>
+            // Audit 2026-11-19 row 25: a 44 pt hit box around the small word (Reset was 50×34).
+            style={{ justifySelf: 'start', minHeight: 44, border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 14, opacity: 0.75, cursor: 'pointer', padding: '0 6px' }}>{T('Đặt lại', 'Reset')}</button>
           <span style={{ ...display(17), textAlign: 'center' }}>{title || T('Bộ lọc', 'Filters')}</span>
           <button type="button" onClick={onClose} aria-label={T('Đóng', 'Close')} data-testid="home-filter-close"
-            style={{ justifySelf: 'end', width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'rgba(var(--bb-fg-rgb),0.07)', color: ink, fontSize: 18, cursor: 'pointer' }}>×</button>
+            // Audit 2026-11-19 row 25: 44 pt (was 36).
+            style={{ justifySelf: 'end', width: 44, height: 44, borderRadius: '50%', border: 'none', background: 'rgba(var(--bb-fg-rgb),0.07)', color: ink, fontSize: 18, cursor: 'pointer' }}>×</button>
         </div>
 
         {/* overscrollBehavior: contain — this is the only scroller in the overlay, and its overscroll must not chain to
