@@ -175,7 +175,8 @@ export default function AdminManageEvents() {
                           {fact(T('Người tổ chức', 'Host'), orphan ? T('Đã xoá tài khoản', 'Account deleted') + (r.organizer_name && r.organizer_name !== 'Deleted organizer' ? ` (${r.organizer_name})` : '') : (r.organizer_name || '—'))}
                           {fact(T('Bắt đầu', 'Starts'), dateTime(r.starts_at, rowTimeZone(r)))}
                           {fact(T('Giá vé', 'Price'), r.price_vnd > 0 ? formatMoney(r.price_vnd, rowCurrency(r)) : T('Miễn phí', 'Free'))}
-                          {fact(T('Chỗ', 'Seats'), r.capacity > 0 ? T(`${r.seats_remaining ?? '—'} còn / ${r.capacity}`, `${r.seats_remaining ?? '—'} left of ${r.capacity}`) : '—')}
+                          {/* Capacity only: `events.seats_remaining` is not decremented by a booking (audit 2026-11-19 row 13). */}
+                          {fact(T('Chỗ', 'Seats'), r.capacity > 0 ? T(`${r.capacity} chỗ`, `${r.capacity} seats`) : '—')}
                           {r.area && fact(T('Khu vực', 'Area'), r.area)}
                           {fact(T('Tạo lúc', 'Created'), dateTime(r.created_at))}
                           {r.submitted_at && fact(T('Gửi duyệt lúc', 'Submitted'), dateTime(r.submitted_at))}

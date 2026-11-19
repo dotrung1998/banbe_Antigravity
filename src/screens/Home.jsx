@@ -746,12 +746,21 @@ export default function Home({ browse = false }) {
     .filter(e => curArea.match(e))
     .filter(e => !(s.homeFilters?.cats || []).length || s.homeFilters.cats.includes(e.catKey))
     .slice(0, 12)
-    .map(e => ({
-      ...e,
-      saved: isSaved(e.key),
-      priceDisplay: e.priceLabel || T('Miễn phí', 'Free'),
-      seatsDisplay: e.soldOut ? T('Hết chỗ', 'Sold out') : (e.seatsRemaining != null ? T(e.seatsRemaining + ' chỗ trống', e.seatsRemaining + ' left') : ''),
-    })), [s.weekendEvents, curArea, s.homeFilters, isSaved, T]);
+    .map(e => {
+      // Seats left comes from the live fill RPC, never from `events.seats_remaining` — that column is not decremented
+      // when a booking is made, so printing it overstated availability (audit 2026-11-19 row 13). No fill yet means no
+      // figure, rather than a guessed one.
+      const fill = s.eventFill?.[e.key];
+      const left = fill && fill.capacity != null && fill.booked != null ? Math.max(0, fill.capacity - fill.booked) : null;
+      return {
+        ...e,
+        saved: isSaved(e.key),
+        priceDisplay: e.priceLabel || T('Miễn phí', 'Free'),
+        seatsDisplay: left != null
+          ? (left === 0 ? T('Hết chỗ', 'Sold out') : T(left + ' chỗ trống', left + ' left'))
+          : (e.soldOut ? T('Hết chỗ', 'Sold out') : ''),
+      };
+    }), [s.weekendEvents, s.eventFill, curArea, s.homeFilters, isSaved, T]);
 
   // L5 weekly digest (src/lib/coreLoops.js): its notification opens Home at "This weekend". Waits for the rail to
   // exist (it is hidden on the very first load) and runs after the shell's own scroll restore, once per token.

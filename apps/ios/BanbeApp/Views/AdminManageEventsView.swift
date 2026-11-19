@@ -284,7 +284,8 @@ struct AdminManageEventsView: View {
             fact(app.T("Bắt đầu", "Starts"), row.startsAt.map { Self.dateTimeLabel($0, timeZone: row.timeZone) } ?? "—")
             fact(app.T("Giá vé", "Price"), (row.priceVnd ?? 0) > 0 ? EventMarket.formatMoney(row.priceVnd ?? 0, currency: row.rowCurrency) : app.T("Miễn phí", "Free"))
             if let cap = row.capacity, cap > 0 {
-                fact(app.T("Chỗ", "Seats"), app.T("\(row.seatsRemaining.map(String.init) ?? "—") còn / \(cap)", "\(row.seatsRemaining.map(String.init) ?? "—") left of \(cap)"))
+                // Capacity only: `events.seats_remaining` is not decremented by a booking (audit 2026-11-19 row 13).
+                fact(app.T("Chỗ", "Seats"), app.T("\(cap) chỗ", "\(cap) seats"))
             }
             if let area = row.area, !area.isEmpty { fact(app.T("Khu vực", "Area"), area) }
             fact(app.T("Tạo lúc", "Created"), row.createdAt.map(Self.dateTimeLabel) ?? "—")
