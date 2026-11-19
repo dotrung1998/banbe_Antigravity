@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { useBanBe } from '../state/BanBeContext.jsx';
-import { paper, ink, ink2, display, cardGlass, surface2, clay, clayBg, attn, divider, RADIUS, SPACE } from '../theme.js';
+import { paper, ink, ink2, display, cardGlass, surface2, clay, clayInk, clayBg, attn, divider, RADIUS, SPACE } from '../theme.js';
 import { EVENTS } from '../data/events.js';
 import { roleLabel, dedupeChips, profileStats, upcomingEvents, CARD_TINT, CARD_GLOW } from '../lib/profileCard.js';
 import { PROFILE_PALETTE_COLORS } from '../lib/profileTheme.js';
@@ -223,7 +223,7 @@ export default function PublicProfile() {
                     }
                   }}
                   data-testid={`public-profile-team-badge-${b.organizer_id}`}
-                  style={{ fontSize: 13, fontWeight: 600, color: clay, background: clayBg, padding: '6px 12px', borderRadius: RADIUS.pill, cursor: 'pointer' }}
+                  style={{ fontSize: 13, fontWeight: 600, color: clayInk, background: clayBg, padding: '6px 12px', borderRadius: RADIUS.pill, cursor: 'pointer' }}
                 >
                   {T(`Thành viên của ${b.organizer_name} Team`, `Member of the ${b.organizer_name} Team`)}
                 </span>
@@ -243,7 +243,7 @@ export default function PublicProfile() {
                       <span style={{ fontSize: 15, fontWeight: 600, color: ink, overflowWrap: 'anywhere' }}>{e.name}</span>
                       <span style={{ fontSize: 13, color: ink2 }}>{trStatus(e.when || '')}</span>
                     </span>
-                    <span style={{ flex: 'none', fontSize: 13, fontWeight: 600, color: e.role === 'hosting' ? clay : ink2, background: e.role === 'hosting' ? clayBg : 'transparent', padding: '4px 10px', borderRadius: RADIUS.pill }}>
+                    <span style={{ flex: 'none', fontSize: 13, fontWeight: 600, color: e.role === 'hosting' ? clayInk : ink2, background: e.role === 'hosting' ? clayBg : 'transparent', padding: '4px 10px', borderRadius: RADIUS.pill }}>
                       {e.role === 'hosting' ? T('Tổ chức', 'Hosting') : T('Sẽ đi', 'Going')}
                     </span>
                     <span aria-hidden style={{ color: ink2, fontSize: 17 }}>›</span>
@@ -254,7 +254,7 @@ export default function PublicProfile() {
               // Owner empty state: say what this is and where to go next.
               <div data-testid="public-profile-upcoming-empty" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.m, padding: `${SPACE.m}px ${SPACE.l}px`, borderRadius: RADIUS.card, background: surface2 }}>
                 <span style={{ fontSize: 15, color: ink2 }}>{T('Chưa có sự kiện sắp tới', 'Nothing coming up yet')}</span>
-                <button type="button" onClick={goHome} data-testid="public-profile-browse" style={{ minHeight: 44, padding: '0 4px', border: 'none', background: 'none', fontFamily: 'inherit', fontSize: 15, fontWeight: 600, color: clay, cursor: 'pointer' }}>{T('Xem sự kiện ›', 'Browse events ›')}</button>
+                <button type="button" onClick={goHome} data-testid="public-profile-browse" style={{ minHeight: 44, padding: '0 4px', border: 'none', background: 'none', fontFamily: 'inherit', fontSize: 15, fontWeight: 600, color: clayInk, cursor: 'pointer' }}>{T('Xem sự kiện ›', 'Browse events ›')}</button>
               </div>
             )}
           </section>

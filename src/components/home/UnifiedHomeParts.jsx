@@ -27,7 +27,7 @@ const evN = (n, T) => T(`${n} sự kiện`, `${n} ${n === 1 ? 'event' : 'events'
 export function UnifiedStateBar({ parts, count, onMap, onClear, T }) {
   return (
     <div data-testid="home-state-bar" style={{ margin: '16px 16px 0', minHeight: 52, display: 'flex', alignItems: 'center', gap: 10, padding: '6px 6px 6px 14px', borderRadius: 999, background: 'var(--bb-block)' }}>
-      <span style={{ color: 'var(--bb-clay)', display: 'grid' }}><Icon d={SYNC} size={17} /></span>
+      <span style={{ color: 'var(--bb-clay-ink)', display: 'grid' }}><Icon d={SYNC} size={17} /></span>
       <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {parts.map((p, i) => <span key={i}>{i ? ' · ' : ''}<b style={{ fontWeight: p.strong ? 600 : 400 }}>{p.text}</b></span>)}
         <span style={{ color: 'var(--bb-fg-3)' }}> · {evN(count, T)}</span>
@@ -114,7 +114,7 @@ export function UnifiedTypeSheet({ counts, total, selected, onPick, onClose, T }
       </span>
       <span style={{ flex: 1, fontSize: 15.5, fontWeight: on ? 600 : 400 }}>{name}</span>
       <span style={{ fontSize: 13, color: 'var(--bb-fg-3)', fontVariantNumeric: 'tabular-nums' }}>{evN(n, T)}</span>
-      <span aria-hidden="true" style={{ width: 18, color: 'var(--bb-clay)', fontWeight: 700 }}>{on ? '✓' : ''}</span>
+      <span aria-hidden="true" style={{ width: 18, color: 'var(--bb-clay-ink)', fontWeight: 700 }}>{on ? '✓' : ''}</span>
     </button>
   );
   return (
@@ -127,7 +127,7 @@ export function UnifiedTypeSheet({ counts, total, selected, onPick, onClose, T }
             style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'var(--bb-block)', color: 'inherit', display: 'grid', placeItems: 'center', cursor: 'pointer' }}><Icon d={X} size={16} /></button>
         </div>
         <label style={{ margin: '6px 16px 4px', display: 'flex', alignItems: 'center', gap: 10, height: 48, padding: '0 16px', borderRadius: 999, background: 'var(--bb-surface-2)' }}>
-          <span style={{ color: 'var(--bb-clay)', display: 'grid' }}><Icon d={SEARCH} size={18} /></span>
+          <span style={{ color: 'var(--bb-clay-ink)', display: 'grid' }}><Icon d={SEARCH} size={18} /></span>
           <input type="search" value={q} onChange={e => setQ(e.target.value)} placeholder={T('Tìm một loại', 'Find a type')} aria-label={T('Tìm một loại', 'Find a type')}
             data-testid="home-type-sheet-search" autoComplete="off" enterKeyHint="search"
             style={{ flex: 1, minWidth: 0, height: '100%', border: 0, outline: 0, background: 'none', color: 'inherit', fontFamily: 'inherit', fontSize: 16 }} />

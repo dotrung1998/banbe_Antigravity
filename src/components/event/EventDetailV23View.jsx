@@ -144,7 +144,7 @@ export default function EventDetailV23View(p) {
                     <dl style={{ display: 'grid', gridTemplateColumns: '104px 1fr', gap: '15px 18px', margin: about.visible ? '0 0 28px' : 0 }}>
                       {know.map(r => (
                         <div key={r.key} data-testid={`event-type-fact-${r.key}`} style={{ display: 'contents' }}>
-                          <dt style={{ fontSize: 10.5, letterSpacing: '0.13em', textTransform: 'uppercase', color: 'var(--bb-clay)', fontWeight: 700, paddingTop: 3 }}>{typeof r.label === 'string' ? r.label : T(r.label.vi, r.label.en)}</dt>
+                          <dt style={{ fontSize: 10.5, letterSpacing: '0.13em', textTransform: 'uppercase', color: 'var(--bb-clay-ink)', fontWeight: 700, paddingTop: 3 }}>{typeof r.label === 'string' ? r.label : T(r.label.vi, r.label.en)}</dt>
                           <dd style={{ margin: 0, fontSize: 14, lineHeight: 1.58, color: 'var(--bb-fg-2)', overflowWrap: 'anywhere' }}>{r.text}</dd>
                         </div>
                       ))}
@@ -180,7 +180,7 @@ export default function EventDetailV23View(p) {
                   <ol style={{ display: 'flex', flexDirection: 'column', gap: 19, margin: 0, padding: 0, listStyle: 'none' }}>
                     {cards.map((c, i) => (
                       <li key={i} data-testid={`event-included-item-${i}`} style={{ display: 'grid', gridTemplateColumns: '32px 1fr', gap: 12, alignItems: 'baseline' }}>
-                        <span aria-hidden style={{ fontFamily: SERIF, fontSize: 17, lineHeight: 1.2, color: 'var(--bb-clay)', letterSpacing: '0.02em' }}>{listNo(i)}</span>
+                        <span aria-hidden style={{ fontFamily: SERIF, fontSize: 17, lineHeight: 1.2, color: 'var(--bb-clay-ink)', letterSpacing: '0.02em' }}>{listNo(i)}</span>
                         <span style={{ minWidth: 0 }}>
                           <b style={{ display: 'block', fontSize: 14.5, fontWeight: 600, letterSpacing: '-0.005em', overflowWrap: 'anywhere' }}>{c.label}</b>
                           {c.detail && <span style={{ display: 'block', fontSize: 13, color: 'var(--bb-fg-2)', marginTop: 2, lineHeight: 1.5, overflowWrap: 'anywhere' }}>{c.detail}</span>}
@@ -208,7 +208,7 @@ export default function EventDetailV23View(p) {
                     </span>
                   </div>
                   <button type="button" onClick={host.onMessage} data-testid="organizer-message" aria-label={host.messageLabel}
-                    style={{ flex: 'none', minHeight: 44, padding: 0, border: 'none', background: 'none', color: 'var(--bb-clay)', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
+                    style={{ flex: 'none', minHeight: 44, padding: 0, border: 'none', background: 'none', color: 'var(--bb-clay-ink)', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
                     <IconMsg />{T('Nhắn tin', 'Message')}
                   </button>
                 </div>

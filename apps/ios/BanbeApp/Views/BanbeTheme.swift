@@ -61,7 +61,7 @@ struct Palette {
         ink: Color(hex: 0x1B1916),
         rule: Color(hex: 0x1B1916).opacity(0.16),
         field: Color(hex: 0xEEE8DA),
-        honey: Color(hex: 0x8C6014),
+        honey: Color(hex: 0x7F560F),
         honeyBg: Color(hex: 0xF0E2BE),
         clay: Color(hex: 0x9C5B3B),
         clayBg: Color(hex: 0xEFE0D2),

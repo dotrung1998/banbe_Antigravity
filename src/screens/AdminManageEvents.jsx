@@ -136,7 +136,7 @@ export default function AdminManageEvents() {
                 );
                 const link = (label, testId, onClick) => (
                   <button type="button" onClick={onClick} data-testid={testId} className="bb-press"
-                    style={{ flex: 1, minHeight: 38, borderRadius: 999, border: '1px solid var(--bb-clay)', background: 'none', color: 'var(--bb-clay)', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>{label}</button>
+                    style={{ flex: 1, minHeight: 38, borderRadius: 999, border: '1px solid var(--bb-clay)', background: 'none', color: 'var(--bb-clay-ink)', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>{label}</button>
                 );
                 return (
                   <div key={r.id} data-testid={`admin-manage-row-${r.id}`} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '12px 14px', borderTop: i ? '1px solid var(--bb-rule)' : 'none', color: ink }}>

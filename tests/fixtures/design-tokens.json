@@ -3,7 +3,7 @@
   "light": {
     "paper": "#F7F4EC", "ink": "#1B1916", "field": "#EEE8DA",
     "surface1": "#FBF8F1", "surface2": "#EEE8DA", "surface3": "#E6DFCF",
-    "ink2Alpha": 0.72, "ink3Alpha": 0.64, "alert": "#9A3E2D", "clay": "#9C5B3B", "honey": "#8C6014",
+    "ink2Alpha": 0.72, "ink3Alpha": 0.64, "alert": "#9A3E2D", "clay": "#9C5B3B", "honey": "#7F560F",
     "block": "#EEE8DA", "blockInset": "#FBF8F1", "mat": "#FBF8F1", "matSlot": "#EEE8DA",
     "plum": "#6B4E7C", "question": "#2F6B7A", "update": "#4E6A30"
   },

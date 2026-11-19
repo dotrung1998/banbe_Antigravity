@@ -71,7 +71,7 @@ export default function TicketStubV23({ block, time, countdown, placeLine, mapsU
       <div style={{ display: 'flex', gap: 18, padding: 18, alignItems: 'stretch' }}>
         {block && (
           <div data-testid="event-fact-when" aria-label={`${block.weekday} ${block.day} ${block.month}`}
-            style={{ flex: 'none', width: 72, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '2px 16px 2px 0', borderRight: '1px solid var(--bb-rule)', color: 'var(--bb-clay)' }}>
+            style={{ flex: 'none', width: 72, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '2px 16px 2px 0', borderRight: '1px solid var(--bb-rule)', color: 'var(--bb-clay-ink)' }}>
             <small style={{ fontFamily: SERIF, fontSize: 10.5, letterSpacing: '0.17em', fontWeight: 600, textTransform: 'uppercase', lineHeight: 1 }}>{block.month}</small>
             <b style={{ fontFamily: SERIF, fontSize: 38, fontWeight: 400, lineHeight: 1, margin: '5px 0 6px', color: 'var(--bb-fg)', letterSpacing: '-0.035em' }}>{block.day}</b>
             <span style={{ fontSize: 10, color: 'var(--bb-fg-3)', letterSpacing: '0.16em', fontWeight: 600, whiteSpace: 'nowrap', lineHeight: 1 }}>{block.weekday}</span>
@@ -124,7 +124,7 @@ export default function TicketStubV23({ block, time, countdown, placeLine, mapsU
           <Perf />
           <div data-testid="event-stub-lip" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10, rowGap: 4, padding: '4px 12px 4px 18px', borderRadius: '0 0 25px 25px', background: 'var(--bb-surface-1)' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, fontSize: 12, fontWeight: 600, color: 'var(--bb-fg-2)', whiteSpace: 'nowrap' }}>
-              <span style={{ color: 'var(--bb-clay)', display: 'inline-flex' }}><IconCal /></span>{saveLabel}
+              <span style={{ color: 'var(--bb-clay-ink)', display: 'inline-flex' }}><IconCal /></span>{saveLabel}
             </span>
             {calendar}
           </div>

@@ -175,7 +175,7 @@ function Deck({ T, cards, active, onActive, onPast, finishing }) {
       {onPast && last && finishing && (
         <button type="button" data-testid="hiw-finish-hint" aria-label={T('Hoàn tất', 'Finish')} onClick={onPast} className="bb-hiw-finish"
           style={{ position: 'absolute', right: 4, top: '50%', marginTop: -36, width: 34, height: 72, borderRadius: 17, zIndex: 2, cursor: 'pointer',
-            background: 'var(--bb-clay-bg)', border: '1px solid color-mix(in srgb, var(--bb-clay) 35%, transparent)', color: 'var(--bb-clay)',
+            background: 'var(--bb-clay-bg)', border: '1px solid color-mix(in srgb, var(--bb-clay) 35%, transparent)', color: 'var(--bb-clay-ink)',
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, padding: 0, fontWeight: 800 }}>
           <span style={{ fontSize: 14 }}>✓</span><span style={{ fontSize: 22, lineHeight: 1 }}>›</span>
         </button>
@@ -594,7 +594,7 @@ function Recipe({ T, active }) {
       {items.map(([e, vi, en], i) => (
         <div key={i} style={{ ...fieldBox, ...grow }}>
           <span>{e}</span><span style={{ flex: 1 }}>{T(vi, en)}</span>
-          {active && <span className="bb-hiw-stamp" style={{ color: 'var(--bb-clay)', fontWeight: 800, fontSize: 16, animationDelay: `${400 + i * 220}ms` }}>✓</span>}
+          {active && <span className="bb-hiw-stamp" style={{ color: 'var(--bb-clay-ink)', fontWeight: 800, fontSize: 16, animationDelay: `${400 + i * 220}ms` }}>✓</span>}
         </div>
       ))}
     </div>

@@ -75,7 +75,8 @@
      apps/ios/BanbeApp/Views/BanbeTheme.swift's `Palette.light`. The accent
      itself is the same honey the on-photo "on hold" chip already uses
      (CHIP_COLORS.hold / BanbeTheme.Chip.hold). */
-  --bb-honey: #8C6014;
+  /* Audit 2026-11-19 row 23: #8C6014 was 4.30:1 on --bb-honey-bg; #7F560F is 5.04:1. */
+  --bb-honey: #7F560F;
   --bb-honey-bg: #F0E2BE;
   /* Clay — the decorative/brand accent of Event Detail (note 52): info-tile icons, outlined pills ("Thêm lịch",
      "Nhắn tin"), the seats bar, the host track-record line, the tinted glass over the cover photo. Same
@@ -84,6 +85,10 @@
   --bb-clay: #9C5B3B;
   --bb-clay-rgb: 156,91,59;
   --bb-clay-bg: #EFE0D2;
+  /* Clay as TEXT on paper/block/clay-bg (audit 2026-11-19 row 23): the decorative clay was 4.09:1 on --bb-clay-bg and
+     4.33:1 on --bb-block, under 4.5. This deeper clay is 5.40:1 on clay-bg, 5.71:1 on block and 6.34:1 on paper, while
+     the decorative accent (icons, fills, borders) keeps its exact colour. */
+  --bb-clay-ink: #854A2C;
   /* Simple Shell surfaces (note 66): depth comes from three surface steps, not borders.
      surface-1 = cards/rows, surface-2 = fields/chips/sheets, surface-3 = pressed/popovers.
      fg-2/fg-3 = secondary/tertiary text (fg-3 stays >= 4.5:1 on every surface).
@@ -166,6 +171,8 @@
   --bb-honey-bg: #3D3016;
   /* Clay's dark pair: same hue, lifted so icons and outlines stay legible on the dark paper. */
   --bb-clay: #D8926C;
+  /* Clay text on the dark theme's blocks: #E7AB8C is 8.86:1 on the block surface. */
+  --bb-clay-ink: #E7AB8C;
   --bb-clay-rgb: 216,146,108;
   --bb-clay-bg: #3B2A20;
   --bb-question: #8CC7D4;

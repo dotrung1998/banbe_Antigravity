@@ -25,6 +25,8 @@ export const honeyBg = 'var(--bb-honey-bg)';
 // Clay — Event Detail's decorative/brand accent (icons, outlined pills, seats bar, tinted photo glass). A sibling
 // of `alert`/`honey`, never an error colour and never the primary CTA. Mirrors `Palette.clay` / `Palette.clayBg`.
 export const clay = 'var(--bb-clay)';
+// Clay as text (audit 2026-11-19 row 23): the decorative clay is 4.09–4.33:1 on clay-bg/block, so text uses this one.
+export const clayInk = 'var(--bb-clay-ink)';
 export const clayBg = 'var(--bb-clay-bg)';
 // Ticket "What's next" strip tones (note 78). plum is the only new colour (awaiting host); mist and moss are role
 // names for the existing Project Hub Question teal / Update moss, so the strip never hard-codes a hex. Mirrors
