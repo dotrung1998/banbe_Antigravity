@@ -379,6 +379,17 @@ struct HomeView: View {
             HomeCategorySheet(counts: makeSnapshot().categoryCounts)
                 .environmentObject(app)
         }
+        // The All types sheet lives on the screen, not on the type grid: the grid sits in a LazyVStack, so once it
+        // scrolls far off screen it is unloaded and a sheet hung on it never shows (the list end card's
+        // "Browse every type" did nothing on page 2, owner 2026-11-20).
+        .sheet(isPresented: $udTypeSheetOpen) {
+            UnifiedTypeSheet(counts: makeSnapshot().udCounts, selected: app.homeFilters.cats.first) { key in
+                udTypeSheetOpen = false
+                app.pickFilter(key)
+                alignNearYouAfterPick()
+            }
+            .environmentObject(app)
+        }
     }
 
     /// Once per request: waits for the rail (hidden while the first load is still empty) and for the scaffold's own
@@ -855,14 +866,6 @@ struct HomeView: View {
                 section
                     .id("home.tour.browse")
                     .revealRegion(2)
-                    .sheet(isPresented: $udTypeSheetOpen) {
-                        UnifiedTypeSheet(counts: snap.udCounts, selected: app.homeFilters.cats.first) { key in
-                            udTypeSheetOpen = false
-                            app.pickFilter(key)
-                            alignNearYouAfterPick()
-                        }
-                        .environmentObject(app)
-                    }
             }
         } else {
             HomeBrowseSection(counts: snap.categoryCounts, onPick: { app.openBrowse(type: $0, scope: "all") },

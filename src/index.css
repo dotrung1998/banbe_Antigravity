@@ -673,12 +673,6 @@ input::placeholder, textarea::placeholder {
   from { opacity: 0; transform: translateY(8px) scale(0.94); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
-/* Root-tab swipe feedback (note 90): the ripple the water drop leaves behind when a page swipe commits
-   (src/components/SwipeDroplet.jsx). Short on purpose — it finishes inside the 250ms settle. */
-@keyframes bbSwipeRipple {
-  from { transform: scale(0.35); opacity: 0.55; }
-  to { transform: scale(1.6); opacity: 0; }
-}
 
 /* Dark mode: the wordmark is black artwork, so tint it to a bright amber. */
 [data-bb-theme="dark"] img[src="/banbe-wordmark.png"] { filter: url(#bb-logo-tint); }

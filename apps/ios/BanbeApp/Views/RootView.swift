@@ -265,8 +265,10 @@ struct RootView: View {
                 let canNext = idx != nil && idx! < app.dockOrder.count - 1
                 let canPrev = (idx ?? 0) > 0
                 var dx = value.translation.width
-                if dx < 0 && !canNext { dx *= 0.25 }
-                if dx > 0 && !canPrev { dx *= 0.25 }
+                // No neighbour that way (Home has nothing to its left): the screen stays put instead of rubber-banding
+                // over an empty edge (owner 2026-11-20).
+                if dx < 0 && !canNext { dx = 0 }
+                if dx > 0 && !canPrev { dx = 0 }
                 var transaction = Transaction()
                 transaction.disablesAnimations = true
                 withTransaction(transaction) { tabSwipeTranslation = dx }
@@ -470,42 +472,6 @@ struct RootView: View {
         if app.eventHasLiveUnderlay { return [app.eventBackScreen, app.screen] }
         guard BottomTabBar.visibleScreens.contains(app.screen), let neighbor = tabSwipeNeighbor else { return [app.screen] }
         return [app.screen, neighbor]
-    }
-
-    // MARK: Root-tab swipe feedback (note 90)
-
-    /// A bead of water at the leading edge of a root tab swipe — the web's `SwipeDroplet` in SwiftUI. It gathers as the
-    /// drag starts, stretches along the way of travel and thins across it, then rolls off and fades when the swipe
-    /// commits. Purely decorative: never hit-testable, hidden from VoiceOver, and not drawn at all under Reduce Motion.
-    private var tabSwipeDroplet: some View {
-        let width = max(1, UIScreen.main.bounds.width)
-        let progress = min(1, abs(tabSwipeTranslation) / (width * 0.6))
-        let leaving = tabSwipeCommittingTarget != nil
-        let active = tabSwipeDirection == "horizontal"
-        let shown = (active || leaving) && (abs(tabSwipeTranslation) > 2 || leaving)
-        // Follows the drag halfway, never past the middle third of the frame; a commit rolls it a little further that way.
-        let drift = max(-width * 0.3, min(width * 0.3, tabSwipeTranslation * 0.5))
-        let roll: CGFloat = leaving ? (tabSwipeTranslation < 0 ? -26 : 26) : 0
-        return Capsule(style: .continuous)
-            .fill(RadialGradient(
-                colors: [Color.white.opacity(0.95), Color.white.opacity(0.5), app.palette.ink.opacity(0.16)],
-                center: UnitPoint(x: 0.34, y: 0.3), startRadius: 0, endRadius: 34))
-            .overlay(Capsule(style: .continuous).stroke(Color.white.opacity(0.6), lineWidth: 0.8))
-            .overlay(alignment: .topLeading) {
-                Ellipse().fill(Color.white.opacity(0.85))
-                    .frame(width: 8 + 6 * progress, height: 5 + 4 * progress)
-                    .blur(radius: 0.6)
-                    .padding(.leading, 8).padding(.top, 6)
-            }
-            .frame(width: 22 + 30 * progress, height: 26 - 6 * progress)
-            .scaleEffect(x: 1 + progress * 0.85, y: 1 - progress * 0.12)
-            .offset(x: drift + roll)
-            .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
-            .opacity(shown ? (leaving ? 0 : min(1, 0.3 + progress)) : 0)
-            .animation(.easeOut(duration: 0.2), value: shown)
-            .animation(.easeOut(duration: 0.22), value: leaving)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
     }
 
     private func offsetForRootScreen(_ screen: Screen) -> CGFloat {
@@ -771,9 +737,8 @@ struct RootView: View {
             // Depth cue on the dragged edge, same as UIKit's pop shadow.
             .shadow(color: .black.opacity(dragProgress * 0.16), radius: 16, x: -6, y: 0)
 
-            // Root-tab swipe feedback (note 90): the water drop, above both screens and below every overlay (the search
-            // bar's own zIndex 3 and the notifications overlay's 4 stay on top). Nothing under Reduce Motion.
-            if !reduceMotion { tabSwipeDroplet.zIndex(2) }
+            // Root-tab swipe feedback (note 90): the water drop is no longer drawn (owner 2026-11-20: a bubble in the
+            // middle of the screen with nothing behind it); the sliding screens alone show the swipe.
 
             // The swipe-back gesture itself, confined to a thin strip along
             // the leading edge rather than attached to the whole screen —

@@ -12,7 +12,6 @@ import { dockOrder, dockCollapseStep, dockCollapseStore } from './lib/dockLayout
 import { flagOn } from './lib/featureFlags.js';
 import BottomTabBar, { showsBottomBar, DOCK_MAX_WIDTH, DOCK_MARGIN, DOCK_GAP, CREATE_SIZE, BAR_BOTTOM_OFFSET, BAR_HEIGHT } from './screens/BottomTabBar.jsx';
 import { paper, ink, rule } from './theme.js';
-import SwipeDroplet from './components/SwipeDroplet.jsx';
 import { setThemeColor } from './lib/themeColor.js';
 import { useReducedMotion } from './lib/useReducedMotion.js';
 
@@ -456,9 +455,6 @@ function Shell() {
   const PULL_MAX_PX = 100;
   const gestureRef = useRef({ active: false, phase: null, startX: 0, startY: 0, lastX: 0, lastY: 0, pointerId: null, scrollTopAtStart: 0, width: 0 });
   const [swipeX, setSwipeX] = useState(0);
-  // Root-tab swipe feedback (note 90): which way a COMMITTED swipe is settling, for the water drop at the leading edge
-  // (SwipeDroplet.jsx). Null while a drag is live (the drop simply follows the finger) and once the settle is over.
-  const [swipeCommit, setSwipeCommit] = useState(null);
   const [pullDist, setPullDist] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState('');
@@ -627,8 +623,10 @@ function Shell() {
       const canNext = idx !== -1 && idx < dockOrderNow().length - 1;
       const canPrev = idx > 0;
       let clamped = dx;
-      if (dx < 0 && !canNext) clamped = dx * 0.25;
-      if (dx > 0 && !canPrev) clamped = dx * 0.25;
+      // No neighbour that way (Home has nothing to its left): the page stays put instead of rubber-banding over an
+      // empty edge (owner 2026-11-20, same as iOS RootView).
+      if (dx < 0 && !canNext) clamped = 0;
+      if (dx > 0 && !canPrev) clamped = 0;
       queueDrag(() => setSwipeX(clamped));
       // Mount the real adjacent screen as soon as a direction is known —
       // its own existing loader (`.task`/mount effect) starts right away
@@ -666,7 +664,6 @@ function Shell() {
         // key never changes across that flip, so the destination screen's
         // component instance (and its already-completed mount animation)
         // carries straight through instead of remounting.
-        setSwipeCommit(commitNext ? 'next' : 'prev');
         setSwipeX(commitNext ? -width : width);
         // iPhone fix pass (2026-09-27), Item 1 — captured BEFORE the
         // settle delay starts; see `navGenerationRef`'s own doc comment
@@ -683,14 +680,12 @@ function Shell() {
           }
           // Unanimated reset — the newly-current screen is already sitting
           // exactly in place, so this swap must not itself visibly move.
-          setSwipeCommit(null);
           setIsSwiping(true);
           setSwipeX(0);
           setSwipeNeighbor(null);
           requestAnimationFrame(() => setIsSwiping(false));
         }, 250);
       } else {
-        setSwipeCommit(null);
         setSwipeX(0);
         setTimeout(() => setSwipeNeighbor(null), 250);
       }
@@ -725,7 +720,6 @@ function Shell() {
     gestureRef.current.phase = null;
     flushDrag();
     setIsSwiping(false);
-    setSwipeCommit(null);
     setSwipeX(0);
     if (swipeNeighbor) setTimeout(() => setSwipeNeighbor(null), 250);
     if (!refreshing) { setIsPulling(false); setPullDist(0); }
@@ -983,11 +977,6 @@ function Shell() {
           ? T('Đang gửi sự kiện cho banbe duyệt…', 'Sending your event to banbe…')
           : T('Đang giữ chỗ cho bạn…', 'Holding your seat…')} />}
       </div>
-      {/* Root-tab swipe feedback (note 90): the water drop at the leading edge of a page swipe. Decorative, above the
-          screens and below every sheet; nothing at all under Reduce Motion (SwipeDroplet.jsx). */}
-      {!reducedMotion && (
-        <SwipeDroplet x={swipeX} width={gestureRef.current.width || 390} active={isSwiping} commit={swipeCommit} />
-      )}
       {/* Simple Shell (switch simple_shell): the "+" lives inside the bar (BottomTabBar), so no "+" beside it. */}
       {showBar && <LiveDockRow hidden={(state.screen === 'mapExplore' && !!state.mapDockHidden) || !!state.quickSheetOpen} showCreate={state.organizerMode && !flagOn(state.featureFlags, 'simple_shell')} />}
       {/* Undo after leaving a new-event draft (BanBeContext createUndoOffer), above the dock when it shows. */}
