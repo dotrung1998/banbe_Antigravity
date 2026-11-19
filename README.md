@@ -18,7 +18,7 @@ Set `VITE_AUTH_REDIRECT_URL` in the deployed app environment to the public app o
 
 ## Email API
 
-This Vite app uses a Vercel Function at `POST /api/send-email` rather than a Next.js App Router route. Install the mailer with:
+Server-side email is sent by `sendEmail()` in `api/_lib/email.js` (used by `api/notify.js`, `api/auth/*`, the dispute email and the document purge cron). There is no public send endpoint: the old `POST /api/send-email` relay was removed because it had no auth, origin check or rate limit. Install the mailer with:
 
 ```sh
 npm install nodemailer
@@ -32,17 +32,6 @@ For the deployed app, add all five variables to Vercel's **Production** environm
 
 Email sign-up and login links are generated server-side with Supabase Admin and delivered through Gmail by `POST /api/auth/send-email-link`. Supabase Auth does not send these email messages, so its two-per-hour email limit does not apply. Phone OTP continues to use the existing Supabase flow.
 
-The request body must contain `to`, `subject`, and at least one of `text` or `html`:
-
-```js
-import { sendEmail } from './lib/sendEmail';
-
-await sendEmail({
-	to: 'recipient@example.com',
-	subject: 'Hello',
-	text: 'Message body',
-});
-```
 ## Expanding the Oxlint configuration
 
 If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
