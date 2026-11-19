@@ -95,7 +95,8 @@ export function EventPlanButtons({ eventKey, day, month, inert = false, onMessag
         {item && <GlassMenuItem disabled testId="event-plan-in-mine">{`✓ ${T('Trong lịch của tôi', 'In My schedule')} · ${sourceLabel(item.source, T)}`}</GlassMenuItem>}
         {item?.source === 'added' && <GlassMenuItem danger onClick={() => { removeFromBanbeSchedule(eventKey); setSchedOpen(false); flash(''); }} testId="event-plan-remove">{`⊖ ${T('Bỏ khỏi lịch banbe', 'Remove from banbe Schedule')}`}</GlassMenuItem>}
       </GlassMenu>
-      <span style={{ ...caption, marginTop: -5 }}>banbe</span>
+      {/* Audit 2026-11-19 row 27: say what the chip does; "banbe" alone read like a logo. */}
+      <span style={{ ...caption, marginTop: -5 }}>{T('Thêm banbe', 'Add to banbe')}</span>
       {!info.ended && (
         <>
           <GlassMenu open={calOpen} onOpenChange={setCalOpen} top={50} menuTestId="event-plan-cal-menu"
@@ -135,7 +136,7 @@ function PlanChips({ T, item, info, inert, add, ics, google, schedOpen, setSched
             <span key={pop} className={pop ? 'bbv23-pop' : undefined} style={chipFace(!!item)}>
               {item ? <svg {...chipIco} strokeWidth={2.4}><path d="m6 12.5 4 4 8-9" /></svg>
                 : <svg {...chipIco}><path d="M18 15H6l1.5-2.5V9a4.5 4.5 0 0 1 9 0v3.5L18 15Z" /><path d="M10.5 18a2 2 0 0 0 3 0" /></svg>}
-              banbe
+              {T('Thêm banbe', 'Add to banbe')}
             </span>
             <span data-testid="event-plan-status" hidden>{item ? 'added' : 'none'}</span>
           </button>
