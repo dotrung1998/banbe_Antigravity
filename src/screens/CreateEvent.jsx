@@ -867,6 +867,11 @@ export default function CreateEvent() {
                   <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>
                     {[sug.district, sug.city, sug.postalCode].filter(Boolean).join(', ')}
                   </span>
+                  {sug.precision === 'street' && (
+                    <span style={{ fontSize: 10.5, color: ink, opacity: 0.55 }}>
+                      {T('Chưa có số nhà trong dữ liệu · ghim ở giữa đường', 'No house number in the map data · pin at the street centre')}
+                    </span>
+                  )}
                 </div>
               ))}
               {/* Nominatim's usage policy requires attribution wherever its results are shown, same as
@@ -881,7 +886,9 @@ export default function CreateEvent() {
             <div style={{ ...cardGlass({ padding: 10 }), display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="create-location-confirmed">
               <span style={{ fontSize: 11.5, color: ink, opacity: 0.85 }}>✓ {s.createLocLabel}</span>
               <span style={{ fontSize: 10.5, color: ink, opacity: 0.6 }}>
-                {T('Sẽ hiện ghim trên bản đồ tại toạ độ này.', 'Will show a map pin at this exact point.')}
+                {s.createLocPrecision === 'street'
+                  ? T('Ghim ở giữa đường/phố. Dữ liệu bản đồ chưa có số nhà này.', 'Pinned at the street centre. The map data has no house number for this address.')
+                  : T('Sẽ hiện ghim trên bản đồ tại toạ độ này.', 'Will show a map pin at this exact point.')}
               </span>
               <div onClick={clearCreateAddressSelection} data-testid="create-location-adjust" style={{ alignSelf: 'flex-start', fontSize: 11, fontWeight: 600, color: ink, cursor: 'pointer', textDecoration: 'underline', opacity: 0.75 }}>
                 {T('Đổi địa chỉ', 'Change address')}

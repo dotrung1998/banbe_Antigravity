@@ -1265,6 +1265,8 @@ const initialState = {
   createLat: null,
   createLng: null,
   createLocLabel: '',
+  // 'address' | 'venue' | 'street' — how exact the picked point is (street-level rows are honest about it).
+  createLocPrecision: '',
   createAddressLine: '',
   createDistrict: '',
   createCity: '',
@@ -6954,7 +6956,7 @@ export function BanBeProvider({ children }) {
       screen: 'create', mode: 'host', createEditEventId: null, createSent: false, createError: '', createOriginScreen: prev.screen === 'create' ? prev.createOriginScreen : prev.screen, // "Create another" must not make Create its own Back target
       createUndoOffer: null, createDraftId: null,
       createName: '', createCats: [], createDesc: '',
-      createLoc: '', createLat: null, createLng: null, createLocLabel: '', createLocConfirmed: false,
+      createLoc: '', createLat: null, createLng: null, createLocLabel: '', createLocPrecision: '', createLocConfirmed: false,
       createAddressLine: '', createDistrict: '', createCity: '', createPostalCode: '',
       createCountryCode: '', createStateProvince: '', createNeighborhood: '', createTz: '', createPriceCurrency: null,
       createAddressSuggestions: [], createAddressSearching: false, createAddressSearchError: '',
@@ -10197,26 +10199,38 @@ export function BanBeProvider({ children }) {
   const createAddressSeq = useRef(0);
   const createAddressTimer = useRef(null);
 
+  /** Diacritic- and prefix-insensitive key so "Đường Nguyễn Văn Đậu" and "Nguyen Van Dau" collapse together. */
+  function foldAddressKey(v) {
+    return String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase()
+      .replace(/\b(duong|pho|street|road|st)\b/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+  }
+
   /**
    * Nominatim's `addressdetails=1` breakdown -> this app's own candidate
    * shape. A result with a house number AND a road becomes a normal
-   * street address; one with neither but a real name (a POI/venue tag,
-   * or Nominatim's own `name`) becomes a "verified venue" suggestion —
-   * the ticket's own "support a verified named venue/POI... when a
-   * conventional house number genuinely does not exist" case. A result
-   * with NONE of those (Nominatim only matched a bare district/city, or a
-   * road with no identifying name at all) is filtered out entirely here —
-   * never offered as a selectable suggestion, since it cannot resolve to
-   * a genuinely precise point. Missing district/city also disqualifies a
-   * hit — this app's whole address model requires both.
+   * street address; one with a real name (a POI/venue tag, or the
+   * geocoder's own `name`) becomes a "verified venue" suggestion — the
+   * ticket's own "support a verified named venue/POI... when a
+   * conventional house number genuinely does not exist" case; and a road
+   * with no house number becomes a street-level suggestion (`precision:
+   * 'street'`), so a street OSM knows but a house number it does not is
+   * still usable, honestly labelled. Only an area-only match (a bare
+   * ward/city) is filtered out: it cannot resolve to a point. Missing
+   * district/city also disqualifies a hit — this app's whole address
+   * model requires both.
    */
   function shapeAddressSuggestion(hit) {
     const addr = hit.address || {};
     const houseNumber = (addr.house_number || '').trim();
     const road = (addr.road || '').trim();
-    const venueName = (hit.name || addr.amenity || addr.shop || addr.tourism || addr.leisure || addr.building || '').trim();
-    const district = (addr.suburb || addr.city_district || addr.quarter || addr.district || addr.town || '').trim();
-    const city = (addr.city || addr.state || addr.province || '').trim();
+    // Some OSM streets carry their own "Đường …" name instead of a POI name; that is a street, not a venue.
+    const rawName = (hit.name || addr.amenity || addr.shop || addr.tourism || addr.leisure || addr.building || addr.office || '').trim();
+    const nameIsRoad = !!(rawName && road && foldAddressKey(rawName) === foldAddressKey(road));
+    const venueName = nameIsRoad ? '' : rawName;
+    // District/city are wider than before: Photon and many Nominatim rows use neighbourhood/borough/municipality
+    // instead of suburb/city, and rejecting those used to drop perfectly good street and venue matches.
+    const district = (addr.suburb || addr.city_district || addr.quarter || addr.neighbourhood || addr.borough || addr.district || addr.town || addr.village || addr.municipality || addr.county || '').trim();
+    const city = (addr.city || addr.town || addr.municipality || addr.county || addr.state || addr.province || '').trim() || district;
     const postalCode = (addr.postcode || '').trim();
     // Location hierarchy (migration 112) — previously discarded. Nominatim
     // returns `country_code` lowercase ("vn"); `state`/`province` is often
@@ -10227,13 +10241,25 @@ export function BanBeProvider({ children }) {
     const countryCode = (addr.country_code || '').trim().toUpperCase().slice(0, 2) || null;
     const stateProvince = (addr.state || addr.province || '').trim().slice(0, 100) || null;
     const neighborhood = (addr.neighbourhood || addr.quarter || '').trim().slice(0, 100) || null;
+    const type = String(hit.addresstype || hit.type || '').toLowerCase();
+    // A ward/city name is not a place you can send guests to; it only matched because the query was short.
+    const AREA_ONLY = ['city', 'town', 'village', 'suburb', 'district', 'county', 'state', 'region', 'country', 'municipality', 'neighbourhood', 'quarter', 'administrative'];
     let addressLine = '';
     let isVenue = false;
+    let precision = '';
     if (houseNumber && road) {
       addressLine = `${houseNumber} ${road}`;
+      precision = 'address';
     } else if (venueName) {
+      if (AREA_ONLY.includes(type)) return null;
       addressLine = venueName;
       isVenue = true;
+      precision = 'venue';
+    } else if (road) {
+      // The street is in OpenStreetMap but this house number is not: still selectable, pinned at the street's
+      // centre. The form says exactly that (precision === 'street') instead of calling the point exact.
+      addressLine = road;
+      precision = 'street';
     } else {
       return null;
     }
@@ -10244,9 +10270,23 @@ export function BanBeProvider({ children }) {
     return {
       id: String(hit.place_id ?? `${lat},${lng}`),
       addressLine, district, city, postalCode, isVenue, lat, lng,
-      countryCode, stateProvince, neighborhood,
+      countryCode, stateProvince, neighborhood, precision,
       label: hit.display_name || [addressLine, district, city].filter(Boolean).join(', '),
     };
+  }
+
+  /** One row per street+ward: Nominatim returns the same road once per ward segment, which used to fill the list
+   *  with eight identical-looking rows. The server already ranks best-first, so the first of each key wins. */
+  function collapseAddressSuggestions(list) {
+    const seen = new Set();
+    const out = [];
+    for (const sug of list || []) {
+      const key = `${foldAddressKey(sug.addressLine)}|${foldAddressKey(sug.district)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(sug);
+    }
+    return out;
   }
 
   /**
@@ -10256,12 +10296,21 @@ export function BanBeProvider({ children }) {
   const fetchAddressCandidates = async (query) => {
     const mapkit = await loadMapKit();
     if (mapkit) {
-      try { return await mapKitSearch(mapkit, query); } catch (e) { console.warn('MapKit search failed, using OpenStreetMap:', e); }
+      try {
+        const hits = collapseAddressSuggestions(await mapKitSearch(mapkit, query));
+        // An empty Apple result is still a miss: let OpenStreetMap's wider OSM coverage try before saying so.
+        if (hits.length) return hits;
+      } catch (e) { console.warn('MapKit search failed, using OpenStreetMap:', e); }
     }
-    const res = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`, { headers: { Accept: 'application/json' } });
+    // Bias the OSM search toward where the host actually is (HCMC when location is off), so "123 Main St"
+    // resolves in the right city instead of another continent.
+    const params = new URLSearchParams({ q: query });
+    const me = s.userCoords;
+    if (me && Number.isFinite(me.lat) && Number.isFinite(me.lng)) { params.set('lat', String(me.lat)); params.set('lon', String(me.lng)); }
+    const res = await fetch(`/api/geocode?${params}`, { headers: { Accept: 'application/json' } });
     if (!res.ok) throw new Error('GEOCODE_HTTP_' + res.status);
     const rows = await res.json();
-    return (rows || []).map(shapeAddressSuggestion).filter(Boolean);
+    return collapseAddressSuggestions((rows || []).map(shapeAddressSuggestion).filter(Boolean));
   };
 
   /** Same geocoder + result shape Create Event's address search uses, but
@@ -10309,7 +10358,7 @@ export function BanBeProvider({ children }) {
     // above).
     set({
       createLoc: value, createLocConfirmed: false, createLat: null, createLng: null,
-      createLocLabel: '', createAddressLine: '', createDistrict: '', createCity: '', createPostalCode: '',
+      createLocLabel: '', createLocPrecision: '', createAddressLine: '', createDistrict: '', createCity: '', createPostalCode: '',
       createCountryCode: '', createStateProvince: '', createNeighborhood: '', createTz: '',
       createAddressSuggestions: [], createAddressSearchError: '',
     });
@@ -10337,7 +10386,7 @@ export function BanBeProvider({ children }) {
       createCountryCode: suggestion.countryCode || '', createStateProvince: suggestion.stateProvince || '',
       createNeighborhood: suggestion.neighborhood || '', createTz: suggestion.timeZone || '',
       createLat: suggestion.lat, createLng: suggestion.lng,
-      createLocLabel: suggestion.label, createLocConfirmed: true,
+      createLocLabel: suggestion.label, createLocPrecision: suggestion.precision || '', createLocConfirmed: true,
       createAddressSuggestions: [], createAddressSearching: false, createAddressSearchError: '',
     }));
   }, [set]);
@@ -10346,7 +10395,7 @@ export function BanBeProvider({ children }) {
   const clearCreateAddressSelection = useCallback(() => set({
     createAddressLine: '', createDistrict: '', createCity: '', createPostalCode: '',
     createCountryCode: '', createStateProvince: '', createNeighborhood: '', createTz: '',
-    createLat: null, createLng: null, createLocLabel: '', createLocConfirmed: false,
+    createLat: null, createLng: null, createLocLabel: '', createLocPrecision: '', createLocConfirmed: false,
   }), [set]);
   const createEventDateType = useCallback((e) => set({ createEventDate: e.target.value }), [set]);
   const createEventTimeType = useCallback((e) => set({ createEventTime: e.target.value }), [set]);
