@@ -15,9 +15,8 @@ import { paper, ink, ink2, rule, display, fieldGlass, RADIUS } from '../theme.js
 import { inlineEmptyAction } from '../components/ui/InlineEmpty.jsx';
 import { buildEventSearchDoc, matchesSearchQuery, normalizeSearchText } from '../lib/search.js';
 import { buildLocationSearchIndex, searchLocationTree } from '../lib/locationTree.js';
-import { formatVnEventDate } from '../lib/countdown.js';
 import { isEventOver } from '../lib/eventEnd.js';
-import { formatMoney } from '../lib/eventMarket.js';
+import { cardDateBadge, formatMoney } from '../lib/eventMarket.js';
 import { CategoryGlyph, CATEGORY_DEFS, CategorySheet } from '../components/home/HomeDiscoveryParts.jsx';
 import EventRowV23 from '../components/list/EventRowV23.jsx';
 import { categorySheetKeys, DEFAULT_FILTERS } from '../lib/homeDiscovery.js';
@@ -210,11 +209,9 @@ export default function Search({ overlay = false }) {
 
   const commit = (text = q) => { const next = pushRecent(recent, text); setRecent(next); writeRecent(next); };
   const openEv = (key) => { commit(); goEvent(key); };
-  const whenOf = (d) => {
-    if (!d.startsAt) return '';
-    const { weekdayShort, dayMonth, time } = formatVnEventDate(new Date(d.startsAt), d.tz || undefined); // venue zone (migration 195)
-    return `${weekdayShort}, ${dayMonth} · ${time}`;
-  };
+  // Audit 2026-11-19 row 17: the same date badge Home and the Map cards print ("T3 24/11 · 19:00", Today/Tomorrow
+  // included), read in the venue's zone (migration 195), instead of a third format of its own.
+  const whenOf = (d) => (d.startsAt ? cardDateBadge(Date.parse(d.startsAt), d.tz || undefined, T) : '');
   const priceOf = (d) => (d.price != null ? d.price : d.priceVnd ? formatMoney(d.priceVnd, d.currency) : T('Miễn phí', 'Free'));
   const total = eventHits.length + hostHits.length + areaHits.length;
 

@@ -757,7 +757,7 @@ export default function Home({ browse = false }) {
         saved: isSaved(e.key),
         priceDisplay: e.priceLabel || T('Miễn phí', 'Free'),
         seatsDisplay: left != null
-          ? (left === 0 ? T('Hết chỗ', 'Sold out') : T(left + ' chỗ trống', left + ' left'))
+          ? (left === 0 ? T('Hết chỗ', 'Sold out') : T(`Còn ${left} chỗ`, `${left} left`))
           : (e.soldOut ? T('Hết chỗ', 'Sold out') : ''),
       };
     }), [s.weekendEvents, s.eventFill, curArea, s.homeFilters, isSaved, T]);

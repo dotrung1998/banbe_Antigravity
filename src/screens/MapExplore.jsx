@@ -28,7 +28,6 @@ import citiesData from '../data/cities.json';
 import { cityOfNode } from '../lib/locationTree.js';
 import { findEvent, isCosmeticCatalogMatch, haversineKm, mapsUrl } from '../data/events.js';
 import { distanceLabel } from '../lib/eventDetailPresentation.js';
-import { whenLabel } from '../lib/quickWins.js';
 import { fillBadge, categorySheetKeys, applyDiscoveryFilters, normalizeFilters, activeFilterCount, DEFAULT_FILTERS, sortEvents } from '../lib/homeDiscovery.js';
 import HomeFilterSheet from './sheets/HomeFilterSheet.jsx';
 import { secondCategory, categoryDefs, cardLine, profileFor } from '../lib/eventTypes.js';
@@ -1588,7 +1587,9 @@ export default function MapExplore() {
   // ---- row/card facts (all from real columns; nothing guessed) ----
   const en = s.lang === 'en';
   // "Th 4, 05.03 · 19:00" in the venue's own zone (events.tz, migration 195), never the viewer's clock.
-  const eventWhen = (ev) => whenLabel(ev.startsAt, ev.tz, en);
+  // Audit 2026-11-19 row 17: the Map's own cards and Home already print cardDateBadge; its rows now match instead of
+  // a second format.
+  const eventWhen = (ev) => (ev.startsAt ? cardDateBadge(Date.parse(ev.startsAt), ev.tz, T) : '');
   const nearDistance = (ev) => (s.located === true && s.userCoords && ev.hasLocation ? distanceLabel(haversineKm(s.userCoords, ev), en) : null);
   const sectionLabel = { padding: '12px 0 4px', fontSize: 11.5, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: ink2 };
   // Solid chip (content sits on an opaque layer). 36pt tall.
