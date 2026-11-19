@@ -1205,7 +1205,7 @@ struct CreateEventView: View {
                 }
             }
             if app.createEndMode == "open" {
-                Text(app.T("Khách thấy \"không giờ kết thúc\" thay vì giờ kết thúc.", "Guests see \"open-ended\" instead of an end time."))
+                Text(app.T("Khách thấy \"chưa có giờ kết thúc\" thay vì giờ kết thúc.", "Guests see \"open-ended\" instead of an end time."))
                     .font(.app(size: 13)).opacity(0.7)
             }
             if !endValid && !app.createSent && attemptedReview {

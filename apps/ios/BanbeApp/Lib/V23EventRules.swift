@@ -339,7 +339,7 @@ enum EventEnd {
         guard let start, start.count >= 4 else { return nil }
         let s = String(start.prefix(5))
         switch mode(endTime: endTime, endOpen: endOpen) {
-        case .open: return ViEn("\(s) · không giờ kết thúc", "\(s) · open-ended")
+        case .open: return ViEn("\(s) · chưa có giờ kết thúc", "\(s) · open-ended")
         case .time:
             let e = String((endTime ?? "").prefix(5))
             let next = endsNextDay(s, e)

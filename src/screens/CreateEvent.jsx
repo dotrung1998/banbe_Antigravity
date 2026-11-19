@@ -942,7 +942,7 @@ export default function CreateEvent() {
                   </div>
                 )}
                 {s.createEndMode === 'open' && (
-                  <span style={{ fontSize: 13, color: ink, opacity: 0.7 }}>{T('Khách thấy "không giờ kết thúc" thay vì giờ kết thúc.', 'Guests see "open-ended" instead of an end time.')}</span>
+                  <span style={{ fontSize: 13, color: ink, opacity: 0.7 }}>{T('Khách thấy "chưa có giờ kết thúc" thay vì giờ kết thúc.', 'Guests see "open-ended" instead of an end time.')}</span>
                 )}
                 {attemptedReview && fieldErrors.end && (
                   <p data-testid="create-end-error" style={errText}>{s.createEndMode === 'time' && s.createEndTime

@@ -14,7 +14,7 @@ test('time line: range, next day, open-ended, start only', () => {
   assert.equal(timeRange('22:00', '02:00', false).en, '22:00 – 02:00 (next day)');
   assert.equal(timeRange('22:00', '02:00', false).vi, '22:00 – 02:00 (hôm sau)');
   assert.equal(timeRange('16:00', null, true).en, '16:00 · open-ended');
-  assert.equal(timeRange('16:00', null, true).vi, '16:00 · không giờ kết thúc');
+  assert.equal(timeRange('16:00', null, true).vi, '16:00 · chưa có giờ kết thúc');
   assert.equal(timeRange('16:00', null, false).en, '16:00');
   assert.equal(timeRange('', '22:00', false), null);
 });

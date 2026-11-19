@@ -898,7 +898,7 @@ export default function Home({ browse = false }) {
         badge: dateBadge(startMs, tz, s.lang === 'en'), tz,
         time: start,
         // "to 22:30", "(+1)" when it ends after midnight, or open-ended (note 82).
-        timeNote: endTime ? T(`đến ${endTime}${nextDay ? ' (+1)' : ''}`, `to ${endTime}${nextDay ? ' (+1)' : ''}`) : endOpen ? T('không giờ kết thúc', 'open-ended') : null,
+        timeNote: endTime ? T(`đến ${endTime}${nextDay ? ' (+1)' : ''}`, `to ${endTime}${nextDay ? ' (+1)' : ''}`) : endOpen ? T('chưa có giờ kết thúc', 'no end time yet') : null,
         mapsUrl: real?.lat != null ? mapsUrl({
           lat: real.lat, lng: real.lng, name: real.name, addressLine: real.addressLine,
           area: real.area, city: real.city,

@@ -47,7 +47,7 @@ export function timeRange(start, endTime, endOpen) {
   const s = String(start || '').slice(0, 5);
   if (!s) return null;
   const mode = endMode(endTime, endOpen);
-  if (mode === 'open') return L(`${s} · không giờ kết thúc`, `${s} · open-ended`);
+  if (mode === 'open') return L(`${s} · chưa có giờ kết thúc`, `${s} · open-ended`);
   if (mode === 'time') {
     const e = String(endTime).slice(0, 5);
     const next = endsNextDay(s, e);

@@ -451,7 +451,7 @@ extension AppState {
             let next = EventEnd.endsNextDay(start, end) ? " (+1)" : ""
             return ViEn("đến \(end)\(next)", "to \(end)\(next)")
         }
-        return e.endOpen ? ViEn("không giờ kết thúc", "open-ended") : nil
+        return e.endOpen ? ViEn("chưa có giờ kết thúc", "no end time yet") : nil
     }
 }
 

@@ -37,6 +37,9 @@ export function promptBenefits(context, T) {
     { id: 'message', icon: '💬', text: T('Nhắn trực tiếp cho host', 'Message hosts directly') },
   ];
   const i = rows.findIndex(r => r.id === context);
+  // Audit 2026-11-19 row 37: on the Save prompt the title already says "Save this event", so the first bullet says
+  // something the title does not (where the list lives), instead of repeating it.
+  if (context === 'save') rows[0] = { id: 'save', icon: '☁', text: T('Danh sách của bạn đi theo tài khoản, mở lại trên web hay trong ứng dụng', 'Your list follows your account, on the web and in the app') };
   if (i > 0) rows.unshift(...rows.splice(i, 1));
   if (context === 'follow') rows[2] = { id: 'follow', icon: '🔔', text: T('Biết ngay khi host bạn theo dõi có sự kiện mới', 'Hear first when hosts you follow post events') };
   return rows;
