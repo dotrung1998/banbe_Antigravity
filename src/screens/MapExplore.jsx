@@ -1096,7 +1096,7 @@ export default function MapExplore() {
           pinEl.setAttribute('data-testid', `map-areabubble-${g.keys.join('+')}`);
           pinEl.setAttribute('data-count', String(n));
           pinEl.setAttribute('data-areas', String(g.keys.length));
-          pinEl.setAttribute('aria-label', T(`${name}, ${n} sự kiện, ${single ? 'mở khu này' : 'phóng to'}`, `${name}, ${n} event${n === 1 ? '' : 's'}, ${single ? 'open this area' : 'zoom in'}`));
+          pinEl.setAttribute('aria-label', T(`${name}, ${n} sự kiện, ${single ? 'mở khu này' : 'xem các khu này'}`, `${name}, ${n} event${n === 1 ? '' : 's'}, ${single ? 'open this area' : 'show these areas'}`));
           const bub = document.createElement('span');
           bub.style.cssText = `min-width:52px;height:52px;padding:0 10px;box-sizing:border-box;border-radius:26px;background:${ink};color:${paper};display:flex;align-items:center;justify-content:center;font:600 22px/1 ${DISPLAY_FACE};box-shadow:0 3px 10px rgba(27,25,22,0.35);`;
           bub.textContent = String(n);
@@ -1134,7 +1134,7 @@ export default function MapExplore() {
           parts.bub = bub; parts.lbl = lbl;
           pinEl.appendChild(bub);
           pinEl.appendChild(lbl);
-          const activate = () => (single ? openAreaRef.current?.(g) : zoomToCluster(g));
+          const activate = () => (single ? openAreaRef.current?.(g) : zoomToAreas(g));
           pinEl.addEventListener('click', (e) => { e.stopPropagation(); activate(); });
           pinEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); activate(); } });
         } else if (g.kind === 'pin') {
@@ -1327,6 +1327,20 @@ export default function MapExplore() {
     const size = { width: el.clientWidth || 390, height: el.clientHeight || containerH };
     const cam = fitCamera(g.bounds, size, fitPad(48), { tileSize: map.__isMapKit ? 256 : 512, maxZoom: 18 });
     const zoom = Math.max(cam.zoom, map.getZoom() + 1);
+    moveCamera('cluster', m => m.flyTo({ center: [cam.center.lng, cam.center.lat], zoom, duration: reduceMotion() ? 0 : 600 }));
+  }, [containerH, topControlsBottom, moveCamera]);
+  // Tap a merged neighbourhood bubble ("2 areas"): show THOSE areas, not every event in both of them. The flight fits the
+  // bubble but stops just inside the area level, so the overlapping bubbles split apart with their own counts; the price
+  // pins (and the whole set of events) stay one level further in, where a single area's own tap goes.
+  const zoomToAreas = useCallback((g) => {
+    const map = mapRef.current;
+    const el = mapDivRef.current;
+    if (!map || !el || !g.bounds) return;
+    const size = { width: el.clientWidth || 390, height: el.clientHeight || containerH };
+    const mk = !!map.__isMapKit;
+    const maxZoom = AREA_ZOOM - (mk ? 1.15 : 0.15); // engine zoom: markerLevel stays 'area' (512 px basis)
+    const cam = fitCamera(g.bounds, size, fitPad(48), { tileSize: mk ? 256 : 512, maxZoom });
+    const zoom = Math.min(maxZoom, Math.max(cam.zoom, map.getZoom() + 1));
     moveCamera('cluster', m => m.flyTo({ center: [cam.center.lng, cam.center.lat], zoom, duration: reduceMotion() ? 0 : 600 }));
   }, [containerH, topControlsBottom, moveCamera]);
   // Map v5 (note 73): fly to a city (search row, area picker, city bubble). A destination: commits its area once, keeps
@@ -2298,7 +2312,7 @@ export default function MapExplore() {
       {/* The list: a layer that slides up to just under the shared controls, with a veil over the strip above it. A pull down
           from its top (finger, mouse or wheel), its Map button and Esc all return to the map. Its rows exist only while it
           is open; it is hidden from tab order and screen readers while closed. */}
-      <MapListSheet open={listOpen} onClose={() => setListOpen(false)} top={listTop} scrollRef={listRef} mapButtonBottom={dockClear + 12} T={T}>
+      <MapListSheet open={listOpen} onClose={() => setListOpen(false)} top={listTop} scrollRef={listRef} mapButtonBottom={dockClear + 16} T={T}>
         <div data-testid="map-full-count" style={{ padding: '2px 16px 6px', flex: 'none' }}>
           {mapCity && (
             <div data-testid="map-sheet-city" style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: clay, display: 'flex', alignItems: 'center', gap: 4, paddingTop: 4 }}>

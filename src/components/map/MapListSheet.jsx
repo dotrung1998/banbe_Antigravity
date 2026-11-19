@@ -131,7 +131,7 @@ export default function MapListSheet({ open, onClose, top, scrollRef, mapButtonB
         {children}
         {/* Back to the map (also Esc, a pull down, or the wheel). */}
         <button ref={pillRef} type="button" data-nopull onClick={() => onClose()} data-testid="map-list-map-button" aria-label={T('Xem bản đồ', 'Show map')}
-          style={{ position: 'absolute', left: '50%', bottom: mapButtonBottom, transform: 'translateX(-50%)', height: 44, padding: '0 20px', borderRadius: 999, border: 'none',
+          style={{ position: 'absolute', left: '50%', bottom: `calc(${mapButtonBottom}px + env(safe-area-inset-bottom, 0px))`, transform: 'translateX(-50%)', height: 44, padding: '0 20px', borderRadius: 999, border: 'none',
             background: ink, color: paper, display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', boxShadow: '0 4px 14px rgba(27,25,22,0.28)' }}>
           {T('Bản đồ', 'Map')}
           <svg aria-hidden="true" width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14" /></svg>

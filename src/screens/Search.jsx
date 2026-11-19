@@ -505,7 +505,7 @@ export default function Search({ overlay = false }) {
       {/* Prototype `.search-cta`: pinned to the bottom of the sheet, not the end of the list. */}
       {ud && udRows.length > 0 && (
         <button type="button" data-testid="search-see-on-map" onMouseDown={(e) => e.preventDefault()} onClick={goMap}
-          style={{ position: 'absolute', left: 16, right: 16, bottom: 'calc(30px + env(safe-area-inset-bottom, 0px))', minHeight: 54, borderRadius: 999, border: 'none', background: ink, color: paper, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, fontFamily: 'inherit', fontSize: 15.5, fontWeight: 600, boxShadow: '0 10px 26px rgba(12,11,9,.24)', cursor: 'pointer' }}>
+          style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: 'calc(30px + env(safe-area-inset-bottom, 0px))', maxWidth: 'calc(100% - 32px)', minHeight: 54, padding: '0 22px', boxSizing: 'border-box', borderRadius: 999, border: 'none', background: ink, color: paper, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 10, fontFamily: 'inherit', fontSize: 15.5, fontWeight: 600, whiteSpace: 'nowrap', boxShadow: '0 10px 26px rgba(12,11,9,.24)', cursor: 'pointer' }}>
           <svg aria-hidden="true" width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z" /><path d="M9 4v14M15 6v14" /></svg>
           {T('Xem trên bản đồ', 'See on the map')}
           <span style={{ minWidth: 24, height: 24, padding: '0 7px', boxSizing: 'border-box', borderRadius: 999, border: '1px solid currentColor', display: 'grid', placeItems: 'center', fontSize: 12, opacity: 0.85 }}>{udRows.length}</span>

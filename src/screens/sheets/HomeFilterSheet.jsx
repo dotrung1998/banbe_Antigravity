@@ -7,7 +7,7 @@
 // - a CTA that says exactly what you'll get ("Show 23 events"), or which single filter to relax.
 // Edits a local draft; nothing changes on Home until the CTA is pressed. iOS twin: Views/HomeFilterSheet.swift.
 import { useMemo, useState } from 'react';
-import { paper, ink, rule, display, inkButton, RADIUS } from '../../theme.js';
+import { paper, ink, ink2, rule, display, inkButton, RADIUS } from '../../theme.js';
 import {
   applyDiscoveryFilters, optionCounts, relaxationHints, priceHistogram, median, bucketIndex,
   normalizeFilters, DEFAULT_FILTERS, DATE_OPTIONS, dominantCurrency, pricesIn,
@@ -159,13 +159,15 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
             </Section>
           )}
           {/* Browse keeps Location too (owner 2026-11-30): its list is already scoped to the area, and the area was
-              the one filter the screen could not change. */}
-          <Section title={T('Khu vực', 'Location')}>
-            <button type="button" onClick={() => setAreaOpen(true)} data-testid="home-filter-area"
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minHeight: 44, border: `1px solid ${rule}`, borderRadius: RADIUS.tile, background: 'none', color: ink, fontFamily: 'inherit', fontSize: 14, padding: '0 14px', cursor: 'pointer' }}>
-              <span>{areaLabel || T('Mọi nơi', 'Everywhere')}</span><span aria-hidden="true">›</span>
-            </button>
-          </Section>
+              the one filter the screen could not change. iOS parity (owner 2026-11-19): one row — mappin + "Location",
+              the current area, a chevron — instead of a labelled, boxed field. */}
+          <button type="button" onClick={() => setAreaOpen(true)} data-testid="home-filter-area"
+            style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', minHeight: 48, marginTop: 6, padding: 0, border: 'none', borderBottom: `1px solid ${rule}`, background: 'none', color: ink, fontFamily: 'inherit', fontSize: 13.5, cursor: 'pointer', textAlign: 'left' }}>
+            <svg aria-hidden="true" width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
+            <span style={{ fontWeight: 600 }}>{T('Khu vực', 'Location')}</span>
+            <span style={{ flex: 1, minWidth: 0, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: ink2 }}>{areaLabel || T('Mọi nơi', 'Everywhere')}</span>
+            <svg aria-hidden="true" width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none', opacity: 0.55 }}><path d="m9 5 7 7-7 7" /></svg>
+          </button>
 
           {/* On the Map these pills drive the day window (the time bar): they dim, never remove. */}
           <Section title={T('Khi nào', 'When')}>
