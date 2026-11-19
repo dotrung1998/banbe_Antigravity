@@ -1,6 +1,6 @@
 import PhoneStatusBar from './components/PhoneFrame.jsx';
 import { ImportSheet, ImportedTicketSheet } from './screens/sheets/TicketImportSheet.jsx';
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { Suspense, lazy, memo, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { BanBeProvider, useBanBe } from './state/BanBeContext.jsx';
 import useUrlSync from './lib/useUrlSync.js';
 import useKeepFocusedVisible from './lib/useKeepFocusedVisible.js';
@@ -62,14 +62,16 @@ import Documents from './screens/Documents.jsx';
 import DocumentView from './screens/DocumentView.jsx';
 import Verifications from './screens/Verifications.jsx';
 import Disputes from './screens/Disputes.jsx';
-import AdminEvents from './screens/AdminEvents.jsx';
-import AdminTestAccounts from './screens/AdminTestAccounts.jsx';
-import AdminFeatures from './screens/AdminFeatures.jsx';
-import AdminRetention from './screens/AdminRetention.jsx';
+// Audit 2026-11-19 row 16: admin, reports and the project hub are not on the way into the app, so they are split out
+// of the entry chunk and fetched when one of them opens (Suspense below).
+const AdminEvents = lazy(() => import('./screens/AdminEvents.jsx'));
+const AdminTestAccounts = lazy(() => import('./screens/AdminTestAccounts.jsx'));
+const AdminFeatures = lazy(() => import('./screens/AdminFeatures.jsx'));
+const AdminRetention = lazy(() => import('./screens/AdminRetention.jsx'));
 import EventRecap from './screens/EventRecap.jsx';
 import HostRecap from './screens/HostRecap.jsx';
-import AdminManageEvents from './screens/AdminManageEvents.jsx';
-import AdminDobCorrections from './screens/AdminDobCorrections.jsx';
+const AdminManageEvents = lazy(() => import('./screens/AdminManageEvents.jsx'));
+const AdminDobCorrections = lazy(() => import('./screens/AdminDobCorrections.jsx'));
 import ToastStack from './screens/ToastStack.jsx';
 import { EVENTS } from './data/events.js';
 import Policy from './screens/Policy.jsx';
@@ -82,14 +84,14 @@ import StoryCreateOverlay from './screens/StoryCreateOverlay.jsx';
 import EditProfile from './screens/EditProfile.jsx';
 import PublicProfile from './screens/PublicProfile.jsx';
 import OrganizerProfile from './screens/OrganizerProfile.jsx';
-import Reports from './screens/Reports.jsx';
+const Reports = lazy(() => import('./screens/Reports.jsx'));
 import Schedule from './screens/Schedule.jsx';
 import Search from './screens/Search.jsx';
 import PersistentSearchBar from './components/PersistentSearchBar.jsx';
 import Welcome from './screens/Welcome.jsx';
 import GuestPromptSheet from './screens/GuestPromptSheet.jsx';
 import { StartHostingSheet } from './components/StartHostingCard.jsx';
-import TeamPage from './screens/TeamPage.jsx';
+const TeamPage = lazy(() => import('./screens/TeamPage.jsx'));
 import SurveyPublic from './screens/SurveyPublic.jsx';
 import SurveysHosting from './screens/SurveysHosting.jsx';
 import RootRefreshIndicator, { PULL_GAP_PX, PULL_TRIGGER_PX } from './screens/RootRefreshIndicator.jsx';
@@ -954,7 +956,7 @@ function Shell() {
                 aria-hidden={isUnderlay || undefined}
                 ref={(el) => { if (el) { if (isUnderlay) el.setAttribute('inert', ''); else el.removeAttribute('inert'); } }}
               >
-                <ScreenComp />
+                <Suspense fallback={null}><ScreenComp /></Suspense>
               </div>
             );
           })}
