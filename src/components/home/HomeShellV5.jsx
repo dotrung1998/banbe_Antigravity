@@ -42,6 +42,7 @@ const GEAR = <><circle cx="12" cy="12" r="3.2" /><path d="M19.4 15a1.7 1.7 0 0 0
 export default function HomeShellV5({
   T, lang, tab, onTab, onReturnToEvents, lists, items, canHost, user, dateLabel, areaLabel, areaActive = false, filtersActive = false, hasPrefs = true, onClearFilters,
   onOpenEvent, onSeeAll, onAccount, onSearch, onArea, onMap, onFilters, filterSummary, onFindType, onPickType, onSetPrefs, onBrowseAll,
+  onToggleSave = null,
   typeCounts, badgeDate, trStatus, children, hostBody, below, shortlist = null, seeAll = null, onBrowseType = null, browseTotal = null,
   // Note 99 (switch unified_discovery): Browse by type that filters Home in place replaces the grid below, and the
   // search circle carries a dot while the shared query is on.
@@ -263,20 +264,31 @@ export default function HomeShellV5({
               <div ref={rail} onScroll={onScroll} data-hscroll data-testid="home-hero-rail"
                 style={{ display: 'flex', gap: 12, overflowX: 'auto', scrollSnapType: 'x mandatory', padding: '12px 24px 0', scrollPaddingLeft: 24, scrollbarWidth: 'none' }}>
                 {list.map((e, i) => (
-                  <button key={e.key} type="button" data-testid={`home-hero-card-${e.key}`} onClick={() => onOpenEvent(e.key)}
-                    style={{ flex: '0 0 268px', height: 360, borderRadius: 16, position: 'relative', overflow: 'hidden', scrollSnapAlign: 'start', border: 'none', padding: 0, textAlign: 'left',
+                  // Audit 2026-11-19 row 26: the card is a div with button semantics so the heart can be its own real
+                  // button (a nested button is invalid HTML, and the old SAVE chip was a span that looked tappable).
+                  <div key={e.key} role="button" tabIndex={0} data-testid={`home-hero-card-${e.key}`} aria-label={e.name}
+                    onClick={() => onOpenEvent(e.key)}
+                    onKeyDown={(ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); onOpenEvent(e.key); } }}
+                    style={{ flex: '0 0 268px', height: 360, borderRadius: 16, position: 'relative', overflow: 'hidden', scrollSnapAlign: 'start', padding: 0, textAlign: 'left',
                       color: '#fff', fontFamily: 'inherit', cursor: 'pointer', opacity: i === idx ? 1 : 0.6, transition: 'opacity .3s', background: e.img ? `#2a2620 center/cover no-repeat url("${e.img}")` : '#2a2620' }}>
                     <span aria-hidden style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,rgba(0,0,0,.25) 0%,rgba(0,0,0,0) 30%,rgba(0,0,0,.05) 50%,rgba(0,0,0,.78) 100%)' }} />
                     <span style={{ position: 'absolute', top: 12, left: 12, right: 12, display: 'flex', justifyContent: 'space-between' }}>
                       {e.dateBadge && <span style={{ height: 28, padding: '0 10px', borderRadius: 999, background: 'rgba(247,244,236,.85)', color: '#1B1916', fontSize: 11.5, fontWeight: 700, display: 'flex', alignItems: 'center', letterSpacing: '.02em', textTransform: 'uppercase' }}>{e.dateBadge}</span>}
-                      <span style={{ height: 28, padding: '0 10px', borderRadius: 999, background: 'rgba(247,244,236,.85)', color: '#1B1916', fontSize: 11.5, fontWeight: 700, display: 'flex', alignItems: 'center', letterSpacing: '.02em' }}>{e.saved ? T('ĐÃ LƯU', 'SAVED') : T('LƯU', 'SAVE')}</span>
+                      {onToggleSave && (
+                        <button type="button" onClick={(ev) => { ev.stopPropagation(); onToggleSave(e.key); }}
+                          aria-pressed={!!e.saved} aria-label={e.saved ? T('Bỏ lưu sự kiện', 'Remove from saved') : T('Lưu sự kiện', 'Save event')}
+                          data-testid={`home-hero-save-${e.key}`}
+                          style={{ width: 36, height: 36, marginTop: -4, marginRight: -4, borderRadius: '50%', border: 'none', background: 'rgba(247,244,236,.92)', color: e.saved ? 'var(--bb-clay-ink)' : '#1B1916', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+                          <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill={e.saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20s-7-4.4-7-9.3A4.1 4.1 0 0 1 12 7a4.1 4.1 0 0 1 7 3.7C19 15.6 12 20 12 20Z" /></svg>
+                        </button>
+                      )}
                     </span>
                     <span style={{ position: 'absolute', left: 16, right: 16, bottom: 16, display: 'block' }}>
                       {e.metaLine && <span style={{ display: 'block', fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', opacity: 0.85, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.metaLine}</span>}
                       <span style={{ display: 'block', fontFamily: "var(--bb-font-title, 'Be Vietnam Pro', system-ui, sans-serif)", fontSize: 26, fontWeight: 300, lineHeight: 1.12, margin: '6px 0', letterSpacing: '-.01em' }}>{e.name}</span>
                       <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13, opacity: 0.9 }}><span>{e.priceLabel}</span><span>{e.left}</span></span>
                     </span>
-                  </button>
+                  </div>
                 ))}
                 {list.length > 0 && seeAll && (
                   <SeeAllFanCard photos={list.map(e => e.img)} label={seeAll.label} count={seeAll.count} onOpen={() => onSeeAll(tab)} T={T} />

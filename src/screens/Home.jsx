@@ -1379,7 +1379,7 @@ export default function Home({ browse = false }) {
           areaLabel={areaName} areaActive={curArea.key !== 'all'}
           filtersActive={filterBadge > 0 || curArea.key !== 'all'} hasPrefs={!!s.eventPrefs && !prefsIsEmpty(s.eventPrefs)}
           onClearFilters={() => { clearFilters(); set({ homeSort: 'soonest' }); }}
-          onOpenEvent={goEvent} onSeeAll={heroSeeAll} onAccount={() => setQuickOpen(true)}
+          onOpenEvent={goEvent} onToggleSave={toggleFav} onSeeAll={heroSeeAll} onAccount={() => setQuickOpen(true)}
           onSearch={openSearch} onArea={openAreaMenu} onMap={openMapWithContext} onFilters={() => set({ homeFilterSheetOpen: true })} filterSummary={shellFilterSummary}
           onFindType={() => setCategorySheetOpen(true)} onPickType={shellPickType}
           onSetPrefs={() => openEventPreferences('home')}
