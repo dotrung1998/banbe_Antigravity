@@ -1099,7 +1099,8 @@ export default function MapExplore() {
           // (bubbles that overlap at this zoom) zoom in to tell them apart.
           const n = g.ids.length;
           const single = g.keys.length === 1;
-          const name = single ? (g.labels[0] || T('Khu khác', 'Other areas')) : T(`${g.keys.length} khu`, `${g.keys.length} areas`);
+          // "2 khu" read as a stutter; name what it is (audit 2026-11-19 row 21).
+          const name = single ? (g.labels[0] || T('Khu khác', 'Other areas')) : T(`${g.keys.length} khu vực`, `${g.keys.length} areas here`);
           pinEl.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;';
           pinEl.setAttribute('data-testid', `map-areabubble-${g.keys.join('+')}`);
           pinEl.setAttribute('data-count', String(n));
@@ -2122,7 +2123,7 @@ export default function MapExplore() {
                   aria-label={cat ? T(`Bộ lọc: ${cat.vi}${others ? `, thêm ${others}` : ''}`, `Filters: ${cat.en}${others ? `, ${others} more` : ''}`)
                     : filterBadge ? T(`Bộ lọc, đang bật ${filterBadge}`, `Filters, ${filterBadge} on`) : T('Bộ lọc', 'Filters')}
                   style={cat
-                    ? { flex: 'none', position: 'relative', maxWidth: 150, height: 44, padding: '0 14px 0 12px', borderRadius: 999, border: 'none', background: ink, color: paper, display: 'flex', alignItems: 'center', gap: 7, fontFamily: 'inherit', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', boxShadow: '0 4px 14px rgba(27,25,22,.18)' }
+                    ? { flex: 'none', position: 'relative', maxWidth: 'min(150px, 34%)', height: 44, padding: '0 14px 0 12px', borderRadius: 999, border: 'none', background: ink, color: paper, display: 'flex', alignItems: 'center', gap: 7, fontFamily: 'inherit', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', boxShadow: '0 4px 14px rgba(27,25,22,.18)' }
                     : { ...glass, flex: 'none', position: 'relative', width: 44, height: 44, padding: 0, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
                   {cat ? (
                     <>

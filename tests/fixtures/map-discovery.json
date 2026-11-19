@@ -1244,13 +1244,15 @@
               "vn-hcm|quan 1",
               "vn-hcm|quan 3",
               "vn-hcm|binh thanh",
-              "vn-hcm|~"
+              "vn-hcm|~",
+              "vn-hcm|thao dien"
             ],
             "labels": [
               "Quận 1",
               "Quận 3",
               "Bình Thạnh",
-              null
+              null,
+              "Thảo Điền"
             ],
             "cityId": "vn-hcm",
             "ids": [
@@ -1258,22 +1260,10 @@
               "p2",
               "p3",
               "p4",
-              "p5"
-            ],
-            "hit": 5
-          },
-          {
-            "keys": [
-              "vn-hcm|thao dien"
-            ],
-            "labels": [
-              "Thảo Điền"
-            ],
-            "cityId": "vn-hcm",
-            "ids": [
+              "p5",
               "p6"
             ],
-            "hit": 1
+            "hit": 6
           },
           {
             "keys": [

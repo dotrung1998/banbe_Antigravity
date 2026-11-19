@@ -286,7 +286,10 @@ export function cityGroups(points, zoom, cityOf, cities, opts = {}) {
 // `area` text (the geocoder's district, shown as a familiar area, never as an official unit, note 20), else its
 // `neighborhood`; its centre and bounds come from the member events' own positions.
 export const AREA_ZOOM = 13;
-export const AREA_MERGE_PX = 56; // two neighbourhood bubbles closer than this on screen become one "N areas" bubble
+// Audit 2026-11-19 row 21: 56 px let two 52 px bubbles (plus their labels) sit on top of each other, hiding one name.
+// 72 covers the bubble itself with a little air; the split-zoom rule below uses the same number, so tapping a merged
+// bubble still zooms until the areas are legible.
+export const AREA_MERGE_PX = 72; // two neighbourhood bubbles closer than this on screen become one "N areas" bubble
 export const AREA_PANEL_CLOSE_DELTA = 0.5; // zooming out this far below AREA_ZOOM closes the area panel
 
 /** 'city' | 'area' | 'pin': which marker level the camera zoom shows. */

@@ -412,7 +412,8 @@ extension MapDiscovery {
 extension MapDiscovery {
     static let areaZoom = 13.0
     /// Two neighbourhood bubbles closer than this on screen become one "N areas" bubble.
-    static let areaMergePx = 56.0
+    // Audit 2026-11-19 row 21: web twin AREA_MERGE_PX (now 72) — 56 let two 52 pt bubbles and their labels overlap.
+    static let areaMergePx = 72.0
     /// Zooming out this far below `areaZoom` closes the area panel.
     static let areaPanelCloseDelta = 0.5
 
