@@ -47,7 +47,7 @@ const ROWS = [
   ['noigiay','gallery','Phòng tranh','Nói Chuyện: Giấy','1FSTutTTmGnMgrRSOrFvdrsMaQ7ON7y6B','Quận 1','4,9','Th 4, 08.07','Thứ Tư, 8 tháng 7','19:00','80.000₫',20,'Một giờ về giấy dó với người làm giấy đời thứ ba. Có mẫu để sờ.','Talk ▪︎ trà ▪︎ mẫu giấy mang về','Zone Publishing','Zone','studio','Zone đây. Buổi talk có ghi hình, ngồi hàng sau nếu ngại.'],
   ['phong302','gallery','Phòng tranh','Phòng 302','1koPFwcKRxI9VlbBZCJSdwLW_xya9YJU5','Quận 5','5,7','CN, 12.07','Chủ Nhật, 12 tháng 7','15:00','150.000₫',14,'Triển lãm trong căn hộ tập thể cũ. Mỗi phòng một tác giả, giữ nguyên đồ đạc.','Vào cửa theo khung giờ','Phòng 302','302','studio','302 đây. Lên cầu thang bộ, tầng ba, cửa xanh.'],
 
-  ['chieucham','music','Nhạc','Chiều Chậm','1OunhYV4NfYgBVgbkKXivFrhnCI711C2c','Yentown, Quận 1','4,5','CN, 12.07','Chủ Nhật, 12 tháng 7','15:00','Miễn phí',58,'Ba DJ, một buổi chiều, không danh sách nhạc định trước. Đến sớm có chỗ ngồi.','Vào cửa tự do ▪︎ cà phê tính riêng','Yentown','Yentown','slate','Yentown nghe đây.'],
+  ['chieucham','music','Nhạc','Chiều Chậm','1OunhYV4NfYgBVgbkKXivFrhnCI711C2c','Quận 1','4,5','CN, 12.07','Chủ Nhật, 12 tháng 7','15:00','Miễn phí',58,'Ba DJ, một buổi chiều, không danh sách nhạc định trước. Đến sớm có chỗ ngồi.','Vào cửa tự do ▪︎ cà phê tính riêng','Yentown','Yentown','slate','Yentown nghe đây.'],
   ['jazzgac','music','Nhạc','Jazz Ở Gác','1TJ9VkUPgsDILi7K1gEPk93z_Txtw1tVP','Quận 1','4,7','Th 5, 09.07','Thứ Năm, 9 tháng 7','21:00','250.000₫',16,'Gác gỗ hai mươi chỗ, kèn không micro. Set hai bắt đầu lúc mười giờ.','2 set ▪︎ một đồ uống','Gác, @jazzogac','Gác','slate','Gác đây. Set hai đông hơn, thích yên thì đến set một.'],
   ['bangcoi','music','Nhạc','Băng Cối','1mW5YR-nCRRNhP0AVkzTzLcTTVKgJZorn','Quận 3','3,6','Th 6, 10.07','Thứ Sáu, 10 tháng 7','20:00','180.000₫',22,'Nghe nhạc từ băng cối qua dàn loa cũ. Không điện thoại trong phòng nghe.','Vào cửa ▪︎ trà nóng','Băng Cối','Băng Cối','slate','Băng Cối đây. Phòng nghe im lặng tuyệt đối nha.'],
   ['modular','music','Nhạc','Đêm Modular','1Xv5FpSs4sW2wbYuxC0pVpIkgOK18acNU','Quận 4','3,0','Th 7, 11.07','Thứ Bảy, 11 tháng 7','21:30','200.000₫',27,'Bốn nghệ sĩ, bốn dàn máy, nối dây trực tiếp. Không có bài nào lặp lại.','Vào cửa ▪︎ earplugs miễn phí','OBJoff','OBJoff','slate','OBJoff đây, tối đó gặp nhé.'],
@@ -65,6 +65,11 @@ const ROWS = [
 // RLS/event_invites/claim_seats authorization this migration added —
 // nothing invented, no separate demo auth model to maintain.
 
+
+// Audit 2026-11-19 row 33: a venue is not an area. Chieucham's row used to put "Yentown, Quận 1" in the area column,
+// which is what the area picker counts and what a location filter matches; the venue now rides in its own field and is
+// printed in front of the place line (meta / where) exactly like a venue should read.
+const VENUE = { chieucham: 'Yentown' };
 
 const ORG = {
   bepnho: { name: 'Bếp Nhỏ', ig: '@bepnho.saigon', desc: 'Minh nấu cho người lạ từ 2021, bắt đầu bằng vài cái bàn trong ga-ra. Mỗi tối một thực đơn, đi chợ Bà Chiểu lúc sáu giờ sáng.' },
@@ -285,8 +290,9 @@ export const EVENTS = ROWS.map((r, idx) => {
     endTime: END[r[0]] && END[r[0]] !== 'open' ? END[r[0]] : null, endOpen: END[r[0]] === 'open',
     img: img(heroPhoto),
     lat: baseLat + jitterLat, lng: baseLng + jitterLng,
-    meta: r[5] + ' ▪︎ ' + r[6] + ' km ▪︎ ' + r[7].split(', ')[0] + ', ' + r[9],
-    where: r[5] + ' ▪︎ ' + r[6] + ' km từ bạn ▪︎ ' + r[8] + ' ▪︎ ' + r[9],
+    venue: VENUE[r[0]] || null,
+    meta: (VENUE[r[0]] ? VENUE[r[0]] + ', ' : '') + r[5] + ' ▪︎ ' + r[6] + ' km ▪︎ ' + r[7].split(', ')[0] + ', ' + r[9],
+    where: (VENUE[r[0]] ? VENUE[r[0]] + ' ▪︎ ' : '') + r[5] + ' ▪︎ ' + r[6] + ' km từ bạn ▪︎ ' + r[8] + ' ▪︎ ' + r[9],
     when: r[7] + ' ▪︎ ' + r[9],
     price: r[10], seats: 'Còn ' + r[11] + ' chỗ', seatsLong: 'Còn ' + r[11] + ' chỗ', urgent: r[11] <= 5,
     desc: r[12], included: r[13], host: r[14], hostShort: r[15],
