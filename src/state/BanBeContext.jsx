@@ -6702,7 +6702,13 @@ export function BanBeProvider({ children }) {
     if (error) { console.warn('Failed to reload favorites:', error); return; }
     set(prev => (prev.user?.id === uid && !favToggleInFlightRef.current.size ? { favorites: (data || []).map(r => r.event_id) } : prev));
   }, [s.user?.id, set]);
-  const goSchedule = useCallback(() => { set({ screen: 'schedule' }); track('schedule_opened'); }, [set]);
+  // Audit 2026-11-19 row 18: a guest tapping a personal dock tab gets the same contextual sheet as Save/Reserve,
+  // instead of being bounced to a bare Login that explains nothing.
+  const goSchedule = useCallback(() => {
+    if (!s.user) return promptSignIn('schedule');
+    set({ screen: 'schedule' });
+    track('schedule_opened');
+  }, [set, s.user, promptSignIn]);
 
   /** A shaped real event -> what the schedule needs. No end times exist (note 38). */
   const scheduleInfoFor = useCallback((e) => {
@@ -6824,15 +6830,16 @@ export function BanBeProvider({ children }) {
     setMapExploreState({ cameraCenter: { lat: ev.lat, lng: ev.lng }, cameraZoom: 15.5, selectedId: ev.key, singleEventFocus: true });
     set({ screen: 'mapExplore' });
   }, [set, setMapExploreState]);
-  const goProfile = useCallback(() => set({ screen: 'profile' }), [set]);
+  const goProfile = useCallback(() => { if (!s.user) return promptSignIn('account'); return set({ screen: 'profile' }); }, [set, s.user, promptSignIn]);
   const goInbox = useCallback(() => {
-    if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'inbox', authBackScreen: 'home' });
+    // Audit 2026-11-19 row 18: the same gate sheet, not a bare Login.
+    if (!s.user) return promptSignIn('message');
     // Reached from both Home (message icon) and Account ("Messages" row) —
     // remember whichever it was so the way back matches the way in, instead
     // of always landing on Home regardless of where the tap came from.
     set(prev => ({ screen: 'inbox', inboxBack: prev.screen === 'profile' ? 'profile' : 'home', inboxView: 'active' }));
     loadInboxThreads();
-  }, [set, s.user, loadInboxThreads]);
+  }, [set, s.user, loadInboxThreads, promptSignIn]);
   const backFromInbox = useCallback(() => set(prev => ({ screen: prev.inboxBack || 'home' })), [set]);
   // Event Detail is reached from several different sections (the home feed,
   // an organizer dashboard, an organizer profile, the create-event preview),

@@ -11,7 +11,8 @@
 export const GUEST_BROWSE_SCREENS = new Set(['home', 'mapExplore', 'event', 'search', 'browse']);
 
 // 'host' / 'schedule' / 'invite': the Simple Shell (switch simple_shell) mode switch and centre "+" rows (note 66).
-export const PROMPT_CONTEXTS = ['save', 'follow', 'reserve', 'message', 'like', 'host', 'schedule', 'invite'];
+// 'account' (audit 2026-11-19 row 18): the dock's Account tab, which used to bounce a guest to a bare Login.
+export const PROMPT_CONTEXTS = ['save', 'follow', 'reserve', 'message', 'like', 'host', 'schedule', 'invite', 'account'];
 
 export function promptCopy(context, T) {
   switch (context) {
@@ -22,6 +23,7 @@ export function promptCopy(context, T) {
     case 'like': return { title: T('Thích ảnh này', 'Like this photo'), body: T('Đăng nhập để thích ảnh và ủng hộ host.', 'Log in to like photos and support the host.') };
     case 'host': return { title: T('Tổ chức sự kiện', 'Host an event'), body: T('Đăng nhập để tổ chức. Miễn phí, tắt lúc nào cũng được.', 'Log in to host. It is free and you can turn it off any time.') };
     case 'schedule': return { title: T('Lịch của bạn', 'Your schedule'), body: T('Đăng nhập để lưu kế hoạch vào lịch và xem trên mọi thiết bị.', 'Log in to keep plans in your schedule on every device.') };
+    case 'account': return { title: T('Tài khoản của bạn', 'Your account'), body: T('Đăng nhập để xem vé, tin nhắn, lịch và cài đặt của bạn.', 'Log in to see your tickets, messages, schedule and settings.') };
     case 'invite': return { title: T('Mời bạn bè', 'Invite friends'), body: T('Đăng nhập để nhận link mời của riêng bạn.', 'Log in to get your own invite link.') };
     default: return { title: T('Đăng nhập để tiếp tục', 'Log in to continue'), body: '' };
   }
