@@ -16,7 +16,9 @@ import SwiftUI
 
 extension AppState {
     func openBrowse(type: String = "all", scope: String = "all", keep: Bool = false) {
-        let t = type.isEmpty ? "all" : type, sc = scope.isEmpty ? "all" : scope
+        let t = type.isEmpty ? "all" : type
+        // For You is only offered with preferences (UnifiedDiscovery.visibleTabs); a stale link to it opens every event.
+        let sc = scope.isEmpty || (scope == "foryou" && !hasForYouPrefs) ? "all" : scope
         let same = keep && browseType == t && browseScope == sc
         browseType = t
         browseScope = sc
@@ -49,7 +51,7 @@ extension AppState {
     /// search and its own filters start clean (the same reset `openBrowse` takes), and the type survives only where the
     /// new tab still has events of it.
     func browseSwitchScope(_ scope: String) {
-        let sc = scope.isEmpty ? "all" : scope
+        let sc = scope.isEmpty || (scope == "foryou" && !hasForYouPrefs) ? "all" : scope
         guard sc != browseScope else { return }
         let counts = browseTypeCounts(scope: sc)
         browseScope = sc
@@ -76,9 +78,12 @@ extension AppState {
             return HomeDiscovery.apply(items, f, now: now).filter(open)
         case .foryou:
             let byItem = Dictionary(items.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
-            let ranked = forYou.compactMap { byItem[$0.key] }.filter(open)
-            if !ranked.isEmpty { return ranked }
+            // For You = only the matcher's picks; without preferences it does not exist and reads as All events.
+            if hasForYouPrefs { return forYou.compactMap { byItem[$0.key] }.filter(open) }
             return HomeDiscovery.apply(items, .default, now: now).filter(open)
+        case .all:
+            // Every open event, any type and date, soonest first (web: tabItems('all') falls through to the same list).
+            return HomeDiscovery.sort(HomeDiscovery.apply(items, .default, now: now).filter(open), mode: "soonest")
         }
     }
 
@@ -88,8 +93,9 @@ extension AppState {
         let scores = pulseScores
         let items = feed.map { discoveryItem(for: $0, now: now, scores: scores) }
         let byKey = Dictionary(feed.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
-        if let tab = HomeHeroTab(rawValue: scope) {
-            return v23TabItems(tab, items: items, byKey: byKey, forYou: forYouMatches, now: now)
+        // "all" is Browse by type (the whole catalogue), never the Home tab of the same key.
+        if scope != "all", let tab = HomeHeroTab(rawValue: scope) {
+            return v23TabItems(UnifiedDiscovery.effectiveTab(tab, hasPrefs: hasForYouPrefs), items: items, byKey: byKey, forYou: forYouMatches, now: now)
         }
         return HomeDiscovery.apply(items, .default, now: now).filter { byKey[$0.key]?.cancelled == false }
     }
@@ -138,7 +144,7 @@ struct BrowseView: View {
     /// (owner 2026-11-23 — re-choosing the current option is never a dead tap after scrolling).
     @State private var browseTopToken = 0
 
-    private var tabLabel: ViEn? { HomeHeroTab(rawValue: app.browseScope).map { ViEn($0.vi, $0.en) } }
+    private var tabLabel: ViEn? { app.browseScope == "all" ? nil : HomeHeroTab(rawValue: app.browseScope).map { ViEn($0.vi, $0.en) } }
     /// The location picker still takes a Bool binding; it is backed by the one route so Done or a swipe clears it.
     private var areaSheetPresented: Binding<Bool> {
         Binding(get: { sheetRoute == .area }, set: { shown in if !shown { sheetRoute = nil } })
@@ -254,7 +260,7 @@ struct BrowseView: View {
     private var scopeTabs: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 16) {
-                ForEach(HomeHeroTab.allCases, id: \.self) { t in
+                ForEach(HomeHeroTab.browseTabs.filter { $0 != .foryou || app.hasForYouPrefs }, id: \.self) { t in
                     let on = app.browseScope == t.rawValue
                     Button {
                         // Re-tapping the open tab returns to the top of its list instead of doing nothing.

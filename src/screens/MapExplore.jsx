@@ -2095,8 +2095,9 @@ export default function MapExplore() {
           {ud && (() => {
             const glass = { ...photoPill({ position: 'static', borderRadius: RADIUS.pill }), color: ink };
             const q = (s.searchQuery || '').trim();
-            const cat = (filters.cats || [])[0] ? CATEGORY_DEFS.find(c => c.key === filters.cats[0]) : null;
-            const others = filterBadge - (cat ? 1 : 0);
+            // The picked type is already the highlighted chip below, so it is not counted in the badge.
+            const others = filterBadge - ((filters.cats || [])[0] ? 1 : 0);
+            const areaPillName = curArea.key === 'all' ? T('Mọi nơi', 'Everywhere') : curArea.label;
             const icon = (d, size = 19, color = 'currentColor') => (
               <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">{d}</svg>
             );
@@ -2125,21 +2126,14 @@ export default function MapExplore() {
                   )}
                 </div>
                 <button type="button" data-testid="map-ud-filters" aria-haspopup="dialog" onClick={() => setFilterSheetOpen(true)}
-                  aria-label={cat ? T(`Bộ lọc: ${cat.vi}${others ? `, thêm ${others}` : ''}`, `Filters: ${cat.en}${others ? `, ${others} more` : ''}`)
-                    : filterBadge ? T(`Bộ lọc, đang bật ${filterBadge}`, `Filters, ${filterBadge} on`) : T('Bộ lọc', 'Filters')}
-                  style={cat
-                    ? { flex: 'none', position: 'relative', maxWidth: 'min(150px, 34%)', height: 44, padding: '0 14px 0 12px', borderRadius: 999, border: 'none', background: ink, color: paper, display: 'flex', alignItems: 'center', gap: 7, fontFamily: 'inherit', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', boxShadow: '0 4px 14px rgba(27,25,22,.18)' }
-                    : { ...glass, flex: 'none', position: 'relative', width: 44, height: 44, padding: 0, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
-                  {cat ? (
-                    <>
-                      <CategoryGlyph cat={cat.key} size={17} />
-                      <span style={{ minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{T(cat.vi, cat.en)}</span>
-                      {icon(<><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></>, 15)}
-                    </>
-                  ) : icon(<><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></>, 19)}
-                  {(cat ? others : filterBadge) > 0 && (
+                  aria-label={T(`Khu vực: ${areaPillName}, bộ lọc${others ? `, đang bật ${others}` : ''}`, `Area: ${areaPillName}, filters${others ? `, ${others} on` : ''}`)}
+                  style={{ flex: 'none', position: 'relative', maxWidth: 'min(150px, 34%)', height: 44, padding: '0 14px 0 12px', borderRadius: 999, border: 'none', background: ink, color: paper, display: 'flex', alignItems: 'center', gap: 7, fontFamily: 'inherit', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', boxShadow: '0 4px 14px rgba(27,25,22,.18)' }}>
+                  {icon(<><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" /><circle cx="12" cy="10" r="2.5" /></>, 16)}
+                  <span data-testid="map-ud-filters-area" style={{ minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{areaPillName}</span>
+                  {icon(<><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></>, 15)}
+                  {others > 0 && (
                     <span data-testid="map-ud-filter-badge" style={{ position: 'absolute', top: -3, right: -3, minWidth: 20, height: 20, padding: '0 5px', borderRadius: 999, background: clay, color: '#fff', fontSize: 'var(--bb-text-meta)', fontWeight: 700, display: 'grid', placeItems: 'center', boxShadow: `0 0 0 2px ${paper}` }}>
-                      {cat ? others : filterBadge}
+                      {others}
                     </span>
                   )}
                 </button>

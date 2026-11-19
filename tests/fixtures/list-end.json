@@ -1,0 +1,34 @@
+{
+  "_comment": "Home list-end rules shared by src/lib/listEnd.js and apps/ios/BanbeApp/Lib/V23Rules.swift (ListEnd). shortlistEnd: second action + body by tab. heroSuggestions: cards after a short hero pager.",
+  "shortlistEnd": [
+    { "total": 3, "shown": 3, "filtersOn": false, "tab": "foryou", "kind": "end",
+      "bodyEn": "Browse by type or see all events to find more.", "bodyVi": "Duyệt theo loại hoặc xem tất cả sự kiện để tìm thêm.",
+      "actions": [ { "act": "types", "labelEn": "Browse every type", "primary": true }, { "act": "tab:all", "labelEn": "See all events", "labelVi": "Xem tất cả sự kiện", "primary": false } ] },
+    { "total": 3, "shown": 3, "filtersOn": false, "tab": "tonight", "kind": "end",
+      "actions": [ { "act": "types", "primary": true }, { "act": "tab:all", "primary": false } ] },
+    { "total": 3, "shown": 3, "filtersOn": false, "tab": "all", "kind": "end",
+      "bodyEn": "Browse by type or try another area to find more.", "bodyVi": "Duyệt theo loại hoặc thử khu vực khác để tìm thêm.",
+      "actions": [ { "act": "types", "primary": true }, { "act": "area", "labelEn": "Change area", "labelVi": "Đổi khu vực", "primary": false } ] },
+    { "total": 3, "shown": 3, "filtersOn": false, "tab": null, "kind": "end",
+      "actions": [ { "act": "types", "primary": true }, { "act": "tab:all", "primary": false } ] },
+    { "total": 9, "shown": 6, "filtersOn": true, "tab": "all", "kind": "filters",
+      "actions": [ { "act": "clear-filters", "primary": true }, { "act": "types", "primary": false } ] }
+  ],
+  "heroSuggestions": [
+    { "tab": "tonight", "shown": 2, "counts": { "weekend": 5, "all": 12 },
+      "expect": [ { "kind": "tab", "tab": "weekend", "titleEn": "Weekend", "detailEn": "5 events", "detailVi": "5 sự kiện" },
+                  { "kind": "tab", "tab": "all", "titleEn": "All events", "titleVi": "Tất cả sự kiện", "detailEn": "12 events" },
+                  { "kind": "browse", "titleEn": "Browse by type", "titleVi": "Duyệt theo loại" } ] },
+    { "tab": "weekend", "shown": 1, "counts": { "weekend": 1, "all": 9 },
+      "expect": [ { "kind": "tab", "tab": "all", "titleEn": "All events", "detailEn": "9 events" }, { "kind": "browse" } ] },
+    { "tab": "foryou", "shown": 2, "counts": { "weekend": 0, "all": 2 },
+      "expect": [ { "kind": "browse" } ] },
+    { "tab": "foryou", "shown": 1, "counts": { "weekend": 1, "all": 1 },
+      "expect": [ { "kind": "tab", "tab": "weekend", "detailEn": "1 event", "detailVi": "1 sự kiện" }, { "kind": "browse" } ] },
+    { "tab": "all", "shown": 2, "counts": { "weekend": 2, "all": 2 },
+      "expect": [ { "kind": "tab", "tab": "weekend" }, { "kind": "browse" } ] },
+    { "tab": "tonight", "shown": 3, "counts": { "weekend": 5, "all": 12 }, "expect": [] },
+    { "tab": "tonight", "shown": 0, "counts": { "weekend": 5, "all": 12 }, "expect": [] },
+    { "tab": "tonight", "shown": 4, "counts": { "weekend": 5, "all": 12 }, "expect": [] }
+  ]
+}

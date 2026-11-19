@@ -4,8 +4,8 @@
 
 import { applyDiscoveryFilters, normalizeFilters, sortEvents, DEFAULT_FILTERS, SORT_MODES, DEFAULT_OFFSET_MIN } from './homeDiscovery.js';
 
-/** Home's tabs ARE the shared time: For You = any time, Tonight = today, Weekend = the weekend. */
-export const DATE_FOR_TAB = { foryou: 'any', tonight: 'today', weekend: 'weekend' };
+/** Home's tabs ARE the shared time: For You = any time, Tonight = today, Weekend = the weekend, All events = any time. */
+export const DATE_FOR_TAB = { foryou: 'any', tonight: 'today', weekend: 'weekend', all: 'any' };
 
 /** The tab a shared date shows as selected. Tomorrow / next 7 days have no tab of their own and read as For You. */
 export function tabForDate(date) {
@@ -13,6 +13,36 @@ export function tabForDate(date) {
   if (date === 'weekend') return 'weekend';
   return 'foryou';
 }
+
+/**
+ * The tab Home shows as selected. For You and All events share the date 'any', so the date alone cannot tell them
+ * apart: `allPicked` (the reader last picked All events) breaks the tie. A tab with its own date wins over the pick.
+ * Without For You preferences (`hasPrefs` false) there is no For You tab: whatever would read as it is All events.
+ */
+export function resolveTab(date, allPicked, hasPrefs = true) {
+  return effectiveTab(date === 'any' && allPicked ? 'all' : tabForDate(date), hasPrefs);
+}
+
+// ---- For You vs All events (bug 2026-11-19: both listed the same 15 events) ----------------------------------------
+// For You = ONLY the events matching the viewer's For You preferences (the matcher's set); All events = every open
+// event. Without preferences the two would be identical, so For You is not offered at all.
+
+/** The Home tabs in display order (hosting is a view, not a tab; `canHost` appends it). */
+export const HOME_TABS = ['foryou', 'tonight', 'weekend', 'all'];
+
+/** Tabs the viewer sees: For You only with preferences; Hosting last, only when `canHost`. */
+export function visibleTabs(hasPrefs, canHost = false) {
+  return [...HOME_TABS.filter(t => t !== 'foryou' || hasPrefs), ...(canHost ? ['hosting'] : [])];
+}
+
+/** The tab Home opens on: For You with preferences, otherwise All events. */
+export function defaultTab(hasPrefs) { return hasPrefs ? 'foryou' : 'all'; }
+
+/** A stored/selected tab, resolved: For You without preferences is All events. */
+export function effectiveTab(tab, hasPrefs) { return tab === 'foryou' && !hasPrefs ? 'all' : tab; }
+
+/** Which set a tab lists: 'forYou' (the matcher's picks) for For You, else 'all' (every open event; time tabs add their time). */
+export function tabSet(tab) { return tab === 'foryou' ? 'forYou' : 'all'; }
 
 /** How many type tiles Home shows before the "All types" tile. */
 export const TILE_TYPES = 5;
@@ -115,12 +145,15 @@ export function isOpenItem(it, now) {
  * @param {object} filters  Home's filters
  * @param {string} sort  Home's sort ('soonest' when none)
  * @param {number} now
- * @param {{ tabOwnsTime?: boolean, offsetMin?: number }} [opts]  tabOwnsTime = unified discovery (the date is the tab)
+ * @param {{ tabOwnsTime?: boolean, offsetMin?: number, tab?: string, forYouKeys?: Iterable<string>|null }} [opts]
+ *   tabOwnsTime = unified discovery (the date is the tab); `tab` + `forYouKeys` (the matcher's picks, area-scoped): on the
+ *   For You tab the base is only those keys (soonest first still); other tabs ignore them
  * @returns {{ rows: Array, total: number }}
  */
-export function nearYou(items, filters, sort, now, { tabOwnsTime = false, offsetMin = DEFAULT_OFFSET_MIN } = {}) {
+export function nearYou(items, filters, sort, now, { tabOwnsTime = false, offsetMin = DEFAULT_OFFSET_MIN, tab = null, forYouKeys = null } = {}) {
   const f = normalizeFilters(filters);
-  const open = (items || []).filter(it => isOpenItem(it, now));
+  const picks = tabSet(tab) === 'forYou' && forYouKeys ? new Set(forYouKeys) : null;
+  const open = (items || []).filter(it => isOpenItem(it, now) && (!picks || picks.has(it.key)));
   const base = tabOwnsTime ? applyDiscoveryFilters(open, { ...DEFAULT_FILTERS, date: f.date }, now, offsetMin) : open;
   const narrowed = applyDiscoveryFilters(base, f, now, offsetMin);
   return { rows: sortEvents(narrowed, SORT_MODES.includes(sort) ? sort : 'soonest'), total: base.length };

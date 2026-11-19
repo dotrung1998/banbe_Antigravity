@@ -4,8 +4,8 @@ import Foundation
 // and sort. Pure rules, 1:1 with src/lib/unifiedDiscovery.js (same names); shared cases in
 // tests/fixtures/unified-discovery.json (BanbeAppTests/UnifiedDiscoveryTests.swift).
 enum UnifiedDiscovery {
-    /// Home's tabs ARE the shared time: For You = any time, Tonight = today, Weekend = the weekend.
-    static let DATE_FOR_TAB: [String: String] = ["foryou": "any", "tonight": "today", "weekend": "weekend"]
+    /// Home's tabs ARE the shared time: For You = any time, Tonight = today, Weekend = the weekend, All events = any time.
+    static let DATE_FOR_TAB: [String: String] = ["foryou": "any", "tonight": "today", "weekend": "weekend", "all": "any"]
 
     static func dateForTab(_ tab: HomeHeroTab) -> String { DATE_FOR_TAB[tab.rawValue] ?? "any" }
 
@@ -17,6 +17,30 @@ enum UnifiedDiscovery {
     }
 
     static func heroTab(forDate date: String) -> HomeHeroTab { HomeHeroTab(rawValue: tabForDate(date)) ?? .foryou }
+
+    /// The tab Home shows as selected (web `resolveTab`). For You and All events share the date "any", so `allPicked`
+    /// (the reader last picked All events) breaks the tie; a tab with its own date wins over the pick. Without For You
+    /// preferences (`hasPrefs` false) there is no For You tab: whatever would read as it is All events.
+    static func resolveTab(date: String, allPicked: Bool, hasPrefs: Bool = true) -> HomeHeroTab {
+        effectiveTab(date == "any" && allPicked ? .all : heroTab(forDate: date), hasPrefs: hasPrefs)
+    }
+
+    // MARK: For You vs All events (bug 2026-11-19: both listed the same events). Web twins: visibleTabs, defaultTab,
+    // effectiveTab, tabSet; cases in tests/fixtures/unified-discovery.json "tabRules".
+
+    /// Tabs the viewer sees: For You only with preferences; "hosting" last, only when `canHost`.
+    static func visibleTabs(hasPrefs: Bool, canHost: Bool = false) -> [String] {
+        HomeHeroTab.allCases.map(\.rawValue).filter { $0 != "foryou" || hasPrefs } + (canHost ? ["hosting"] : [])
+    }
+
+    /// The tab Home opens on: For You with preferences, otherwise All events.
+    static func defaultTab(hasPrefs: Bool) -> HomeHeroTab { hasPrefs ? .foryou : .all }
+
+    /// A stored/selected tab, resolved: For You without preferences is All events.
+    static func effectiveTab(_ tab: HomeHeroTab, hasPrefs: Bool) -> HomeHeroTab { tab == .foryou && !hasPrefs ? .all : tab }
+
+    /// Which set a tab lists: "forYou" (the matcher's picks) for For You, else "all" (every open event; time tabs add their time).
+    static func tabSet(_ tab: HomeHeroTab) -> String { tab == .foryou ? "forYou" : "all" }
 
     /// How many type tiles Home shows before the "All types" tile.
     static let TILE_TYPES = 5
@@ -124,9 +148,12 @@ enum UnifiedDiscovery {
     /// unified discovery (`tabOwnsTime`) the tab's time stays applied, so "N of M" never counts another tab's events.
     /// The map banner and the state bar show `rows.count`, exactly the list.
     static func nearYou(_ items: [HomeDiscovery.Item], filters: HomeDiscovery.Filters, sort: String?, now: Date,
-                        tabOwnsTime: Bool, offsetMin: Int = HomeDiscovery.defaultOffsetMin)
+                        tabOwnsTime: Bool, offsetMin: Int = HomeDiscovery.defaultOffsetMin,
+                        tab: HomeHeroTab? = nil, forYouKeys: Set<String>? = nil)
         -> (rows: [HomeDiscovery.Item], total: Int) {
-        let open = items.filter { isOpenItem($0, now: now) }
+        // On the For You tab the base is only the matcher's picks (`forYouKeys`); other tabs ignore them.
+        let picks: Set<String>? = tab.map { tabSet($0) == "forYou" } == true ? forYouKeys : nil
+        let open = items.filter { isOpenItem($0, now: now) && (picks?.contains($0.key) ?? true) }
         var timeOnly = HomeDiscovery.Filters.default
         timeOnly.date = filters.date
         let base = tabOwnsTime ? HomeDiscovery.apply(open, timeOnly, now: now, offsetMin: offsetMin) : open

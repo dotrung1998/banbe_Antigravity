@@ -708,65 +708,39 @@ struct MapExploreView: View {
         .padding(.horizontal, 16)
     }
 
-    /// Prototype v2: a picked type turns this into an ink pill (glyph + name + sliders, badge for the OTHER filters);
-    /// with no type it is the glass sliders circle carrying the count.
+    /// The ink pill beside the search field: pin + the picked AREA (same label as Home's band) + sliders, with a badge for
+    /// the filters other than the type (the type is the highlighted chip below).
     @ViewBuilder
     private var udFiltersButton: some View {
-        let type = catFilter != "all" ? orderedCategories.first(where: { $0.key == catFilter }) : nil
-        let extra = max(0, udFilterBadge - (type == nil ? 0 : 1))
-        if let type {
-            Button {
-                Haptics.selection()
-                searchFieldFocused = false
-                filterSheetOpen = true
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: CategoryGlyph.symbol(type.key))
-                        .font(.app(size: 14, weight: .semibold)).accessibilityHidden(true)
-                    Text(app.T(type.vi, type.en)).font(.app(size: 14, weight: .semibold)).lineLimit(1)
-                    Image(systemName: "slider.horizontal.3").font(.app(size: 14, weight: .semibold)).accessibilityHidden(true)
-                    if extra > 0 {
-                        Text("\(extra)").font(.app(size: 11, weight: .bold)).monospacedDigit()
-                            .frame(minWidth: 18, minHeight: 18)
-                            .background(app.palette.paper, in: Capsule())
-                            .foregroundStyle(app.palette.ink)
-                    }
+        let extra = max(0, udFilterBadge - (catFilter != "all" ? 1 : 0))
+        let areaName = app.area == LocationHierarchy.allID ? app.T("Mọi nơi", "Everywhere") : app.currentAreaLabel
+        Button {
+            Haptics.selection()
+            searchFieldFocused = false
+            filterSheetOpen = true
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "mappin")
+                    .font(.app(size: 14, weight: .semibold)).accessibilityHidden(true)
+                Text(areaName).font(.app(size: 14, weight: .semibold)).lineLimit(1).truncationMode(.tail)
+                Image(systemName: "slider.horizontal.3").font(.app(size: 14, weight: .semibold)).accessibilityHidden(true)
+                if extra > 0 {
+                    Text("\(extra)").font(.app(size: 11, weight: .bold)).monospacedDigit()
+                        .frame(minWidth: 18, minHeight: 18)
+                        .background(app.palette.paper, in: Capsule())
+                        .foregroundStyle(app.palette.ink)
                 }
-                .foregroundStyle(app.palette.paper)
-                .padding(.horizontal, 12).frame(minHeight: 36)
-                .background(app.palette.ink, in: Capsule())
-                .frame(minHeight: 44)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(app.T("Bộ lọc", "Filters"))
-            .accessibilityValue(app.T(type.vi, type.en))
-            .accessibilityIdentifier("map.filters.button")
-        } else {
-            Button {
-                Haptics.selection()
-                searchFieldFocused = false
-                filterSheetOpen = true
-            } label: {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.app(size: 16, weight: .semibold))
-                        .frame(width: 44, height: 44)
-                        .mapSurface(Circle(), interactive: true)
-                    if udFilterBadge > 0 {
-                        Text("\(udFilterBadge)").font(.app(size: 10, weight: .bold)).monospacedDigit()
-                            .foregroundStyle(app.palette.paper)
-                            .frame(minWidth: 18, minHeight: 18).padding(.horizontal, 2)
-                            .background(app.palette.clay, in: Capsule())
-                            .offset(x: 2, y: -2)
-                    }
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(app.T("Bộ lọc", "Filters"))
-            .accessibilityIdentifier("map.filters.button")
+            .foregroundStyle(app.palette.paper)
+            .padding(.horizontal, 12).frame(minHeight: 36)
+            .background(app.palette.ink, in: Capsule())
+            .frame(maxWidth: 150, minHeight: 44)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(app.T("Khu vực: \(areaName), bộ lọc", "Area: \(areaName), filters"))
+        .accessibilityValue(extra > 0 ? app.T("đang bật \(extra)", "\(extra) on") : "")
+        .accessibilityIdentifier("map.filters.button")
     }
 
     /// The bottom stack above the dock, bottom to top: neighbourhood chips, the time bar, then my location + "List · N". The room for the WHOLE stack is always reserved (`MapStack.reserved`

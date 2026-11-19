@@ -266,6 +266,10 @@ extension AppState {
     /// The gold star shows only when at least one matching event exists.
     var hasForYouMatches: Bool { !forYouMatches.isEmpty }
 
+    /// The viewer has For You preferences. Without them For You would list exactly what All events lists, so the tab is
+    /// not offered (UnifiedDiscovery.visibleTabs / effectiveTab; web: `hasForYouPrefs` in Home.jsx).
+    var hasForYouPrefs: Bool { !(eventPrefs?.isEmpty ?? true) }
+
     // MARK: For You on Map
 
     /// Same ranker as Home — fed with Map's loaded rows (public + live only, RLS-filtered by `loadMapEvents`). Map

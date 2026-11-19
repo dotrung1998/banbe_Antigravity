@@ -9,6 +9,15 @@ const fx = JSON.parse(readFileSync(new URL('../fixtures/unified-discovery.json',
 test('tabs are the shared time', () => {
   for (const c of fx.tabForDate) assert.equal(U.tabForDate(c.date), c.tab, c.date);
   assert.deepEqual(U.DATE_FOR_TAB, fx.dateForTab);
+  for (const c of fx.resolveTab) assert.equal(U.resolveTab(c.date, c.allPicked, c.hasPrefs ?? true), c.tab, JSON.stringify(c));
+});
+
+test('For You vs All events: tab visibility, default and set', () => {
+  const t = fx.tabRules;
+  for (const c of t.visibleTabs) assert.deepEqual(U.visibleTabs(c.hasPrefs, c.canHost), c.expect, JSON.stringify(c));
+  for (const c of t.defaultTab) assert.equal(U.defaultTab(c.hasPrefs), c.expect);
+  for (const c of t.effectiveTab) assert.equal(U.effectiveTab(c.tab, c.hasPrefs), c.expect, JSON.stringify(c));
+  for (const [k, v] of Object.entries(t.tabSet)) assert.equal(U.tabSet(k), v, k);
 });
 
 test('type tiles: busiest first, ties in catalogue order', () => {
@@ -57,7 +66,7 @@ test('Near you: every open event, the filters, soonest first; total before the o
   const byKey = new Map(items.map(i => [i.key, i]));
   for (const [k, want] of Object.entries(ny.open)) assert.equal(U.isOpenItem(byKey.get(k), now), want, k);
   for (const c of ny.cases) {
-    const r = U.nearYou(items, c.filters, c.sort, now, { tabOwnsTime: c.tabOwnsTime });
+    const r = U.nearYou(items, c.filters, c.sort, now, { tabOwnsTime: c.tabOwnsTime, tab: c.tab, forYouKeys: c.forYouKeys });
     assert.deepEqual(r.rows.map(x => x.key), c.rows, c.name);
     assert.equal(r.total, c.total, c.name);
   }

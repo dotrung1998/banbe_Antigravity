@@ -2,7 +2,7 @@ import Foundation
 
 // v2.3 rules shared by Home, Browse by type and Event Detail (note 81, switch home_v23). Line-for-line ports of the web's
 // pure modules so both platforms say and decide the same things:
-//   Pager        <- src/lib/pager.js            ListEnd   <- src/lib/listEnd.js (+ browseEnd from browse.js)
+//   Pager        <- src/lib/pager.js            ListEnd   <- src/lib/listEnd.js (+ browseEnd from browse.js; fixture list-end.json)
 //   BrowseRules  <- src/lib/browse.js           LiveLine  <- src/lib/liveLine.js
 // Tests: BanbeAppTests/V23RulesTests.swift (shared tests/fixtures/pager.json + the web unit cases). Change both together.
 // Copy is a ViEn pair (note 57: no dash or semicolon between ideas).
@@ -96,8 +96,12 @@ struct EndCardModel: Equatable {
 enum ListEnd {
     /// Home "Near you" end card (web twin `shortlistEnd`, src/lib/listEnd.js). The list follows Home's filters, not the
     /// For You ranking, so its copy talks about events only. total = before the Filters-owned filters, shown = after.
-    static func shortlistEnd(total: Int, shown: Int, filtersOn: Bool) -> EndCardModel {
+    /// `tab` = the open Home tab key: on "all" the list already holds every event, so the second action is "Change area";
+    /// on any other tab it is "See all events" (the All events tab). No map action: a "See on the map" card sits right
+    /// under the list.
+    static func shortlistEnd(total: Int, shown: Int, filtersOn: Bool, tab: String? = nil) -> EndCardModel {
         let hidden = max(0, total - shown)
+        let onAll = tab == "all"
         if filtersOn && hidden > 0 {
             return EndCardModel(
                 kind: "filters",
@@ -112,9 +116,39 @@ enum ListEnd {
             kind: "end",
             eyebrow: ViEn("Tất cả \(total) sự kiện", "\(total) \(total == 1 ? "event" : "events") in all"),
             title: ViEn("Bạn đã xem hết các sự kiện.", "You’ve seen every event."),
-            body: ViEn("Duyệt theo loại hoặc mở bản đồ để xem thêm quanh bạn.", "Browse by type or open the map to see more around you."),
+            body: onAll ? ViEn("Duyệt theo loại hoặc thử khu vực khác để tìm thêm.", "Browse by type or try another area to find more.")
+                : ViEn("Duyệt theo loại hoặc xem tất cả sự kiện để tìm thêm.", "Browse by type or see all events to find more."),
             actions: [.init(act: "types", label: ViEn("Duyệt mọi loại", "Browse every type"), primary: true),
-                      .init(act: "map", label: ViEn("Mở bản đồ", "Open the map"))])
+                      onAll ? .init(act: "area", label: ViEn("Đổi khu vực", "Change area"))
+                            : .init(act: "tab:all", label: ViEn("Xem tất cả sự kiện", "See all events"))])
+    }
+
+    /// One suggestion card after a short hero pager: switches to `tab` in place (kind "tab") or opens Browse by type.
+    struct HeroSuggestion: Equatable {
+        let kind: String          // "tab" | "browse"
+        let tab: String?
+        let title: ViEn
+        let detail: ViEn
+        /// "weekend" | "all" | "browse": the card's id and its tab.
+        var id: String { tab ?? "browse" }
+    }
+
+    /// Cards that follow a short hero pager (web twin `heroSuggestions`, shared fixture tests/fixtures/list-end.json).
+    /// 1 or 2 events only (an empty tab has its own card). Order: Weekend (when not on it and it has events), All events
+    /// (when not on it and it holds more than this tab shows), then Browse by type, which is always there.
+    static func heroSuggestions(tab: String, shown: Int, weekend: Int, all: Int) -> [HeroSuggestion] {
+        guard shown >= 1 && shown < 3 else { return [] }
+        func ev(_ n: Int) -> ViEn { ViEn("\(n) sự kiện", "\(n) \(n == 1 ? "event" : "events")") }
+        var out: [HeroSuggestion] = []
+        if tab != "weekend" && weekend > 0 {
+            out.append(.init(kind: "tab", tab: "weekend", title: ViEn("Cuối tuần", "Weekend"), detail: ev(weekend)))
+        }
+        if tab != "all" && all > shown {
+            out.append(.init(kind: "tab", tab: "all", title: ViEn("Tất cả sự kiện", "All events"), detail: ev(all)))
+        }
+        out.append(.init(kind: "browse", tab: nil, title: ViEn("Duyệt theo loại", "Browse by type"),
+                         detail: ViEn("Mọi loại sự kiện", "Every type of event")))
+        return out
     }
 
     struct OtherType: Equatable { let key: String; let name: ViEn; let count: Int }

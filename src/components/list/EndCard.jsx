@@ -20,7 +20,7 @@ const card = { background: 'var(--bb-block)', color: 'var(--bb-fg)' };
 
 function Btn({ a, tx, onAction }) {
   return (
-    <button type="button" data-testid={a.testId || `list-end-${a.act}`} onClick={() => onAction(a.act)} className="bb-end-btn"
+    <button type="button" data-testid={a.testId || `list-end-${a.act}`} onClick={(e) => onAction(a.act, e)} className="bb-end-btn"
       style={{ minHeight: 44, padding: '0 16px', borderRadius: 999, border: a.primary ? '1px solid transparent' : '1px solid var(--bb-rule)', background: a.primary ? 'var(--bb-fg)' : 'transparent',
         color: a.primary ? 'var(--bb-bg)' : 'var(--bb-fg)', fontFamily: 'inherit', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
       {tx(a.label)}

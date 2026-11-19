@@ -43,6 +43,7 @@ const GRID = <><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4
 
 // The Home tabs, in Home's own order and words: See all carries them so a reader changes tab in place (note 85).
 const SCOPES = ['foryou', 'tonight', 'weekend'];
+// For You is only offered to a viewer with preferences (unifiedDiscovery.visibleTabs), otherwise it equals All events.
 // And the fourth tab (note 90): the whole catalogue, where the quiet link under the chips used to lead.
 const TYPES_TAB = { key: 'all', vi: 'Duyệt theo loại', en: 'Browse by type' };
 
@@ -64,7 +65,7 @@ const TYPES_TAB = { key: 'all', vi: 'Duyệt theo loại', en: 'Browse by type' 
  * @param {string} [p.accountName]  the signed-in reader's name, for the avatar's initials fallback
  * @param {string} [p.accountAvatarUrl]  the reader's profile photo, shown in the nav instead of a person glyph
  */
-export default function Browse({ T, lang, scope, type, query, filters, items, now, areaLabel, shapeRow,
+export default function Browse({ T, lang, scope, hasPrefs = true, type, query, filters, items, now, areaLabel, shapeRow,
   onType, onQuery, onFilters, onBack, onOpenEvent, onOpenHost, onMap, onHost, onScope = () => {}, from = null,
   onBrowseTypes = () => {}, onToggleSave = null, onAccount = null,
   areaKey = '', areaActive = false, onChooseArea = () => {}, onAllAreas = () => {},
@@ -221,7 +222,7 @@ export default function Browse({ T, lang, scope, type, query, filters, items, no
             tab like the others: it opens the every-event list in place and remembers this tab, so Back returns here. */}
         <div role="tablist" aria-label={T('Trang chủ', 'Home')} data-hscroll data-testid="browse-scope-tabs"
           style={{ display: 'flex', gap: 18, overflowX: 'auto', padding: '0 20px', scrollbarWidth: 'none' }}>
-          {SCOPES.map(k => ({ key: k, ...TAB_LABEL[k] })).concat(TYPES_TAB).map(t => {
+          {SCOPES.filter(k => k !== 'foryou' || hasPrefs).map(k => ({ key: k, ...TAB_LABEL[k] })).concat(TYPES_TAB).map(t => {
             const on = t.key === 'all' ? scope === 'all' : scope === t.key;
             return (
               <button key={t.key} type="button" role="tab" aria-selected={on} data-testid={`browse-scope-${t.key}`}

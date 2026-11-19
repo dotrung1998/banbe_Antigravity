@@ -12,10 +12,13 @@ import AccountAvatar from '../AccountAvatar.jsx';
 import { categoryDefs } from '../../lib/eventTypes.js';
 import GlassMenu, { GlassMenuItem, GlassMenuDivider } from '../GlassMenu.jsx';
 import SeeAllFanCard from './SeeAllFanCard.jsx';
+import HeroSuggestCard from './HeroSuggestCard.jsx';
+import { heroSuggestions } from '../../lib/listEnd.js';
+import { visibleTabs } from '../../lib/unifiedDiscovery.js';
 import { SERIF } from '../event/v23Style.js';
 
 const NIGHT = '#16140f';
-const TABS = [['foryou', 'Dành cho bạn', 'For You'], ['tonight', 'Tối nay', 'Tonight'], ['weekend', 'Cuối tuần', 'Weekend']];
+const TABS = [['foryou', 'Dành cho bạn', 'For You'], ['tonight', 'Tối nay', 'Tonight'], ['weekend', 'Cuối tuần', 'Weekend'], ['all', 'Tất cả', 'All events']];
 const TYPE_DEFS = categoryDefs();
 const BROWSE_MAX = 5;
 
@@ -34,7 +37,7 @@ const GEAR = <><circle cx="12" cy="12" r="3.2" /><path d="M19.4 15a1.7 1.7 0 0 0
 
 /**
  * @param {object} p
- * @param {'foryou'|'tonight'|'weekend'|'hosting'} p.tab
+ * @param {'foryou'|'tonight'|'weekend'|'all'|'hosting'} p.tab
  * @param {Record<string, Array<{key,name,img,dateBadge,priceLabel,metaLine,left}>>} p.lists  hero rails
  * @param {Array} p.items  filtered discovery items [{ key, startsAt, soldOut, ev }] for By type
  * @param {boolean} p.canHost  show the Hosting tab
@@ -42,7 +45,7 @@ const GEAR = <><circle cx="12" cy="12" r="3.2" /><path d="M19.4 15a1.7 1.7 0 0 0
 export default function HomeShellV5({
   T, lang, tab, onTab, onReturnToEvents, lists, items, canHost, user, dateLabel, areaLabel, areaActive = false, filtersActive = false, hasPrefs = true, onClearFilters,
   onOpenEvent, onSeeAll, onAccount, onSearch, onArea, onMap, onFilters, filterSummary, onFindType, onPickType, onSetPrefs, onBrowseAll,
-  onToggleSave = null,
+  onToggleSave = null, onSuggestBrowse = null,
   typeCounts, badgeDate, trStatus, children, hostBody, below, shortlist = null, seeAll = null, onBrowseType = null, browseTotal = null,
   // Audit 2026-11-19 row 29 (visual pass follow-up): the guest sign-in banner sits under the band, above the photo hero,
   // so the floating dock can never sit on it (at 320×700 it used to cover 36 px of it at rest).
@@ -109,10 +112,13 @@ export default function HomeShellV5({
     });
   };
 
-  const tabs = [...TABS, ...(canHost ? [['hosting', 'Tổ chức', 'Hosting']] : [])];
-  // Audit 2026-11-19 row 36: a guest has no preferences, so "For You" is showing the whole catalogue — call it All
-  // rather than promise personalisation that is not there.
-  const tabLabel = (k, vi, en) => (k === 'foryou' && !user ? T('Tất cả', 'All') : T(vi, en));
+  // Tabs come from the shared rule (unifiedDiscovery.visibleTabs): For You only with preferences, Hosting last.
+  const visible = visibleTabs(hasPrefs, canHost);
+  const shownTabs = TABS.filter(([k]) => visible.includes(k));
+  const tabs = [...shownTabs, ...(canHost ? [['hosting', 'Tổ chức', 'Hosting']] : [])];
+  // A guest's For You is the whole catalogue (no preferences yet); the All events tab now names that honestly, so For You
+  // keeps its own name for everyone. One label source for the tab row and the folded band's view menu.
+  const tabLabel = (k, vi, en) => T(vi, en);
   const currentTabLabel = (() => { const t = tabs.find(x => x[0] === tab); return t ? T(t[1], t[2]) : ''; })();
   const areaText = areaActive ? areaLabel : T('Mọi nơi', 'Everywhere');
 
@@ -206,9 +212,9 @@ export default function HomeShellV5({
                   <span className="bb-home-head__contextarea"><Icon d={PIN} size={10} /><span>{areaText}</span></span>
                 </button>
               )}>
-              {TABS.map(([k, vi, en]) => (
+              {shownTabs.map(([k, vi, en]) => (
                 <GlassMenuItem key={k} testId={`home-view-${k}`} checked={!hosting && tab === k}
-                  onClick={() => { onTab(k); onReturnToEvents?.(); }}>{tabLabel(k, vi, en)}</GlassMenuItem>
+                  onClick={() => { onTab(k); }}>{tabLabel(k, vi, en)}</GlassMenuItem>
               ))}
               {canHost && (
                 <>
@@ -300,6 +306,12 @@ export default function HomeShellV5({
                 {list.length > 0 && seeAll && (
                   <SeeAllFanCard photos={list.map(e => e.img)} label={seeAll.label} count={seeAll.count} onOpen={() => onSeeAll(tab)} T={T} />
                 )}
+                {/* A short pager (1 or 2 events) offers other ways to look (Weekend, All events, Browse by type) in the
+                    same card size; the rule and words are shared with iOS (listEnd.heroSuggestions). */}
+                {list.length > 0 && heroSuggestions({ tab, shown: list.length, counts: { weekend: lists.totals?.weekend, all: lists.totals?.all } }).map(c => (
+                  <HeroSuggestCard key={c.kind === 'tab' ? c.tab : 'browse'} card={c} T={T}
+                    onOpen={() => { if (c.kind === 'tab') onTab(c.tab); else (onSuggestBrowse || onBrowseAll)?.(); }} />
+                ))}
                 {list.length > 0 && !seeAll && (
                   <button type="button" data-testid="home-hero-see-all" onClick={() => onSeeAll(tab)}
                     style={{ flex: '0 0 268px', height: 360, borderRadius: 16, scrollSnapAlign: 'start', border: '1px dashed rgba(255,255,255,.3)', background: 'rgba(255,255,255,.08)', color: '#fff', fontFamily: 'inherit', fontSize: 15, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer' }}>
@@ -329,7 +341,9 @@ export default function HomeShellV5({
                       ? (weekendHasEvents
                         ? { icon: MOON, text: T('Tối nay chưa có sự kiện nào.', 'Nothing on tonight.'), next: weekendNext, cta: T('Xem cuối tuần', 'See this weekend'), go: () => onTab('weekend'), more: browseAll }
                         : { icon: MOON, text: T('Tối nay chưa có sự kiện nào.', 'Nothing on tonight.'), next: T('Cuối tuần này cũng chưa có gì.', 'The weekend is quiet too.'), ...browseAll })
-                      : { icon: CAL, text: T('Cuối tuần này chưa có sự kiện nào.', 'Nothing on this weekend.'), ...browseAll };
+                      : tab === 'all'
+                        ? { icon: CAL, text: T('Chưa có sự kiện nào đang mở.', 'No open events yet.'), cta: T('Mở bản đồ', 'Open the map'), go: onMap }
+                        : { icon: CAL, text: T('Cuối tuần này chưa có sự kiện nào.', 'Nothing on this weekend.'), ...browseAll };
                   let E = { ...base, area: false, clear: null, prefs: false };
                   if (narrowed && tab === 'foryou') {
                     E = { icon: SPARK, area: true, go: changeArea, cta: T('Đổi khu vực', 'Change area'), prefs: !hasPrefs,
@@ -338,7 +352,7 @@ export default function HomeShellV5({
                       clear: areaActive ? T(`Xem mọi sự kiện`, 'Show all events') : T('Bỏ bộ lọc', 'Clear filters') };
                     if (!areaActive) E = { ...E, area: false, go: onClearFilters, cta: T('Bỏ bộ lọc', 'Clear filters'), clear: null };
                   } else if (narrowed && areaActive) {
-                    E = { ...base, area: true, clear: T('Xem mọi sự kiện', 'Show all events'), text: tab === 'tonight' ? T(`Tối nay chưa có sự kiện nào ở ${areaTxt}.`, `Nothing on tonight in ${areaTxt}.`) : T(`Cuối tuần này chưa có sự kiện nào ở ${areaTxt}.`, `Nothing on this weekend in ${areaTxt}.`) };
+                    E = { ...base, area: true, clear: T('Xem mọi sự kiện', 'Show all events'), text: tab === 'tonight' ? T(`Tối nay chưa có sự kiện nào ở ${areaTxt}.`, `Nothing on tonight in ${areaTxt}.`) : tab === 'all' ? T(`Chưa có sự kiện nào ở ${areaTxt}.`, `No events in ${areaTxt} yet.`) : T(`Cuối tuần này chưa có sự kiện nào ở ${areaTxt}.`, `Nothing on this weekend in ${areaTxt}.`) };
                   }
                   // Owner 2026-11-19 ("more premium"): the empty tab is a real card in the hero, not a dashed
                   // placeholder. Tracked kicker, serif headline, one line on what is next, ONE primary pill, and the
@@ -346,8 +360,8 @@ export default function HomeShellV5({
                   // iOS twin: HeroEmptyCard in HomeShellV5Views.swift.
                   const headline = tab === 'foryou'
                     ? (narrowed ? T('Chưa có gợi ý ở đây.', 'No picks here yet.') : T('Gợi ý của bạn bắt đầu từ đây.', 'Your picks start here.'))
-                    : tab === 'tonight' ? T('Đêm nay yên ắng.', 'A quiet night.') : T('Cuối tuần yên ắng.', 'A quiet weekend.');
-                  const kicker = (tab === 'foryou' ? T('Dành cho bạn', 'For You') : tab === 'tonight' ? T('Tối nay', 'Tonight') : T('Cuối tuần này', 'This weekend'))
+                    : tab === 'tonight' ? T('Đêm nay yên ắng.', 'A quiet night.') : tab === 'all' ? T('Chưa có gì ở đây.', 'Nothing here yet.') : T('Cuối tuần yên ắng.', 'A quiet weekend.');
+                  const kicker = (tab === 'foryou' ? T('Dành cho bạn', 'For You') : tab === 'tonight' ? T('Tối nay', 'Tonight') : tab === 'all' ? T('Tất cả sự kiện', 'All events') : T('Cuối tuần này', 'This weekend'))
                     + (areaActive ? ` · ${areaTxt}` : '');
                   // The covers of where the primary action leads (Tonight → this weekend), never made up.
                   const covers = tab === 'tonight' && weekendHasEvents && !E.area ? weekendList.map(e => e.img).filter(Boolean).slice(0, 3) : [];

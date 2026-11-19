@@ -9,9 +9,16 @@ import UIKit
 
 /// The goer tabs of the hero. The Hosting tab is separate (`HomeHeroSection.hosting`): it is the host view of `app.homeView`.
 enum HomeHeroTab: String, CaseIterable {
-    case foryou, tonight, weekend
-    var vi: String { self == .foryou ? "Dành cho bạn" : (self == .tonight ? "Tối nay" : "Cuối tuần") }
-    var en: String { self == .foryou ? "For You" : (self == .tonight ? "Tonight" : "Weekend") }
+    /// `all` = every open event, any type and date, soonest first (no For You ranking, no time window). Order = the tab row.
+    case foryou, tonight, weekend, all
+    var vi: String {
+        switch self { case .foryou: "Dành cho bạn"; case .tonight: "Tối nay"; case .weekend: "Cuối tuần"; case .all: "Tất cả" }
+    }
+    var en: String {
+        switch self { case .foryou: "For You"; case .tonight: "Tonight"; case .weekend: "Weekend"; case .all: "All events" }
+    }
+    /// The tabs Browse shows (web `SCOPES`): All events is Browse's own "Browse by type" scope there, not a fifth tab.
+    static let browseTabs: [HomeHeroTab] = [.foryou, .tonight, .weekend]
 }
 
 private enum HeroColor {
@@ -248,12 +255,12 @@ struct HomeHeroPinnedHeader: View {
         if let image = UIImage(named: BanbeLogo.Kind.wordmark.rawValue) {
             Image(uiImage: image)
                 .renderingMode(.template).resizable().scaledToFit()
-                .foregroundStyle(app.palette.logo)
+                .foregroundStyle(app.palette.ink)
                 .frame(width: 30 * Self.wordmarkAspect, height: 30, alignment: .leading)
                 .accessibilityLabel("banbe")
                 .accessibilityIdentifier("home.title")
         } else {
-            Text("banbe").font(BanbeTheme.display(24)).foregroundStyle(app.palette.logo)
+            Text("banbe").font(BanbeTheme.display(24)).foregroundStyle(app.palette.ink)
                 .accessibilityIdentifier("home.title")
         }
     }
@@ -290,9 +297,10 @@ struct HomeHeroPinnedHeader: View {
     /// bar always says where you are and how to move.
     private var viewPill: some View {
         Menu {
-            ForEach(HomeHeroTab.allCases, id: \.self) { t in
+            ForEach(HomeHeroTab.allCases.filter { $0 != .foryou || app.hasForYouPrefs }, id: \.self) { t in
                 Button {
-                    selectGoerTab(t)
+                    // From the folded band's pill every view except Hosting keeps the scroll position (owner 2026-11-19).
+                    selectGoerTab(t, keepScroll: true)
                 } label: {
                     if !hosting && tab == t {
                         Label(app.T(t.vi, t.en), systemImage: "checkmark")
@@ -321,7 +329,7 @@ struct HomeHeroPinnedHeader: View {
             }
         } label: {
             VStack(spacing: 1) {
-                Text(viewTitle).font(.app(size: 12.5, weight: .semibold)).lineLimit(1)
+                Text(viewTitle).font(.app(size: 17, weight: .semibold)).foregroundStyle(app.palette.linkBlue).lineLimit(1)
                 HStack(spacing: 3) {
                     Image(systemName: "mappin").font(.app(size: 9))
                     Text(areaText).font(.app(size: 10.5, weight: .medium)).lineLimit(1)
@@ -400,7 +408,7 @@ struct HomeHeroPinnedHeader: View {
 
     private func tabsStack(spacing: CGFloat) -> some View {
         HStack(spacing: spacing) {
-            ForEach(HomeHeroTab.allCases, id: \.self) { t in
+            ForEach(HomeHeroTab.allCases.filter { $0 != .foryou || app.hasForYouPrefs }, id: \.self) { t in
                 tabButton(title: app.T(t.vi, t.en), selected: !hosting && tab == t, id: "home.hero.tab.\(t.rawValue)") {
                     selectGoerTab(t)
                 }
@@ -416,7 +424,7 @@ struct HomeHeroPinnedHeader: View {
     /// A goer tab: from Hosting it also returns Home to the Going out view (tab and mode stay in sync). Either way the
     /// feed goes back to the top — including when the tab tapped is the one already open: from the folded band the pick
     /// can happen far down the page, and re-choosing the current view is never a dead tap (owner 2026-11-23).
-    private func selectGoerTab(_ t: HomeHeroTab) {
+    private func selectGoerTab(_ t: HomeHeroTab, keepScroll: Bool = false) {
         if hosting {
             Haptics.selection()
             tab = t
@@ -426,7 +434,7 @@ struct HomeHeroPinnedHeader: View {
             Haptics.selection()
             tab = t
         }
-        app.resetHomeScrollToTop()
+        if !keepScroll { app.resetHomeScrollToTop() }
     }
 
     private func tabButton(title: String, selected: Bool, id: String, action: @escaping () -> Void) -> some View {
@@ -473,6 +481,9 @@ struct HomeHeroSection: View {
     var headerHeight: CGFloat = HomeHeroPinnedHeader.fallbackHeight
     /// v2.3 (note 81): every tab's size; non-nil turns the rail's last card into the See all fan card.
     var v23Counts: [HomeHeroTab: Int]? = nil
+    /// How many events Weekend and All events hold under Home's area and filters, for the short pager's suggestion cards
+    /// (web `lists.totals`). Empty = no cards.
+    var suggestTotals: [HomeHeroTab: Int] = [:]
     /// Note 99 (unified_discovery): "Browse all events" scrolls Home to the Near you list instead of opening Browse; nil = open Browse.
     var onBrowseAll: (() -> Void)? = nil
     /// True while Home shows the Hosting view (organizer mode on + `app.homeView == .host`): the same hero without the card rail.
@@ -491,7 +502,28 @@ struct HomeHeroSection: View {
     }
     private var currentIndex: Int { list.firstIndex { $0.key == current } ?? 0 }
     /// The dash lit under the rail: the rail's end card ("See all") is the last page, so it lights the last dash.
-    private var dashIndex: Int { current == "home.hero.seeAll" && !list.isEmpty ? list.count : currentIndex }
+    private var dashIndex: Int {
+        if list.isEmpty { return currentIndex }
+        if current == "home.hero.seeAll" { return list.count }
+        if let i = suggestions.firstIndex(where: { "home.hero.suggest.\($0.id)" == current }) { return list.count + 1 + i }
+        return currentIndex
+    }
+    /// A short pager (1 or 2 events) offers other ways to look after the See all card: Weekend, All events, Browse by
+    /// type. The rule and the words are shared with web (ListEnd.heroSuggestions, tests/fixtures/list-end.json).
+    private var suggestions: [ListEnd.HeroSuggestion] {
+        guard !hosting, !list.isEmpty else { return [] }
+        return ListEnd.heroSuggestions(tab: tab.rawValue, shown: list.count, weekend: suggestTotals[.weekend] ?? 0, all: suggestTotals[.all] ?? 0)
+    }
+    private func openSuggestion(_ c: ListEnd.HeroSuggestion) {
+        Haptics.selection()
+        if c.kind == "tab", let t = c.tab.flatMap(HomeHeroTab.init(rawValue:)) {
+            tab = t   // in place: the rail swaps, the page does not scroll
+        } else if app.unifiedDiscoveryEnabled, let onBrowseAll {
+            onBrowseAll()
+        } else {
+            app.openBrowse(type: "all", scope: "all")
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -564,6 +596,10 @@ struct HomeHeroSection: View {
                 }
                 if !list.isEmpty {
                     seeAllCard.id("home.hero.seeAll")
+                    ForEach(suggestions, id: \.id) { c in
+                        HeroSuggestCard(model: c, width: Self.cardWidth, height: Self.cardHeight) { openSuggestion(c) }
+                            .id("home.hero.suggest.\(c.id)")
+                    }
                 }
                 if list.isEmpty {
                     emptyCard
@@ -735,6 +771,13 @@ struct HomeHeroSection: View {
             // Browse all events opens the every-event list, never the By type section on Home (owner 2026-11-18).
             cta = app.T("Xem tất cả sự kiện", "Browse all events")
             action = browseAll
+        case .all:
+            icon = "calendar"
+            headline = app.T("Chưa có gì ở đây.", "Nothing here yet.")
+            text = areaActive ? app.T("Chưa có sự kiện nào ở \(place).", "No events in \(place) yet.")
+                              : app.T("Chưa có sự kiện nào đang mở.", "No open events yet.")
+            cta = app.T("Mở bản đồ", "Open the map")
+            action = { Haptics.selection(); app.goMapExploreFromHome() }
         }
         // Narrowed by an area or filters: "Change area" leads; the original action drops to the second/third slot.
         let changeArea = narrowed && areaActive
@@ -768,7 +811,8 @@ struct HomeHeroSection: View {
                 links.append(.init(title: app.T("Xem tất cả sự kiện", "Browse all events"), id: "home.hero.empty.more", run: browseAll))
             }
         }
-        let kicker = app.T(tab == .weekend ? "Cuối tuần này" : tab.vi, tab == .weekend ? "This weekend" : tab.en)
+        let kicker = app.T(tab == .weekend ? "Cuối tuần này" : (tab == .all ? "Tất cả sự kiện" : tab.vi),
+                           tab == .weekend ? "This weekend" : (tab == .all ? "All events" : tab.en))
             + (areaActive ? " · \(place)" : "")
         return HeroEmptyCard(icon: icon, kicker: kicker, headline: headline, support: text, primary: primary, links: links,
                              // The covers of what the primary action leads to (Tonight → this weekend), never made up.
@@ -781,8 +825,8 @@ struct HomeHeroSection: View {
 
     private var dots: some View {
         HStack(spacing: 6) {
-            // One dash per card plus one for the end card.
-            ForEach(0..<(list.isEmpty ? 0 : list.count + 1), id: \.self) { i in
+            // One dash per card plus one for the end card and one per suggestion card.
+            ForEach(0..<(list.isEmpty ? 0 : list.count + 1 + suggestions.count), id: \.self) { i in
                 Capsule()
                     .fill(i == dashIndex ? Color.white : Color.white.opacity(0.32))
                     .frame(width: i == dashIndex ? 30 : 20, height: 3)

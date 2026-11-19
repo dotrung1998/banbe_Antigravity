@@ -16,12 +16,42 @@ final class UnifiedDiscoveryTests: XCTestCase {
     private let keys = ["food", "music", "art", "stage", "market", "workshop", "fashion"]
 
     func testTabDateMapping() {
-        XCTAssertEqual(UnifiedDiscovery.DATE_FOR_TAB, ["foryou": "any", "tonight": "today", "weekend": "weekend"])
+        XCTAssertEqual(UnifiedDiscovery.DATE_FOR_TAB, ["foryou": "any", "tonight": "today", "weekend": "weekend", "all": "any"])
         XCTAssertEqual(UnifiedDiscovery.tabForDate("today"), "tonight")
         XCTAssertEqual(UnifiedDiscovery.tabForDate("weekend"), "weekend")
         for d in ["any", "tomorrow", "week", "on:2026-11-20", ""] { XCTAssertEqual(UnifiedDiscovery.tabForDate(d), "foryou", d) }
-        for t in HomeHeroTab.allCases {
+        // All events shares For You's date; the pick breaks the tie (web `resolveTab`).
+        for t in HomeHeroTab.allCases where t != .all {
             XCTAssertEqual(UnifiedDiscovery.heroTab(forDate: UnifiedDiscovery.dateForTab(t)), t)
+        }
+        XCTAssertEqual(UnifiedDiscovery.dateForTab(.all), "any")
+        XCTAssertEqual(UnifiedDiscovery.resolveTab(date: "any", allPicked: true), .all)
+        XCTAssertEqual(UnifiedDiscovery.resolveTab(date: "any", allPicked: false), .foryou)
+        XCTAssertEqual(UnifiedDiscovery.resolveTab(date: "today", allPicked: true), .tonight)
+    }
+
+    /// For You vs All events (bug 2026-11-19): shared cases in tests/fixtures/unified-discovery.json.
+    func testForYouVsAllTabRules() throws {
+        let root = try fixture("unified-discovery.json")
+        for c in root["resolveTab"] as? [[String: Any]] ?? [] {
+            let got = UnifiedDiscovery.resolveTab(date: c["date"] as? String ?? "", allPicked: c["allPicked"] as? Bool ?? false,
+                                                  hasPrefs: c["hasPrefs"] as? Bool ?? true)
+            XCTAssertEqual(got.rawValue, c["tab"] as? String, "\(c)")
+        }
+        let t = try XCTUnwrap(root["tabRules"] as? [String: Any])
+        for c in t["visibleTabs"] as? [[String: Any]] ?? [] {
+            XCTAssertEqual(UnifiedDiscovery.visibleTabs(hasPrefs: c["hasPrefs"] as? Bool ?? false, canHost: c["canHost"] as? Bool ?? false),
+                           c["expect"] as? [String], "\(c)")
+        }
+        for c in t["defaultTab"] as? [[String: Any]] ?? [] {
+            XCTAssertEqual(UnifiedDiscovery.defaultTab(hasPrefs: c["hasPrefs"] as? Bool ?? false).rawValue, c["expect"] as? String)
+        }
+        for c in t["effectiveTab"] as? [[String: Any]] ?? [] {
+            let tab = try XCTUnwrap((c["tab"] as? String).flatMap(HomeHeroTab.init(rawValue:)))
+            XCTAssertEqual(UnifiedDiscovery.effectiveTab(tab, hasPrefs: c["hasPrefs"] as? Bool ?? false).rawValue, c["expect"] as? String, "\(c)")
+        }
+        for (k, v) in t["tabSet"] as? [String: String] ?? [:] {
+            XCTAssertEqual(UnifiedDiscovery.tabSet(try XCTUnwrap(HomeHeroTab(rawValue: k))), v, k)
         }
     }
 
@@ -95,6 +125,11 @@ final class UnifiedDiscoveryTests: XCTestCase {
         if let d = root["dateForTab"] as? [String: String] {
             XCTAssertEqual(d, UnifiedDiscovery.DATE_FOR_TAB)
         }
+        for c in root["resolveTab"] as? [[String: Any]] ?? [] {
+            XCTAssertEqual(UnifiedDiscovery.resolveTab(date: c["date"] as? String ?? "", allPicked: c["allPicked"] as? Bool ?? false,
+                                                         hasPrefs: c["hasPrefs"] as? Bool ?? true).rawValue,
+                           c["tab"] as? String)
+        }
         for c in root["topTypes"] as? [[String: Any]] ?? [] {
             let counts = c["counts"] as? [String: Int] ?? [:]
             let n = c["n"] as? Int ?? UnifiedDiscovery.TILE_TYPES
@@ -158,7 +193,9 @@ final class UnifiedDiscoveryTests: XCTestCase {
             f.date = j["date"] as? String ?? "any"
             f.cats = j["cats"] as? [String] ?? []
             let r = UnifiedDiscovery.nearYou(items, filters: f, sort: c["sort"] as? String, now: now,
-                                             tabOwnsTime: c["tabOwnsTime"] as? Bool ?? false)
+                                             tabOwnsTime: c["tabOwnsTime"] as? Bool ?? false,
+                                             tab: (c["tab"] as? String).flatMap(HomeHeroTab.init(rawValue:)),
+                                             forYouKeys: (c["forYouKeys"] as? [String]).map(Set.init))
             XCTAssertEqual(r.rows.map(\.key), c["rows"] as? [String], name)
             XCTAssertEqual(r.total, c["total"] as? Int, name)
         }

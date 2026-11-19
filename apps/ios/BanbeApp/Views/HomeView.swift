@@ -230,6 +230,11 @@ struct HomeView: View {
             }
             // The tour asks for a hero tab (For You on step 1, Tonight on its "do it" tap).
             .onReceive(OnboardingTourController.shared.$heroTabRequest.compactMap { $0 }) { heroTabBinding.wrappedValue = $0 }
+            // A time chosen elsewhere (Filters, the Map hand-off) leaves All events: its pick must not come back when the date
+            // clears (web twin: the effect after `curTab` in Home.jsx).
+            .onChange(of: app.homeFilters.date) { _, d in
+                if app.unifiedDiscoveryEnabled, heroTab == .all, d != "any" { heroTab = .foryou }
+            }
             }
         }
         }
@@ -716,6 +721,7 @@ struct HomeView: View {
                         onAvatar: { quickSheetOpen = true },
                         headerHeight: pinnedHeaderHeight,
                         v23Counts: snap.tabCounts,
+                        suggestTotals: snap.heroTotals,
                         onBrowseAll: { nearYouScrollToken += 1 })
             .id(false)
             .id("home.tour.hero")
@@ -740,7 +746,10 @@ struct HomeView: View {
         Color.clear.frame(height: 0).id("home.nearYou")
         VStack(spacing: 0) {
             // Note 99: time has the tabs, so the Filters badge counts only what Filters owns.
-            ShortlistV23View(tab: shownHeroTab, rows: snap.shortRows, total: snap.shortTotal,
+            // The tab shows beside the title only when the list follows it (unified discovery); otherwise the list is every
+            // open event whatever the tab, so the end card words itself for All events. Web twin: ShortlistV23 `tab` / `endTab`.
+            ShortlistV23View(tab: app.unifiedDiscoveryEnabled ? shownHeroTab : nil,
+                             endTab: app.unifiedDiscoveryEnabled ? shownHeroTab : .all, rows: snap.shortRows, total: snap.shortTotal,
                              filterBadge: app.unifiedDiscoveryEnabled ? UnifiedDiscovery.ownedFilterCount(app.homeFilters, sort: app.homeSort) : snap.filterBadge,
                              onFilters: { app.homeFilterSheetOpen = true }, onAction: { shortlistAction($0) },
                              activeParts: unifiedActiveParts, onClearActive: { clearUnified() })
@@ -791,12 +800,17 @@ struct HomeView: View {
 
     /// Note 99 (unified_discovery): the tabs ARE the shared time. The selected tab is derived from
     /// `homeFilters.date` and picking one sets the date; with the switch off this is the local tab as before.
+    /// For You and All events share the date "any", so the pick (`heroTab`) breaks the tie (UnifiedDiscovery.resolveTab).
     private var shownHeroTab: HomeHeroTab {
-        app.unifiedDiscoveryEnabled ? UnifiedDiscovery.heroTab(forDate: app.homeFilters.date) : heroTab
+        app.unifiedDiscoveryEnabled
+            ? UnifiedDiscovery.resolveTab(date: app.homeFilters.date, allPicked: heroTab == .all, hasPrefs: app.hasForYouPrefs)
+            : UnifiedDiscovery.effectiveTab(heroTab, hasPrefs: app.hasForYouPrefs)
     }
     private var heroTabBinding: Binding<HomeHeroTab> {
-        guard app.unifiedDiscoveryEnabled else { return $heroTab }
-        return Binding(get: { UnifiedDiscovery.heroTab(forDate: app.homeFilters.date) },
+        guard app.unifiedDiscoveryEnabled else {
+            return Binding(get: { UnifiedDiscovery.effectiveTab(heroTab, hasPrefs: app.hasForYouPrefs) }, set: { heroTab = $0 })
+        }
+        return Binding(get: { UnifiedDiscovery.resolveTab(date: app.homeFilters.date, allPicked: heroTab == .all, hasPrefs: app.hasForYouPrefs) },
                        set: { t in
                            heroTab = t
                            let d = UnifiedDiscovery.dateForTab(t)
@@ -845,6 +859,10 @@ struct HomeView: View {
         switch act {
         case "clear-filters": app.clearFilters(); app.homeSort = "soonest"
         case "map": app.goMapExploreFromHome()
+        // End card "See all events": the All events tab, in place (the same switch the tab row makes).
+        case "tab:all": heroTabBinding.wrappedValue = .all
+        // End card on All events: nothing to widen but the area.
+        case "area": areaSearchOpen = true
         // Prototype v2: Browse is unreachable from Home in this mode; the end card opens the in-place type sheet.
         default:
             if app.unifiedDiscoveryEnabled { udTypeSheetOpen = true }
@@ -859,7 +877,8 @@ struct HomeView: View {
         HomeHeroSection(tab: $heroTab, lists: snap.heroLists, onSeeAll: { heroSeeAll($0) },
                         onSearchLocations: { areaSearchOpen = true },
                         onAvatar: { quickSheetOpen = true },
-                        headerHeight: pinnedHeaderHeight)
+                        headerHeight: pinnedHeaderHeight,
+                        suggestTotals: snap.heroTotals)
             .id(false)
             .id("home.tour.hero")
             .revealRegion(0)
@@ -919,6 +938,8 @@ struct HomeView: View {
             var f = app.homeFilters
             f.date = tab == .tonight ? "today" : "weekend"
             app.setHomeFilters(f)
+        case .all:
+            break   // the feed already lists every event (web: heroSeeAll skips the date pick for All events)
         }
     }
 
@@ -1296,6 +1317,8 @@ struct HomeView: View {
         var categoryRow: [String] = ["all"]
         /// Note 80: the hero's rails (max 5 each), same filters as the feed except the date. Empty unless Simple Shell.
         var heroLists: [HomeHeroTab: [DiscoveryCardModel]] = [:]
+        /// Weekend and All events sizes under Home's area and filters (the hero's suggestion cards; web `heroLists.totals`).
+        var heroTotals: [HomeHeroTab: Int] = [:]
         /// v2.3 (note 81): the Shortlist rows (the open tab narrowed by Home's filters), the tab's size before the
         /// filters, every tab's size (See all card), the live line, and the whole catalogue's size (Browse "See all").
         var shortRows: [V23Row] = []
@@ -1376,7 +1399,9 @@ struct HomeView: View {
         var snap = Snapshot(items: items, shown: shown, cards: cards, quickCounts: quick, relaxHints: hints, filterBadge: badge,
                             typeChips: typeChips, typeCounts: typeCounts, categoryCounts: catCounts, categoryRow: catRow)
         if app.simpleShellEnabled && app.effectiveHomeView != .host {
-            snap.heroLists = makeHeroLists(items: items, byKey: byKey, forYou: forYou, filters: f, now: now)
+            var totals: [HomeHeroTab: Int] = [:]
+            snap.heroLists = makeHeroLists(items: items, byKey: byKey, forYou: forYou, filters: f, now: now, totals: &totals)
+            snap.heroTotals = totals
             if app.homeV23Enabled { fillV23(&snap, items: items, byKey: byKey, forYou: forYou, filters: f, now: now) }
         }
         return snap
@@ -1386,7 +1411,8 @@ struct HomeView: View {
     /// at most 5 open events (not sold out, not cancelled, not past its end), every filter kept
     /// except the date.
     private func makeHeroLists(items: [HomeDiscovery.Item], byKey: [String: CatalogEvent], forYou: [ForYouMatch],
-                               filters: HomeDiscovery.Filters, now: Date) -> [HomeHeroTab: [DiscoveryCardModel]] {
+                               filters: HomeDiscovery.Filters, now: Date,
+                               totals: inout [HomeHeroTab: Int]) -> [HomeHeroTab: [DiscoveryCardModel]] {
         // One "still on" rule with web (UnifiedDiscovery.isOpenItem: not cancelled, a start, not past its end). It
         // used to drop anything that had merely started over an hour ago, which web stopped doing (audit row 6).
         func open(_ it: HomeDiscovery.Item) -> Bool { !it.soldOut && UnifiedDiscovery.isOpenItem(it, now: now) }
@@ -1405,7 +1431,13 @@ struct HomeView: View {
         let byItemKey = Dictionary(items.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
         let ranked = forYou.compactMap { byItemKey[$0.key] }.filter(open)
         let soonest = HomeDiscovery.apply(items, base, now: now).filter(open)
-        return [.foryou: shape(ranked.isEmpty ? soonest : ranked), .tonight: byDate("today"), .weekend: byDate("weekend")]
+        // All events: every open event, any type and date, soonest first (web: `heroLists.all`).
+        let allSoonest = HomeDiscovery.sort(soonest, mode: "soonest")
+        let weekendAll = HomeDiscovery.apply(items, { var g = base; g.date = "weekend"; return g }(), now: now).filter(open)
+        totals = [.foryou: ranked.count, .weekend: weekendAll.count, .all: allSoonest.count]
+        // For You = only the matcher's picks (an empty set shows For You's own empty card); All events is every open event.
+        return [.foryou: shape(ranked), .tonight: byDate("today"), .weekend: byDate("weekend"),
+                .all: shape(allSoonest)]
     }
 
     /// Unified discovery: the shared query narrows Home's lists with Search's own matcher (web: `qItems`).
@@ -1432,7 +1464,9 @@ struct HomeView: View {
             snap.udCounts = HomeDiscovery.categoryCounts(pool.filter { UnifiedDiscovery.isOpenItem($0, now: now) }, f,
                                                          keys: EventTypes.keys, now: now)
         }
-        let near = UnifiedDiscovery.nearYou(pool, filters: f, sort: app.homeSort, now: now, tabOwnsTime: app.unifiedDiscoveryEnabled)
+        let ud = app.unifiedDiscoveryEnabled
+        let near = UnifiedDiscovery.nearYou(pool, filters: f, sort: app.homeSort, now: now, tabOwnsTime: ud,
+                                            tab: shownHeroTab, forYouKeys: ud && app.hasForYouPrefs ? Set(forYou.map(\.key)) : nil)
         snap.shortTotal = near.total
         snap.shortRows = near.rows.compactMap { it in byKey[it.key].map { app.v23Row($0, item: it, now: now) } }
         // The map banner and the state bar promise "same results": exactly the list's count (web: shortlist.rows.length).

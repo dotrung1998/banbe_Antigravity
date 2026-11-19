@@ -47,7 +47,7 @@ import { useReducedMotion } from '../lib/useReducedMotion.js';
 import { browseFilters as toBrowseFilters, typeCounts as browseTypeCounts } from '../lib/browse.js';
 import HomeShellV5 from '../components/home/HomeShellV5.jsx';
 import { UnifiedTypeGrid, UnifiedTypeSheet, UnifiedMapBanner } from '../components/home/UnifiedHomeParts.jsx';
-import { DATE_FOR_TAB, tabForDate, ownedFilterCount, isOpenItem as isOpenDiscoveryItem, nearYou } from '../lib/unifiedDiscovery.js';
+import { DATE_FOR_TAB, resolveTab, effectiveTab, visibleTabs, ownedFilterCount, isOpenItem as isOpenDiscoveryItem, nearYou } from '../lib/unifiedDiscovery.js';
 import { buildEventSearchDoc, matchesSearchQuery } from '../lib/search.js';
 import { searchBarStore } from '../lib/searchBarStore.js';
 import QuickSheetV5 from '../components/home/QuickSheetV5.jsx';
@@ -368,6 +368,9 @@ export default function Home({ browse = false }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [discoveryAllShaped, s.eventPrefs, s.eventPrefsVersion, curArea, s.homeLiveEvents]);
   const hasForYou = forYouRanked.length > 0;
+  // For You exists only for a viewer with preferences (otherwise it would list exactly what All events lists):
+  // src/lib/unifiedDiscovery.js visibleTabs / effectiveTab, shared with iOS.
+  const hasForYouPrefs = !!s.eventPrefs && !prefsIsEmpty(s.eventPrefs);
   const forYouOrder = useMemo(() => new Map(forYouRanked.map((m, i) => [m.key, i])), [forYouRanked]);
   // Refresh discovery when the preferences version changes (not on first mount,
   // Home already loads once).
@@ -613,14 +616,23 @@ export default function Home({ browse = false }) {
     const soonest = applyDiscoveryFilters(qItems, base, nowMs).filter(open);
     // The empty Tonight card names the weekend's real size, so it needs the count before the rail's cap.
     const weekendAll = applyDiscoveryFilters(qItems, { ...base, date: 'weekend' }, nowMs).filter(open);
-    return { foryou: (ranked.length ? ranked : soonest).slice(0, railMax).map(shape), tonight: byDate('today'),
-      weekend: weekendAll.slice(0, railMax).map(shape), weekendTotal: weekendAll.length };
+    // All events: every open event, any type and date, soonest first (no For You ranking, no time window).
+    const allSoonest = sortEvents(soonest, 'soonest');
+    // For You = only the matcher's picks (an empty set shows For You's own empty card); All events is every open event.
+    return { foryou: ranked.slice(0, railMax).map(shape), tonight: byDate('today'),
+      weekend: weekendAll.slice(0, railMax).map(shape), weekendTotal: weekendAll.length,
+      all: allSoonest.slice(0, railMax).map(shape),
+      // What the short-pager suggestion cards name (listEnd.heroSuggestions), counted over the same events as the rails.
+      totals: { foryou: ranked.length, weekend: weekendAll.length, all: allSoonest.length } };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [simpleShell, v23, qItems, homeFilters, forYouRanked, T, trStatus, Math.floor(nowMs / 60000)]);
   // Home from the v5 prototype (note 80): which hero tab is open (For You | Tonight | Weekend).
   const [heroTab, setHeroTab] = useState('foryou');
   // Note 99: with unified discovery the open tab is the shared time itself.
-  const curTab = ud ? tabForDate(homeFilters.date) : heroTab;
+  // For You and All events share the date 'any', so with unified discovery the pick (heroTab) breaks the tie.
+  const curTab = ud ? resolveTab(homeFilters.date, heroTab === 'all', hasForYouPrefs) : effectiveTab(heroTab, hasForYouPrefs);
+  // A time chosen elsewhere (Filters, the Map hand-off) leaves All events: its pick must not come back when the date clears.
+  useEffect(() => { if (ud && heroTab === 'all' && homeFilters.date !== 'any') setHeroTab('foryou'); }, [ud, heroTab, homeFilters.date]);
   // v2.3 (note 81, switch home_v23, on top of simple_shell): the Shortlist under the rail is the WHOLE tab, in the
   // tab's order, narrowed by Home's filters (the rail stays the tab's picks). total = before the filters.
   // The whole tab, in the tab's own order (For You ranked, else soonest), before Home's filters. Shared by the
@@ -630,14 +642,14 @@ export default function Home({ browse = false }) {
     if (tab === 'tonight' || tab === 'weekend') {
       return applyDiscoveryFilters(discoveryItems, { ...DEFAULT_FILTERS, date: tab === 'tonight' ? 'today' : 'weekend' }, nowMs).filter(open);
     }
-    if (tab === 'foryou') {
+    // For You is the matcher's picks only; without preferences it does not exist and reads as All events.
+    if (effectiveTab(tab, hasForYouPrefs) === 'foryou') {
       const byKey = new Map(discoveryItems.map(it => [it.key, it]));
-      const ranked = forYouRanked.map(m => byKey.get(m.key)).filter(Boolean).filter(open);
-      if (ranked.length) return ranked;
+      return forYouRanked.map(m => byKey.get(m.key)).filter(Boolean).filter(open);
     }
     return applyDiscoveryFilters(discoveryItems, DEFAULT_FILTERS, nowMs).filter(open);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [discoveryItems, forYouRanked, Math.floor(nowMs / 60000)]);
+  }, [discoveryItems, forYouRanked, hasForYouPrefs, Math.floor(nowMs / 60000)]);
   // One v2.3 row (EventRowV23): when · type, title, then place or status with the price.
   const shapeRow = useCallback((it) => {
     const e = it.ev;
@@ -663,10 +675,10 @@ export default function Home({ browse = false }) {
   // filters, so with unified discovery the tab's time stays applied ("N of M" never counts another tab's events).
   const shortlist = useMemo(() => {
     if (!v23) return null;
-    const r = nearYou(qItems, homeFilters, s.homeSort || 'soonest', nowMs, { tabOwnsTime: ud });
+    const r = nearYou(qItems, homeFilters, s.homeSort || 'soonest', nowMs, { tabOwnsTime: ud, tab: curTab, forYouKeys: ud && hasForYouPrefs ? forYouRanked.map(m => m.key) : null });
     return { rows: r.rows.map(shapeRow), total: r.total };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [v23, ud, qItems, homeFilters, s.homeSort, shapeRow, Math.floor(nowMs / 60000)]);
+  }, [v23, ud, qItems, homeFilters, s.homeSort, shapeRow, curTab, hasForYouPrefs, forYouRanked, Math.floor(nowMs / 60000)]);
   // v2.3 live line (note 81): the daily Pulse ranking + real seat fill + the Tonight / Weekend counts, only for events
   // Home actually lists (so every update can be opened). One list for the ticker, the Reduced form and Live now.
   const [liveIndex, setLiveIndex] = useState(0);
@@ -693,7 +705,7 @@ export default function Home({ browse = false }) {
   // with a real row lose its host fields in the merge, so the host (id, name, photo) is read from the loaded real row.
   const browseItems = useMemo(() => {
     if (!browse) return null;
-    const scope = s.browseScope || 'all';
+    const scope = effectiveTab(s.browseScope || 'all', hasForYouPrefs);
     const base = scope === 'all' ? applyDiscoveryFilters(discoveryItems, DEFAULT_FILTERS, nowMs).filter(it => !it.ev.cancelled) : tabItems(scope);
     return base.map((it) => {
       const real = s.realEventsById?.[it.key];
@@ -701,10 +713,13 @@ export default function Home({ browse = false }) {
       return { ...it, ev: { ...it.ev, organizerId: real.organizerId, organizerName: real.organizerName || '', organizerAvatarUrl: real.organizerAvatarUrl || '' } };
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [browse, s.browseScope, discoveryItems, tabItems, s.realEventsById, Math.floor(nowMs / 60000)]);
-  const onShortlistAction = (act) => {
+  }, [browse, s.browseScope, hasForYouPrefs, discoveryItems, tabItems, s.realEventsById, Math.floor(nowMs / 60000)]);
+  const onShortlistAction = (act, e) => {
     if (act === 'clear-filters') { clearFilters(); set({ homeSort: 'soonest' }); }
     else if (act === 'map') openMapWithContext();
+    // End card, "See all events": the All events tab, in place (the same switch the tab row makes, no scroll jump).
+    else if (act === 'tab:all') { if (ud) setHomeFilters(prev => ({ ...prev, date: DATE_FOR_TAB.all })); setHeroTab('all'); }
+    else if (act === 'area') { if (e?.currentTarget) openAreaMenu(e); }
     // Prototype v2's end-card "Tất cả loại": a type sheet over Home, not a Browse-by-type screen.
     else if (act === 'types') { if (ud) setTypeSheetOpen(true); else openBrowse({ type: 'all', scope: 'all' }); }
   };
@@ -732,7 +747,7 @@ export default function Home({ browse = false }) {
   const heroSeeAll = (tab) => {
     if (v23) { if (ud) scrollToNearby(); else openBrowse({ type: 'all', scope: tab }); return; }
     if (tab === 'foryou') { if (!s.filterForYou && hasForYou) toggleHomeFilter('forYou'); }
-    else if (homeFilters.date !== (tab === 'tonight' ? 'today' : 'weekend')) pickFilter(tab === 'tonight' ? 'today' : 'weekend');
+    else if (tab !== 'all' && homeFilters.date !== (tab === 'tonight' ? 'today' : 'weekend')) pickFilter(tab === 'tonight' ? 'today' : 'weekend');
     setTimeout(() => document.querySelector('[data-testid^="home-event-"]')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 120);
   };
 
@@ -1279,7 +1294,7 @@ export default function Home({ browse = false }) {
 
   if (browse) {
     return (
-      <Browse T={T} lang={s.lang === 'en' ? 'en' : 'vi'} scope={s.browseScope || 'all'} type={s.browseType || 'all'} query={s.browseQuery || ''}
+      <Browse T={T} lang={s.lang === 'en' ? 'en' : 'vi'} scope={effectiveTab(s.browseScope || 'all', hasForYouPrefs)} hasPrefs={hasForYouPrefs} type={s.browseType || 'all'} query={s.browseQuery || ''}
         filters={s.browseFilters} items={browseItems || []} now={nowMs} areaLabel={areaName} shapeRow={shapeRow}
         areaKey={curArea.key} areaActive={curArea.key !== 'all'}
         onChooseArea={() => set({ areaAsking: true })} onAllAreas={() => pickArea('all')}
@@ -1388,13 +1403,14 @@ export default function Home({ browse = false }) {
           onTab={(k) => {
             if (k === 'hosting') { if (!s.organizerMode) { if (!s.organizerModeBusy) startHosting({ land: 'home' }); } else if (!hostView) setHomeView('host'); return; }
             if (hostView) setHomeView('goer');
-            if (ud) setHomeFilters(prev => ({ ...prev, date: DATE_FOR_TAB[k] || 'any' })); else setHeroTab(k);
+            if (ud) setHomeFilters(prev => ({ ...prev, date: DATE_FOR_TAB[k] || 'any' }));
+            setHeroTab(k);
           }}
           onReturnToEvents={returnToEvents}
           lists={heroLists} items={shownItems} user={s.user} typeCounts={shellTypeCounts} badgeDate={badgeDate} trStatus={trStatus}
           dateLabel={new Date().toLocaleDateString(s.lang === 'en' ? 'en-GB' : 'vi-VN', { weekday: 'long', day: 'numeric', month: 'long' })}
           areaLabel={areaName} areaActive={curArea.key !== 'all'}
-          filtersActive={filterBadge > 0 || curArea.key !== 'all'} hasPrefs={!!s.eventPrefs && !prefsIsEmpty(s.eventPrefs)}
+          filtersActive={filterBadge > 0 || curArea.key !== 'all'} hasPrefs={hasForYouPrefs}
           onClearFilters={() => { clearFilters(); set({ homeSort: 'soonest' }); }}
           guestNotice={goerHero === 'guest' ? <GuestBrowseBanner /> : null}
           onOpenEvent={goEvent} onToggleSave={toggleFav} onSeeAll={heroSeeAll} onAccount={() => setQuickOpen(true)}
@@ -1404,6 +1420,8 @@ export default function Home({ browse = false }) {
           // "Browse all events" opens the every-event list itself (owner 2026-11-18): it used to scroll Home down to
           // the By type section, which only ever held a handful of events, never all of them.
           onBrowseAll={() => { if (ud) { scrollToNearby(); return; } browseTypesFrom(curTab); }}
+          // The short pager's "Browse by type" card: the every-event Browse list (the type sheet with unified discovery).
+          onSuggestBrowse={() => { if (ud) setTypeSheetOpen(true); else browseTypesFrom(curTab); }}
           hostBody={<div data-reveal="1"><HostHome /><div style={{ height: 44 }} /></div>} below={surveySection}
           seeAll={v23 && curTab !== 'hosting' ? { count: tabItems(curTab).length, label: TAB_LABEL[curTab] } : null}
           searchActive={!!udQuery}
@@ -1417,7 +1435,7 @@ export default function Home({ browse = false }) {
           browseTotal={v23 ? applyDiscoveryFilters(discoveryItems, DEFAULT_FILTERS, nowMs).filter(it => !it.ev.cancelled).length : null}
           shortlist={shortlist && (
             <div data-reveal="2">
-              <ShortlistV23 T={T} lang={s.lang === 'en' ? 'en' : 'vi'} rows={shortlist.rows} total={shortlist.total}
+              <ShortlistV23 T={T} lang={s.lang === 'en' ? 'en' : 'vi'} tab={ud && !hostView ? curTab : null} endTab={ud ? curTab : 'all'} rows={shortlist.rows} total={shortlist.total}
                 filterBadge={ud ? udOwned : filterBadge} onFilters={() => set({ homeFilterSheetOpen: true })} onOpenEvent={goEvent} onAction={onShortlistAction}
                 onToggleSave={toggleFav}
                 active={ud && (udQuery || udOwned > 0) ? udParts : null} onClearActive={clearUnified} />

@@ -121,9 +121,12 @@
   --bb-update-bg: #E2E9D4;
   /* Ticket strip, awaiting host (note 78): the one tone that had no token. Tint is derived (13% over block). */
   --bb-plum: #6B4E7C;
+  /* iOS systemBlue (light): the folded band pill's view name; mirrors Palette.linkBlue in BanbeTheme.swift. */
+  --bb-link-blue: #007AFF;
 }
 
 [data-bb-theme="dark"] {
+  --bb-link-blue: #0A84FF;
   /* Near-black warm base; depth comes from the lighter surface steps below
      (Material/Base-style tonal elevation), not from borders or shadows. */
   --bb-bg: #0F0E0B;
@@ -1003,7 +1006,9 @@ input::placeholder, textarea::placeholder {
 .bb-home-head__mark { display: block; position: relative; height: 30px; aspect-ratio: 1206 / 544; }
 .bb-home-head__wordmark { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 /* The artwork is near-black ink, so on the dark theme's paper it is inverted like every other mark. */
-[data-bb-theme="dark"] .bb-home-head__wordmark { filter: invert(1); }
+/* Specificity matches the global `img[src="/banbe-wordmark.png"]` amber tint above; this later rule wins, so Home's mark is
+   the theme foreground (white-ish on dark), not gold (owner 2026-11-19). */
+[data-bb-theme="dark"] img.bb-home-head__wordmark { filter: invert(1); }
 
 /* The band's middle holds ONE thing at a time: the area chip while the tabs show, and the view + area pill once the
    feed is moving and the tabs have folded away (owner 2026-11-22). They share one grid cell, so the bar never reflows
@@ -1037,7 +1042,7 @@ input::placeholder, textarea::placeholder {
   color: inherit; font-family: inherit; cursor: pointer;
 }
 .bb-home-head__contextview {
-  max-width: 100%; font-size: 12.5px; font-weight: 600; line-height: 1.1;
+  max-width: 100%; font-size: 17px; font-weight: 600; line-height: 1.15; color: var(--bb-link-blue);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .bb-home-head__contextarea {

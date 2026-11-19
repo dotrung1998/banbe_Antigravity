@@ -173,8 +173,8 @@ test('the type and the time picked on the Map are still there after Home and bac
   await expect(page.getByTestId('map-cat-music')).toHaveAttribute('aria-selected', 'true');
   await page.getByTestId('map-time-chip').click();
   await page.getByTestId('map-time-day-today').click();
-  // The Filters button shows the picked type itself (owner 2026-11-19); the time is not a Filters thing, so no badge.
-  await expect(page.getByTestId('map-ud-filters')).toContainText('Music');
+  // The Filters pill shows the picked AREA (the type is the chip row); the time is not a Filters thing, so no badge.
+  await expect(page.getByTestId('map-ud-filters')).toContainText(/Everywhere|Mọi nơi/);
   await expect(page.getByTestId('map-ud-filter-badge')).toHaveCount(0);
   await page.getByTestId('map-ud-back').click();
   await expect(page.locator('[data-screen-label="Home"]')).toBeVisible({ timeout: 10000 });
@@ -231,7 +231,7 @@ test('owner 2026-11-19: Filters sheet leads with the compact type tiles and All 
   await expect(page.getByTestId('home-type-sheet')).toHaveCount(0);
   await expect(grid.getByTestId('home-filter-type-music')).toHaveAttribute('aria-pressed', 'true');
   await page.getByTestId('home-filter-apply').click();
-  await expect(page.getByTestId('map-ud-filters')).toContainText('Music');
+  await expect(page.getByTestId('map-cat-music')).toHaveAttribute('aria-selected', 'true');
 });
 
 test('owner 2026-11-19: an area tap never opens the old list panel, and zooming out puts the summary away', async ({ page }) => {

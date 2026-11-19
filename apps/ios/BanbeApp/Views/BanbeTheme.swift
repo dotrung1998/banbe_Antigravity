@@ -31,6 +31,8 @@ struct Palette {
     let update: Color
     /// Wordmark tint — ink on light, bright amber on dark.
     let logo: Color
+    /// iOS systemBlue, as an explicit token: the folded Home band pill's view name. Mirrors web `--bb-link-blue`.
+    let linkBlue: Color
     /// Simple Shell surfaces (note 66): depth comes from three surface steps, not borders. surface1 = cards and
     /// rows, surface2 = fields, chips and sheets, surface3 = pressed states and popovers. Mirrors web
     /// `--bb-surface-1/2/3` (index.css, theme.js `surface1/2/3`) value-for-value in both themes.
@@ -69,6 +71,7 @@ struct Palette {
         question: Color(hex: 0x2F6B7A),
         update: Color(hex: 0x4E6A30),
         logo: Color(hex: 0x1B1916),
+        linkBlue: Color(hex: 0x007AFF),
         surface1: Color(hex: 0xFBF8F1),
         surface2: Color(hex: 0xEEE8DA),
         surface3: Color(hex: 0xE6DFCF),
@@ -95,6 +98,7 @@ struct Palette {
         question: Color(hex: 0x8CC7D4),
         update: Color(hex: 0xA9C487),
         logo: Color(hex: 0xF6C453),
+        linkBlue: Color(hex: 0x0A84FF),
         surface1: Color(hex: 0x1A1815),
         surface2: Color(hex: 0x24211C),
         surface3: Color(hex: 0x2E2A24),

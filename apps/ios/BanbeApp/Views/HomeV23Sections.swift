@@ -9,7 +9,10 @@ import SwiftUI
 /// ends with an end card. Header, end card and empty state are word for word web's ShortlistV23.jsx.
 struct ShortlistV23View: View {
     @EnvironmentObject private var app: AppState
-    let tab: HomeHeroTab
+    /// The open Home tab, shown after the title ("Near you · Tonight"); nil = no suffix (the list does not follow the tab).
+    let tab: HomeHeroTab?
+    /// The tab the end card words itself for: "all" = "Change area" instead of "See all events" (web `endTab`).
+    var endTab: HomeHeroTab = .all
     let rows: [V23Row]
     /// The list before the Filters-owned filters (UnifiedDiscovery.nearYou `total`).
     let total: Int
@@ -25,11 +28,15 @@ struct ShortlistV23View: View {
 
     var body: some View {
         let n = rows.count
-        let card = ListEnd.shortlistEnd(total: total, shown: n, filtersOn: filterBadge > 0)
+        let card = ListEnd.shortlistEnd(total: total, shown: n, filtersOn: filterBadge > 0, tab: endTab.rawValue)
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .bottom, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(app.T("Gần bạn", "Near you")).font(.app(size: 19)).accessibilityAddTraits(.isHeader)
+                    // The open tab beside the title: same size, quieter (ink2), after a small middle dot.
+                    (Text(app.T("Gần bạn", "Near you"))
+                        + (tab.map { Text(" · ").foregroundStyle(app.palette.ink2) + Text(app.T($0.vi, $0.en)).foregroundStyle(app.palette.ink2) } ?? Text("")))
+                        .font(.app(size: 19)).accessibilityAddTraits(.isHeader)
+                        .accessibilityIdentifier("home.shortlistTitle")
                     Button(action: onFilters) {
                         Text(filterBadge > 0 && total > n
                              ? app.T("\(n) trên \(total) sự kiện · \(sub.vi)", "\(n) of \(total) events · \(sub.en)")
@@ -317,6 +324,48 @@ struct LiveNowSheet: View {
         .presentationDetents([.medium, .large])
         .presentationBackground(app.palette.paper)
         .accessibilityIdentifier("liveNow.sheet")
+    }
+}
+
+// MARK: - Hero suggestion card
+
+/// A suggestion after a short hero pager (Weekend, All events, Browse by type): the See all card's size, a quiet glass
+/// card with the other way to look. Rule and words: ListEnd.heroSuggestions. Web twin: HeroSuggestCard.jsx.
+struct HeroSuggestCard: View {
+    @EnvironmentObject private var app: AppState
+    let model: ListEnd.HeroSuggestion
+    let width: CGFloat
+    let height: CGFloat
+    let onOpen: () -> Void
+
+    var body: some View {
+        SwipeSafeButton(action: onOpen) {
+            ZStack(alignment: .bottomLeading) {
+                Text(app.T("Thử xem", "Try instead").uppercased())
+                    .font(.app(size: 11, weight: .semibold)).tracking(1.5)
+                    .foregroundStyle(.white.opacity(0.62))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(app.T(model.title.vi, model.title.en))
+                        .font(BanbeTheme.display(26)).lineSpacing(0)
+                    Text(app.T(model.detail.vi, model.detail.en))
+                        .font(.app(size: 13)).foregroundStyle(.white.opacity(0.78))
+                    Image(systemName: "arrow.right").font(.app(size: 16, weight: .medium))
+                        .frame(width: 40, height: 40)
+                        .background(Color.white.opacity(0.14), in: Circle())
+                        .padding(.top, 10)
+                }
+            }
+            .padding(20)
+            .foregroundStyle(.white)
+            .frame(width: width, height: height, alignment: .leading)
+            .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Color.white.opacity(0.18), lineWidth: 1))
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(app.T(model.title.vi, model.title.en)). \(app.T(model.detail.vi, model.detail.en))")
+        .accessibilityIdentifier("home.hero.suggest.\(model.id)")
     }
 }
 

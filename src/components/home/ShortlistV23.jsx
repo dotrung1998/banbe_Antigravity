@@ -10,27 +10,36 @@ import EventRowV23, { ROW_HEIGHT } from '../list/EventRowV23.jsx';
 import { shortlistEnd } from '../../lib/listEnd.js';
 
 const SLIDERS = <><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></>;
-export const TAB_LABEL = { foryou: { vi: 'Dành cho bạn', en: 'For You' }, tonight: { vi: 'Tối nay', en: 'Tonight' }, weekend: { vi: 'Cuối tuần', en: 'Weekend' } };
+export const TAB_LABEL = { foryou: { vi: 'Dành cho bạn', en: 'For You' }, tonight: { vi: 'Tối nay', en: 'Tonight' }, weekend: { vi: 'Cuối tuần', en: 'Weekend' }, all: { vi: 'Tất cả', en: 'All events' } };
 
 /**
  * @param {object} p
  * @param {Array} p.rows  shaped rows for EventRowV23, already filtered, in Home's order
  * @param {number} p.total  every event Home lists, before Home's filters
  * @param {number} p.filterBadge  how many filters are on
- * @param {(act: string) => void} p.onAction  end-card and empty-state actions
+ * @param {string|null} [p.tab]  the open Home tab, shown after the title ("Near you · Tonight")
+ * @param {string|null} [p.endTab]  the tab the end card words itself for ('all' = Change area instead of See all events)
+ * @param {(act: string, e?: Event) => void} p.onAction  end-card and empty-state actions
  * @param {(key: string) => void} [p.onToggleSave]  the row's heart (favorites)
  */
 // `active` (owner 2026-11-19): what is narrowing the list (search, type, time…) as one chip under the header, with ×
 // to clear; it replaced the separate state bar above Browse by type, so after a type tap scrolls here the pick is in view.
-export default function ShortlistV23({ T, lang, rows, total, filterBadge, onFilters, onOpenEvent, onAction, onToggleSave, active = null, onClearActive }) {
+export default function ShortlistV23({ T, lang, tab = null, endTab = null, rows, total, filterBadge, onFilters, onOpenEvent, onAction, onToggleSave, active = null, onClearActive }) {
   const n = rows.length;
   const filtersOn = filterBadge > 0;
-  const card = shortlistEnd({ total, shown: n, filtersOn });
+  const card = shortlistEnd({ total, shown: n, filtersOn, tab: endTab });
   return (
     <section data-testid="home-shortlist-section" aria-labelledby="home-shortlist-title" style={{ paddingTop: 28 }}>
       <div data-testid="home-shortlist-header" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, padding: '0 20px 12px' }}>
         <div style={{ minWidth: 0 }}>
-          <h3 id="home-shortlist-title" style={{ fontSize: 19, fontWeight: 400, margin: 0, letterSpacing: '-.01em' }}>{T('Gần bạn', 'Near you')}</h3>
+          <h3 id="home-shortlist-title" style={{ fontSize: 19, fontWeight: 400, margin: 0, letterSpacing: '-.01em' }}>{T('Gần bạn', 'Near you')}
+            {/* The open tab beside the title (owner 2026-11-19): quieter, same size. Only while the list follows the tab. */}
+            {tab && TAB_LABEL[tab] && (
+              <span data-testid="home-shortlist-tab" style={{ color: 'var(--bb-fg-2)' }}>
+                <span aria-hidden="true"> · </span>{T(TAB_LABEL[tab].vi, TAB_LABEL[tab].en)}
+              </span>
+            )}
+          </h3>
           <button type="button" onClick={onFilters} data-testid="home-filter-summary"
             style={{ display: 'block', margin: '4px 0 0', padding: 0, border: 'none', background: 'none', color: 'var(--bb-fg-2)', fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer', textAlign: 'left' }}>
             {filtersOn && total > n

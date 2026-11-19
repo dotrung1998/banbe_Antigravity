@@ -73,6 +73,41 @@ final class V23RulesTests: XCTestCase {
         for c in [f, t, ty] { for p in [c.title, c.body].compactMap({ $0 }) { XCTAssertFalse("\(p.vi) \(p.en)".contains("—")) } }
     }
 
+    func testListEndSharedFixture() throws {
+        let root = try fixture("list-end.json")
+        for c in try XCTUnwrap(root["shortlistEnd"] as? [[String: Any]]) {
+            let r = ListEnd.shortlistEnd(total: c["total"] as? Int ?? 0, shown: c["shown"] as? Int ?? 0,
+                                         filtersOn: c["filtersOn"] as? Bool ?? false, tab: c["tab"] as? String)
+            XCTAssertEqual(r.kind, c["kind"] as? String)
+            if let en = c["bodyEn"] as? String { XCTAssertEqual(r.body?.en, en) }
+            if let vi = c["bodyVi"] as? String { XCTAssertEqual(r.body?.vi, vi) }
+            let acts = try XCTUnwrap(c["actions"] as? [[String: Any]])
+            XCTAssertEqual(r.actions.count, acts.count)
+            for (i, a) in acts.enumerated() where i < r.actions.count {
+                XCTAssertEqual(r.actions[i].act, a["act"] as? String)
+                XCTAssertEqual(r.actions[i].primary, a["primary"] as? Bool)
+                if let en = a["labelEn"] as? String { XCTAssertEqual(r.actions[i].label.en, en) }
+                if let vi = a["labelVi"] as? String { XCTAssertEqual(r.actions[i].label.vi, vi) }
+            }
+            XCTAssertFalse(r.actions.contains { $0.act == "map" })
+        }
+        for c in try XCTUnwrap(root["heroSuggestions"] as? [[String: Any]]) {
+            let counts = c["counts"] as? [String: Int] ?? [:]
+            let r = ListEnd.heroSuggestions(tab: c["tab"] as? String ?? "", shown: c["shown"] as? Int ?? 0,
+                                            weekend: counts["weekend"] ?? 0, all: counts["all"] ?? 0)
+            let expect = try XCTUnwrap(c["expect"] as? [[String: Any]])
+            XCTAssertEqual(r.count, expect.count, "\(c)")
+            for (i, e) in expect.enumerated() where i < r.count {
+                XCTAssertEqual(r[i].kind, e["kind"] as? String)
+                if let t = e["tab"] as? String { XCTAssertEqual(r[i].tab, t) }
+                if let v = e["titleEn"] as? String { XCTAssertEqual(r[i].title.en, v) }
+                if let v = e["titleVi"] as? String { XCTAssertEqual(r[i].title.vi, v) }
+                if let v = e["detailEn"] as? String { XCTAssertEqual(r[i].detail.en, v) }
+                if let v = e["detailVi"] as? String { XCTAssertEqual(r[i].detail.vi, v) }
+            }
+        }
+    }
+
     // MARK: Browse
 
     private func entry(_ key: String, _ cats: [String], name: String, host: String?, hostName: String = "") -> BrowseRules.Entry {
