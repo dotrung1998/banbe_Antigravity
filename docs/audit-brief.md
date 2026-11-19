@@ -87,6 +87,26 @@ message with numbers. "Make the app better" would be unsteerable; this is not.
 The `DIRTY_OUTSIDE_AUDIT` line is the guard rail: an audit that edits source to "prove" a finding is a failed run,
 even if the report looks good.
 
+## Verify the daily agent from a cold start
+
+`scripts/launchd/cold-test.command` proves the LaunchAgent can launch Freebuff when it is not already
+running. Run it from **Terminal**, not from inside Freebuff: the test quits the app, and the Freebuff
+terminal panel quits with it.
+
+```bash
+cd /Users/thetrungdo/Downloads/banbe
+./scripts/launchd/cold-test.command
+```
+
+It waits 30 seconds, quits Freebuff, kicks `com.banbe.daily-audit`, and asserts: the old process is gone,
+a new PID exists and differs from the old one, the clipboard hash matches the installed goal, and the
+agent log gained a line with `notification=sent`. It prints `RESULT: PASS` or `RESULT: FAIL - <reason>`
+and appends the transcript to `~/Library/Logs/banbe-coldtest.log`. Freebuff reopens on its own; if it
+does not, launch it manually.
+
+A PASS proves the cold launch and the clipboard. `notification=sent` proves the notification was posted,
+not that the banner was drawn. That still depends on Focus and Script Editor's notification permission.
+
 ## After the run
 
 The report is a proposal, not a change. For each accepted P0/P1: create one branch (`audit/<date>/<slug>`), let
