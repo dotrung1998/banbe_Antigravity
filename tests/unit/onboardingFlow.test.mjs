@@ -102,13 +102,12 @@ test('all questions skipped saves the marker only and skips the reveal', () => {
   assert.equal(currentConsent(s), 'hosting');
 });
 
-test('skip all from welcome ends on the recap', () => {
+test('skip all from welcome lands on Home, not the recap', () => {
+  // Audit 2026-11-19 row 19: the first skip is a real skip; the tour stays available from Help & Legal.
   let { s, effects } = run(fresh(), 'skipAll');
   assert.deepEqual(saves(effects), [null]);
   s = reduce(s, 'saveSucceeded').state;
-  assert.equal(s.stage, 'recap', 'the recap still offers the tour');
-  s = reduce(s, 'skipTour').state;
-  assert.equal(s.stage, 'finished');
+  assert.equal(s.stage, 'finished', 'no newsletter or tour screens after Skip');
   assert.equal(s.tourRequested, false);
 });
 
@@ -170,9 +169,11 @@ test('only the system-asked choice has one action', () => {
 });
 
 test('settings owed with nothing to ask writes the marker', () => {
-  const { s, effects } = run(fresh(true), 'skipAll', 'saveSucceeded');
+  let { s, effects } = run(fresh(true), 'skipAll', 'saveSucceeded');
   assert.deepEqual(effects.filter(e => e.type === 'completeSettings'), [{ type: 'completeSettings' }]);
-  assert.equal(s.stage, 'settingsSaving');
+  assert.equal(s.stage, 'settingsSaving', 'the marker is written even on Skip');
+  s = reduce(s, 'settingsSucceeded').state;
+  assert.equal(s.stage, 'finished', 'and Skip still lands on Home');
 });
 
 test('settings failure: retry and skip for now', () => {

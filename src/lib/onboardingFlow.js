@@ -76,6 +76,12 @@ const viewed = (i) => ({ type: 'track', name: 'onboarding_question_viewed', prop
 
 /** After the questions (and the reveal): the choice screens when the settings step is owed, else the recap. */
 function toChoices(s) {
+  // Audit 2026-11-19 row 19: "Skip, show me everything" means Home, not two more screens. The settings marker that is
+  // still owed is written silently (so the flow never returns), while the newsletter choices and the tour are deferred.
+  if (s.skippedAll) {
+    if (s.needsSettings) return { state: { ...s, stage: 'settingsSaving' }, effects: [{ type: 'completeSettings' }] };
+    return { state: { ...s, stage: 'finished' }, effects: [] };
+  }
   if (!s.needsSettings) return { state: { ...s, stage: 'recap' }, effects: [] };
   if (!s.consents.length) return { state: { ...s, stage: 'settingsSaving' }, effects: [{ type: 'completeSettings' }] };
   return { state: { ...s, stage: 'consent', index: 0 }, effects: [] };
@@ -157,7 +163,7 @@ export function reduce(s, action) {
     }
 
     case 'settingsSaving':
-      if (a.type === 'settingsSucceeded') return { state: { ...s, needsSettings: false, stage: 'recap' }, effects: [] };
+      if (a.type === 'settingsSucceeded') return { state: { ...s, needsSettings: false, stage: s.skippedAll ? 'finished' : 'recap' }, effects: [] };
       if (a.type === 'settingsFailed') return { state: { ...s, stage: 'settingsFailed' }, effects: [] };
       return same;
 
