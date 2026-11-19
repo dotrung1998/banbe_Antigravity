@@ -839,6 +839,12 @@ struct RootView: View {
             }
             // The one search bar for Search and Map, above both.
             PersistentSearchBar().zIndex(3)
+                // Prototype v2 (note 99): under `unified_discovery` Search is this bottom sheet — its own grabber,
+                // field and Xong — over Home or the Map.
+                .sheet(isPresented: Binding(get: { app.unifiedSearchOpen && app.unifiedDiscoveryEnabled },
+                                            set: { if !$0 { app.unifiedSearchOpen = false } })) {
+                    SearchView(unifiedSheet: true).environmentObject(app)
+                }
             // Notifications over Home (AppState.notificationsOverlayOpen): slides in from the right over the live Home.
             if app.notificationsOverlayOpen && app.screen == .home {
                 NotificationsView(isOverlay: true)

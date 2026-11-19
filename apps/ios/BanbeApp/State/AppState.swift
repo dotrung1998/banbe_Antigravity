@@ -583,6 +583,9 @@ final class AppState: ObservableObject {
     /// Search opened from Home is an OVERLAY on top of Home (RootView), not a screen switch: Home stays mounted, so
     /// opening never flashes a blank page and closing never rebuilds Home (no reload stutter).
     @Published var searchOverlayOpen = false
+    /// Prototype v2 (note 99, `unified_discovery`): Search opens as a bottom sheet with its own field and Xong,
+    /// from Home or the Map. The shared persistent bar is not used in this mode.
+    @Published var unifiedSearchOpen = false
     /// Notifications opened from Home's bell: an overlay over the live Home (RootView), like Search — no screen
     /// switch, so Home is never unmounted or rebuilt.
     @Published var notificationsOverlayOpen = false
@@ -3255,7 +3258,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    func goHome() { searchOverlayOpen = false; notificationsOverlayOpen = false; screen = .home }
+    func goHome() { searchOverlayOpen = false; unifiedSearchOpen = false; notificationsOverlayOpen = false; screen = .home }
     /// Home / Search → Map is a quick cross-fade (the same one a dock tap uses), not a push to another page: the
     /// search bar stays where it is and the map fills in around it.
     func crossFadeIntoMap() {

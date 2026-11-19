@@ -447,7 +447,7 @@ struct MapExploreView: View {
         .onAppear {
             app.mapSearchText = searchQuery
             registerSearchBar()
-            if startFocusedOnSearch && !hadRestoredState { searchFieldFocused = true }
+            if startFocusedOnSearch && !hadRestoredState && !unified { searchFieldFocused = true }
             if app.mapEntranceFrom != nil && !reduceMotion {
                 app.searchBarAtHome = true
                 DispatchQueue.main.async { app.searchBarAtHome = false }
@@ -463,6 +463,8 @@ struct MapExploreView: View {
         }
         .onChange(of: searchQuery) { _, q in if app.mapSearchText != q { app.mapSearchText = q } }
         .onChange(of: app.mapSearchText) { _, q in if searchQuery != q { searchQuery = q } }
+        // Note 99: the unified Search sheet outlives the Map's local field value, so keep both in step.
+        .onChange(of: app.searchQuery) { _, q in if unified, searchQuery != q { searchQuery = q } }
         .onChange(of: sheetFilterCount) { _, _ in registerSearchBar() }
         .background { if unified { udSyncProbe } }
         .onChange(of: app.lang) { _, _ in registerSearchBar() }
@@ -573,8 +575,134 @@ struct MapExploreView: View {
     }
 
     private var topControls: some View {
-        MapTopControls {
+        // Prototype v2's Map search row stands in the same 44 pt slot the shared persistent bar keeps (note 99).
+        MapTopControls(searchRow: unified ? AnyView(udSearchRow) : nil) {
             chipRow
+        }
+    }
+
+    /// Prototype v2's Map row: glass Back, a query capsule that opens the SAME Search sheet over the Map, and Filters.
+    private var udSearchRow: some View {
+        HStack(spacing: 8) {
+            Button {
+                Haptics.selection()
+                backFromMap()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.app(size: 16, weight: .semibold))
+                    .frame(width: 44, height: 44)
+                    .mapSurface(Circle(), interactive: true)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(app.T("Quay lại", "Back"))
+            .accessibilityIdentifier("map.search.back")
+
+            HStack(spacing: 0) {
+                Button {
+                    searchFieldFocused = false
+                    app.unifiedSearchOpen = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.app(size: 15, weight: .medium))
+                            .foregroundStyle(app.palette.clay)
+                            .accessibilityHidden(true)
+                        Text(searchQuery.isEmpty ? app.T("Tìm sự kiện, địa điểm…", "Search events, places…") : searchQuery)
+                            .font(.app(size: 15))
+                            .foregroundStyle(searchQuery.isEmpty ? app.palette.ink3 : app.palette.ink)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.leading, 14)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(app.T("Tìm kiếm", "Search"))
+                .accessibilityIdentifier("map.search.open")
+                if !searchQuery.isEmpty {
+                    Button {
+                        searchQuery = ""
+                        app.searchQuery = ""
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.app(size: 12, weight: .bold))
+                            .foregroundStyle(app.palette.ink2)
+                            .frame(width: 40, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(app.T("Xoá tìm kiếm", "Clear search"))
+                    .accessibilityIdentifier("map.search.clear")
+                }
+            }
+            .mapSurfaceCapsule(interactive: true)
+            .frame(maxWidth: .infinity)
+
+            udFiltersButton
+        }
+        .padding(.horizontal, 16)
+    }
+
+    /// Prototype v2: a picked type turns this into an ink pill (glyph + name + sliders, badge for the OTHER filters);
+    /// with no type it is the glass sliders circle carrying the count.
+    @ViewBuilder
+    private var udFiltersButton: some View {
+        let type = catFilter != "all" ? orderedCategories.first(where: { $0.key == catFilter }) : nil
+        let extra = max(0, udFilterBadge - (type == nil ? 0 : 1))
+        if let type {
+            Button {
+                Haptics.selection()
+                searchFieldFocused = false
+                filterSheetOpen = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: CategoryGlyph.symbol(type.key))
+                        .font(.app(size: 14, weight: .semibold)).accessibilityHidden(true)
+                    Text(app.T(type.vi, type.en)).font(.app(size: 14, weight: .semibold)).lineLimit(1)
+                    Image(systemName: "slider.horizontal.3").font(.app(size: 14, weight: .semibold)).accessibilityHidden(true)
+                    if extra > 0 {
+                        Text("\(extra)").font(.app(size: 11, weight: .bold)).monospacedDigit()
+                            .frame(minWidth: 18, minHeight: 18)
+                            .background(app.palette.paper, in: Capsule())
+                            .foregroundStyle(app.palette.ink)
+                    }
+                }
+                .foregroundStyle(app.palette.paper)
+                .padding(.horizontal, 12).frame(minHeight: 36)
+                .background(app.palette.ink, in: Capsule())
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(app.T("Bộ lọc", "Filters"))
+            .accessibilityValue(app.T(type.vi, type.en))
+            .accessibilityIdentifier("map.filters.button")
+        } else {
+            Button {
+                Haptics.selection()
+                searchFieldFocused = false
+                filterSheetOpen = true
+            } label: {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.app(size: 16, weight: .semibold))
+                        .frame(width: 44, height: 44)
+                        .mapSurface(Circle(), interactive: true)
+                    if udFilterBadge > 0 {
+                        Text("\(udFilterBadge)").font(.app(size: 10, weight: .bold)).monospacedDigit()
+                            .foregroundStyle(app.palette.paper)
+                            .frame(minWidth: 18, minHeight: 18).padding(.horizontal, 2)
+                            .background(app.palette.clay, in: Capsule())
+                            .offset(x: 2, y: -2)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(app.T("Bộ lọc", "Filters"))
+            .accessibilityIdentifier("map.filters.button")
         }
     }
 
@@ -1169,6 +1297,11 @@ struct MapExploreView: View {
     }
 
     private func registerSearchBar() {
+        // Prototype v2: the unified Map has its own search row; the shared persistent bar steps aside.
+        guard !unified else {
+            if app.searchBarHandlers?.owner == "map" { app.searchBarHandlers = nil }
+            return
+        }
         app.searchBarHandlers = SearchBarHandlers(
             owner: "map",
             placeholder: app.T("Tìm tên, loại, khu vực, thành phố…", "Search name, type, area, city…"),

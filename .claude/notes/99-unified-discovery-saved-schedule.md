@@ -196,9 +196,15 @@ The web passes 1–3 and the Map follow-up were web-only; this pass ports what t
   row, a results head ("N results for …" / "N events") with "Same results as the map", `EventRowV23View` rows with
   save hearts, the "Nothing matches" card with Clear filters, and the "See on the map · N" CTA.
 
-Not mirrored (deliberate, iOS keeps its own shell): Search still opens as iOS's own screen under the shared persistent
-bar rather than the prototype's bottom sheet with its own field and Xong; the Map keeps that shared bar instead of a
-glass back + capsule row; the Filters button does not show the picked type's name; the filter sheet is not type-first;
-an area bubble still opens its panel (chips are gone but bubble taps are unchanged); Home's hero empty card still opens
-Browse. Checked: `xcodegen generate` + `xcodebuild … -destination 'generic/platform=iOS Simulator'` build green; no
-simulator run, no UI tests, nothing visually checked.
+Follow-up (same day): **Search is now the prototype's bottom sheet** under `unified_discovery` — `SearchView(unifiedSheet:)`
+drawn in a `.large` sheet with 28 pt corners, its own 38 × 5 grabber (system indicator hidden), a 48 pt in-sheet field
+with the clay focus border and its own clear button, and **Xong**; the shared `PersistentSearchBar` steps aside for it and
+for the Map. **The Map has its own search row** in the same 44 pt slot: glass Back, a query capsule that opens the same
+sheet over the Map, and a **Filters button that shows the picked type** (ink pill with glyph + name + sliders, badge for
+the other filters) or the glass sliders circle with its count. `AppState.unifiedSearchOpen` is the sheet's presenter;
+`openSearch` routes to it under the switch, `goHome` and "See on the map" close it, and over the Map the CTA just closes
+(the map already shows the same results).
+
+Still not mirrored: the filter sheet is not type-first; an area bubble still opens its panel (chips are gone but bubble
+taps are unchanged); Home's hero empty card still opens Browse. Checked: `xcodegen generate` + `xcodebuild …
+-destination 'generic/platform=iOS Simulator'` build green; no simulator run, no UI tests, nothing visually checked.

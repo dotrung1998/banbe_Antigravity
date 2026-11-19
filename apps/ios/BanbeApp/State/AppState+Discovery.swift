@@ -185,6 +185,8 @@ extension AppState {
     // MARK: Search screen
 
     func openSearch(from frame: CGRect? = nil) {
+        // Prototype v2 (note 99): under `unified_discovery` Search is the bottom sheet, over Home or the Map.
+        if unifiedDiscoveryEnabled { unifiedSearchOpen = true; return }
         searchEntranceFrom = (frame?.width ?? 0) > 0 ? frame : nil
         // From Home: an overlay over the live Home (no screen switch, nothing unmounted or reloaded).
         if screen == .home {
@@ -198,6 +200,7 @@ extension AppState {
 
     /// "See on map": Map opens fresh with the query already applied (no keyboard).
     func seeSearchOnMap(_ query: String) {
+        unifiedSearchOpen = false
         crossFadeIntoMap()
         mapExploreState = nil
         mapExploreSeedQuery = query

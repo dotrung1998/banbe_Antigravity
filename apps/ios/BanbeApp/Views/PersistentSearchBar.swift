@@ -26,8 +26,12 @@ struct PersistentSearchBar: View {
     @State private var lingering = false
     @State private var lastHandlers: SearchBarHandlers?
     private var isMap: Bool { app.screen == .mapExplore }
+    /// Prototype v2 (note 99): the unified Map draws its own search row and Search is a sheet, so this bar steps aside
+    /// for both while `unified_discovery` is on.
     private var active: Bool {
-        isMap || app.screen == .search || (app.searchOverlayOpen && app.screen == .home)
+        isMap && !app.unifiedDiscoveryEnabled
+            || app.screen == .search && !app.unifiedDiscoveryEnabled
+            || (app.searchOverlayOpen && app.screen == .home)
     }
     private var topInset: CGFloat {
         UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first?.keyWindow?.safeAreaInsets.top ?? 0

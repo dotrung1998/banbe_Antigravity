@@ -12,7 +12,13 @@ struct SearchView: View {
     @EnvironmentObject private var app: AppState
     /// Shown over Home (RootView) instead of as its own screen.
     let isOverlay: Bool
-    init(isOverlay: Bool = false) { self.isOverlay = isOverlay }
+    /// Prototype v2 (note 99): the unified bottom sheet — its own grabber, in-sheet field and Xong, no shared bar.
+    let unifiedSheet: Bool
+    init(isOverlay: Bool = false, unifiedSheet: Bool = false) {
+        self.isOverlay = isOverlay
+        self.unifiedSheet = unifiedSheet
+    }
+    @FocusState private var sheetFocused: Bool
 
     /// The persistent bar's focus (the field itself lives in RootView, see PersistentSearchBar).
     private var focused: Bool {
@@ -84,7 +90,7 @@ struct SearchView: View {
         let hosts = hostHits(all, q)
         let areas = areaHits(q)
         VStack(spacing: 0) {
-            header
+            if unifiedSheet { unifiedSheetHeader } else { header }
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     if app.unifiedDiscoveryEnabled { unifiedMeta(q) }
@@ -116,6 +122,7 @@ struct SearchView: View {
             if app.pulseDaily.isEmpty { await app.loadPulse(period: .daily) }
         }
         .onAppear {
+            guard !unifiedSheet else { sheetFocused = true; return }
             registerSearchBar()
             guard entering else { focused = app.searchQuery.isEmpty; return }
             DispatchQueue.main.async {
@@ -138,6 +145,63 @@ struct SearchView: View {
             })
             .environmentObject(app)
         }
+        // The prototype's sheet surface: 28 pt corners, our own 38 × 5 grabber (the system one is hidden).
+        .presentationDetents([.large])
+        .presentationDragIndicator(.hidden)
+        .presentationCornerRadius(28)
+        .presentationBackground(app.palette.paper)
+    }
+
+    /// Prototype v2's sheet header: grabber, the 48 pt in-sheet field (clay magnifier, clay focus border, its own
+    /// clear button) and Xong.
+    private var unifiedSheetHeader: some View {
+        VStack(spacing: 10) {
+            Capsule().fill(app.palette.ink.opacity(0.18)).frame(width: 38, height: 5)
+                .accessibilityHidden(true)
+            HStack(spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.app(size: 16, weight: .medium))
+                        .foregroundStyle(app.palette.clay).accessibilityHidden(true)
+                    TextField(app.T("Tìm sự kiện, host, khu vực, vibe…", "Search events, hosts, areas, vibes…"), text: $app.searchQuery)
+                        .font(.app(size: 15))
+                        .focused($sheetFocused)
+                        .submitLabel(.search)
+                        .onSubmit { commit() }
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("search.sheet.field")
+                    if !app.searchQuery.isEmpty {
+                        Button {
+                            app.searchQuery = ""
+                            sheetFocused = true
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.app(size: 15)).foregroundStyle(app.palette.ink3)
+                                .frame(width: 32, height: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(app.T("Xoá tìm kiếm", "Clear search"))
+                        .accessibilityIdentifier("search.sheet.clear")
+                    }
+                }
+                .padding(.horizontal, 14).frame(height: 48)
+                .background(app.palette.surface2, in: Capsule())
+                .overlay(Capsule().strokeBorder(sheetFocused ? app.palette.clay : .clear, lineWidth: 1.5))
+                Button {
+                    commit()
+                    sheetFocused = false
+                    app.unifiedSearchOpen = false
+                } label: {
+                    Text(app.T("Xong", "Done")).font(.app(size: 15, weight: .semibold))
+                        .frame(minWidth: 44, minHeight: 48)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("search.sheet.done")
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 6)
     }
 
     /// True until the glide from Home's search bar has started: the field is drawn where Home's bar was, at its width.
@@ -148,6 +212,7 @@ struct SearchView: View {
     /// Back: when Search came from Home, the field glides back down onto Home's bar (the reverse of the entrance),
     /// then Home simply appears under it.
     private func close() {
+        if unifiedSheet { commit(); app.unifiedSearchOpen = false; return }
         if isOverlay {
             guard !leaving else { return }
             let frame = app.homeSearchBarFrame
@@ -300,7 +365,8 @@ struct SearchView: View {
                 Button {
                     commit()
                     focused = false
-                    app.seeSearchOnMap(q)
+                    // Over the Map the sheet just closes: the map already shows these results.
+                    if app.screen == .mapExplore { app.unifiedSearchOpen = false } else { app.seeSearchOnMap(q) }
                 } label: {
                     HStack(spacing: 10) {
                         Image(systemName: "map").font(.app(size: 17, weight: .semibold)).accessibilityHidden(true)
@@ -427,6 +493,7 @@ struct SearchView: View {
     }
 
     private func registerSearchBar() {
+        guard !unifiedSheet else { return }
         app.searchBarAtHome = atHomeBar
         app.searchBarHandlers = SearchBarHandlers(
             owner: "search",

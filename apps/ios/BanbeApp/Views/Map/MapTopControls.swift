@@ -6,11 +6,17 @@ import SwiftUI
 // the `map-top` block in src/screens/MapExplore.jsx.
 struct MapTopControls<Chips: View>: View {
     @EnvironmentObject private var app: AppState
+    /// Prototype v2 (note 99): the unified Map's own search row replaces the shared persistent bar in the same slot.
+    var searchRow: AnyView? = nil
     @ViewBuilder let chips: () -> Chips
 
     var body: some View {
         VStack(spacing: 8) {
-            Color.clear.frame(height: 44).allowsHitTesting(false)
+            if let searchRow {
+                searchRow
+            } else {
+                Color.clear.frame(height: 44).allowsHitTesting(false)
+            }
             chips().opacity(app.searchBarAtHome ? 0 : 1)
         }
         .foregroundStyle(app.palette.ink)
