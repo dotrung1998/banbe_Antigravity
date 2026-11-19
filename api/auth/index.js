@@ -539,6 +539,11 @@ async function handleAdminDeleteAccount(req, res, admin, body) {
   const { data: caller } = await admin.from('profiles').select('role').eq('id', callerId).maybeSingle();
   if (caller?.role !== 'admin') return res.status(403).json({ error: 'NOT_AUTHORIZED' });
 
+  // Same TESTING-PHASE switch as the admin event wipe (189): with `admin_event_wipe` off, or its row missing, this
+  // whole-account delete is off too (audit 2026-11-19 row 12). No second factor exists, so the switch is the gate.
+  const { data: wipeFlag } = await admin.from('app_feature_flags').select('enabled').eq('key', 'admin_event_wipe').maybeSingle();
+  if (!wipeFlag?.enabled) return res.status(403).json({ error: 'ADMIN_DELETE_DISABLED' });
+
   const targetId = getText(body.userId);
   if (!UUID_PATTERN.test(targetId)) return res.status(400).json({ error: 'INVALID_VALUE' });
   if (targetId === callerId) return res.status(400).json({ error: 'INVALID_TARGET' });
