@@ -1,6 +1,7 @@
 # APPLIED — audit 2026-11-19 (CC)
 
-Working tree: local `main`, nothing pushed, no PR, no deploy. One commit per finding (rows 37+38 share one
+Working tree: local `main`, nothing pushed, no PR, no deploy. Production DB: migrations 222, 224–227, 229 and
+230 applied 2026-11-19; 223 held for the web client deploy. One commit per finding (rows 37+38 share one
 copy commit, as they touch the same two strings). All migrations are new files; no applied migration was edited.
 
 `/docs/audits/` is generated output and stays ignored, with one narrow exception `.gitignore` now carries (owner,
@@ -11,16 +12,16 @@ the two fix commits themselves. The ledger is committed just after them, because
 
 | # | Status | Commit | Files | Check |
 |---|--------|--------|-------|-------|
-| 1 | applied | `014874b` | `supabase/migrations/20261231000222_222_bookings_insert_lock.sql`, `supabase/rollbacks/…222…`, `supabase/tests/222_bookings_insert_lock/` | local Postgres (`g-db`, `ON_ERROR_STOP=1`), 5/5 |
-| 2 | applied | `166a58f` | migration `…223_223_organizers_private_columns.sql` + rollback + `supabase/tests/223_organizers_column_grants/`, `src/state/BanBeContext.jsx`, `src/screens/sheets/PaymentQrManager.jsx` | local Postgres 9/9; `npm run build` green |
-| 3 | applied | `e97b1a8` | migration `…224_224_events_client_write_guard.sql` + rollback + `supabase/tests/224_events_client_write_guard/` | local Postgres 13/13 |
+| 1 | applied | `014874b` | `supabase/migrations/20261231000222_222_bookings_insert_lock.sql`, `supabase/rollbacks/…222…`, `supabase/tests/222_bookings_insert_lock/` | local Postgres (`g-db`, `ON_ERROR_STOP=1`), 5/5; production 2026-11-19 |
+| 2 | applied | `166a58f` | migration `…223_223_organizers_private_columns.sql` + rollback + `supabase/tests/223_organizers_column_grants/`, `src/state/BanBeContext.jsx`, `src/screens/sheets/PaymentQrManager.jsx` | local Postgres 9/9; `npm run build` green; production 223 **held** until the web client deploy (the live bundle still selects organizers' bank columns) |
+| 3 | applied | `e97b1a8` | migration `…224_224_events_client_write_guard.sql` + rollback + `supabase/tests/224_events_client_write_guard/` | local Postgres 13/13; production 2026-11-19 |
 | 4 | applied | `7264ca0` | `api/send-email.js` (deleted), `src/lib/sendEmail.js` (deleted), `README.md` | `npm run build` green |
 | 5 | applied (owner action: rotate the password) | `68d960e` | `apps/ios/BanbeAppUITests/ScreenshotCatalogTests.swift`, `apps/ios/BanbeAppUITests/UITestAuthHelpers.swift`, 6 UI-test files | read env, no literal credential left. The password in git history must be rotated by the owner |
-| 6 | applied | `911b62b` | `src/lib/eventEnd.js`, migration `…225_225_no_booking_after_event_ends.sql` + rollback + `supabase/tests/225_event_ended_hold/`, callers in `Home.jsx`/`Search.jsx`/`MapExplore.jsx` | local Postgres 9/9; `test:unit` 1042/1042 |
-| 7 | applied | `e270b69` | migration `…226_226_taken_event_keys.sql` + rollback + `supabase/tests/226_taken_event_keys/`, `src/screens/Search.jsx`, iOS `AppState+Data.swift`/`SearchView.swift` | local Postgres 7/7 |
+| 6 | applied | `911b62b` | `src/lib/eventEnd.js`, migration `…225_225_no_booking_after_event_ends.sql` + rollback + `supabase/tests/225_event_ended_hold/`, callers in `Home.jsx`/`Search.jsx`/`MapExplore.jsx` | local Postgres 9/9; `test:unit` 1042/1042; production 2026-11-19 |
+| 7 | applied | `e270b69` | migration `…226_226_taken_event_keys.sql` + rollback + `supabase/tests/226_taken_event_keys/`, `src/screens/Search.jsx`, iOS `AppState+Data.swift`/`SearchView.swift` | local Postgres 7/7; production 2026-11-19 |
 | 8 | applied | `b3fc339` | `src/lib/homeDiscovery.js` + iOS `Lib/HomeDiscovery.swift` (`almostFull`) | build + unit |
-| 9 | applied | `ae95390` | migration `…227_227_checkin_requires_payment.sql` + rollback + `supabase/tests/227_checkin_payment/` | local Postgres 7/7 |
-| 10 | applied | `d27be3e8` | `supabase/migrations/20261231000230_230_verify_payment_expired_state.sql`, `supabase/rollbacks/…230…`, `supabase/tests/230_verify_payment/` | `verify_payment` refused before any write (INVALID_STATE, state `expired`) for an expired status or payment_state, and `expired` left the allowed list; the status trigger is unchanged. Tested on `g-db` (7/7): expired → INVALID_STATE and row untouched, pending/expired → INVALID_STATE and untouched, pending/holding → confirmed, rollback → the old trigger error. Callers already handle `success: false` (`BanBeContext.jsx:3906`), so the error is no longer a raw P0001 |
+| 9 | applied | `ae95390` | migration `…227_227_checkin_requires_payment.sql` + rollback + `supabase/tests/227_checkin_payment/` | local Postgres 7/7; production 2026-11-19 |
+| 10 | applied | `d27be3e8` | `supabase/migrations/20261231000230_230_verify_payment_expired_state.sql`, `supabase/rollbacks/…230…`, `supabase/tests/230_verify_payment/` | `verify_payment` refused before any write (INVALID_STATE, state `expired`) for an expired status or payment_state, and `expired` left the allowed list; the status trigger is unchanged. Tested on `g-db` (7/7): expired → INVALID_STATE and row untouched, pending/expired → INVALID_STATE and untouched, pending/holding → confirmed, rollback → the old trigger error. Callers already handle `success: false` (`BanBeContext.jsx:3906`), so the error is no longer a raw P0001; production 2026-11-19 |
 | 11 | applied | `12e2741` | `api/_lib/handlers/cronPurgePaymentDocuments.js`, `api/_lib/handlers/cronWalletPassSweep.js` | build green; behaviour read from source (fail closed when `CRON_SECRET` unset) |
 | 12 | applied | `9bfc2e9` | `api/auth/index.js` | build green; admin delete now 403 without `admin_event_wipe` |
 | 13 | applied | `13bef88` | `src/screens/Home.jsx`, `src/screens/AdminManageEvents.jsx`, `apps/ios/BanbeApp/Views/AdminManageEventsView.swift` | build + unit; iOS `xcodebuild build` green |
@@ -42,7 +43,7 @@ the two fix commits themselves. The ledger is committed just after them, because
 | 29 | applied | `bc22170`, `d33e0e01` | `src/App.jsx` (`DOCK_CLEARANCE`), `src/screens/Home.jsx`, `src/components/home/HomeShellV5.jsx` (`guestNotice` slot between the band and the photo hero) | `bc22170` gave the feed its end clearance; the visual pass found the guest banner still under the floating dock at 320×700 (36 px). The banner now renders above the photo hero (`d33e0e01`). Measured in the running app at 390×844 and 320×700, light + dark: banner 115–209, dock starts 764 / 620, rects do not intersect; end-of-feed clearance still 156 px; the photo card's bottom row stays above the dock. Screenshots `home-{390,320}-{light,dark}-after.png` vs `home-320-{light,dark}-before.png` |
 | 30 | applied | `1fc73c5` | `src/screens/Login.jsx` | build + unit · Visual pass: the theme control reads "☾ Tối" / "☀ Sáng"; the Facebook row is dashed, tagged "Sắp có" and disabled, with its note beneath |
 | 31 | applied (5/5 on the simulator) | `8d0ff46` | `apps/ios/BanbeAppUITests/NavigationUITests.swift`, `…/Views/BottomTabBar.swift`, `…/Views/SecurityView.swift` | 5 safe NavigationUITests: **5 passed, 0 failed** (`xcodebuild test`, simulator `B601F39F`) |
-| 32 | applied | `e9db089` | migration `…229_229_photo_insert_scope.sql` + rollback + `supabase/tests/229_photo_insert/` | local Postgres 6/6 |
+| 32 | applied | `e9db089` | migration `…229_229_photo_insert_scope.sql` + rollback + `supabase/tests/229_photo_insert/` | local Postgres 6/6; production 2026-11-19 |
 | 33 | applied | `fa37c84` | `src/data/events.js` (`VENUE`) | build + unit |
 | 34 | not-a-defect | `a5f2a6e` (earlier) | `tests/unit/mapStyle…` | `npm run test:unit` 1042/1042 |
 | 35 | applied | `13391b2` | `src/screens/MapExplore.jsx` (chip row offset) | build + unit; **not visually checked** · Visual pass 1280: filter and locate controls sit inside the phone frame (x 777 / x 461), nothing clipped |
@@ -51,14 +52,15 @@ the two fix commits themselves. The ledger is committed just after them, because
 | 38 | applied | `4b219e3` | `src/lib/eventEnd.js`, `src/screens/Home.jsx`, `src/screens/CreateEvent.jsx`, `apps/ios/BanbeApp/Lib/V23EventRules.swift`, `…/Views/HomeV23Sections.swift`, `…/Views/OnboardingViews.swift`, `tests/unit/eventEnd.test.mjs` | build + unit 1042/1042 |
 | 39 | not-a-defect | — | `apps/ios/BanbeApp/Views/Sheets.swift` (`AreaMenuOptions`, `AreaSearchSheet`) | Every string goes through `app.T(vi, en)`; the sheet was located and read |
 | 40 | not-a-defect | — | `apps/ios/BanbeApp/Views/HomeShellV5Views.swift` | Area, view, search, Map, quick settings, account and the wordmark each carry a localized `accessibilityLabel` |
-| 41 | **blocked: needs owner DB check** | — | — | No production DB access from this machine: whether migration 183 is applied (and the conditional P0 in `01-money-access.md`) cannot be checked |
+| 41 | **answered: not a live P0** | — | — | Production ACLs read 2026-11-19: `anon` and `authenticated` have no EXECUTE on `verify_phone_otp` or `log_payment_event`, and no SELECT on `reservations`, `checkins`, `v_host_ledger` or `v_event_availability`. Migration 183 is still unrecorded in `supabase_migrations`; its effects were applied by hand. |
 
 ## Needs owner
 
-- Rotate the UI-test password that used to live in `ScreenshotCatalogTests.swift` (row 5).
-- Check whether migration 183 is applied in production (row 41 / `01-money-access.md` M2).
-- Apply the new migrations (222–227, 229) with the usual `supabase db push` when the owner is ready — none were applied
-  here, and nothing was deployed.
+- 223 is held: deploy the web client (`166a58f`) before applying it — the live bundle still selects the organizers
+  bank columns. Exact command in `docs/runbooks/2026-11-19-audit-production-rollout.md` §6.
+- Optional: record migration 183 (idempotent, ACL-only) so production history matches reality; the ACLs are already
+  closed (row 41).
+- 182/184 stay deliberately unpushed.
 
 ## Follow-ups from the visual pass
 
