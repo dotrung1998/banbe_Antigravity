@@ -85,8 +85,8 @@ export function UnifiedTypeGrid({ counts, selected, total, onPick, onClear, onOp
   );
   if (compact) return <div data-testid={idPrefix} data-unified="1">{grid}</div>;
   return (
-    <div data-testid="home-browse" data-unified="1" style={{ padding: '28px 20px 0', scrollMarginTop: 'var(--bb-home-head-h)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+    <div data-testid="home-browse" data-unified="1" style={{ padding: '28px 0 0', scrollMarginTop: 'var(--bb-home-head-h)' }}>
+      <div className="bb-sticky-head" data-testid="home-browse-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 20px 6px' }}>
         <h3 style={{ fontSize: 19, fontWeight: 400, margin: 0, letterSpacing: '-.01em' }}>{T('Duyệt theo loại', 'Browse by type')}</h3>
         {total > 0 && (
           <button type="button" data-testid="home-browse-all" onClick={onClear}
@@ -95,7 +95,7 @@ export function UnifiedTypeGrid({ counts, selected, total, onPick, onClear, onOp
           </button>
         )}
       </div>
-      {grid}
+      <div style={{ padding: '10px 20px 0' }}>{grid}</div>
     </div>
   );
 }

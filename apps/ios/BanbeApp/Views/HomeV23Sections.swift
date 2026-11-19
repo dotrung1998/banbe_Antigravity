@@ -26,88 +26,115 @@ struct ShortlistV23View: View {
     /// Prototype v2 (note 99): the list is "Near you", always soonest first — the tab's own name is the band above it.
     private var sub: ViEn { ViEn("gần nhất trước", "soonest first") }
 
+    /// Home (unified discovery) pins the heading as a `Section` header under the folded band and lists the rest as its
+    /// content; `.whole` is the one-block form.
+    enum Part { case whole, header, list }
+    var part: Part = .whole
+    /// Space above the heading in `.whole` (HomeView puts part of it above its scroll anchor instead).
+    var topPadding: CGFloat = 28
+
     var body: some View {
-        let n = rows.count
-        let card = ListEnd.shortlistEnd(total: total, shown: n, filtersOn: filterBadge > 0, tab: endTab.rawValue)
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .bottom, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    // The open tab beside the title: same size, quieter (ink2), after a small middle dot.
-                    (Text(app.T("Gần bạn", "Near you"))
-                        + (tab.map { Text(" · ").foregroundStyle(app.palette.ink2) + Text(app.T($0.vi, $0.en)).foregroundStyle(app.palette.ink2) } ?? Text("")))
-                        .font(.app(size: 19)).accessibilityAddTraits(.isHeader)
-                        .accessibilityIdentifier("home.shortlistTitle")
-                    Button(action: onFilters) {
-                        Text(filterBadge > 0 && total > n
-                             ? app.T("\(n) trên \(total) sự kiện · \(sub.vi)", "\(n) of \(total) events · \(sub.en)")
-                             : app.T("\(n) sự kiện · \(sub.vi)", "\(n) \(n == 1 ? "event" : "events") · \(sub.en)"))
-                            .font(.app(size: 12.5)).foregroundStyle(app.palette.ink2)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("home.filterSummary")
-                }
-                Spacer(minLength: 0)
-                Button(action: onFilters) {
-                    Image(systemName: "slider.horizontal.3").font(.app(size: 16))
-                        .frame(width: 44, height: 44)
-                        .background(app.palette.block, in: Circle())
-                        .overlay(alignment: .topTrailing) {
-                            if filterBadge > 0 {
-                                Text("\(filterBadge)").font(.app(size: 11.5, weight: .bold)).foregroundStyle(app.palette.paper)
-                                    .frame(minWidth: 18, minHeight: 18).padding(.horizontal, 2)
-                                    .background(app.palette.ink, in: Capsule())
-                                    .overlay(Capsule().stroke(app.palette.paper, lineWidth: 2))
-                                    .offset(x: 2, y: -2)
-                                    .accessibilityIdentifier("home.filterBadge")
-                            }
-                        }
-                        .contentShape(Circle())
-                }
-                .buttonStyle(PressableButtonStyle())
-                .accessibilityLabel(filterBadge > 0 ? app.T("Bộ lọc, đang bật \(filterBadge)", "Filters, \(filterBadge) on") : app.T("Bộ lọc", "Filters"))
-                .accessibilityIdentifier("home.filtersButton")
+        switch part {
+        case .whole:
+            VStack(alignment: .leading, spacing: 0) {
+                headerRow.padding(.horizontal, 20).padding(.bottom, 12)
+                listBody
             }
-            .padding(.horizontal, 20).padding(.bottom, 12)
-            if !activeParts.isEmpty {
-                HStack(spacing: 0) {
-                    Text(activeParts.joined(separator: " · ")).font(.app(size: 13.5, weight: .semibold)).lineLimit(1)
-                        .padding(.leading, 14)
-                    Button(action: { Haptics.selection(); onClearActive?() }) {
-                        Image(systemName: "xmark").font(.app(size: 12, weight: .bold))
-                            .frame(width: 40, height: 36).contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(app.T("Xoá tìm kiếm và bộ lọc", "Clear search and filters"))
-                    .accessibilityIdentifier("home.activeChip.clear")
-                }
-                .foregroundStyle(app.palette.paper)
-                .frame(minHeight: 36)
-                .background(app.palette.ink, in: Capsule())
-                .padding(.horizontal, 20).padding(.bottom, 12)
+            .foregroundStyle(app.palette.ink)
+            .padding(.top, topPadding)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("home.shortlistSection")
+        case .header:
+            // The caller puts 18 pt above it; 10 pt inside keeps the `.whole` 28 pt rhythm and some air under the band.
+            headerRow
+                .foregroundStyle(app.palette.ink)
+                .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 12)
+        case .list:
+            VStack(alignment: .leading, spacing: 0) { listBody }
+                .foregroundStyle(app.palette.ink)
                 .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("home.activeChip")
-            }
-            V23Pager(items: rows, key: \.key, listID: "home.shortlist",
-                     row: { r in EventRowV23View(row: r, onToggleSave: { app.toggleFavorite(r.key) }) { app.goEvent(r.key) } },
-                     end: { v in EndCardView(model: card, variant: v, onAction: onAction) },
-                     empty: {
-                         // Web twin: the filters decide which empty card it is (ShortlistV23.jsx `filtersOn`).
-                         EndCardView(model: filterBadge > 0
-                            ? EndCardModel(kind: "empty", eyebrow: ViEn("Bộ lọc", "Filters"),
-                                           title: ViEn("Không có sự kiện nào khớp bộ lọc.", "Nothing matches these filters."),
-                                           body: ViEn("Xoá bộ lọc để xem lại mọi thứ.", "Clear the filters to see everything again."),
-                                           actions: [.init(act: "clear-filters", label: ViEn("Xoá bộ lọc", "Clear filters"), primary: true, testId: "home.shortlistClear")])
-                            : EndCardModel(kind: "empty", eyebrow: ViEn("Sự kiện", "Events"),
-                                           title: ViEn("Chưa có sự kiện nào.", "Nothing on yet."),
-                                           body: ViEn("Duyệt theo loại để tìm thứ đang diễn ra.", "Browse by type to find something on."),
-                                           actions: [.init(act: "types", label: ViEn("Duyệt theo loại", "Browse by type"), primary: true, testId: "home.shortlistTypes")]),
-                                     variant: .solo, onAction: onAction)
-                     })
+                .accessibilityIdentifier("home.shortlistSection")
         }
-        .foregroundStyle(app.palette.ink)
-        .padding(.top, 28)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("home.shortlistSection")
+    }
+
+    private var headerRow: some View {
+        let n = rows.count
+        return HStack(alignment: .bottom, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                // The open tab beside the title: same size, quieter (ink2), after a small middle dot.
+                (Text(app.T("Gần bạn", "Near you"))
+                    + (tab.map { Text(" · ").foregroundStyle(app.palette.ink2) + Text(app.T($0.vi, $0.en)).foregroundStyle(app.palette.ink2) } ?? Text("")))
+                    .font(.app(size: 19)).accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("home.shortlistTitle")
+                Button(action: onFilters) {
+                    Text(filterBadge > 0 && total > n
+                         ? app.T("\(n) trên \(total) sự kiện · \(sub.vi)", "\(n) of \(total) events · \(sub.en)")
+                         : app.T("\(n) sự kiện · \(sub.vi)", "\(n) \(n == 1 ? "event" : "events") · \(sub.en)"))
+                        .font(.app(size: 12.5)).foregroundStyle(app.palette.ink2)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("home.filterSummary")
+            }
+            Spacer(minLength: 0)
+            Button(action: onFilters) {
+                Image(systemName: "slider.horizontal.3").font(.app(size: 16))
+                    .frame(width: 44, height: 44)
+                    .background(app.palette.block, in: Circle())
+                    .overlay(alignment: .topTrailing) {
+                        if filterBadge > 0 {
+                            Text("\(filterBadge)").font(.app(size: 11.5, weight: .bold)).foregroundStyle(app.palette.paper)
+                                .frame(minWidth: 18, minHeight: 18).padding(.horizontal, 2)
+                                .background(app.palette.ink, in: Capsule())
+                                .overlay(Capsule().stroke(app.palette.paper, lineWidth: 2))
+                                .offset(x: 2, y: -2)
+                                .accessibilityIdentifier("home.filterBadge")
+                        }
+                    }
+                    .contentShape(Circle())
+            }
+            .buttonStyle(PressableButtonStyle())
+            .accessibilityLabel(filterBadge > 0 ? app.T("Bộ lọc, đang bật \(filterBadge)", "Filters, \(filterBadge) on") : app.T("Bộ lọc", "Filters"))
+            .accessibilityIdentifier("home.filtersButton")
+        }
+    }
+
+    @ViewBuilder private var listBody: some View {
+        let card = ListEnd.shortlistEnd(total: total, shown: rows.count, filtersOn: filterBadge > 0, tab: endTab.rawValue)
+        if !activeParts.isEmpty {
+            HStack(spacing: 0) {
+                Text(activeParts.joined(separator: " · ")).font(.app(size: 13.5, weight: .semibold)).lineLimit(1)
+                    .padding(.leading, 14)
+                Button(action: { Haptics.selection(); onClearActive?() }) {
+                    Image(systemName: "xmark").font(.app(size: 12, weight: .bold))
+                        .frame(width: 40, height: 36).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(app.T("Xoá tìm kiếm và bộ lọc", "Clear search and filters"))
+                .accessibilityIdentifier("home.activeChip.clear")
+            }
+            .foregroundStyle(app.palette.paper)
+            .frame(minHeight: 36)
+            .background(app.palette.ink, in: Capsule())
+            .padding(.horizontal, 20).padding(.bottom, 12)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("home.activeChip")
+        }
+        V23Pager(items: rows, key: \.key, listID: "home.shortlist",
+                 row: { r in EventRowV23View(row: r, onToggleSave: { app.toggleFavorite(r.key) }) { app.goEvent(r.key) } },
+                 end: { v in EndCardView(model: card, variant: v, onAction: onAction) },
+                 empty: {
+                     // Web twin: the filters decide which empty card it is (ShortlistV23.jsx `filtersOn`).
+                     EndCardView(model: filterBadge > 0
+                        ? EndCardModel(kind: "empty", eyebrow: ViEn("Bộ lọc", "Filters"),
+                                       title: ViEn("Không có sự kiện nào khớp bộ lọc.", "Nothing matches these filters."),
+                                       body: ViEn("Xoá bộ lọc để xem lại mọi thứ.", "Clear the filters to see everything again."),
+                                       actions: [.init(act: "clear-filters", label: ViEn("Xoá bộ lọc", "Clear filters"), primary: true, testId: "home.shortlistClear")])
+                        : EndCardModel(kind: "empty", eyebrow: ViEn("Sự kiện", "Events"),
+                                       title: ViEn("Chưa có sự kiện nào.", "Nothing on yet."),
+                                       body: ViEn("Duyệt theo loại để tìm thứ đang diễn ra.", "Browse by type to find something on."),
+                                       actions: [.init(act: "types", label: ViEn("Duyệt theo loại", "Browse by type"), primary: true, testId: "home.shortlistTypes")]),
+                                 variant: .solo, onAction: onAction)
+                 })
     }
 }
 

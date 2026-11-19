@@ -131,7 +131,7 @@ struct HomeView: View {
             activeHeader.revealRegion(0)
             // L5 weekly digest: its notification asks for the "This weekend" rail (AppState.goHomeThisWeekend).
             ScrollViewReader { weekendProxy in
-            ScreenScaffold(tracksBottomBarScroll: true, restoreOffsetY: app.homeScrollOffsetY, onScrollOffset: { app.homeScrollOffsetY = $0; HomeHeaderCompact.shared.update(offsetY: $0) }, scrollToTopToken: app.homeScrollToTopToken, scrollRequest: app.homeTourScrollRequest, pullAnchorTop: app.simpleShellEnabled ? pinnedHeaderHeight : 0, onRefresh: {
+            ScreenScaffold(tracksBottomBarScroll: true, restoreOffsetY: app.homeScrollOffsetY, onScrollOffset: { app.homeScrollOffsetY = $0; HomeHeaderCompact.shared.update(offsetY: $0) }, scrollToTopToken: app.homeScrollToTopToken, scrollRequest: app.homeTourScrollRequest, pullAnchorTop: app.simpleShellEnabled ? heroBandRoom : 0, onRefresh: {
                 await app.loadHomeLiveEvents()
                 await app.loadWeekendEvents()
                 await app.loadDiscoveryEvents()
@@ -143,7 +143,8 @@ struct HomeView: View {
                 // Lazy, so only the cards actually on screen fetch their photo —
                 // the eager VStack kicked off all ~21 hero downloads at launch
                 // and they all fought for the same bandwidth.
-                LazyVStack(alignment: .leading, spacing: 0) {
+                // Pinned section headers (unified discovery): "Browse by type" and "Near you" stick under the folded band.
+                LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                     // Simple Shell (note 66, switch simple_shell): one hero per mode. OFF renders the feed below unchanged.
                     if app.simpleShellEnabled {
                         if hostHome {
@@ -151,7 +152,7 @@ struct HomeView: View {
                             HomeHeroSection(tab: $heroTab, lists: snap.heroLists, onSeeAll: { heroSeeAll($0) },
                                             onSearchLocations: { areaSearchOpen = true },
                                             onAvatar: { quickSheetOpen = true },
-                                            headerHeight: pinnedHeaderHeight)
+                                            headerHeight: heroBandRoom)
                                 .id(true)   // distinct from the Going out hero: a lazy stack reuses a node by its outer id
                                 .id("home.tour.hero")
                                 .revealRegion(0)
@@ -209,14 +210,29 @@ struct HomeView: View {
                 }
                 .padding(.bottom, BottomTabBar.contentClearance)
             }
+            // The scroll view's top edge (its own origin for the pinned-header hairline check)…
+            .coordinateSpace(name: HomePinnedSectionHeader.space)
+            // …starts under the folded band (Simple Shell), so pinned section headers stick right below it, never under it.
+            // The hero keeps the rest of the band's room (`heroBandRoom`) and draws its backdrop past this edge (the
+            // scroll view does not clip), so the screen at rest is unchanged and scroll offsets mean what they did.
+            .padding(.top, scrollTopShift)
             .task(id: app.homeWeekendScrollRequest) { await scrollToWeekendIfAsked(weekendProxy) }
             // Prototype v2's rail end card: "See all" scrolls Home down to the "Near you" list, not into Browse. Observed
-            // here (the reader's level), never inside the lazy feed, whose later rows may not be built yet. The anchor
-            // y puts the anchor 16 pt above the band edge: the 28 pt top padding then leaves the heading 12 pt below the folded 58 pt band (the band is an overlay over the feed).
+            // here (the reader's level), never inside the lazy feed, whose later rows may not be built yet.
+            // The anchor lands on the scroll view's top edge, which is the folded band's bottom edge: with unified
+            // discovery that is where the "Near you" header pins; otherwise the heading lands 12 pt below the band.
             .onChange(of: nearYouScrollToken) { _, _ in
-                let y = (HomeHeroPinnedHeader.barHeight - 16) / max(UIScreen.main.bounds.height, 1)
+                let wasCompact = HomeHeaderCompact.shared.isCompact
+                let anchor = UnitPoint.top
                 withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.35)) {
-                    weekendProxy.scrollTo("home.nearYou", anchor: UnitPoint(x: 0.5, y: y))
+                    weekendProxy.scrollTo("home.nearYou", anchor: anchor)
+                }
+                // Scrolling from the top folds the band on the way, and the hero gives back the tabs' 44 pt mid-flight,
+                // so the target moved under the scroll. One plain re-align once the fold has settled (only then).
+                guard !wasCompact else { return }
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 450_000_000)
+                    weekendProxy.scrollTo("home.nearYou", anchor: anchor)
                 }
             }
             .environment(\.scaffoldClipsContent, homeClipsContent)
@@ -603,6 +619,13 @@ struct HomeView: View {
     /// Simple Shell: the hero backdrop paints above the scroll bounds, so the scroll view must not clip it (pull / bounce).
     private var homeClipsContent: Bool { !app.simpleShellEnabled }
 
+    /// Simple Shell: the feed's scroll view starts under the FOLDED band (58 pt), so pinned section headers stick right
+    /// below it. 0 without Simple Shell (no overlaid band).
+    private var scrollTopShift: CGFloat { app.simpleShellEnabled ? HomeHeroPinnedHeader.barHeight : 0 }
+    /// What of the band's height still lies over the scroll view (44 pt of tabs at rest, 0 folded): the hero's top room
+    /// and the pull chip's anchor, both measured from the scroll view's own top.
+    private var heroBandRoom: CGFloat { max(0, pinnedHeaderHeight - scrollTopShift) }
+
     private var hostHome: Bool { app.simpleShellEnabled && app.effectiveHomeView == .host }
 
     @ViewBuilder
@@ -719,7 +742,7 @@ struct HomeView: View {
         HomeHeroSection(tab: heroTabBinding, lists: snap.heroLists, onSeeAll: { heroSeeAll($0) },
                         onSearchLocations: { areaSearchOpen = true },
                         onAvatar: { quickSheetOpen = true },
-                        headerHeight: pinnedHeaderHeight,
+                        headerHeight: heroBandRoom,
                         v23Counts: snap.tabCounts,
                         suggestTotals: snap.heroTotals,
                         onBrowseAll: { nearYouScrollToken += 1 })
@@ -735,64 +758,117 @@ struct HomeView: View {
             goerHero(kind, items: items).revealRegion(1)
             if kind == .none, !savedUpcoming.isEmpty { savedUpcomingSection.revealRegion(1) }
         }
-        VStack(spacing: 0) {
+        if app.unifiedDiscoveryEnabled {
             LiveLineView(updates: snap.live, index: $liveIndex, onOpen: { liveNowOpen = true })
-            // Prototype v2 order (note 99): Browse by type sits above the "Near you" list.
-            v23Browse(snap)
-        }
-        .revealRegion(2)
-        // Direct child of the LazyVStack (an id nested inside another container is unknown until that container is
-        // built, so scrollTo would no-op while "Near you" is still off screen). Zero height, just above the heading.
-        Color.clear.frame(height: 0).id("home.nearYou")
-        VStack(spacing: 0) {
-            // Note 99: time has the tabs, so the Filters badge counts only what Filters owns.
-            // The tab shows beside the title only when the list follows it (unified discovery); otherwise the list is every
-            // open event whatever the tab, so the end card words itself for All events. Web twin: ShortlistV23 `tab` / `endTab`.
-            ShortlistV23View(tab: app.unifiedDiscoveryEnabled ? shownHeroTab : nil,
-                             endTab: app.unifiedDiscoveryEnabled ? shownHeroTab : .all, rows: snap.shortRows, total: snap.shortTotal,
-                             filterBadge: app.unifiedDiscoveryEnabled ? UnifiedDiscovery.ownedFilterCount(app.homeFilters, sort: app.homeSort) : snap.filterBadge,
-                             onFilters: { app.homeFilterSheetOpen = true }, onAction: { shortlistAction($0) },
-                             activeParts: unifiedActiveParts, onClearActive: { clearUnified() })
-            if app.unifiedDiscoveryEnabled && snap.udTotal > 0 {
-                UnifiedMapBanner(count: snap.udTotal, onOpen: { app.goMapExploreFromHome() })
+                .revealRegion(2)
+                .sheet(isPresented: $liveNowOpen) { liveNowSheet(snap) }
+            // Pinned section headers, like a grouped list: "Browse by type" sticks under the folded band while the grid
+            // scrolls beneath it, then "Near you" pushes it off and stays for the rest of the list. 18 pt here + 10 pt
+            // inside each header = the 28 pt the blocks had above their heading.
+            Color.clear.frame(height: 18)
+            Section {
+                v23Browse(snap, part: .grid)
+            } header: {
+                v23Browse(snap, part: .header).modifier(HomePinnedSectionHeader()).revealRegion(2)
             }
-            Text("banbe · " + app.T("chọn một buổi, gặp vài người", "pick an evening, meet a few people"))
-                .font(.app(size: 12)).foregroundStyle(app.palette.ink3)
-                .frame(maxWidth: .infinity).padding(.top, 28)
-        }
-        .id("home.tour.filters")
-        .revealRegion(2)
-        .sheet(isPresented: $liveNowOpen) {
-            LiveNowSheet(updates: snap.live, shownIndex: reduceMotionOn ? liveIndex : nil,
-                         onOpen: { id, i in liveNowOpen = false; liveIndex = i; app.goEvent(id) },
-                         onClose: { liveNowOpen = false })
-                .environmentObject(app)
+            Color.clear.frame(height: 18)
+            // Direct child of the LazyVStack (an id nested inside another container is unknown until that container is
+            // built, so scrollTo would no-op while "Near you" is still off screen). Zero height, right on the header's top.
+            Color.clear.frame(height: 0).id("home.nearYou")
+            Section {
+                VStack(spacing: 0) {
+                    shortlist(snap, part: .list)
+                    shortlistFooter(snap)
+                }
+                .id("home.tour.filters")
+                .revealRegion(2)
+            } header: {
+                shortlist(snap, part: .header).modifier(HomePinnedSectionHeader()).revealRegion(2)
+            }
+        } else {
+            VStack(spacing: 0) {
+                LiveLineView(updates: snap.live, index: $liveIndex, onOpen: { liveNowOpen = true })
+                // Prototype v2 order (note 99): Browse by type sits above the "Near you" list.
+                v23Browse(snap)
+            }
+            .revealRegion(2)
+            // 16 pt above the anchor + 12 pt in the list = the 28 pt above the heading; the anchor's 16 pt puts the
+            // heading 12 pt under the folded band (the scroll view's top edge) when "See all" scrolls here.
+            Color.clear.frame(height: 16)
+            // Direct child of the LazyVStack (an id nested inside another container is unknown until that container is
+            // built, so scrollTo would no-op while "Near you" is still off screen). Zero height, just above the heading.
+            Color.clear.frame(height: 0).id("home.nearYou")
+            VStack(spacing: 0) {
+                shortlist(snap, part: .whole)
+                shortlistFooter(snap)
+            }
+            .id("home.tour.filters")
+            .revealRegion(2)
+            .sheet(isPresented: $liveNowOpen) { liveNowSheet(snap) }
         }
         if !app.homeStories.isEmpty { storyRow.padding(.top, 20) }
         if app.isSignedIn { surveyDiscoveryRow.padding(.top, 28) }
     }
 
-    /// The in-place Browse by type (note 99) — one block, rendered above the "Near you" list.
+    /// "Near you" (note 99): `.whole` is the one block; unified discovery renders its header and list as a pinned Section.
+    private func shortlist(_ snap: Snapshot, part: ShortlistV23View.Part) -> some View {
+        // Note 99: time has the tabs, so the Filters badge counts only what Filters owns.
+        // The tab shows beside the title only when the list follows it (unified discovery); otherwise the list is every
+        // open event whatever the tab, so the end card words itself for All events. Web twin: ShortlistV23 `tab` / `endTab`.
+        ShortlistV23View(tab: app.unifiedDiscoveryEnabled ? shownHeroTab : nil,
+                         endTab: app.unifiedDiscoveryEnabled ? shownHeroTab : .all, rows: snap.shortRows, total: snap.shortTotal,
+                         filterBadge: app.unifiedDiscoveryEnabled ? UnifiedDiscovery.ownedFilterCount(app.homeFilters, sort: app.homeSort) : snap.filterBadge,
+                         onFilters: { app.homeFilterSheetOpen = true }, onAction: { shortlistAction($0) },
+                         activeParts: unifiedActiveParts, onClearActive: { clearUnified() },
+                         part: part, topPadding: 12)
+    }
+
+    /// Under the list: the map banner (unified discovery) and the closing line.
     @ViewBuilder
-    private func v23Browse(_ snap: Snapshot) -> some View {
-        Group {
-            if app.unifiedDiscoveryEnabled {
-                UnifiedBrowseSection(counts: snap.udCounts, onToggle: { toggleUnifiedType($0) },
-                                     onClear: { app.pickFilter("all"); alignNearYouAfterPick() }, onOpenSheet: { udTypeSheetOpen = true })
-            } else {
-                HomeBrowseSection(counts: snap.categoryCounts, onPick: { app.openBrowse(type: $0, scope: "all") },
-                                  onFind: { app.openBrowse(type: "all", scope: "all") }, seeAllTotal: snap.browseTotal)
-            }
+    private func shortlistFooter(_ snap: Snapshot) -> some View {
+        if app.unifiedDiscoveryEnabled && snap.udTotal > 0 {
+            UnifiedMapBanner(count: snap.udTotal, onOpen: { app.goMapExploreFromHome() })
         }
-        .id("home.tour.browse")
-        .revealRegion(2)
-        .sheet(isPresented: $udTypeSheetOpen) {
-            UnifiedTypeSheet(counts: snap.udCounts, selected: app.homeFilters.cats.first) { key in
-                udTypeSheetOpen = false
-                app.pickFilter(key)
-                alignNearYouAfterPick()
-            }
+        Text("banbe · " + app.T("chọn một buổi, gặp vài người", "pick an evening, meet a few people"))
+            .font(.app(size: 12)).foregroundStyle(app.palette.ink3)
+            .frame(maxWidth: .infinity).padding(.top, 28)
+    }
+
+    private func liveNowSheet(_ snap: Snapshot) -> some View {
+        LiveNowSheet(updates: snap.live, shownIndex: reduceMotionOn ? liveIndex : nil,
+                     onOpen: { id, i in liveNowOpen = false; liveIndex = i; app.goEvent(id) },
+                     onClose: { liveNowOpen = false })
             .environmentObject(app)
+    }
+
+    /// The in-place Browse by type (note 99), rendered above the "Near you" list: one block, or (unified discovery) the
+    /// pinned header and the grid of a Section. The type sheet hangs off the grid (`.whole` / `.grid`).
+    @ViewBuilder
+    private func v23Browse(_ snap: Snapshot, part: UnifiedBrowseSection.Part = .whole) -> some View {
+        if app.unifiedDiscoveryEnabled {
+            let section = UnifiedBrowseSection(counts: snap.udCounts, onToggle: { toggleUnifiedType($0) },
+                                               onClear: { app.pickFilter("all"); alignNearYouAfterPick() }, onOpenSheet: { udTypeSheetOpen = true },
+                                               part: part)
+            if part == .header {
+                section
+            } else {
+                section
+                    .id("home.tour.browse")
+                    .revealRegion(2)
+                    .sheet(isPresented: $udTypeSheetOpen) {
+                        UnifiedTypeSheet(counts: snap.udCounts, selected: app.homeFilters.cats.first) { key in
+                            udTypeSheetOpen = false
+                            app.pickFilter(key)
+                            alignNearYouAfterPick()
+                        }
+                        .environmentObject(app)
+                    }
+            }
+        } else {
+            HomeBrowseSection(counts: snap.categoryCounts, onPick: { app.openBrowse(type: $0, scope: "all") },
+                              onFind: { app.openBrowse(type: "all", scope: "all") }, seeAllTotal: snap.browseTotal)
+                .id("home.tour.browse")
+                .revealRegion(2)
         }
     }
 
@@ -877,7 +953,7 @@ struct HomeView: View {
         HomeHeroSection(tab: $heroTab, lists: snap.heroLists, onSeeAll: { heroSeeAll($0) },
                         onSearchLocations: { areaSearchOpen = true },
                         onAvatar: { quickSheetOpen = true },
-                        headerHeight: pinnedHeaderHeight,
+                        headerHeight: heroBandRoom,
                         suggestTotals: snap.heroTotals)
             .id(false)
             .id("home.tour.hero")
@@ -1991,5 +2067,30 @@ private struct FirstCardTourTarget: ViewModifier {
     let isFirst: Bool
     func body(content: Content) -> some View {
         if isFirst { content.tourTarget("tour.home.eventCard") } else { content }
+    }
+}
+
+/// A Home section header that pins under the folded band (unified discovery): opaque page paper, so the content scrolls
+/// beneath it unseen, and a hairline under it only while it is pinned or being pushed off. Pinned = its top has reached
+/// the scroll view's top edge (`space`, set on Home's scroll view). The check reads geometry in a background only — no
+/// state is written per frame.
+struct HomePinnedSectionHeader: ViewModifier {
+    static let space = "home.feed.scroll"
+    @EnvironmentObject private var app: AppState
+
+    func body(content: Content) -> some View {
+        content
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                GeometryReader { g in
+                    app.palette.paper
+                        .overlay(alignment: .bottom) {
+                            Rectangle().fill(app.palette.divider).frame(height: 1)
+                                .opacity(g.frame(in: .named(Self.space)).minY < 0.5 ? 1 : 0)
+                        }
+                }
+                .accessibilityHidden(true)
+                .allowsHitTesting(false)
+            }
     }
 }

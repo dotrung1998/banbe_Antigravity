@@ -30,7 +30,7 @@ export default function ShortlistV23({ T, lang, tab = null, endTab = null, rows,
   const card = shortlistEnd({ total, shown: n, filtersOn, tab: endTab });
   return (
     <section data-testid="home-shortlist-section" aria-labelledby="home-shortlist-title" style={{ paddingTop: 28 }}>
-      <div data-testid="home-shortlist-header" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, padding: '0 20px 12px' }}>
+      <div data-testid="home-shortlist-header" className="bb-sticky-head" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, padding: '8px 20px 12px' }}>
         <div style={{ minWidth: 0 }}>
           <h3 id="home-shortlist-title" style={{ fontSize: 19, fontWeight: 400, margin: 0, letterSpacing: '-.01em' }}>{T('Gần bạn', 'Near you')}
             {/* The open tab beside the title (owner 2026-11-19): quieter, same size. Only while the list follows the tab. */}

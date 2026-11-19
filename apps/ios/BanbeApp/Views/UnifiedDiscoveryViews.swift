@@ -110,49 +110,78 @@ struct UnifiedBrowseSection: View {
 
     private var selected: String? { selectedOverride ?? app.homeFilters.cats.first }
 
+    /// Home (unified discovery) renders the heading and the grid as a pinned `Section` header and its content, so the
+    /// heading can stick under the folded band while the grid scrolls beneath it; `.whole` is the one-block form.
+    enum Part { case whole, header, grid }
+    var part: Part = .whole
+
     var body: some View {
+        switch part {
+        case .whole:
+            VStack(alignment: .leading, spacing: compact ? 0 : 14) {
+                if !compact { headerRow }
+                grid
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(.horizontal, compact ? 0 : 20).padding(.top, compact ? 0 : 28)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier(idPrefix)
+            .modifier(BrowseTourTarget(on: !compact))
+        case .header:
+            // 10 + 8 pt inside the header (the caller puts 18 pt above it): the same 28 / 14 rhythm as `.whole`, and the
+            // pinned band keeps a little air under the app bar.
+            headerRow
+                .foregroundStyle(app.palette.ink)
+                .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 8)
+        case .grid:
+            grid
+                .foregroundStyle(app.palette.ink)
+                .padding(.horizontal, 20).padding(.top, 6)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier(idPrefix)
+                .modifier(BrowseTourTarget(on: !compact))
+        }
+    }
+
+    private var headerRow: some View {
+        HStack {
+            Text(app.T("Duyệt theo loại", "Browse by type"))
+                .font(BanbeTheme.display(19))
+                .accessibilityAddTraits(.isHeader)
+            Spacer()
+            // Web shows it whenever there are events; with no type picked it just clears (a no-op), like the web.
+            if (counts["all"] ?? 0) > 0 {
+                Button(action: { Haptics.selection(); onClear() }) {
+                    (Text(app.T("Xem tất cả ", "See all ")) + Text("\(counts["all"] ?? 0)").bold())
+                        .font(.app(size: 14, weight: .semibold)).frame(minHeight: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("home.browse.all")
+            }
+        }
+    }
+
+    private var grid: some View {
         let keys = EventTypes.keys
         let tiles = UnifiedDiscovery.topTypes(counts, keys: keys)
         let picked = UnifiedDiscovery.pickedTileType(selected, tiles: tiles)
-        VStack(alignment: .leading, spacing: compact ? 0 : 14) {
-            if !compact { HStack {
-                Text(app.T("Duyệt theo loại", "Browse by type"))
-                    .font(BanbeTheme.display(19))
-                    .accessibilityAddTraits(.isHeader)
-                Spacer()
-                // Web shows it whenever there are events; with no type picked it just clears (a no-op), like the web.
-                if (counts["all"] ?? 0) > 0 {
-                    Button(action: { Haptics.selection(); onClear() }) {
-                        (Text(app.T("Xem tất cả ", "See all ")) + Text("\(counts["all"] ?? 0)").bold())
-                            .font(.app(size: 14, weight: .semibold)).frame(minHeight: 44)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("home.browse.all")
-                }
-            } }
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6, alignment: .top), count: 3), spacing: 6) {
-                ForEach(tiles, id: \.self) { k in
-                    let n = counts[k] ?? 0
-                    tile(glyph: CategoryGlyph.symbol(k), title: UnifiedText.typeName(app, k), sub: UnifiedText.events(app, n),
-                         on: selected == k, zero: n == 0, dashed: false, id: "\(idPrefix).\(k)") { onToggle(k) }
-                }
-                if let picked {
-                    tile(glyph: CategoryGlyph.symbol(picked), title: UnifiedText.typeName(app, picked),
-                         sub: UnifiedText.events(app, counts[picked] ?? 0) + app.T(" · đổi", " · change"),
-                         on: true, zero: false, dashed: false, id: "\(idPrefix).picked", action: onOpenSheet)
-                        .accessibilityHint(app.T("Đổi loại", "Change the type"))
-                } else {
-                    tile(glyph: "magnifyingglass", title: app.T("Tất cả loại", "All types"),
-                         sub: app.T("\(keys.count) loại", "\(keys.count) types"),
-                         on: false, zero: false, dashed: true, id: "\(idPrefix).find", action: onOpenSheet)
-                }
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6, alignment: .top), count: 3), spacing: 6) {
+            ForEach(tiles, id: \.self) { k in
+                let n = counts[k] ?? 0
+                tile(glyph: CategoryGlyph.symbol(k), title: UnifiedText.typeName(app, k), sub: UnifiedText.events(app, n),
+                     on: selected == k, zero: n == 0, dashed: false, id: "\(idPrefix).\(k)") { onToggle(k) }
+            }
+            if let picked {
+                tile(glyph: CategoryGlyph.symbol(picked), title: UnifiedText.typeName(app, picked),
+                     sub: UnifiedText.events(app, counts[picked] ?? 0) + app.T(" · đổi", " · change"),
+                     on: true, zero: false, dashed: false, id: "\(idPrefix).picked", action: onOpenSheet)
+                    .accessibilityHint(app.T("Đổi loại", "Change the type"))
+            } else {
+                tile(glyph: "magnifyingglass", title: app.T("Tất cả loại", "All types"),
+                     sub: app.T("\(keys.count) loại", "\(keys.count) types"),
+                     on: false, zero: false, dashed: true, id: "\(idPrefix).find", action: onOpenSheet)
             }
         }
-        .foregroundStyle(app.palette.ink)
-        .padding(.horizontal, compact ? 0 : 20).padding(.top, compact ? 0 : 28)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(idPrefix)
-        .modifier(BrowseTourTarget(on: !compact))
     }
 
     private func tile(glyph: String, title: String, sub: String, on: Bool, zero: Bool, dashed: Bool, id: String,
@@ -233,6 +262,8 @@ struct UnifiedTypeSheet: View {
         .background(app.palette.paper.ignoresSafeArea())
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        // The dock window floats over sheets (note 45): hide it while the type list is up, back when it closes.
+        .hidesDock("home.typeSheet")
         .accessibilityIdentifier("home.typeSheet")
     }
 

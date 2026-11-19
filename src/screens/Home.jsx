@@ -730,11 +730,13 @@ export default function Home({ browse = false }) {
   // (58 px; the scroll viewport already starts below the --bb-strip-h strip, so only the bar is subtracted), always,
   // so the tap shows as many events as possible. Reduce Motion jumps instead of animating.
   const scrollToNearby = (alignHeader = false) => {
-    const el = document.querySelector(alignHeader ? '[data-testid="home-shortlist-header"]' : '[data-testid="home-shortlist-section"]');
+    // Both paths land on the header: it is `.bb-sticky-head` (top: 58px), so its natural top = the band's height is
+    // exactly where it pins. An already-pinned header reports 58 and needs no scroll.
+    const el = document.querySelector('[data-testid="home-shortlist-header"]');
     if (!el) return;
     const sc = document.querySelector('[data-testid="app-scroll-viewport"]');
     const box = el.getBoundingClientRect();
-    const top = (sc ? sc.scrollTop : window.scrollY) + box.top - (sc ? sc.getBoundingClientRect().top : 0) - (alignHeader ? 58 + 8 : 70);
+    const top = (sc ? sc.scrollTop : window.scrollY) + box.top - (sc ? sc.getBoundingClientRect().top : 0) - 58;
     const reduce = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     (sc || window).scrollTo({ top: Math.max(0, top), behavior: reduce ? 'auto' : 'smooth' });
   };
@@ -1045,6 +1047,13 @@ export default function Home({ browse = false }) {
   ].join(' · ');
   // ---- Note 99: unified discovery helpers ----
   const [typeSheetOpen, setTypeSheetOpen] = useState(false);
+  // The All types sheet covers the bottom of the screen: the dock steps out while it is open (the same flag Inbox's
+  // settings sheet uses) and returns when it closes or Home unmounts.
+  useEffect(() => {
+    if (!typeSheetOpen) return undefined;
+    set({ dockSuppressed: true });
+    return () => set({ dockSuppressed: false });
+  }, [typeSheetOpen]); // eslint-disable-line react-hooks/exhaustive-deps
   const udOwned = ownedFilterCount(homeFilters, s.homeSort);
   const udParts = !ud ? [] : [
     udQuery && { text: `“${udQuery}”`, strong: true },
