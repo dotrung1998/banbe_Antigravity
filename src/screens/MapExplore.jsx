@@ -1131,7 +1131,9 @@ export default function MapExplore() {
               row.innerHTML = shown.map(k => categoryGlyphMarkup(k, 13, 1.7)).join('');
               if (more > 0) {
                 const em = document.createElement('em');
-                em.style.cssText = `font:600 10.5px/1 var(--bb-face, 'Be Vietnam Pro'),sans-serif;font-style:normal;`;
+                // Audit 2026-11-19 row 24: this is our own meta text, so it reads the same 12 px floor as the rest of
+                // the app (the sweep could not see it — the string is built at runtime, not written in JSX).
+                em.style.cssText = `font-family:var(--bb-face, 'Be Vietnam Pro'),sans-serif;font-size:var(--bb-text-meta);font-weight:600;line-height:1;font-style:normal;`;
                 em.textContent = `+${more}`;
                 row.appendChild(em);
               }
