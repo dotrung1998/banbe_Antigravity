@@ -56,6 +56,7 @@ export const V23_CSS = `
 .bbv23-step { animation: bbV23StepIn .38s var(--v23-spring) both; }
 .bbv23-photo { transition: transform .28s var(--v23-out); }
 .bbv23-photo:active { transform: scale(.97); }
+.bbv23-heroimg { transition: opacity .18s ease-out; }
 .bbv23-noent .bbv23-in, .bbv23-noent .bbv23-stub, .bbv23-noent .bbv23-bar { animation: none; }
 .bbv23-noent .bbv23-sec { opacity: 1; transform: none; transition: none; }
 @media (prefers-reduced-motion: reduce) {

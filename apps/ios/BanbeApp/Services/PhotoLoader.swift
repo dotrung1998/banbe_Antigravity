@@ -40,6 +40,25 @@ enum PhotoLoader {
         memory.object(forKey: key(path, maxPixel) as NSString)
     }
 
+    /// The decode sizes stored so far per stable path, so a caller can find the SAME picture decoded at another size
+    /// (a list card decodes at ~400-1300 px, Event Detail's cover at 1100). NSCache cannot be enumerated, and it may
+    /// have evicted an entry since, so each size is still checked against `memory`.
+    private static var sizesByPath: [String: Set<Int>] = [:]
+    private static let sizesLock = NSLock()
+
+    /// Synchronous peek for this exact path at the requested size, else the largest other decode of the same path
+    /// still in memory (never another path). Lets a screen paint the photo the user just tapped on its first frame
+    /// while the full-size decode loads behind it.
+    static func cachedAnySize(path: String, maxPixel: CGFloat) -> UIImage? {
+        if let exact = cached(path: path, maxPixel: maxPixel) { return exact }
+        let stable = stableKey(path)
+        sizesLock.lock(); let sizes = sizesByPath[stable] ?? []; sizesLock.unlock()
+        for size in sizes.sorted(by: >) {
+            if let hit = memory.object(forKey: "\(stable)@\(size)" as NSString) { return hit }
+        }
+        return nil
+    }
+
     /// In-flight loads keyed the same way as `memory`, so two callers racing
     /// for the same (path, maxPixel) — e.g. a list cell and its preload —
     /// share one network fetch instead of each downloading it separately.
@@ -84,6 +103,7 @@ enum PhotoLoader {
 
             let cost = Int(image.size.width * image.size.height * image.scale * image.scale * 4)
             memory.setObject(image, forKey: cacheKey as NSString, cost: cost)
+            sizesLock.lock(); sizesByPath[stableKey(path), default: []].insert(Int(maxPixel)); sizesLock.unlock()
             return image
         }
     }
@@ -95,6 +115,7 @@ enum PhotoLoader {
     /// tickets, …) — those live elsewhere entirely.
     static func clearCache() {
         memory.removeAllObjects()
+        sizesLock.lock(); sizesByPath = [:]; sizesLock.unlock()
         StorageImageCache.clear()
         session.configuration.urlCache?.removeAllCachedResponses()
     }
@@ -170,13 +191,16 @@ enum PhotoLoader {
     /// alone is already a correct "this exact content" identity; re-signing
     /// never changes it, and an edited photo always gets a different path.
     private static func key(_ path: String, _ maxPixel: CGFloat) -> String {
-        let stable = path.hasPrefix("http://") || path.hasPrefix("https://")
+        "\(stableKey(path))@\(Int(maxPixel))"
+    }
+
+    private static func stableKey(_ path: String) -> String {
+        path.hasPrefix("http://") || path.hasPrefix("https://")
             ? (URLComponents(string: path).map { c -> String in
                 var c2 = c
                 c2.query = nil
                 return c2.string ?? path
               } ?? path)
             : path
-        return "\(stable)@\(Int(maxPixel))"
     }
 }

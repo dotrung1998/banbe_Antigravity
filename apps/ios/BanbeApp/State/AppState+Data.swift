@@ -1425,7 +1425,7 @@ extension AppState {
                 // intro/organizers(name)) so the search document built by
                 // `Search.buildEventSearchDoc` has category/organizer/
                 // description text available regardless of `keywords`.
-                .select(MediaColumns.cols("id, cat_key, cat_label, name, area, city, country_code, state_province, neighborhood, lat, lng, starts_at, price_vnd, seats_remaining, status, cover_image, keywords, description, intro, organizers(name)" + EventMarketColumns.suffix + EventDetailsColumns.suffix, "cover_r2_ref", withR2), count: .exact)
+                .select(MediaColumns.cols("id, slug, cat_key, cat_label, name, area, city, country_code, state_province, neighborhood, lat, lng, starts_at, price_vnd, seats_remaining, status, cover_image, keywords, description, intro, organizers(name)" + EventMarketColumns.suffix + EventDetailsColumns.suffix, "cover_r2_ref", withR2), count: .exact)
                 .eq("status", value: "live")
                 // Strict invite-only events (migration 113) — this query
                 // never filtered visibility at all, the exact same gap

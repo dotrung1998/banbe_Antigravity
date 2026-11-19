@@ -124,6 +124,8 @@ struct HeaderCircleButton: View {
 struct AccountAvatarView: View {
     @EnvironmentObject private var app: AppState
     var size: CGFloat = 40
+    /// The white 1.5 pt edge. The Simple Shell dock turns it off and draws its own 2 pt ring outside the face.
+    var ringed: Bool = true
 
     private var avatarURL: URL? { app.user?.avatarURL.flatMap { URL(string: $0) } }
 
@@ -156,7 +158,7 @@ struct AccountAvatarView: View {
         .frame(width: size, height: size)
         .background(app.palette.clay, in: Circle())
         .clipShape(Circle())
-        .overlay(Circle().strokeBorder(Color.white.opacity(0.9), lineWidth: 1.5))
+        .overlay(Circle().strokeBorder(Color.white.opacity(ringed ? 0.9 : 0), lineWidth: 1.5))
     }
 }
 
@@ -359,8 +361,21 @@ struct HomeHeroPinnedHeader: View {
             HeaderCircleButton(system: "map", label: app.T("Bản đồ", "Map"), id: "home.mapButton") {
                 app.goMapExploreFromHome()
             }
-            HeaderCircleButton(system: "gearshape.fill", label: app.T("Cài đặt nhanh", "Quick settings"), id: "home.quickButton") {
-                onAvatar()
+            if app.unifiedDiscoveryEnabled {
+                HeaderCircleButton(system: "gearshape.fill", label: app.T("Cài đặt nhanh", "Quick settings"), id: "home.quickButton") {
+                    onAvatar()
+                }
+            } else {
+                // Note 99: the gear only exists with unified discovery (the account is the dock's slot there); otherwise the face.
+                SwipeSafeButton {
+                    Haptics.light()
+                    onAvatar()
+                } label: {
+                    AccountAvatarView(size: 40).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(app.T("Tài khoản", "Account"))
+                .accessibilityIdentifier("home.avatarButton")
             }
         }
     }
@@ -458,6 +473,8 @@ struct HomeHeroSection: View {
     var headerHeight: CGFloat = HomeHeroPinnedHeader.fallbackHeight
     /// v2.3 (note 81): every tab's size; non-nil turns the rail's last card into the See all fan card.
     var v23Counts: [HomeHeroTab: Int]? = nil
+    /// Note 99 (unified_discovery): "Browse all events" scrolls Home to the Near you list instead of opening Browse; nil = open Browse.
+    var onBrowseAll: (() -> Void)? = nil
     /// True while Home shows the Hosting view (organizer mode on + `app.homeView == .host`): the same hero without the card rail.
     /// Derived from app state here (never passed in), so the hero tab and the content below can never disagree.
     private var hosting: Bool { app.simpleShellEnabled && app.effectiveHomeView == .host }
@@ -659,7 +676,10 @@ struct HomeHeroSection: View {
         // The weekend rail is built with the same area and filters (only the date differs), so `lists` already knows
         // whether "See this weekend" leads anywhere (owner 2026-11-18). Web twin: `weekendHasEvents` in HomeShellV5.jsx.
         let weekendHasEvents = !(lists[.weekend] ?? []).isEmpty
-        let browseAll: () -> Void = { Haptics.selection(); app.openBrowse(type: "all", scope: "all") }
+        let browseAll: () -> Void = {
+            Haptics.selection()
+            if app.unifiedDiscoveryEnabled, let onBrowseAll { onBrowseAll() } else { app.openBrowse(type: "all", scope: "all") }
+        }
         switch tab {
         case .foryou:
             icon = "sparkles"

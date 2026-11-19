@@ -205,13 +205,14 @@ export default function DockCreateCenter({ pressed = false }) {
   if (hiddenByOverlay) return null;
   return (
     <>
-      {/* Prototype v2's centre "+": one 52 px clay circle, no label. */}
+      {/* The centre "+" (dock redesign 2026-11-19): a 48 px clay disc fully inside the 64 px pill, paper plus, a soft
+          inner highlight; it presses to 0.94 (index.css .bb-dock-create). Mirrors iOS DockCreateButtonView. */}
       <button ref={buttonRef} type="button" onClick={() => setOpen(v => !v)} data-testid="dock-create-button"
         aria-label={T('Tạo mới', 'Create')} aria-haspopup="dialog" aria-expanded={open}
-        className={pressed ? 'bb-press bb-dock-create-pressed' : 'bb-press'} data-pressed={pressed ? 'true' : undefined}
-        style={{ width: 52, maxWidth: '100%', height: 52, border: 'none', padding: 0, borderRadius: '50%', cursor: 'pointer',
-          background: 'var(--bb-clay, #9C5B3B)', color: '#fff', display: 'grid', placeItems: 'center', flex: 'none' }}>
-        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" /></svg>
+        className={pressed ? 'bb-dock-create bb-dock-create-pressed' : 'bb-dock-create'} data-pressed={pressed ? 'true' : undefined}
+        style={{ width: DISC, maxWidth: '100%', height: DISC, border: 'none', padding: 0, borderRadius: '50%', cursor: 'pointer',
+          display: 'grid', placeItems: 'center', flex: 'none' }}>
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" fill="none" /></svg>
       </button>
       {sheet}
     </>

@@ -208,3 +208,80 @@ the other filters) or the glass sliders circle with its count. `AppState.unified
 Still not mirrored: the filter sheet is not type-first; an area bubble still opens its panel (chips are gone but bubble
 taps are unchanged); Home's hero empty card still opens Browse. Checked: `xcodegen generate` + `xcodebuild …
 -destination 'generic/platform=iOS Simulator'` build green; no simulator run, no UI tests, nothing visually checked.
+
+## iOS parity + smoothness pass (2026-11-19, after review)
+
+A review of 63e5f0c / 82ab4a1 / 1f456f8 against the web found gaps and jank; fixed (iOS only, all parity changes gated
+on `unified_discovery`, switch-off unchanged):
+
+- **Home**: `HomeFilterSheet` leads with "Loại / Type" (compact `UnifiedBrowseSection`, `home.filter.type.*`, "Tất cả loại"
+  opens `UnifiedTypeSheet`, single choice into `draft.cats`) and drops the Category pills; Browse by type's "Xem tất cả N"
+  shows whenever there are events (web parity); the hero empty card's "Browse all events" scrolls to Near you
+  (`onBrowseAll` → `nearYouScrollToken`) instead of opening Browse; the band's gear shows only under the switch, else the
+  account avatar (`home.avatarButton`) as before 1f456f8.
+- **Map**: an area bubble flies to pin level and selects its first event (carousel), a stack tap selects + centres, the
+  neighbourhood panel never opens (restored snapshot panels ignored); a merged bubble zooms to `areaZoom - 0.15` so it
+  splits (`udZoomToAreas`, web 52d562b); carousel cards 292 × 104 with an 84 pt thumb, preview title 24 light; locate is
+  SF `scope`; the picked type chip is centred and the old scroll-to-start handlers skip unified mode.
+- **Search sheet**: "Từ Bản đồ" when opened over the Map; source chips pinned under the field and the "Xem trên bản đồ"
+  CTA pinned 30 pt above the bottom; `LazyVStack` rows; host/area hits skipped in unified mode.
+- **Smoothness**: the sheet's field edits local text and writes `app.searchQuery` debounced 150 ms (flushed on Xong,
+  submit, clear, chips, disappear), so typing no longer re-renders Home/Map per keystroke; focus is set 350 ms after
+  presentation; the dock hides from `RootView` `.onChange(of: unifiedSearchOpen)` (`setSheetOpen("search.sheet")`) before
+  the slide-up; the sheet is hosted on RootView's root ZStack; the Map's results pipeline is memoised in
+  `MapResultsCache` (key: events, For You order, query, filters, committed bounds, fill, minute; per-row search docs;
+  one-pass category counts) and the redundant `mapSearchText` / second `searchQuery` mirroring is gone in unified mode.
+- Checked: `xcodegen generate` + `xcodebuild -destination 'generic/platform=iOS Simulator'` green. NOT run on a
+  simulator or device, no UI tests; Instruments not used, so the smoothness gains are reasoned, not measured.
+- Simulator pass (iPhone 17 Pro, iOS 26.5, `-uiFixture shell.home -uiFixtureV23 YES -uiFixtureUnified YES`), 2026-11-19:
+  seen working: gear in the band + "Xem tất cả 7" with no type; filter sheet leads with Loại tiles, a pick selects the
+  tile and recounts ("Xem 3 sự kiện"); Search sheet with no dock, pinned source chips and CTA, results follow typing,
+  CTA count follows; Map with no dock, `scope` locate, query carried; an area tap flies to pins with the 292-wide
+  carousel on the first event and no panel; a type chip tap centres the chip and the Filters pill names the type;
+  Search over the Map says "Từ Bản đồ". Switch off: avatar back in the band. NOT checked: merged-bubble split (the
+  fixture has no merged bubble), swipe-to-dismiss, keyboard (hardware keyboard on the simulator), real device feel.
+  Merged-bubble split checked later the same day: "2 khu · 7" split into Quận 3 (1) + Quận 1 (6) at area level.
+- **Search vs Map count (2026-11-19)**: two real causes fixed. (1) Both Maps (web `MapExplore.jsx` `searchedEvents`, iOS
+  `computeResults`) now drop a live row 12 h past its start, as Search already did (`ENDED_AFTER_MS` / `endedAfter`) —
+  without migration 167's job, past "live" events stayed on the Map only. (2) iOS `SearchMatch.buildDoc(for: MapEventRow)`
+  now adds the event-type facts (`EventTypes.detailSearchTerms`), like the CatalogEvent doc and web's single
+  `buildEventSearchDoc`. Web build green, unit 1022/1022, iOS simulator build green. STILL DIFFERENT BY DESIGN (web too):
+  Search counts the demo catalogue (`EventCatalog.all` / `src/data/events.js` minus real keys) and events anywhere, while
+  the Map counts only real rows with coordinates inside the committed area, so "Xem trên bản đồ · N" can exceed the
+  Map's "Danh sách · N" (simulator: Gallery → Search 7, Map 5; the two extra were catalogue entries such as AEIE: Mở
+  Xưởng). Owner decision (same day): **count only map events**. Done on web + iOS under `unified_discovery`:
+  - The Search sheet's list, results head, CTA count (and its Filters counts on iOS) keep only docs with a Map row that
+    has lat/lng, matched by row `id` OR `slug` (a demo-catalogue key is its live row's slug; real events' key is the id).
+    Web: `mapPlottable` / `mapPoints` / `anyOutside` in `src/lib/unifiedDiscovery.js` (unit-tested), Search.jsx reads
+    the Map's rows (or fetches them via the now-exported `fetchLiveEvents`); iOS: `AppState.mapPlottablePoints`
+    (built in `mapEvents` didSet, id + slug keys), `mapEventsKnown`, SearchView loads map events when empty. Both map
+    selects now include `slug` (`MapEventRow.slug`). Until map rows load, the old list stays (no empty flash).
+  - The CTA sets `mapFitRequest` (web state / iOS `AppState.MapFitRequest`); the Map fits its camera to the N results'
+    points when any lies outside the committed area (web `fitCamera` 'destination', iOS `.cluster`), else nothing.
+  - Checks: web build green, unit 1023/1023; iOS simulator build green. Simulator: "Gallery" from Home/Map → 2 results,
+    both plotted. The shell fixtures replace `discoveryEvents` with fixture rows, so Search there cannot see real rows
+    like `sonmai-2` that the Map plots (it correctly drops the stale catalogue `sonmai`, which has no map row); a real
+    data check needs the switch on in production or a fixture that loads real discovery events. The camera fit was not
+    exercised (no result fell outside the view). Known limits: the Map's own hour window / For You can still narrow it
+    below N; with more than 500 public events the Map loads only the visible area, so Search narrows to that area.
+
+## Owner polish pass (2026-11-19, from screenshots)
+- iOS "Xem trên bản đồ" CTA hugs its label (centred, 24 pt side padding) instead of full width; web already did.
+- iOS Map list's floating "Bản đồ" button lifted above the home indicator in unified mode (`safeBottom + 10`); web
+  already added `env(safe-area-inset-bottom)`.
+- iOS Map price: the outlined ticket icon after paid prices (`priceView`) removed everywhere on the Map; VoiceOver keeps
+  "/ ticket". Web never drew it.
+- Simple Shell dock redesigned (web `BottomTabBar.jsx`, `DockCreateCenter.jsx`, `index.css` `.bb-dock-simple*`; iOS
+  `BottomTabBar.swift` `SimpleDock`/`DockSurface`/`SimpleDockGlyph`, `DockCreateButtonView.swift`, `AccountAvatarView`
+  `ringed:`): 64 tall pill (max 370 wide) with glass + hairline + shadow, five equal slots, inset 52 × 44 ink capsule for
+  the active tab (springs between slots, jumps under Reduce Motion), one 24 px / 1.8 stroke icon set on both platforms
+  (filled only when active), 48 clay "+" inside the pill, 16 tall Saved badge with a ring, 28 avatar with a ring;
+  Reduce Transparency = opaque surface. Legacy dock unchanged. Seen on the simulator in light and dark.
+- Event Detail cover flash: the v2.3 hero drew a brown radial plate with the event's first letter under the photo
+  (iOS `EventDetailView.swift` `v23HeroBackdrop`, web `EventDetailV23View.jsx`), and on iOS the hero's 1100 px request
+  missed the row's smaller cached decode, so the plate showed until the full decode. Now the plate shows only for an
+  event with no photo; iOS `PhotoLoader.cachedAnySize` + `RemoteImage(anySize:)` paints the row's cached decode on the
+  first frame (else `mat` + a 0.2 s fade, none under Reduce Motion); web `useImageReady` + `--bb-mat` + 180 ms fade.
+  Simulator: tapping Bếp Nhỏ №12 on Home zoomed straight from its photo, no plate.
+- Checks: web build green, unit 1023/1023; iOS simulator build green. Web guest-shell Playwright specs still fail at
+  onboarding (pre-existing, note 90), not re-run on the base commit.

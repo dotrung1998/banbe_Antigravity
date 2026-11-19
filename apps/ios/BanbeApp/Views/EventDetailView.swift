@@ -855,7 +855,10 @@ struct EventDetailView: View {
         // the photo, see `dragPose`).
         let radius = max(14 * (1 - zoomT), closeStart == nil ? min(sheetRadius, dismissProgress * 120) * dragScale : 0)
         return ZStack {
-            heroImage   // no placeholder fill: the card shows through until the photo is ready
+            // A quiet mat surface (never initials or art) until the cover is decoded; `heroImage` starts from the
+            // tapped card's own decode, so from a card the photo is normally there on the first frame.
+            app.palette.mat
+            heroImage
             // Bottom scrim under the title on the photo (note 70): the same dark gradient in both themes, so the white
             // text keeps ≥ 4.5:1 even on a white photo (EventDetailPresentation.heroScrim, unit-tested).
             LinearGradient(stops: [
@@ -882,9 +885,12 @@ struct EventDetailView: View {
         if case .local(_, let image)? = preview?.photos.first {
             Image(uiImage: image).resizable().scaledToFill()
         } else if case .remote(_, let url)? = preview?.photos.first {
-            RemoteImage(path: url, maxPixel: 1100)
+            RemoteImage(path: url, maxPixel: 1100, anySize: true)
         } else {
-            RemoteImage(path: event.img, maxPixel: 1100)
+            // anySize: the row/card decoded this same cover at a smaller size, so the hero paints that decode on its
+            // first frame and swaps to the 1100 px one without a fade (the size-keyed cache used to miss here and
+            // show the placeholder layer until the full decode arrived).
+            RemoteImage(path: event.img, maxPixel: 1100, anySize: true)
         }
     }
 
@@ -2198,7 +2204,9 @@ extension EventDetailView {
 
     fileprivate var v23Collapsed: Bool { EventDetailV23.navOn(scrollOffset) }
 
-    /// The cover (140 % tall art for the parallax), a vignette and the shade; a monogram plate when there is no photo.
+    /// The cover (140 % tall art for the parallax), a vignette and the shade; a monogram plate ONLY when the event has
+    /// no photo. With a photo, a quiet mat surface sits under it until it is decoded: the plate and its big initial used
+    /// to show for a moment before every cover ("another background with characters, then the cover").
     fileprivate var v23HeroBackdrop: some View {
         let f = heroScreenFrame
         let radius = max(14 * (1 - zoomT), closeStart == nil ? min(sheetRadius, dismissProgress * 120) * dragScale : 0)
@@ -2207,19 +2215,24 @@ extension EventDetailView {
         let shade = Color(red: 6 / 255, green: 5 / 255, blue: 4 / 255)
         let hasPhoto = preview?.photos.first != nil || !event.img.isEmpty
         return ZStack {
-            RadialGradient(colors: [Color(hex: 0x4A3A2A), Color(hex: 0x241E17), Color(hex: 0x14110D)],
-                           center: UnitPoint(x: 0.28, y: 0.06), startRadius: 0, endRadius: max(f.height, 1) * 1.1)
-            Text(String((event.name.trimmingCharacters(in: .whitespaces).first ?? "B")).uppercased())
-                .font(.app(size: 190, weight: .light))
-                .foregroundStyle(Color(red: 0.97, green: 0.96, blue: 0.93).opacity(0.08))
-                .offset(y: 10)
             if hasPhoto {
+                app.palette.mat
                 heroImage
                     .frame(width: f.width, height: f.height * art)
                     .scaleEffect(m.scale, anchor: UnitPoint(x: 0.5, y: 0.3))
                     .offset(y: m.offset * zoomT)
                     .frame(width: f.width, height: f.height)
                     .clipped()
+            } else if event.name.trimmingCharacters(in: .whitespaces).isEmpty {
+                // Still loading (`CatalogEvent.unavailable(loading:)` has no name or photo yet): no "B" plate.
+                app.palette.mat
+            } else {
+                RadialGradient(colors: [Color(hex: 0x4A3A2A), Color(hex: 0x241E17), Color(hex: 0x14110D)],
+                               center: UnitPoint(x: 0.28, y: 0.06), startRadius: 0, endRadius: max(f.height, 1) * 1.1)
+                Text(String((event.name.trimmingCharacters(in: .whitespaces).first ?? "B")).uppercased())
+                    .font(.app(size: 190, weight: .light))
+                    .foregroundStyle(Color(red: 0.97, green: 0.96, blue: 0.93).opacity(0.08))
+                    .offset(y: 10)
             }
             RadialGradient(stops: [.init(color: .clear, location: 0.32), .init(color: .black.opacity(0.42), location: 1)],
                            center: .top, startRadius: 0, endRadius: max(f.width, f.height) * 1.05)

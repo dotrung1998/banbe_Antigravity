@@ -38,6 +38,8 @@ struct HomeFilterSheet: View {
     @State private var datePickerOpen = false
     /// The location picker slides up OVER this sheet; this sheet (and its draft) stays alive underneath.
     @State private var areaOpen = false
+    /// Note 99: the searchable "All types" sheet over this one (unified_discovery).
+    @State private var typeSheetOpen = false
     @State private var pickedDate = Date()
 
     private static let vndPriceStep = 50_000
@@ -63,13 +65,15 @@ struct HomeFilterSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     // Map mode: the day and hours are the Map's own time bar (they dim, never filter), so no date here.
+                    // Note 99 (unified_discovery): the type leads, as compact Browse-by-type tiles; Category pills are dropped.
+                    if app.unifiedDiscoveryEnabled && browseTitle == nil { unifiedTypeSection }
                     quickRows
                     if let mapExtras { mapExtras }
                     whenSection
                     priceSection
                     // Simple Shell follow-up (plan item 2): categories and event-type chips live on Home's own rows
                     // again (one source of truth), so the sheet drops both while the switch is on. OFF: unchanged.
-                    categorySection
+                    if !app.unifiedDiscoveryEnabled { categorySection }
                     seatsSection
                     if !mapMode && browseTitle == nil { sortSection }
                 }
@@ -131,6 +135,14 @@ struct HomeFilterSheet: View {
             seeded = true
             draft = mapFilters ?? app.homeFilters
             draftSort = app.homeSort
+        }
+        .sheet(isPresented: $typeSheetOpen) {
+            UnifiedTypeSheet(counts: D.categoryCounts(items, draft, keys: EventTypes.keys, now: now), selected: draft.cats.first) { key in
+                typeSheetOpen = false
+                draft.cats = key == "all" ? [] : [key]
+                draft.typeFilters = []
+            }
+            .environmentObject(app)
         }
         .sheet(isPresented: $areaOpen) {
             LocationPickerSheet(isPresented: $areaOpen, doneMode: true)
@@ -337,6 +349,24 @@ struct HomeFilterSheet: View {
                     }
                 }
             }
+        }
+    }
+
+    /// Web twin: the `unified` Type section of HomeFilterSheet.jsx. Single choice; "Xem tất cả" clears the type.
+    private var unifiedTypeSection: some View {
+        let counts = D.categoryCounts(items, draft, keys: EventTypes.keys, now: now)
+        return section(app.T("Loại", "Type"), right: {
+            if !draft.cats.isEmpty {
+                Button(app.T("Xem tất cả", "See all")) { Haptics.selection(); draft.cats = []; draft.typeFilters = [] }
+                    .font(.app(size: 13.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                    .accessibilityIdentifier("home.filter.type.all")
+            }
+        }) {
+            UnifiedBrowseSection(counts: counts,
+                                 onToggle: { k in Haptics.selection(); draft.cats = draft.cats.first == k ? [] : [k]; draft.typeFilters = [] },
+                                 onClear: { draft.cats = []; draft.typeFilters = [] },
+                                 onOpenSheet: { typeSheetOpen = true },
+                                 compact: true, idPrefix: "home.filter.type", selectedOverride: .some(draft.cats.first))
         }
     }
 

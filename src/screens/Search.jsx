@@ -20,7 +20,7 @@ import { CategoryGlyph, CATEGORY_DEFS, CategorySheet } from '../components/home/
 import EventRowV23 from '../components/list/EventRowV23.jsx';
 import { categorySheetKeys, DEFAULT_FILTERS } from '../lib/homeDiscovery.js';
 import { flagOn } from '../lib/featureFlags.js';
-import { ownedFilterCount } from '../lib/unifiedDiscovery.js';
+import { ownedFilterCount, mapPlottable, mapPoints } from '../lib/unifiedDiscovery.js';
 import NativeSheet from '../components/NativeSheet.jsx';
 import { DATE_LABELS, SORT_LABELS } from './sheets/HomeFilterSheet.jsx';
 
@@ -37,6 +37,7 @@ export function pushRecent(list, q) {
 
 const ENDED_AFTER_MS = 12 * 3600000; // note 38: a live row 12h past its start is over
 
+let mapRowsCache = null; // the Map's rows, kept for the session so a reopened sheet never flashes
 export default function Search({ overlay = false }) {
   const {
     state: s, set, T, goEvent, goHome, loadDiscoveryEvents, loadPulse, openOrganizerProfile, pickArea, locationTree, pickFilter,
@@ -163,7 +164,17 @@ export default function Search({ overlay = false }) {
   const udOwned = ud ? ownedFilterCount(hf, s.homeSort) : 0;
   const udNarrows = ud && overlay && s.unifiedKeys != null && (udOwned > 0 || hf.date !== 'any');
   const udKeySet = useMemo(() => (udNarrows ? new Set(String(s.unifiedKeys).split('|')) : null), [udNarrows, s.unifiedKeys]);
-  const eventHits = useMemo(() => (query ? docs.filter(d => matchesSearchQuery(d.doc, query) && (!udKeySet || udKeySet.has(d.key))) : []), [docs, query, udKeySet]);
+  // Owner decision: under the switch the sheet lists only what the Map can plot (a located map row with the same id).
+  // Until the rows are in (null) the plain list stays, so nothing flashes empty.
+  const [mapRows, setMapRows] = useState(() => (ud ? (s.mapExploreState?.events ?? mapRowsCache) : null));
+  useEffect(() => {
+    if (!ud) return undefined;
+    let live = true;
+    import('./MapExplore.jsx').then(m => m.fetchLiveEvents()).then(res => { mapRowsCache = res.rows; if (live) setMapRows(res.rows); }).catch(() => {});
+    return () => { live = false; };
+  }, [ud]);
+  const searchDocs = useMemo(() => (ud ? mapPlottable(docs, mapRows) : docs), [ud, docs, mapRows]);
+  const eventHits = useMemo(() => (query ? searchDocs.filter(d => matchesSearchQuery(d.doc, query) && (!udKeySet || udKeySet.has(d.key))) : []), [searchDocs, query, udKeySet]);
   const hostHits = useMemo(() => {
     if (!query) return [];
     const byName = new Map();
@@ -196,7 +207,7 @@ export default function Search({ overlay = false }) {
 
   // Prototype v2's Search sheet lists the SAME result set the Map shows: one event row per result, narrowed by the
   // shared query and the shared Home/Map filters, with no host/area groups and no trending block.
-  const udBase = ud ? (udKeySet ? docs.filter(d => udKeySet.has(d.key)) : docs) : [];
+  const udBase = ud ? (udKeySet ? searchDocs.filter(d => udKeySet.has(d.key)) : searchDocs) : [];
   const udList = ud ? (query ? eventHits : udBase) : [];
   const udRows = ud ? udList.map(d => {
     const cat = CATEGORY_DEFS.find(c => c.key === d.catKey);
@@ -208,6 +219,8 @@ export default function Search({ overlay = false }) {
   const udSChip = { flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, height: 38, padding: '0 14px', borderRadius: 999, background: 'var(--bb-surface-2)', color: ink, border: 'none', fontFamily: 'inherit', fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap', cursor: 'pointer' };
   const goMap = () => {
     commit();
+    // The N results' own points: the Map fits to them when any lies outside its committed area (MapExplore decides).
+    if (ud) set({ mapFitRequest: { points: mapPoints(udList, mapRows), t: Date.now() } });
     // Opened over the Map (unified): the Map is right underneath and already reads the shared query.
     if (s.screen === 'mapExplore') { set({ searchOverlayOpen: false }); return; }
     const go = () => { searchBarStore.setMapQuery(query); set({ screen: 'mapExplore', mapExploreState: { focusSearch: false, searchQuery: query } }); };

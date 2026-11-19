@@ -5,6 +5,52 @@ import { computeAccountDockBadge } from '../lib/badges.js';
 import { flagOn } from '../lib/featureFlags.js';
 import { dockSlots, dockHighlightFor, scrubTarget, CREATE_SLOT } from '../lib/dockLayout.js';
 import DockCreateButton from './DockCreateButton.jsx';
+import AccountAvatar from '../components/AccountAvatar.jsx';
+
+// Simple Shell dock (switch simple_shell), redesign 2026-11-19: one 64 px floating glass pill, five equal slots, and
+// everything drawn INSIDE it. Mirrored by iOS BottomTabBar.swift's `SimpleDock*` constants; keep the numbers equal.
+export const SIMPLE_DOCK = {
+  height: 64, maxWidth: 370, pad: 6,
+  capsuleW: 52, capsuleH: 44,   // the active tab's inset ink capsule
+  icon: 24, stroke: 1.8,        // one optical size and one stroke weight for the whole set
+  avatar: 28, ring: 2,
+  create: 48,                   // the centre clay "+"
+};
+
+// One family for the Simple Shell dock: 24 px viewBox, 1.8 stroke, rounded caps and joins. `filled` (the active tab)
+// fills the shape with `c` (paper on the ink capsule) and knocks the inner details out in `cut` (the capsule's ink).
+const SIMPLE_ICONS = {
+  home: (c, filled, cut) => (
+    <svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke={c} strokeWidth={SIMPLE_DOCK.stroke} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 10.4 12 4l8 6.4V20h-5.5v-5.2h-5V20H4z" fill={filled ? c : 'none'} />
+    </svg>
+  ),
+  schedule: (c, filled, cut) => (
+    <svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke={c} strokeWidth={SIMPLE_DOCK.stroke} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="5.5" width="16" height="14.5" rx="3" fill={filled ? c : 'none'} />
+      <path d="M4.9 10h14.2" stroke={filled ? cut : c} />
+      <path d="M8.5 3.5v3.6M15.5 3.5v3.6" />
+    </svg>
+  ),
+  inbox: (c, filled, cut) => (
+    <svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke={c} strokeWidth={SIMPLE_DOCK.stroke} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3.5" y="6" width="17" height="12.5" rx="3" fill={filled ? c : 'none'} />
+      <path d="M4.6 7.6 12 13l7.4-5.4" stroke={filled ? cut : c} />
+    </svg>
+  ),
+  profile: (c, filled) => (
+    <svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke={c} strokeWidth={SIMPLE_DOCK.stroke} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="8.5" r="3.6" fill={filled ? c : 'none'} />
+      <path d="M5 19.6c1.2-3.6 4-5.4 7-5.4s5.8 1.8 7 5.4" fill={filled ? c : 'none'} />
+    </svg>
+  ),
+  map: (c, filled, cut) => (
+    <svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke={c} strokeWidth={SIMPLE_DOCK.stroke} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3.5c-3.3 0-6 2.6-6 6 0 4.3 6 11 6 11s6-6.7 6-11c0-3.4-2.7-6-6-6z" fill={filled ? c : 'none'} />
+      <circle cx="12" cy="9.5" r="2.2" stroke={filled ? cut : c} />
+    </svg>
+  ),
+};
 
 // FEATURE follow-up (623ec1e real-device report): Map/Notifications/Inbox
 // were still hard to tell apart at a glance despite 64f2719's stroke-count
@@ -562,22 +608,25 @@ export default function BottomTabBar({ collapsed }) {
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
       onPointerCancel={cancelDrag}
+      className={simpleShell ? 'bb-dock-simple' : undefined}
       style={{
-        // Static surface that follows light/dark (no glass), like iOS. Simple Shell mirrors prototype v2's dock:
-        // 338 × 62, 5 px inset, a hairline border and one soft lift (docs/prototype/unified-home-map-prototype-v2.html).
-        background: 'var(--bb-surface-1)',
-        border: `1px solid ${simpleShell ? 'var(--bb-divider)' : 'rgba(var(--bb-fg-rgb), 0.06)'}`,
-        boxShadow: simpleShell ? '0 10px 30px rgba(27,25,22,.14)' : '0 6px 14px rgba(0,0,0,0.16)',
+        // Legacy: a static surface that follows light/dark. Simple Shell: the glass pill, hairline and one soft
+        // shadow live in index.css (.bb-dock-simple) so dark mode and Reduce Transparency are plain CSS.
+        ...(simpleShell ? {} : {
+          background: 'var(--bb-surface-1)',
+          border: '1px solid rgba(var(--bb-fg-rgb), 0.06)',
+          boxShadow: '0 6px 14px rgba(0,0,0,0.16)',
+        }),
         position: 'relative',
         // TASK 1 (2026-10-05 fix pass) — flex child of DockRow (App.jsx)
         // now, not a self-positioned/self-sized element — `flex: 1 1 auto`
         // + `minWidth: 0` is what lets it actually shrink below
         // `DOCK_MAX_WIDTH` when the row (dock + gap + "+" button) doesn't
         // fit the viewport, instead of clipping/overflowing.
-        flex: '1 1 auto', minWidth: 0, maxWidth: simpleShell ? 338 : DOCK_MAX_WIDTH,
+        flex: '1 1 auto', minWidth: 0, maxWidth: simpleShell ? SIMPLE_DOCK.maxWidth : DOCK_MAX_WIDTH,
         borderRadius: 999,
-        height: simpleShell ? 62 : BAR_HEIGHT,
-        padding: simpleShell ? 5 : '0 6px', boxSizing: 'border-box',
+        height: simpleShell ? SIMPLE_DOCK.height : BAR_HEIGHT,
+        padding: simpleShell ? `0 ${SIMPLE_DOCK.pad}px` : '0 6px', boxSizing: 'border-box',
         display: 'flex', justifyContent: 'space-around', alignItems: 'center',
         touchAction: 'none',
         // BUG (2026-10-06 fix pass) — the shrink-on-scroll `transform:
@@ -636,11 +685,23 @@ export default function BottomTabBar({ collapsed }) {
             </div>
           </div>
         </div>
+        {simpleShell ? (
+          // Simple Shell: the highlight is one slot wide on a track that matches the slots (inside the pill's side
+          // padding), so translateX(index × 100%) lands on the slot exactly; the visible part is the 52 × 44 ink
+          // capsule centred in it. The slide is placeHighlight's spring (a 0.01 s jump under Reduce Motion).
+          <div aria-hidden="true" style={{ position: 'absolute', top: 0, bottom: 0, left: SIMPLE_DOCK.pad, right: SIMPLE_DOCK.pad, pointerEvents: 'none', zIndex: 0 }}>
+            <div ref={highlightRef} data-testid="dock-highlight"
+              style={{ position: 'absolute', top: 0, bottom: 0, left: 0, opacity: 0, display: 'grid', placeItems: 'center', willChange: 'transform' }}>
+              <span className="bb-dock-simple__capsule" data-holding={holding ? 'true' : undefined}
+                style={{ width: SIMPLE_DOCK.capsuleW, height: SIMPLE_DOCK.capsuleH, borderRadius: 999 }} />
+            </div>
+          </div>
+        ) : (
         <div
           ref={highlightRef}
           data-testid="dock-highlight"
           style={{
-            position: 'absolute', top: simpleShell ? 5 : 4, bottom: simpleShell ? 5 : 4, left: 0, borderRadius: 999,
+            position: 'absolute', top: 4, bottom: 4, left: 0, borderRadius: 999,
             // Web "black blob" bug (2026-09-28 dock pass) — this used to be
             // solid `background: ink` at full element opacity: since the
             // ACTIVE tab's own icon is also drawn in `ink`, an opaque ink
@@ -651,16 +712,15 @@ export default function BottomTabBar({ collapsed }) {
             // this bug). `zIndex: 0` (explicit, not relied-on `auto`) plus
             // each tab item's own `zIndex: 1` below is what keeps this
             // element BEHIND the icons regardless of DOM order.
-            background: simpleShell ? 'var(--bb-fg)' : 'linear-gradient(180deg, #FFFFFF, rgba(255,255,255,0.9))', opacity: 0, pointerEvents: 'none', zIndex: 0,
+            background: 'linear-gradient(180deg, #FFFFFF, rgba(255,255,255,0.9))', opacity: 0, pointerEvents: 'none', zIndex: 0,
             // Glows while the dock is held (iOS: clay halo).
-            boxShadow: simpleShell
-              ? 'none'
-              : holding
+            boxShadow: holding
                 ? '0 0 14px rgba(var(--bb-clay-rgb, 190,110,70), 0.65), 0 0 0 1.5px rgba(var(--bb-clay-rgb, 190,110,70), 0.9)'
                 : '0 2px 8px rgba(27,25,22,0.18), 0 0 0 1px rgba(var(--bb-fg-rgb), 0.06)',
             willChange: 'transform',
           }}
         />
+        )}
         {items.map((item, i) => (item.isCreate ? (
           // The centre "+" (switch simple_shell): a button, not a tab. Its own pointerdown never reaches the bar, so
           // pressing it starts no scrub and moves no highlight.
@@ -686,34 +746,65 @@ export default function BottomTabBar({ collapsed }) {
               flex: '1 1 0', minWidth: 44, minHeight: 44, height: '100%', zIndex: 1,
             }}
           >
-            <div style={{ position: 'relative', width: simpleShell ? 23 : ICON_SIZE, height: simpleShell ? 23 : ICON_SIZE, opacity: activeIndex === i ? 1 : 0.72 }}>
-              {item.key === 'profile' && s.user
-                ? <span aria-hidden style={{ width: simpleShell ? 26 : 24, height: simpleShell ? 26 : 24, borderRadius: '50%', background: 'var(--bb-clay, #9C5B3B)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'grid', placeItems: 'center' }}>{String(s.user.name || s.user.email || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()}</span>
-                : ICONS[item.icon](activeIndex === i && simpleShell ? 'var(--bb-bg)' : activeIndex === i ? '#1B1916' : ink, activeIndex === i && !simpleShell)}
-              {item.badge > 0 && (() => {
-                const cap = item.badgeCap ?? 9;
-                const displayText = item.badgeCapped && item.badge > cap ? `${cap}+` : String(item.badge);
-                // Compact capsule (not a fixed circle) for multi-digit/99+ —
-                // same red/paper-on-alert recipe, just widened + rounded via
-                // borderRadius: 999 instead of clipping/wrapping a 2-3 char
-                // string into a 14px circle.
-                return (
-                  <span
-                    data-testid={`${item.testId}-badge`}
-                    role="status"
-                    aria-label={T(`${item.badge} mục mới`, `${item.badge} new item(s)`)}
-                    title={String(item.badge)}
-                    style={{
-                      position: 'absolute', top: -5, right: -7, minWidth: 14, height: 14, padding: displayText.length > 1 ? '0 4px' : '0 3px',
-                      borderRadius: 999, background: item.tone === 'clay' ? 'var(--bb-clay, #9C5B3B)' : alert, color: item.tone === 'clay' ? '#fff' : 'var(--bb-on-alert)', fontSize: 9, fontWeight: 700,
-                      lineHeight: '14px', textAlign: 'center', whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {displayText}
-                  </span>
-                );
-              })()}
-            </div>
+            {simpleShell ? (() => {
+              const on = activeIndex === i;
+              const badgeText = item.badge > 0 ? (item.badgeCapped && item.badge > (item.badgeCap ?? 9) ? `${item.badgeCap ?? 9}+` : String(item.badge)) : '';
+              return (
+                <div className="bb-dock-simple__glyph" data-on={on ? 'true' : undefined}
+                  style={{ position: 'relative', width: item.key === 'profile' && s.user ? SIMPLE_DOCK.avatar : SIMPLE_DOCK.icon, height: item.key === 'profile' && s.user ? SIMPLE_DOCK.avatar : SIMPLE_DOCK.icon }}>
+                  {item.key === 'profile' && s.user ? (
+                    // The account's own face at full opacity; a 2 px ring: paper when active (it then sits on the ink
+                    // capsule, which reads as the ink ring), a hairline otherwise.
+                    <span aria-hidden="true" className="bb-dock-simple__avatar" data-on={on ? 'true' : undefined}>
+                      <AccountAvatar name={s.user.name || s.user.email?.split('@')[0]} avatarUrl={s.user.avatarUrl} size={SIMPLE_DOCK.avatar} />
+                    </span>
+                  ) : (
+                    SIMPLE_ICONS[item.icon](on ? 'var(--bb-bg)' : 'var(--bb-fg)', on, 'var(--bb-fg)')
+                  )}
+                  {item.badge > 0 && (
+                    <span
+                      data-testid={`${item.testId}-badge`}
+                      role="status"
+                      aria-label={T(`${item.badge} mục mới`, `${item.badge} new item(s)`)}
+                      title={String(item.badge)}
+                      className="bb-dock-simple__badge"
+                      data-tone={item.tone === 'clay' ? 'clay' : 'alert'}
+                    >
+                      {badgeText}
+                    </span>
+                  )}
+                </div>
+              );
+            })() : (
+              <div style={{ position: 'relative', width: ICON_SIZE, height: ICON_SIZE, opacity: activeIndex === i ? 1 : 0.72 }}>
+                {item.key === 'profile' && s.user
+                  ? <span aria-hidden style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--bb-clay, #9C5B3B)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'grid', placeItems: 'center' }}>{String(s.user.name || s.user.email || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()}</span>
+                  : ICONS[item.icon](activeIndex === i ? '#1B1916' : ink, activeIndex === i)}
+                {item.badge > 0 && (() => {
+                  const cap = item.badgeCap ?? 9;
+                  const displayText = item.badgeCapped && item.badge > cap ? `${cap}+` : String(item.badge);
+                  // Compact capsule (not a fixed circle) for multi-digit/99+ —
+                  // same red/paper-on-alert recipe, just widened + rounded via
+                  // borderRadius: 999 instead of clipping/wrapping a 2-3 char
+                  // string into a 14px circle.
+                  return (
+                    <span
+                      data-testid={`${item.testId}-badge`}
+                      role="status"
+                      aria-label={T(`${item.badge} mục mới`, `${item.badge} new item(s)`)}
+                      title={String(item.badge)}
+                      style={{
+                        position: 'absolute', top: -5, right: -7, minWidth: 14, height: 14, padding: displayText.length > 1 ? '0 4px' : '0 3px',
+                        borderRadius: 999, background: item.tone === 'clay' ? 'var(--bb-clay, #9C5B3B)' : alert, color: item.tone === 'clay' ? '#fff' : 'var(--bb-on-alert)', fontSize: 9, fontWeight: 700,
+                        lineHeight: '14px', textAlign: 'center', whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {displayText}
+                    </span>
+                  );
+                })()}
+              </div>
+            )}
             {/* Prototype v2's dock is icon-only; the label stays as the aria-label above. */}
             {!simpleShell && (
               <span aria-hidden style={{ fontSize: 11, lineHeight: 1.1, fontWeight: activeIndex === i ? 700 : 500, opacity: activeIndex === i ? 1 : 0.75, color: activeIndex === i ? '#1B1916' : ink }}>{item.label}</span>

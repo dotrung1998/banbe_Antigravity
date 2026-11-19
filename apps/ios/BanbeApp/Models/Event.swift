@@ -73,6 +73,9 @@ struct MapEventRow: Codable, Identifiable, Hashable {
     var coverImage: String?
     /// `events.cover_r2_ref` (migration 153); absent before it is applied.
     var coverR2Ref: String? = nil
+    /// `events.slug`: a demo-catalogue entry's key IS the slug of its live row (`loadHomeLiveEvents`), so the unified
+    /// Search sheet matches its docs to Map rows by id OR slug (note 99).
+    var slug: String? = nil
     // Keyword-search fix (migration 108) — same idea as web's identical
     // MapExplore.jsx change: a search term now also matches this event's
     // own `keywords` (category-derived by default when a host leaves the
@@ -131,6 +134,7 @@ struct MapEventRow: Codable, Identifiable, Hashable {
         case status
         case coverImage = "cover_image"
         case coverR2Ref = "cover_r2_ref"
+        case slug
         case keywords
         case catLabel = "cat_label"
         case city

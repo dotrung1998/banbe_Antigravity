@@ -708,7 +708,8 @@ struct HomeView: View {
                         onSearchLocations: { areaSearchOpen = true },
                         onAvatar: { quickSheetOpen = true },
                         headerHeight: pinnedHeaderHeight,
-                        v23Counts: snap.tabCounts)
+                        v23Counts: snap.tabCounts,
+                        onBrowseAll: { nearYouScrollToken += 1 })
             .id(false)
             .id("home.tour.hero")
             .revealRegion(0)

@@ -24,6 +24,22 @@ final class DockChrome: ObservableObject {
 struct BottomTabBar: View {
     @EnvironmentObject var app: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    /// Simple Shell dock (switch simple_shell), redesign 2026-11-19: one 64 pt floating glass pill, five equal slots,
+    /// everything drawn INSIDE it. Mirrors web `SIMPLE_DOCK` (src/screens/BottomTabBar.jsx); keep the numbers equal.
+    enum SimpleDock {
+        static let height: CGFloat = 64
+        static let maxWidth: CGFloat = 370
+        static let pad: CGFloat = 6
+        static let capsuleW: CGFloat = 52
+        static let capsuleH: CGFloat = 44
+        static let icon: CGFloat = 24
+        static let stroke: CGFloat = 1.8
+        static let avatar: CGFloat = 28
+        static let ring: CGFloat = 2
+        static let create: CGFloat = 48
+    }
 
     // Note 44 — Schedule took Notifications' slot (still exactly five items;
     // Notifications moved to the Home header bell + Account, never removed).
@@ -494,6 +510,63 @@ struct BottomTabBar: View {
         return max(0, 1 - abs(CGFloat(i) - pill))
     }
 
+    /// Simple Shell slot: one glyph (24 pt, 1.8 stroke, filled only when active) or the 28 pt account face, with the
+    /// count badge at its top-trailing corner. Inactive glyphs are ink at 0.6; the active one is paper on the capsule.
+    @ViewBuilder
+    private func simpleTabItem(_ item: Item) -> some View {
+        let isActive = activeID == item.id
+        let badgeText: String = item.badgeCapped ? AccountBadges.format(item.badge, cap: item.badgeCap) : String(item.badge)
+        let isFace = item.id == "profile" && app.isSignedIn
+        let side = isFace ? SimpleDock.avatar : SimpleDock.icon
+        Group {
+            if isFace {
+                // The reader's own face at full opacity; a 2 pt ring outside it: paper when active (it then sits on
+                // the ink capsule, which reads as the ink ring), a hairline otherwise.
+                AccountAvatarView(size: SimpleDock.avatar, ringed: false)
+                    .padding(SimpleDock.ring)
+                    .background(Circle().fill(isActive ? app.palette.paper : app.palette.ink.opacity(0.14)))
+                    .padding(-SimpleDock.ring)
+            } else {
+                SimpleDockGlyph(kind: item.id,
+                                color: isActive ? app.palette.paper : app.palette.ink,
+                                cut: app.palette.ink, filled: isActive)
+                    .opacity(isActive ? 1 : 0.6)
+            }
+        }
+        .frame(width: side, height: side)
+        .scaleEffect(1 + (pressScale - 1) * 1.9 * iconProximity(item))
+        // The badge is an overlay, so it never moves the glyph: its leading edge 9 pt inside the glyph's trailing edge,
+        // 7 pt above its top (web .bb-dock-simple__badge: top -7, left 100% - 9).
+        .overlay(alignment: .topLeading) {
+            if item.badge > 0 {
+                Text(badgeText)
+                    .font(.system(size: 10.5, weight: .bold).monospacedDigit())
+                    .foregroundStyle(item.tone == .clay ? (app.isDark ? app.palette.paper : .white) : BanbeTheme.onAlert)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .padding(.horizontal, 4.5)
+                    .frame(minWidth: 16, minHeight: 16)
+                    .background(item.tone == .clay ? app.palette.clay : BanbeTheme.alert, in: Capsule())
+                    // A ring in the pill's own fill so the capsule never touches the glyph.
+                    .background(Capsule().fill(simpleDockRing).padding(-2))
+                    .fixedSize()
+                    .offset(x: side - 9, y: -7)
+                    .accessibilityIdentifier("tab.\(item.id).badge")
+                    .accessibilityLabel(app.T("\(item.badge) mục mới", "\(item.badge) new item(s)"))
+            }
+        }
+        .frame(minWidth: 44, maxWidth: .infinity, minHeight: SimpleDock.height)
+        .contentShape(Rectangle())
+        .accessibilityIdentifier("tab.\(item.id)")
+        .tourTarget("tour.dock.\(item.id)")
+        .accessibilityLabel(item.label)
+        .accessibilityAddTraits(isActive ? [.isSelected] : [])
+        .anchorPreference(key: TabItemFrameKey.self, value: .bounds) { [item.id: $0] }
+    }
+
+    /// The badge ring: the pill's own fill (paper light, surface2 dark / Reduce Transparency).
+    private var simpleDockRing: Color { app.isDark || reduceTransparency ? app.palette.surface2 : app.palette.paper }
+
     @ViewBuilder
     private func tabItem(_ item: Item) -> some View {
         let isActive = activeID == item.id
@@ -567,7 +640,24 @@ struct BottomTabBar: View {
             // is near-opaque on the light theme and hides the icon.) It still
             // grows past the bar's top/bottom while a finger is down, and the
             // icon over it swells with it.
-            if let indexFloat = renderIndexFloat {
+            if simpleShell, let indexFloat = renderIndexFloat {
+                // Simple Shell: the active tab is an inset 52 × 44 ink capsule centred in its slot, always INSIDE the
+                // 64 pt pill. It slides on `renderIndexFloat`'s spring (a plain jump under Reduce Motion, see the
+                // onChange below); while a finger holds the dock it gains a clay ring.
+                let count = slotCount
+                let tabWidth = geo.size.width / CGFloat(count)
+                let clamped = min(CGFloat(count - 1), max(0, indexFloat))
+                Capsule()
+                    .fill(app.palette.ink)
+                    .overlay(Capsule().strokeBorder(app.palette.clay, lineWidth: 2).opacity(isDragging ? 1 : 0))
+                    .shadow(color: .black.opacity(app.isDark ? 0 : 0.18), radius: 3, x: 0, y: 2)
+                    .frame(width: SimpleDock.capsuleW, height: SimpleDock.capsuleH)
+                    .scaleEffect(pressScale)
+                    .position(x: tabWidth * (clamped + 0.5), y: SimpleDock.height / 2)
+                    .animation(.easeOut(duration: 0.2), value: isDragging)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            } else if !simpleShell, let indexFloat = renderIndexFloat {
                 let count = slotCount
                 let tabWidth = geo.size.width / CGFloat(count)
                 let clampedIndexFloat = min(CGFloat(count - 1), max(0, indexFloat))
@@ -578,8 +668,7 @@ struct BottomTabBar: View {
 
                 Capsule()
                     // Prototype v2 (Simple Shell): one solid ink capsule behind the active glyph.
-                    .fill(isDragging ? app.palette.clay.opacity(0.28)
-                                     : (simpleShell ? app.palette.ink : app.palette.ink.opacity(0.12)))
+                    .fill(isDragging ? app.palette.clay.opacity(0.28) : app.palette.ink.opacity(0.12))
                     .overlay(Capsule().strokeBorder(app.palette.clay.opacity(isDragging ? 0.9 : 0), lineWidth: 1.5))
                     .shadow(color: app.palette.clay.opacity(isDragging ? 0.65 : 0), radius: isDragging ? 12 : 0)
                     .frame(width: shapeWidth, height: shapeHeight)
@@ -594,9 +683,9 @@ struct BottomTabBar: View {
                 // the create button sits on top of it (overlay below), outside the scrub gesture.
                 ForEach(slots, id: \.self) { slot in
                     if let item = items.first(where: { $0.id == slot }) {
-                        tabItem(item)
+                        if simpleShell { simpleTabItem(item) } else { tabItem(item) }
                     } else {
-                        Color.clear.frame(minWidth: 44, maxWidth: .infinity, minHeight: barHeight).accessibilityHidden(true)
+                        Color.clear.frame(minWidth: 44, maxWidth: .infinity, minHeight: simpleShell ? SimpleDock.height : barHeight).accessibilityHidden(true)
                     }
                 }
             }
@@ -604,23 +693,23 @@ struct BottomTabBar: View {
         .contentShape(Rectangle())
         .gesture(scrubGesture(barWidth: geo.size.width))
         }
-        // Prototype v2's dock: 62 pt tall inside the same 72 pt band; the legacy bar keeps its 72.
-        .frame(height: simpleShell ? 62 : barHeight)
+        // Simple Shell: the five slots sit inside a 6 pt side inset of the 64 pt pill (web: the same padding).
+        .padding(.horizontal, simpleShell ? SimpleDock.pad : 0)
+        // The legacy bar keeps its 72.
+        .frame(height: simpleShell ? SimpleDock.height : barHeight)
         // Task 1b follow-up: widened from 320 (fit for 4 icons) to fit the
         // new Home tab without cramping the existing four — matches the
         // web bar's own bump. Task 5: widened again, to `Self.barWidth`,
-        // as part of the flatter/more-elongated pill shape. Simple Shell mirrors prototype v2's 338 pt pill.
-        .frame(maxWidth: simpleShell ? 338 : Self.barWidth)
+        // as part of the flatter/more-elongated pill shape. Simple Shell: 370 pt, so DockRow's 16 pt margin is the
+        // inset on every iPhone up to 402 pt wide.
+        .frame(maxWidth: simpleShell ? SimpleDock.maxWidth : Self.barWidth)
         .backgroundPreferenceValue(TabItemFrameKey.self) { anchors in
             GeometryReader { proxy in
                 Color.clear.onAppear { resolveFrames(anchors, proxy) }
                     .onChange(of: proxy.size) { _, _ in resolveFrames(anchors, proxy) }
             }
         }
-        // Static surface that follows light/dark (no glass). Prototype v2: one hairline border and one soft lift.
-        .background(app.palette.surface1, in: Capsule())
-        .overlay(Capsule().strokeBorder(simpleShell ? app.palette.divider : app.palette.ink.opacity(0.06)))
-        .shadow(color: .black.opacity(simpleShell ? 0.14 : 0.16), radius: simpleShell ? 30 : 14, x: 0, y: simpleShell ? 10 : 6)
+        .modifier(DockSurface(simpleShell: simpleShell, reduceTransparency: reduceTransparency, palette: app.palette, isDark: app.isDark))
         // Simple Shell (note 66): the "+" inside the bar, in the centre slot. An overlay, so it is NOT inside the
         // scrub gesture's view: a tap on it is a plain Button tap, and a scrub never selects it.
         .overlay {
@@ -1052,5 +1141,107 @@ private struct HomeGlyph: View {
                 house.stroke(color, style: StrokeStyle(lineWidth: 2.4 * s, lineJoin: .round))
             }
         }
+    }
+}
+
+/// The dock's surface. Legacy: today's static surface1 pill. Simple Shell (redesign 2026-11-19): the app's own glass
+/// (`nativeGlass`: Liquid Glass on iOS 26, `.regularMaterial` before; the glass brings its own edge highlight), a
+/// hairline edge and one soft shadow, so the pill reads over the paper page and over photos alike. Reduce Transparency = opaque surface2 (web:
+/// the same token). Dark: a lighter hairline and a deeper shadow, since a dark shadow on a dark page needs more weight.
+private struct DockSurface: ViewModifier {
+    let simpleShell: Bool
+    let reduceTransparency: Bool
+    let palette: Palette
+    let isDark: Bool
+
+    func body(content: Content) -> some View {
+        if simpleShell {
+            Group {
+                if reduceTransparency {
+                    content.background(palette.surface2, in: Capsule())
+                } else {
+                    content.nativeGlass(Capsule(), fallback: .regularMaterial)
+                }
+            }
+            .overlay(
+                Capsule().strokeBorder(palette.ink.opacity(isDark ? 0.12 : 0.10), lineWidth: 1)
+                    .allowsHitTesting(false)
+            )
+            .shadow(color: .black.opacity(isDark ? 0.55 : 0.16), radius: 14, x: 0, y: 8)
+        } else {
+            content
+                .background(palette.surface1, in: Capsule())
+                .overlay(Capsule().strokeBorder(palette.ink.opacity(0.06)))
+                .shadow(color: .black.opacity(0.16), radius: 14, x: 0, y: 6)
+        }
+    }
+}
+
+/// The Simple Shell dock's one icon family: a 24 pt grid, 1.8 pt stroke, round caps and joins; `filled` (the active
+/// tab) fills the outline with `color` (paper on the ink capsule) and knocks inner details out in `cut` (the capsule's
+/// ink). Same coordinates as web SIMPLE_ICONS (src/screens/BottomTabBar.jsx).
+struct SimpleDockGlyph: View {
+    let kind: String
+    let color: Color
+    let cut: Color
+    var filled = false
+
+    var body: some View {
+        Canvas { ctx, size in
+            let k = size.width / 24
+            func pt(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * k, y: y * k) }
+            let line = StrokeStyle(lineWidth: BottomTabBar.SimpleDock.stroke * k, lineCap: .round, lineJoin: .round)
+            switch kind {
+            case "home":
+                var p = Path()
+                p.move(to: pt(4, 10.4)); p.addLine(to: pt(12, 4)); p.addLine(to: pt(20, 10.4))
+                p.addLine(to: pt(20, 20)); p.addLine(to: pt(14.5, 20)); p.addLine(to: pt(14.5, 14.8))
+                p.addLine(to: pt(9.5, 14.8)); p.addLine(to: pt(9.5, 20)); p.addLine(to: pt(4, 20)); p.closeSubpath()
+                if filled { ctx.fill(p, with: .color(color)) }
+                ctx.stroke(p, with: .color(color), style: line)
+            case "schedule":
+                let page = Path(roundedRect: CGRect(x: 4 * k, y: 5.5 * k, width: 16 * k, height: 14.5 * k), cornerRadius: 3 * k, style: .continuous)
+                if filled { ctx.fill(page, with: .color(color)) }
+                ctx.stroke(page, with: .color(color), style: line)
+                var bar = Path(); bar.move(to: pt(4.9, 10)); bar.addLine(to: pt(19.1, 10))
+                ctx.stroke(bar, with: .color(filled ? cut : color), style: line)
+                var pegs = Path()
+                pegs.move(to: pt(8.5, 3.5)); pegs.addLine(to: pt(8.5, 7.1))
+                pegs.move(to: pt(15.5, 3.5)); pegs.addLine(to: pt(15.5, 7.1))
+                ctx.stroke(pegs, with: .color(color), style: line)
+            case "inbox":
+                let body = Path(roundedRect: CGRect(x: 3.5 * k, y: 6 * k, width: 17 * k, height: 12.5 * k), cornerRadius: 3 * k, style: .continuous)
+                if filled { ctx.fill(body, with: .color(color)) }
+                ctx.stroke(body, with: .color(color), style: line)
+                var flap = Path(); flap.move(to: pt(4.6, 7.6)); flap.addLine(to: pt(12, 13)); flap.addLine(to: pt(19.4, 7.6))
+                ctx.stroke(flap, with: .color(filled ? cut : color), style: line)
+            case "profile":
+                let head = Path(ellipseIn: CGRect(x: 8.4 * k, y: 4.9 * k, width: 7.2 * k, height: 7.2 * k))
+                var shoulders = Path()
+                shoulders.move(to: pt(5, 19.6))
+                shoulders.addCurve(to: pt(12, 14.2), control1: pt(6.2, 16), control2: pt(9, 14.2))
+                shoulders.addCurve(to: pt(19, 19.6), control1: pt(15, 14.2), control2: pt(17.8, 16))
+                if filled {
+                    ctx.fill(head, with: .color(color))
+                    var closed = shoulders; closed.closeSubpath()
+                    ctx.fill(closed, with: .color(color))
+                }
+                ctx.stroke(head, with: .color(color), style: line)
+                ctx.stroke(shoulders, with: .color(color), style: line)
+            default: // "map" (not in the Simple Shell dock today; kept so every tab id draws)
+                var pin = Path()
+                pin.move(to: pt(12, 3.5))
+                pin.addCurve(to: pt(6, 9.5), control1: pt(8.7, 3.5), control2: pt(6, 6.1))
+                pin.addCurve(to: pt(12, 20.5), control1: pt(6, 13.8), control2: pt(12, 20.5))
+                pin.addCurve(to: pt(18, 9.5), control1: pt(12, 20.5), control2: pt(18, 13.8))
+                pin.addCurve(to: pt(12, 3.5), control1: pt(18, 6.1), control2: pt(15.3, 3.5))
+                pin.closeSubpath()
+                if filled { ctx.fill(pin, with: .color(color)) }
+                ctx.stroke(pin, with: .color(color), style: line)
+                let dot = Path(ellipseIn: CGRect(x: 9.8 * k, y: 7.3 * k, width: 4.4 * k, height: 4.4 * k))
+                ctx.stroke(dot, with: .color(filled ? cut : color), style: line)
+            }
+        }
+        .accessibilityHidden(true)
     }
 }

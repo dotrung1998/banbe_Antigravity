@@ -31,3 +31,19 @@ test('area bubble glyphs', () => {
 test('the Filters badge counts only what Filters owns', () => {
   for (const c of fx.ownedFilterCount) assert.equal(U.ownedFilterCount(c.filters, c.sort), c.expect);
 });
+
+import { mapPlottable, mapPoints, anyOutside } from '../../src/lib/unifiedDiscovery.js';
+import { inBounds } from '../../src/lib/mapDiscovery.js';
+test('mapPlottable keeps only docs with a located map row; unloaded rows keep all', () => {
+  const docs = [{ key: 'a' }, { key: 'b' }, { key: 'demo' }];
+  const rows = [{ id: 'a', lat: 1, lng: 2 }, { id: 'b', lat: null, lng: null }];
+  assert.deepEqual(mapPlottable(docs, rows).map(d => d.key), ['a']);
+  assert.equal(mapPlottable(docs, null), docs);
+  assert.deepEqual(mapPoints(docs, rows), [{ lat: 1, lng: 2 }]);
+  assert.equal(anyOutside([{ lat: 1, lng: 2 }], { north: 3, south: 0, east: 3, west: 0 }, inBounds), false);
+  assert.equal(anyOutside([{ lat: 9, lng: 2 }], { north: 3, south: 0, east: 3, west: 0 }, inBounds), true);
+  // A demo-catalogue doc matches its live row by slug.
+  const slugRows = [{ id: 'uuid-1', slug: 'demo', lat: 4, lng: 5 }];
+  assert.deepEqual(mapPlottable(docs, slugRows).map(d => d.key), ['demo']);
+  assert.deepEqual(mapPoints([{ key: 'demo' }], slugRows), [{ lat: 4, lng: 5 }]);
+});

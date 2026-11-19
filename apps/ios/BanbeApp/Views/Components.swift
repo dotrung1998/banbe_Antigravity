@@ -269,12 +269,19 @@ struct BanbeLogo: View {
 struct RemoteImage: View {
     let path: String
     let maxPixel: CGFloat
+    /// Start from a decode of the SAME path at another size when the requested size is not in memory yet (Event
+    /// Detail's cover after a list card decoded it smaller), then swap to the full decode without a fade.
+    var anySize = false
     @State private var image: UIImage?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    init(path: String, maxPixel: CGFloat) {
+    init(path: String, maxPixel: CGFloat, anySize: Bool = false) {
         self.path = path
         self.maxPixel = maxPixel
-        _image = State(initialValue: PhotoLoader.cached(path: path, maxPixel: maxPixel))
+        self.anySize = anySize
+        _image = State(initialValue: anySize
+            ? PhotoLoader.cachedAnySize(path: path, maxPixel: maxPixel)
+            : PhotoLoader.cached(path: path, maxPixel: maxPixel))
     }
 
     var body: some View {
@@ -315,10 +322,18 @@ struct RemoteImage: View {
                 image = cached
                 return
             }
-            image = nil
+            // Same picture at another size (anySize): shown now, upgraded below with no fade. Never another path's.
+            let interim = anySize ? PhotoLoader.cachedAnySize(path: path, maxPixel: maxPixel) : nil
+            image = interim
             let loaded = await PhotoLoader.load(path: path, maxPixel: maxPixel)
             guard !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: 0.2)) { image = loaded }
+            if interim != nil {
+                if let loaded { image = loaded }   // keep the smaller decode if the full one failed
+            } else if reduceMotion {
+                image = loaded
+            } else {
+                withAnimation(.easeOut(duration: 0.2)) { image = loaded }
+            }
         }
     }
 }

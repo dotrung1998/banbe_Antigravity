@@ -88,7 +88,7 @@ const UD_STACK_H = UD_FAB_BOTTOM + BTN_H + 4;
 const DATE_FOR_DAY = { today: 'today', tomorrow: 'tomorrow', weekend: 'weekend', nextWeek: 'week', all: 'any' };
 const windowForSharedDate = (date, nowMs, tz) => (date === 'week' ? defaultWindow('nextWeek', nowMs, tz) : windowFromHomeDate(date, nowMs, tz));
 
-async function fetchLiveEvents({ limit = MAP_EVENT_CAP, bounds = null } = {}) {
+export async function fetchLiveEvents({ limit = MAP_EVENT_CAP, bounds = null } = {}) {
   const buildQuery = (withR2) => {
   let q = supabase
     .from('events')
@@ -100,7 +100,7 @@ async function fetchLiveEvents({ limit = MAP_EVENT_CAP, bounds = null } = {}) {
     // search document built below (`buildEventSearchDoc`) can include
     // category/organizer/description text regardless of whether
     // `keywords` happens to be populated for a given row.
-    .select('id, key, name, cat_key, cat_label, area, city, lat, lng, starts_at, event_date, event_time, price_vnd, seats_remaining, status, cover_image, ' + detailsColumnList().map(c => c + ', ').join('') + (withR2 ? 'cover_r2_ref, ' : '') + 'keywords, description, intro, country_code, state_province, neighborhood, ' + marketColumnList().map(c => c + ', ').join('') + 'organizers(name)', { count: 'exact' })
+    .select('id, key, slug, name, cat_key, cat_label, area, city, lat, lng, starts_at, event_date, event_time, price_vnd, seats_remaining, status, cover_image, ' + detailsColumnList().map(c => c + ', ').join('') + (withR2 ? 'cover_r2_ref, ' : '') + 'keywords, description, intro, country_code, state_province, neighborhood, ' + marketColumnList().map(c => c + ', ').join('') + 'organizers(name)', { count: 'exact' })
     .eq('status', 'live')
     // Strict invite-only events (2026-10-25): unlike loadWeekendEvents/
     // loadDiscoveryEvents (BanBeContext.jsx), this query never filtered
@@ -158,6 +158,8 @@ async function fetchLiveEvents({ limit = MAP_EVENT_CAP, bounds = null } = {}) {
     const dateOverrides = cosmetic ? liveEventOverrides(row, cosmetic) : null;
     return {
       id: row.id,
+      // A demo-catalogue entry's key is its live row's slug (loadHomeLiveEvents), so Search matches by id OR slug.
+      slug: row.slug || null,
       catKey: row.cat_key || cosmetic?.catKey || 'all',
       // Primary + second category (details.cat2, note 69), the same pair Home filters on.
       catKeys: [row.cat_key || cosmetic?.catKey, secondCategory(row.details, row.cat_key)].filter(Boolean),
@@ -895,13 +897,17 @@ export default function MapExplore() {
   const searchedEvents = useMemo(() => {
     // For You — the SAME match set drives pins and this list.
     let list = applyForYouFilter(events, forYouActive, forYouOrder);
+    // Note 38/99: a live row 12 h past its start is over — Search drops it (ENDED_AFTER_MS), so the Map must too,
+    // or "Same results as the map" is false while the end-past-events job (migration 167) is not running.
+    const endedBefore = nowMinute * 60000 - 12 * 3600000;
+    list = list.filter(e => !e.startsAt || new Date(e.startsAt).getTime() >= endedBefore);
     // Matched against the canonical search document (name/category/area/city/organizer/description/keywords),
     // normalized and multi-token AND — see src/lib/search.js.
     if (searchQuery.trim()) {
       list = list.filter(e => matchesSearchQuery(eventSearchDocs.get(e.id) || '', searchQuery));
     }
     return list;
-  }, [events, forYouActive, forYouOrder, searchQuery, eventSearchDocs]);
+  }, [events, forYouActive, forYouOrder, searchQuery, eventSearchDocs, nowMinute]);
   // Every filter except the category (so the category chips can say what tapping each one would show): Home's own
   // predicate — date (venue zone), seats (real fill), price per ticket in one currency, type chips.
   const baseEvents = useMemo(
@@ -1297,6 +1303,23 @@ export default function MapExplore() {
     const cam = fitCamera(box, size, fitPad(40), { tileSize: map.__isMapKit ? 256 : 512, maxZoom: 14 });
     moveCamera('nearest', m => m.flyTo({ center: [cam.center.lng, cam.center.lat], zoom: cam.zoom, duration: reduceMotion() ? 0 : 800 }));
   }, [matchingAnywhere, containerH, topControlsBottom, moveCamera]);
+  // Unified (note 99): "See on the map · N" from Search asks the Map to show those N. When any of them lies outside the
+  // committed area, fit the camera to them (a 'destination' move, which commits the new area); else nothing moves.
+  const fitReq = s.mapFitRequest;
+  useEffect(() => {
+    if (!ud || !fitReq) return;
+    const map = mapRef.current;
+    const el = mapDivRef.current;
+    if (!map || !el || !committedBounds) return; // retried when the map / area arrive
+    set({ mapFitRequest: null });
+    const pts = (fitReq.points || []).filter(p => p && p.lat != null && p.lng != null);
+    if (!pts.length || !pts.some(p => !inBounds(p, committedBounds))) return;
+    const box = boundsOfPoints(pts);
+    const size = { width: el.clientWidth || 390, height: el.clientHeight || containerH };
+    const cam = fitCamera(box, size, fitPad(40), { tileSize: map.__isMapKit ? 256 : 512, maxZoom: 14 });
+    moveCamera('destination', m => m.flyTo({ center: [cam.center.lng, cam.center.lat], zoom: cam.zoom, duration: reduceMotion() ? 0 : 800 }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ud, fitReq, mapReady, committedBounds]);
   // Area picker = a DESTINATION (phase 3): picking an area on the Map flies to that area's events and commits it once;
   // every filter stays. "Everywhere" or an area with no mapped events leaves the camera where it is (no guessed
   // geometry, never the whole inventory) — the chip then reads "Map area".

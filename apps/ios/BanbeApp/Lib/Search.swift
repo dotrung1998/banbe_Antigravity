@@ -49,6 +49,10 @@ enum SearchMatch {
         if let description = event.description { parts.append(description) }
         if let intro = event.intro { parts.append(intro) }
         parts.append(contentsOf: event.keywords ?? [])
+        // Event type facts, as the CatalogEvent doc and web `buildEventSearchDoc` (one builder for both) already add —
+        // without them the Map missed events the Search sheet found (note 99).
+        let details = event.details?.values ?? [:]
+        parts.append(contentsOf: EventTypes.detailSearchTerms(EventTypes.eventProfile(catKey: event.catKey, details: details), details))
         return normalize(parts.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.joined(separator: " "))
     }
 

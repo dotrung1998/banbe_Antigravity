@@ -114,8 +114,9 @@ struct DockCreateButtonView: View {
 
     // MARK: Simple Shell centre "+"
 
-    /// Prototype v2's centre "+": one 52 pt clay circle, no label.
-    private static let discSize: CGFloat = 52
+    /// The centre "+" (dock redesign 2026-11-19): a 48 pt clay disc fully inside the 64 pt pill, a paper plus, a soft
+    /// inner highlight, pressing to 0.94. Mirrors web DockCreateCenter (`.bb-dock-create`).
+    private static let discSize: CGFloat = BottomTabBar.SimpleDock.create
 
     /// Simple Shell follow-up (plan item 3): the popover is bound to `app.dockCreateOpen`, so a dock drag released
     /// over this slot opens the same menu, from the same anchor, as a tap.
@@ -124,19 +125,29 @@ struct DockCreateButtonView: View {
             Haptics.light()
             app.dockCreateOpen = true
         } label: {
-            // Prototype v2's dock has no label here: one clay circle with a white "+" (the label stays for VoiceOver).
+            // No label on the dock (the name stays for VoiceOver). Dark clay is light, so the plus turns paper-dark
+            // there (white on it fails 3:1); light keeps white.
             Image(systemName: "plus")
-                .font(.app(size: 24, weight: .regular))
-                .foregroundStyle(.white)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(app.isDark ? app.palette.paper : .white)
                 .frame(width: Self.discSize, height: Self.discSize)
-                .background(app.palette.clay, in: Circle())
-                .frame(minWidth: 44, minHeight: BottomTabBar.barHeight - 10)
-            .scaleEffect(scrubHover ? 0.9 : 1)
-            .opacity(scrubHover ? 0.82 : 1)
+                .background {
+                    Circle().fill(app.palette.clay)
+                        .overlay(
+                            // Soft inner highlight: a light top edge fading out by the middle.
+                            Circle().strokeBorder(
+                                LinearGradient(colors: [.white.opacity(0.32), .white.opacity(0)], startPoint: .top, endPoint: .center),
+                                lineWidth: 1)
+                        )
+                        .shadow(color: Color(red: 124 / 255, green: 69 / 255, blue: 41 / 255).opacity(app.isDark ? 0 : 0.4), radius: 4, x: 0, y: 3)
+                }
+                .frame(minWidth: 44, minHeight: BottomTabBar.SimpleDock.height - 2)
+            .scaleEffect(scrubHover && !reduceMotion ? 0.94 : 1)
+            .brightness(scrubHover ? -0.05 : 0)
             .animation(Motion.animation(.spring(response: 0.22, dampingFraction: 0.7), reduce: reduceMotion), value: scrubHover)
             .contentShape(Rectangle())
         }
-        .buttonStyle(PressableButtonStyle(haptic: false))
+        .buttonStyle(DockCreatePressStyle())
         // The menu is a bottom sheet presented by RootView (DockCreateSheet), like the web one.
         .accessibilityIdentifier("dock.createButton")
         .tourTarget("tour.dock.create")
@@ -282,5 +293,17 @@ struct DockCreateSheet: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(id)
+    }
+}
+
+/// The centre "+" presses to 0.94 (web `.bb-dock-create:active`); Reduce Motion keeps the size and only dims.
+private struct DockCreatePressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.94 : 1)
+            .brightness(configuration.isPressed ? -0.05 : 0)
+            .animation(.easeOut(duration: 0.14), value: configuration.isPressed)
     }
 }

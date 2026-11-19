@@ -2250,7 +2250,31 @@ final class AppState: ObservableObject {
     /// from `CatalogEvent.all` (the bundled cosmetic catalogue), joined
     /// back to it per-row in MapExploreView since seats/status here are
     /// live and the catalogue's are not.
-    @Published var mapEvents: [MapEventRow] = []
+    @Published var mapEvents: [MapEventRow] = [] {
+        didSet {
+            // Note 99: built once per load (never per body pass) for the unified Search sheet, which lists only
+            // events the Map can plot. Event ids equal `CatalogEvent.key` (real rows: `fromReal` keys by id; demo
+            // rows were seeded with id = slug = key, migration 158).
+            var pts: [String: MapDiscovery.Point] = [:]
+            for row in mapEvents {
+                guard let lat = row.lat, let lng = row.lng else { continue }
+                let p = MapDiscovery.Point(lat: lat, lng: lng)
+                pts[row.id] = p
+                // A demo-catalogue doc's key is its live row's slug, not its id.
+                if let slug = row.slug, !slug.isEmpty, pts[slug] == nil { pts[slug] = p }
+            }
+            mapPlottablePoints = pts
+        }
+    }
+    /// Note 99: id → coordinates of every loaded Map row that has lat and lng (see `mapEvents`).
+    private(set) var mapPlottablePoints: [String: MapDiscovery.Point] = [:]
+    /// Note 99: true once a Map load has answered successfully, so an empty `mapEvents` means "nothing on the map"
+    /// rather than "not loaded yet".
+    var mapEventsKnown: Bool { !mapEvents.isEmpty || (!mapEventsLoading && !mapEventsLoadFailed) }
+    /// Note 99: the unified Search sheet's "See on the map · N" asks the Map to frame those N results when any lies
+    /// outside its committed area. The Map consumes it (sets nil); `token` makes a repeat request observable.
+    struct MapFitRequest { let token = UUID(); let points: [MapDiscovery.Point] }
+    @Published var mapFitRequest: MapFitRequest?
     @Published var mapEventsLoading = true
     /// Owner, 2026-10-24 ("no events on the map until I pull down"): every Map load takes a number and only the
     /// newest one may write `mapEvents`, so a slow, stale answer (e.g. a poll that used a not-yet-settled camera

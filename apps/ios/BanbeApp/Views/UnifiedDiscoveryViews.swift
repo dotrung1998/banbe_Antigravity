@@ -103,20 +103,25 @@ struct UnifiedBrowseSection: View {
     let onToggle: (String) -> Void
     let onClear: () -> Void
     let onOpenSheet: () -> Void
+    /// Filters sheet (note 99): smaller tiles, no heading or page padding, own ids, and the picked type comes from `selectedOverride`.
+    var compact = false
+    var idPrefix = "home.browse"
+    var selectedOverride: String?? = nil
 
-    private var selected: String? { app.homeFilters.cats.first }
+    private var selected: String? { selectedOverride ?? app.homeFilters.cats.first }
 
     var body: some View {
         let keys = EventTypes.keys
         let tiles = UnifiedDiscovery.topTypes(counts, keys: keys)
         let picked = UnifiedDiscovery.pickedTileType(selected, tiles: tiles)
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
+        VStack(alignment: .leading, spacing: compact ? 0 : 14) {
+            if !compact { HStack {
                 Text(app.T("Duyệt theo loại", "Browse by type"))
                     .font(BanbeTheme.display(19))
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
-                if selected != nil {
+                // Web shows it whenever there are events; with no type picked it just clears (a no-op), like the web.
+                if (counts["all"] ?? 0) > 0 {
                     Button(action: { Haptics.selection(); onClear() }) {
                         (Text(app.T("Xem tất cả ", "See all ")) + Text("\(counts["all"] ?? 0)").bold())
                             .font(.app(size: 14, weight: .semibold)).frame(minHeight: 44)
@@ -124,30 +129,30 @@ struct UnifiedBrowseSection: View {
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("home.browse.all")
                 }
-            }
+            } }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6, alignment: .top), count: 3), spacing: 6) {
                 ForEach(tiles, id: \.self) { k in
                     let n = counts[k] ?? 0
                     tile(glyph: CategoryGlyph.symbol(k), title: UnifiedText.typeName(app, k), sub: UnifiedText.events(app, n),
-                         on: selected == k, zero: n == 0, dashed: false, id: "home.browse.\(k)") { onToggle(k) }
+                         on: selected == k, zero: n == 0, dashed: false, id: "\(idPrefix).\(k)") { onToggle(k) }
                 }
                 if let picked {
                     tile(glyph: CategoryGlyph.symbol(picked), title: UnifiedText.typeName(app, picked),
                          sub: UnifiedText.events(app, counts[picked] ?? 0) + app.T(" · đổi", " · change"),
-                         on: true, zero: false, dashed: false, id: "home.browse.picked", action: onOpenSheet)
+                         on: true, zero: false, dashed: false, id: "\(idPrefix).picked", action: onOpenSheet)
                         .accessibilityHint(app.T("Đổi loại", "Change the type"))
                 } else {
                     tile(glyph: "magnifyingglass", title: app.T("Tất cả loại", "All types"),
                          sub: app.T("\(keys.count) loại", "\(keys.count) types"),
-                         on: false, zero: false, dashed: true, id: "home.browse.find", action: onOpenSheet)
+                         on: false, zero: false, dashed: true, id: "\(idPrefix).find", action: onOpenSheet)
                 }
             }
         }
         .foregroundStyle(app.palette.ink)
-        .padding(.horizontal, 20).padding(.top, 28)
+        .padding(.horizontal, compact ? 0 : 20).padding(.top, compact ? 0 : 28)
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("home.browse")
-        .tourTarget("tour.home.browse")
+        .accessibilityIdentifier(idPrefix)
+        .modifier(BrowseTourTarget(on: !compact))
     }
 
     private func tile(glyph: String, title: String, sub: String, on: Bool, zero: Bool, dashed: Bool, id: String,
@@ -155,9 +160,9 @@ struct UnifiedBrowseSection: View {
         SwipeSafeButton(action: action) {
             VStack(spacing: 4) {
                 Image(systemName: glyph)
-                    .font(.app(size: 22, weight: .light))
+                    .font(.app(size: compact ? 18 : 22, weight: .light))
                     .foregroundStyle(on ? app.palette.paper : app.palette.ink)
-                    .frame(width: 52, height: 52)
+                    .frame(width: compact ? 40 : 52, height: compact ? 40 : 52)
                     .background(on ? app.palette.ink : Color.clear, in: Circle())
                     .overlay {
                         if dashed { Circle().strokeBorder(app.palette.ink3, style: StrokeStyle(lineWidth: 1, dash: [3, 3])) }
@@ -166,7 +171,7 @@ struct UnifiedBrowseSection: View {
                 Text(sub).font(.app(size: 11.5)).opacity(0.64).lineLimit(1).minimumScaleFactor(0.8)
             }
             .frame(maxWidth: .infinity)
-            .padding(.top, 12).padding(.bottom, 10)
+            .padding(.top, compact ? 8 : 12).padding(.bottom, compact ? 6 : 10)
             .background(on ? app.palette.block : Color.clear, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .opacity(zero && !on ? 0.5 : 1)
             .contentShape(Rectangle())
@@ -175,6 +180,14 @@ struct UnifiedBrowseSection: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(on ? .isSelected : [])
         .accessibilityIdentifier(id)
+    }
+}
+
+/// The Home tour anchors on the page's own grid only, never the Filters sheet's compact copy.
+private struct BrowseTourTarget: ViewModifier {
+    let on: Bool
+    @ViewBuilder func body(content: Content) -> some View {
+        if on { content.tourTarget("tour.home.browse") } else { content }
     }
 }
 

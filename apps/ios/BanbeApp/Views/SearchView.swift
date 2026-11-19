@@ -19,6 +19,10 @@ struct SearchView: View {
         self.unifiedSheet = unifiedSheet
     }
     @FocusState private var sheetFocused: Bool
+    /// Note 99: the sheet's field edits this local text; `app.searchQuery` follows debounced, so a keystroke does not
+    /// re-render Home and the Map underneath.
+    @State private var text = ""
+    @State private var pushTask: Task<Void, Never>?
 
     /// The persistent bar's focus (the field itself lives in RootView, see PersistentSearchBar).
     private var focused: Bool {
@@ -55,14 +59,35 @@ struct SearchView: View {
         let real = app.discoveryEvents.filter(\.isOpen)
         let realKeys = Set(real.map(\.key))
         let demo = EventCatalog.all.filter { !realKeys.contains($0.key) && !$0.inviteOnly }.map(app.withLive).filter(\.isOpen)
+        // Note 99 (owner): in unified mode the sheet promises "Same results as the map", so it lists only events the
+        // Map can plot (a loaded Map row with lat/lng; `CatalogEvent.key` == `MapEventRow.id`). Until the Map rows are
+        // known the current list stays (no empty flash); the `.task` below loads them.
+        let plottable: [String: MapDiscovery.Point]? = app.unifiedDiscoveryEnabled && app.mapEventsKnown ? app.mapPlottablePoints : nil
         return (real + demo).compactMap { e in
+            if let plottable, plottable[e.key] == nil { return nil }
             let start = app.discoveryStart(for: e, now: now)
             if let start, now.timeIntervalSince(start) > Self.endedAfter { return nil }
             return Doc(event: e, startsAt: start, doc: SearchMatch.buildDoc(for: e))
         }
     }
 
-    private var query: String { app.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var liveText: String { unifiedSheet ? text : app.searchQuery }
+    private var query: String { liveText.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    /// Sets the query; in the sheet it also flushes to `app.searchQuery` right away (clear, recent chip, submit, CTA).
+    private func setText(_ s: String) {
+        if unifiedSheet { text = s; pushTask?.cancel(); pushTask = nil; app.searchQuery = s } else { app.searchQuery = s }
+    }
+    /// Debounced write of the typed text (~150 ms).
+    private func schedulePush() {
+        pushTask?.cancel()
+        pushTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { return }
+            app.searchQuery = text
+            pushTask = nil
+        }
+    }
 
     /// Note 99: Home's filters + time + sort over the query's hits (the same `HomeDiscovery.apply` Home renders with).
     private func udNarrowed(_ hits: [Doc]) -> [Doc] {
@@ -87,29 +112,50 @@ struct SearchView: View {
         let queryHits = q.isEmpty ? [] : all.filter { SearchMatch.matches(doc: $0.doc, query: q) }
         // Note 99 (unified_discovery): results also respect the shared filters and time.
         let eventHits = app.unifiedDiscoveryEnabled ? udNarrowed(queryHits) : queryHits
-        let hosts = hostHits(all, q)
-        let areas = areaHits(q)
+        // Note 99: host/area groups are unused in unified mode, so they are not computed there.
+        let hosts = app.unifiedDiscoveryEnabled ? [] : hostHits(all, q)
+        let areas = app.unifiedDiscoveryEnabled ? [] : areaHits(q)
+        let uHits = app.unifiedDiscoveryEnabled ? (q.isEmpty ? udNarrowed(all) : eventHits) : []
         VStack(spacing: 0) {
             if unifiedSheet { unifiedSheetHeader } else { header }
+            // Note 99: the source chips stay pinned under the field while the body scrolls.
+            if app.unifiedDiscoveryEnabled { unifiedSourceChips }
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    if app.unifiedDiscoveryEnabled { unifiedMeta(q) }
+                    if app.unifiedDiscoveryEnabled { unifiedRecent(q) }
                     if app.unifiedDiscoveryEnabled { UnifiedSearchFilterRow(onOpen: { udFilterSheetOpen = true }) }
                     if app.unifiedDiscoveryEnabled {
-                        unifiedResults(q.isEmpty ? udNarrowed(all) : eventHits)
+                        unifiedResults(uHits)
                     } else if q.isEmpty { idle } else { results(eventHits, hosts, areas) }
                 }
-                .padding(.bottom, 60)
+                .padding(.bottom, app.unifiedDiscoveryEnabled ? 120 : 60)   // note 99: room under the pinned CTA
             }
             .scrollDismissesKeyboard(.interactively)
             .opacity(atHomeBar ? 0 : 1)
             // As an overlay the results drop in from the top (and lift away on close).
             .offset(y: isOverlay && atHomeBar ? -28 : 0)
         }
+        .overlay(alignment: .bottom) {
+            // Note 99: the "See on the map · N" CTA is pinned 30 pt above the sheet's bottom, results scroll beneath.
+            if app.unifiedDiscoveryEnabled && !uHits.isEmpty { unifiedMapCTA(uHits, q: q).padding(.bottom, 30) }
+        }
         .foregroundStyle(app.palette.ink)
         // As an overlay the paper fades in over the live Home instead of a whole new page appearing (no white flash).
         .background(app.palette.paper.ignoresSafeArea().opacity(isOverlay && atHomeBar ? 0 : 1))
-        .hidesDock("search")
+        // Note 99: the sheet registers with the dock at the moment it opens (RootView), not on appear.
+        .background { if !unifiedSheet { Color.clear.hidesDock("search") } }
+        .onChange(of: text) { _, _ in if unifiedSheet { schedulePush() } }
+        .onChange(of: app.searchQuery) { _, v in
+            // Changed from outside (Clear filters, another screen): adopt it unless a typed value is still pending.
+            if unifiedSheet, pushTask == nil, v != text { text = v }
+        }
+        .onDisappear { if unifiedSheet { pushTask?.cancel(); pushTask = nil; if app.searchQuery != text { app.searchQuery = text } } }
+        .task(id: unifiedSheet) {
+            // The keyboard waits for the sheet's slide-up to finish.
+            guard unifiedSheet else { return }
+            try? await Task.sleep(for: .milliseconds(350))
+            sheetFocused = true
+        }
         .onChange(of: atHomeBar) { _, v in app.searchBarAtHome = v }
         .onDisappear { if app.searchBarHandlers?.owner == "search" { app.searchBarHandlers = nil } }
         .onChange(of: app.lang) { _, _ in registerSearchBar() }
@@ -118,11 +164,15 @@ struct SearchView: View {
             if isOverlay { Color.clear.frame(width: 0, height: 0).accessibilityIdentifier("screen.search") }
         }
         .task {
+            // Note 99: Search opened before the Map was visited: load the Map rows the unified list is limited to.
+            if app.unifiedDiscoveryEnabled && !app.mapEventsKnown { await app.loadMapEvents() }
+        }
+        .task {
             if app.discoveryEvents.isEmpty { await app.loadDiscoveryEvents() }
             if app.pulseDaily.isEmpty { await app.loadPulse(period: .daily) }
         }
         .onAppear {
-            guard !unifiedSheet else { sheetFocused = true; return }
+            guard !unifiedSheet else { text = app.searchQuery; return }
             registerSearchBar()
             guard entering else { focused = app.searchQuery.isEmpty; return }
             DispatchQueue.main.async {
@@ -163,16 +213,16 @@ struct SearchView: View {
                     Image(systemName: "magnifyingglass")
                         .font(.app(size: 16, weight: .medium))
                         .foregroundStyle(app.palette.clay).accessibilityHidden(true)
-                    TextField(app.T("Tìm sự kiện, host, khu vực, vibe…", "Search events, hosts, areas, vibes…"), text: $app.searchQuery)
+                    TextField(app.T("Tìm sự kiện, host, khu vực, vibe…", "Search events, hosts, areas, vibes…"), text: $text)
                         .font(.app(size: 15))
                         .focused($sheetFocused)
                         .submitLabel(.search)
                         .onSubmit { commit() }
                         .autocorrectionDisabled()
                         .accessibilityIdentifier("search.sheet.field")
-                    if !app.searchQuery.isEmpty {
+                    if !text.isEmpty {
                         Button {
-                            app.searchQuery = ""
+                            setText("")
                             sheetFocused = true
                         } label: {
                             Image(systemName: "xmark.circle.fill")
@@ -258,13 +308,13 @@ struct SearchView: View {
 
     // MARK: Unified discovery (prototype v2)
 
-    /// "Từ Trang chủ" / "Trang chủ + Bản đồ" meta chips, then the recent searches while no query is typed.
-    @ViewBuilder
-    private func unifiedMeta(_ q: String) -> some View {
-        HStack(spacing: 6) {
+    /// "Từ Trang chủ" / "Từ Bản đồ" + "Trang chủ + Bản đồ" source chips (note 99: pinned under the field).
+    private var unifiedSourceChips: some View {
+        let fromMap = app.screen == .mapExplore
+        return HStack(spacing: 6) {
             HStack(spacing: 5) {
-                Image(systemName: "house").font(.app(size: 11, weight: .semibold)).accessibilityHidden(true)
-                Text(app.T("Từ Trang chủ", "From Home")).font(.app(size: 11.5, weight: .semibold))
+                Image(systemName: fromMap ? "map" : "house").font(.app(size: 11, weight: .semibold)).accessibilityHidden(true)
+                Text(fromMap ? app.T("Từ Bản đồ", "From the Map") : app.T("Từ Trang chủ", "From Home")).font(.app(size: 11.5, weight: .semibold))
             }
             .padding(.horizontal, 10).frame(height: 26)
             .background(app.palette.block, in: Capsule())
@@ -275,17 +325,22 @@ struct SearchView: View {
             .foregroundStyle(app.palette.ink2)
             .padding(.horizontal, 10).frame(height: 26)
             .overlay(Capsule().strokeBorder(app.palette.rule, lineWidth: 1))
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 20).padding(.top, 10)
+        .padding(.horizontal, 20).padding(.top, 4).padding(.bottom, 6)
         .accessibilityIdentifier("search.meta")
+    }
 
+    /// Recent searches while no query is typed.
+    @ViewBuilder
+    private func unifiedRecent(_ q: String) -> some View {
         if !recent.isEmpty && q.isEmpty {
             Text(app.T("Gần đây", "Recent").uppercased())
                 .font(.app(size: 11, weight: .semibold)).tracking(1.4).foregroundStyle(app.palette.ink3)
                 .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 8)
             FlowRow(spacing: 8) {
                 ForEach(recent, id: \.self) { r in
-                    Button { app.searchQuery = r } label: {
+                    Button { setText(r) } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "clock").font(.app(size: 13)).opacity(0.55).accessibilityHidden(true)
                             Text(r).font(.app(size: 14, weight: .medium)).lineLimit(1)
@@ -309,7 +364,7 @@ struct SearchView: View {
         let q = query
         let now = Date()
         let rows = hits.map { d in (d.event.key, app.v23Row(d.event, item: app.discoveryItem(for: d.event, now: now))) }
-        VStack(alignment: .leading, spacing: 0) {
+        LazyVStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(q.isEmpty
                      ? app.T("\(rows.count) sự kiện", "\(rows.count) \(rows.count == 1 ? "event" : "events")")
@@ -341,7 +396,7 @@ struct SearchView: View {
                          : app.T("Không có gì khớp “\(q)”. Thử một từ khác hoặc bỏ bộ lọc.", "Nothing matches “\(q)”. Try another word or drop the filters."))
                         .font(.app(size: 13)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
                     Button {
-                        app.searchQuery = ""
+                        setText("")
                         app.homeFilters = .default
                         app.homeSort = "soonest"
                     } label: {
@@ -361,32 +416,43 @@ struct SearchView: View {
                 .accessibilityIdentifier("search.empty")
             }
 
-            if !rows.isEmpty {
-                Button {
-                    commit()
-                    focused = false
-                    // Over the Map the sheet just closes: the map already shows these results.
-                    if app.screen == .mapExplore { app.unifiedSearchOpen = false } else { app.seeSearchOnMap(q) }
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "map").font(.app(size: 17, weight: .semibold)).accessibilityHidden(true)
-                        Text(app.T("Xem trên bản đồ", "See on the map")).font(.app(size: 15.5, weight: .semibold))
-                        Text("\(rows.count)").font(.app(size: 12)).monospacedDigit()
-                            .padding(.horizontal, 7).frame(minWidth: 24, minHeight: 24)
-                            .overlay(Capsule().strokeBorder(Color.white.opacity(0.6), lineWidth: 1))
-                    }
-                    .foregroundStyle(app.palette.paper)
-                    .frame(maxWidth: .infinity, minHeight: 54)
-                    .background(app.palette.ink, in: Capsule())
-                    .shadow(color: .black.opacity(0.24), radius: 13, y: 6)
-                    .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 16).padding(.top, 18)
-                .accessibilityIdentifier("search.seeOnMap")
-            }
         }
         .padding(.bottom, 24)
+    }
+
+    /// The pinned "See on the map · N" CTA (note 99).
+    private func unifiedMapCTA(_ hits: [Doc], q: String) -> some View {
+        let count = hits.count
+        return Button {
+            commit()
+            focused = false
+            // Note 99: the Map frames these N results when any lies outside its committed area (MapExploreView
+            // `applyFitRequest`), so its "List · N" equals N.
+            if app.mapEventsKnown {
+                let pts = hits.compactMap { app.mapPlottablePoints[$0.event.key] }
+                app.mapFitRequest = pts.isEmpty ? nil : AppState.MapFitRequest(points: pts)
+            }
+            // Over the Map the sheet just closes: the map already shows these results.
+            if app.screen == .mapExplore { app.unifiedSearchOpen = false } else { app.seeSearchOnMap(q) }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "map").font(.app(size: 17, weight: .semibold)).accessibilityHidden(true)
+                Text(app.T("Xem trên bản đồ", "See on the map")).font(.app(size: 15.5, weight: .semibold))
+                Text("\(count)").font(.app(size: 12)).monospacedDigit()
+                    .padding(.horizontal, 7).frame(minWidth: 24, minHeight: 24)
+                    .overlay(Capsule().strokeBorder(Color.white.opacity(0.6), lineWidth: 1))
+            }
+            .foregroundStyle(app.palette.paper)
+            // Owner 2026-11-19: the pill hugs its label (centred), not the sheet's full width.
+            .padding(.horizontal, 24)
+            .frame(minHeight: 54)
+            .background(app.palette.ink, in: Capsule())
+            .shadow(color: .black.opacity(0.24), radius: 13, y: 6)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .accessibilityIdentifier("search.seeOnMap")
     }
 
     // MARK: Idle (empty query)
@@ -503,7 +569,8 @@ struct SearchView: View {
     }
 
     private func commit() {
-        recent = RecentSearches.push(recent, app.searchQuery)
+        if unifiedSheet { pushTask?.cancel(); pushTask = nil; app.searchQuery = text }   // note 99: flush on submit
+        recent = RecentSearches.push(recent, liveText)
         RecentSearches.save(recent)
     }
 

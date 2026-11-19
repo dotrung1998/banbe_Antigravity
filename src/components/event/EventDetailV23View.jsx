@@ -6,7 +6,7 @@
 // 140 px to a glass nav with the title, Save, Share, ⋯, the section tabs and a reading-progress line. The reserve bar
 // floats at the bottom (ReserveBarV23, or the single action for every other state).
 // Presentational only: EventDetail.jsx owns the data, the refs, the scroll handler, the zoom and the pull-down.
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { bg } from '../../data/events.js';
 import { SERIF, V23_CSS, glassBar } from './v23Style.js';
 import { listNo } from '../../lib/eventDetailV23.js';
@@ -35,6 +35,29 @@ const Sec = ({ secRef, id, testId, last, children }) => (
     {children}
   </section>
 );
+
+/** True once `url` is decoded. Starts true when the browser already holds it (the tapped row's thumbnail is the same
+ *  URL), so the hero paints the cover on its first frame instead of fading it in over a placeholder. */
+function useImageReady(url) {
+  const peek = (u) => {
+    if (!u || typeof Image === 'undefined') return false;
+    const im = new Image(); im.src = u;
+    return im.complete && im.naturalWidth > 0;
+  };
+  const [ready, setReady] = useState(() => ({ url, ok: peek(url) }));
+  useEffect(() => {
+    if (!url) return undefined;
+    if (peek(url)) { setReady({ url, ok: true }); return undefined; }
+    setReady({ url, ok: false });
+    let live = true;
+    const im = new Image();
+    const done = () => { if (live) setReady({ url, ok: true }); };
+    im.onload = done; im.onerror = done; // a broken URL settles on the quiet surface rather than waiting forever
+    im.src = url;
+    return () => { live = false; im.onload = null; im.onerror = null; };
+  }, [url]);
+  return ready.url === url && ready.ok;
+}
 
 export default function EventDetailV23View(p) {
   const { T, ev, entrance, dimRef, cardRef, scrollerRef, heroRef, heroImgRef, progressRef, tabRowRef, onScroll, collapsed,
@@ -65,7 +88,11 @@ export default function EventDetailV23View(p) {
     return () => io.disconnect();
   }, [ev.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const monogram = (ev.name || 'B').trim().charAt(0).toUpperCase() || 'B';
+  // The monogram plate is ONLY for an event with no photo (and a name: a still-loading row has neither). With a photo,
+  // a quiet mat surface sits under it until it is decoded; the plate and its big initial used to show for a moment
+  // before every cover loaded.
+  const monogram = (ev.name || '').trim().charAt(0).toUpperCase();
+  const heroReady = useImageReady(ev.img || '');
   const sections = [
     { id: 'overview', show: true },
     { id: 'menu', show: cards.length > 0 },
@@ -84,11 +111,13 @@ export default function EventDetailV23View(p) {
         <div ref={scrollerRef} data-testid="event-scroller" onScroll={onScroll} className="bbv23-scroll"
           style={{ position: 'absolute', inset: 0, overflowY: 'auto', overflowX: 'hidden', WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain', paddingBottom: `calc(${scrollPad}px + env(safe-area-inset-bottom, 0px))` }}>
           {/* Hero: the shared element the card zooms into. */}
-          <div ref={heroRef} data-testid="event-hero" style={{ position: 'relative', height: 392, overflow: 'hidden', background: '#241E17' }}>
-            <div aria-hidden style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: 'radial-gradient(120% 85% at 28% 6%, #4A3A2A 0%, #241E17 46%, #14110D 100%)' }}>
-              <span style={{ fontSize: 190, fontWeight: 300, lineHeight: 1, letterSpacing: '-0.06em', color: 'rgba(247,244,236,.08)', transform: 'translateY(10px)' }}>{monogram}</span>
-            </div>
-            {ev.img && <div ref={heroImgRef} aria-hidden style={bg(ev.img, { position: 'absolute', left: 0, top: '-20%', width: '100%', height: '140%', borderRadius: 0, willChange: 'transform', transformOrigin: 'center 30%', filter: 'saturate(1.06) contrast(1.02)' })} />}
+          <div ref={heroRef} data-testid="event-hero" style={{ position: 'relative', height: 392, overflow: 'hidden', background: ev.img || !monogram ? 'var(--bb-mat)' : '#241E17' }}>
+            {!ev.img && monogram && (
+              <div aria-hidden style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: 'radial-gradient(120% 85% at 28% 6%, #4A3A2A 0%, #241E17 46%, #14110D 100%)' }}>
+                <span style={{ fontSize: 190, fontWeight: 300, lineHeight: 1, letterSpacing: '-0.06em', color: 'rgba(247,244,236,.08)', transform: 'translateY(10px)' }}>{monogram}</span>
+              </div>
+            )}
+            {ev.img && <div ref={heroImgRef} aria-hidden data-testid="event-hero-img" data-ready={heroReady ? 'true' : 'false'} className="bbv23-heroimg" style={bg(ev.img, { position: 'absolute', left: 0, top: '-20%', width: '100%', height: '140%', borderRadius: 0, willChange: 'transform', transformOrigin: 'center 30%', filter: 'saturate(1.06) contrast(1.02)', opacity: heroReady ? 1 : 0 })} />}
             <div aria-hidden style={{ position: 'absolute', inset: 0, background: 'radial-gradient(130% 90% at 50% 0%, transparent 32%, rgba(0,0,0,.42) 100%)' }} />
             {/* The prototype's shade, with the lower band held at >= 0.7 so the white title keeps 4.5:1 on a white photo
                 (the same floor as HERO_SCRIM, note 70). */}

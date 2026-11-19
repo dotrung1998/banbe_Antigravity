@@ -61,3 +61,32 @@ export function ownedFilterCount(filters, sort) {
     + (f.seatsLeft ? 1 : 0) + (f.almostFull ? 1 : 0) + ((f.typeFilters || []).length ? 1 : 0)
     + (sort && sort !== 'soonest' ? 1 : 0);
 }
+
+/**
+ * Search ⇄ Map promise (note 99): the Search sheet only lists events the Map can plot. A doc matches a map row by the
+ * real event id (a discovery event's `key` IS `events.id`, the map row's `id`) and the row must have lat/lng.
+ * `mapRows == null` means "not loaded yet": the docs are returned unchanged (no empty flash).
+ */
+export function mapPlottable(docs, mapRows) {
+  if (!Array.isArray(mapRows)) return docs;
+  const byId = new Set();
+  // A real event's key is its id; a demo-catalogue entry's key is its live row's slug.
+  for (const r of mapRows) if (r && r.lat != null && r.lng != null) { byId.add(r.id); if (r.slug) byId.add(r.slug); }
+  return (docs || []).filter(d => byId.has(d.key));
+}
+
+/** The {lat, lng} points of the docs' map rows, for fitting the Map camera. */
+export function mapPoints(docs, mapRows) {
+  const byId = new Map();
+  for (const r of mapRows || []) {
+    if (!r || r.lat == null || r.lng == null) continue;
+    byId.set(r.id, r);
+    if (r.slug && !byId.has(r.slug)) byId.set(r.slug, r);
+  }
+  return (docs || []).map(d => byId.get(d.key)).filter(Boolean).map(r => ({ lat: r.lat, lng: r.lng }));
+}
+
+/** True when any point lies outside `bounds` (`inBoundsFn` is mapDiscovery's inBounds). */
+export function anyOutside(points, bounds, inBoundsFn) {
+  return (points || []).some(p => !inBoundsFn(p, bounds));
+}

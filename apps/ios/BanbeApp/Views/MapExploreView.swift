@@ -70,6 +70,8 @@ struct MapExploreView: View {
     /// The map's full size and the top safe area (the Map ignores the safe area), for the reference rect.
     @State private var mapSize: CGSize = .zero
     @State private var safeTop: CGFloat = 0
+    /// The home-indicator inset, so the list's floating Map button sits where the List button was, not on the indicator.
+    @State private var safeBottom: CGFloat = 0
     /// Bottom edge of the shared controls in screen coordinates (0 until measured): the list's top and the reference
     /// rect's top inset follow it (a Dynamic Type change moves it).
     @State private var controlsBottom: CGFloat = 0
@@ -109,6 +111,8 @@ struct MapExploreView: View {
     // Matching is `app.mapForYouMatches` (same ForYou.rank + same area rule as Home).
     @State private var forYouOn: Bool
     @StateObject private var forYouAlert = ForYouAlertModel()
+    /// Note 99 (smoothness): the results pipeline, memoised on its inputs (see `results`).
+    @State private var resultsCache = MapResultsCache()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     // Location hierarchy (migration 112): Map's own presentation of the shared location picker (selection itself is
     // `app.area`, shared with Home).
@@ -201,7 +205,8 @@ struct MapExploreView: View {
             _searchQuery = State(initialValue: restored.searchQuery)
             _sortByDistance = State(initialValue: restored.sortByDistance)
             _selectedId = State(initialValue: restored.selectedId)
-            _areaPanel = State(initialValue: restored.areaPanelKeys.map { MapAreaPanelState(keys: $0, label: restored.areaPanelLabel) })
+            // Note 99: the unified Map has no neighbourhood panel, so a restored snapshot's open panel is ignored there.
+            _areaPanel = State(initialValue: shared != nil ? nil : restored.areaPanelKeys.map { MapAreaPanelState(keys: $0, label: restored.areaPanelLabel) })
             _preAreaRegion = State(initialValue: restored.preAreaRegion.map {
                 MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: $0.centerLat, longitude: $0.centerLng),
                                    span: MKCoordinateSpan(latitudeDelta: $0.spanLat, longitudeDelta: $0.spanLng))
@@ -442,10 +447,13 @@ struct MapExploreView: View {
                 if seedQuery != nil { app.mapExploreSeedQuery = nil }
                 app.mapExploreEntry = nil // the Home hand-off is read once
             }
+            // Note 99: Search's "See on the map · N" (opened from Home) frames its results after the first framing.
+            applyFitRequest()
         }
         // The persistent search bar: this screen's handlers, query and entrance/exit glide.
         .onAppear {
-            app.mapSearchText = searchQuery
+            // Note 99: the unified Map never shows the shared bar, so its text is not mirrored there.
+            if !unified { app.mapSearchText = searchQuery }
             registerSearchBar()
             if startFocusedOnSearch && !hadRestoredState && !unified { searchFieldFocused = true }
             if app.mapEntranceFrom != nil && !reduceMotion {
@@ -461,13 +469,15 @@ struct MapExploreView: View {
             if app.searchBarHandlers?.owner == "map" { app.searchBarHandlers = nil }
             searchFieldFocused = false
         }
-        .onChange(of: searchQuery) { _, q in if app.mapSearchText != q { app.mapSearchText = q } }
-        .onChange(of: app.mapSearchText) { _, q in if searchQuery != q { searchQuery = q } }
-        // Note 99: the unified Search sheet outlives the Map's local field value, so keep both in step.
-        .onChange(of: app.searchQuery) { _, q in if unified, searchQuery != q { searchQuery = q } }
+        .onChange(of: searchQuery) { _, q in if !unified, app.mapSearchText != q { app.mapSearchText = q } }
+        .onChange(of: app.mapSearchText) { _, q in if !unified, searchQuery != q { searchQuery = q } }
+        // Note 99: the unified Search sheet edits `app.searchQuery`; `udSyncProbe` keeps the local query in step with it
+        // (one handler each way, each writing only a value that differs), so a keystroke is one shared write.
         .onChange(of: sheetFilterCount) { _, _ in registerSearchBar() }
         .background { if unified { udSyncProbe } }
         .onChange(of: app.lang) { _, _ in registerSearchBar() }
+        // Note 99: Search closed over the Map with "See on the map · N".
+        .onChange(of: app.mapFitRequest?.token) { _, token in if token != nil { applyFitRequest() } }
         .onChange(of: app.mapCloseSwipeCancelled) { _, cancelled in
             // An interrupted left-edge swipe never navigates anywhere: the progress springs back by itself.
             guard cancelled else { return }
@@ -564,7 +574,9 @@ struct MapExploreView: View {
             areaPanelLayer
 
             MapListOverlay(isOpen: $listOpen, top: freeTop, background: app.palette.paper,
-                           closeTitle: app.T("Bản đồ", "Map"), bottomInset: dockClear + 12) { probe in
+                           closeTitle: app.T("Bản đồ", "Map"),
+                           // Owner 2026-11-19: the Map button sat on the home indicator; lift it above the safe area.
+                           bottomInset: dockClear + 12 + (unified ? safeBottom + 10 : 0)) { probe in
                 if listMounted { resultsList(probe) } else { Color.clear }
             }
 
@@ -779,11 +791,13 @@ struct MapExploreView: View {
 
     private var compassButton: some View {
             Button(action: tapCompass) {
-                Text("🧭")
-                    .font(.app(size: 18))
+                Group {
+                    // Note 99: the prototype's target glyph (web draws a crosshair circle) on the unified Map.
+                    if unified { Image(systemName: "scope").font(.app(size: 18, weight: .regular)) } else { Text("🧭").font(.app(size: 18)) }
+                }
                     .frame(width: 44, height: 44)
                     .mapSurface(Circle(), interactive: true)
-                    .opacity(compassOpacity)
+                    .opacity(unified ? 1 : compassOpacity)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(app.T("Vị trí của tôi", "My location"))
@@ -979,6 +993,8 @@ struct MapExploreView: View {
     /// them, scrolled to the tapped one.
     private func openAreaForEvent(_ ev: MapEventRow) {
         guard let lat = ev.lat, let lng = ev.lng else { return }
+        // Note 99: no panel on the unified Map; the stack's tapped event opens the carousel, the camera only centres it.
+        if unified { udOpenArea(firstID: ev.id, bounds: nil, reveal: (lat, lng)); return }
         let first = areaInfo(ev.id)
         let stackKeys = stackIDs(of: ev).map { areaInfo($0).key }
         var keys: [String] = []
@@ -1025,6 +1041,7 @@ struct MapExploreView: View {
 
     private func measure(_ proxy: GeometryProxy) {
         safeTop = proxy.safeAreaInsets.top
+        safeBottom = proxy.safeAreaInsets.bottom
         mapSize = CGSize(width: proxy.size.width,
                          height: proxy.size.height + proxy.safeAreaInsets.top + proxy.safeAreaInsets.bottom)
     }
@@ -1068,6 +1085,30 @@ struct MapExploreView: View {
             cityContextID = nil
             areaContext = (reason == .destination || (reason == .initial && framedByArea)) ? "area" : "map"
         }
+    }
+
+    /// The committed area a settled `region` would give (`commitArea`'s reference-rect math, without committing).
+    private func referenceBounds(of region: MKCoordinateRegion) -> MapDiscovery.Bounds {
+        let c = region.center, s = region.span
+        let full = MapDiscovery.Bounds(north: c.latitude + s.latitudeDelta / 2, south: c.latitude - s.latitudeDelta / 2,
+                                       east: c.longitude + s.longitudeDelta / 2, west: c.longitude - s.longitudeDelta / 2)
+        let w = Double(max(1, mapSize.width)), h = Double(max(1, mapSize.height))
+        let ref = MapDiscovery.referenceRect(width: w, height: h, topInset: Double(freeTop),
+                                            bottomInset: Double(MapStack.reserved) + Self.legalReserve)
+        return MapDiscovery.boundsForRect(full, width: w, height: h, rect: ref)
+    }
+
+    /// Note 99 (owner): Search's "See on the map · N" hands over its N results' points. When any lies outside the
+    /// committed area (or, on a fresh open, the area the first framing is about to commit), fit all N above the bottom
+    /// stack as a 'cluster' move, which commits the new area so the results (and "List · N") recompute. Consumed once;
+    /// no move when every result is already inside. Unified mode only.
+    private func applyFitRequest() {
+        guard unified, app.unifiedDiscoveryEnabled, !isPreview, framed, let req = app.mapFitRequest else { return }
+        app.mapFitRequest = nil
+        guard let box = MapDiscovery.boundsOfPoints(req.points) else { return }
+        let area = committedBounds ?? cameraPosition.region.map(referenceBounds(of:))
+        if let area, req.points.allSatisfy({ MapDiscovery.inBounds(lat: $0.lat, lng: $0.lng, area) }) { return }
+        moveCamera(.cluster, to: fittedRegion(box), duration: reduceMotion ? 0 : 0.7)
     }
 
     /// Side margin of a fit: half the widest pin (category icon + price, note 73) plus a gap, so an edge event's pin is
@@ -1457,11 +1498,59 @@ struct MapExploreView: View {
     /// A neighbourhood bubble: one area opens its panel; several (overlapping at this zoom) zoom in to tell them apart.
     private func tapArea(_ a: MapDiscovery.AreaGroup) {
         Haptics.selection()
+        if unified {
+            // Note 99 (web `areaFirstRef`): one area flies in to pin level and opens the carousel on its first event;
+            // a merged bubble only zooms far enough for its areas to split apart.
+            if a.keys.count == 1 {
+                udOpenArea(firstID: visibleEvents.first { a.keys.contains(areaInfo($0.id).key) }?.id, bounds: a.bounds, reveal: nil)
+            } else {
+                udZoomToAreas(a.bounds)
+            }
+            return
+        }
         if a.keys.count == 1 {
             openAreaPanel(keys: a.keys, label: a.labels.first ?? nil, bounds: a.bounds)
         } else {
             zoomTo(bounds: a.bounds)
         }
+    }
+
+    /// Note 99 (web `openAreaPanel` in unified mode): select `firstID` (carousel, no preview) and fly the area's bounds in
+    /// to pin level above the bottom stack, a 'cluster' move that commits the new area like the web; `reveal` (a stack
+    /// tap, already zoomed in) only centres that point at the current zoom, without committing.
+    private func udOpenArea(firstID: String?, bounds: MapDiscovery.Bounds?, reveal: (lat: Double, lng: Double)?) {
+        searchFieldFocused = false
+        withAnimation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.88)) {
+            listOpen = false
+            udPreviewID = nil
+            if let firstID { selectedId = firstID }
+        }
+        let pad = MapDiscovery.Padding(top: Double(freeTop) + 16, bottom: Double(MapStack.reserved) + Self.legalReserve + 16,
+                                       left: 48, right: 48)
+        let duration = reduceMotion ? 0 : 0.7
+        if let reveal {
+            let z = cameraZoom
+            let point = MapDiscovery.Bounds(north: reveal.lat, south: reveal.lat, east: reveal.lng, west: reveal.lng)
+            moveCamera(.reveal, to: fitRegion(point, padding: pad, maxZoom: z, minZoom: z), duration: duration)
+        } else if let bounds {
+            moveCamera(.cluster, to: fitRegion(bounds, padding: pad, maxZoom: 17, minZoom: MapDiscovery.areaZoom + 0.5), duration: duration)
+        }
+    }
+
+    /// Note 99 (web `zoomToAreas`, 52d562b): a merged neighbourhood bubble fits its bounds but stops just inside the area
+    /// level (`areaZoom - 0.15`), at least one level in, so the overlapping bubbles split into their own areas instead
+    /// of jumping to price pins.
+    private func udZoomToAreas(_ bounds: MapDiscovery.Bounds?) {
+        guard let bounds else { return }
+        let maxZoom = MapDiscovery.areaZoom - 0.15
+        let pad = MapDiscovery.Padding(top: Double(freeTop) + 16, bottom: Double(MapStack.reserved) + Self.legalReserve + 16,
+                                       left: 48, right: 48)
+        var region = fitRegion(bounds, padding: pad, maxZoom: maxZoom)
+        let target = min(maxZoom, max(zoom(of: region), cameraZoom + 1))
+        let factor = pow(2, zoom(of: region) - target)
+        region.span = MKCoordinateSpan(latitudeDelta: min(170, region.span.latitudeDelta * factor),
+                                       longitudeDelta: min(350, region.span.longitudeDelta * factor))
+        moveCamera(.cluster, to: region, duration: reduceMotion ? 0 : 0.6)
     }
 
     /// Results at the same place as `ev` (itself included, list order) — the card's ‹ 1/3 › switcher.
@@ -1471,9 +1560,7 @@ struct MapExploreView: View {
         return MapDiscovery.sameSpotIDs(pts, lat: lat, lng: lng)
     }
 
-    private var eventsByID: [String: MapEventRow] {
-        Dictionary(visibleEvents.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-    }
+    private var eventsByID: [String: MapEventRow] { results.byID }
 
     /// A region's zoom on the same 512 px basis as `cameraZoom` (with `fittedRegion`'s width).
     private func zoom(of region: MKCoordinateRegion) -> Double {
@@ -1691,7 +1778,7 @@ struct MapExploreView: View {
                 LazyHStack(spacing: 10) {
                     ForEach(rows) { ev in udCard(ev).id(ev.id) }
                 }
-                .padding(.horizontal, 16).padding(.vertical, 4)
+                .padding(.horizontal, 16).padding(.top, 3).padding(.bottom, 6)
             }
             .onAppear { if let id = selectedId { proxy.scrollTo(id, anchor: .center) } }
             .onChange(of: selectedId) { _, id in
@@ -1699,7 +1786,8 @@ struct MapExploreView: View {
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .center) }
             }
         }
-        .frame(height: 84)
+        // Note 99 (web MapEventCards): 104 pt cards + 3 / 6 pt of room for the selection ring and shadow.
+        .frame(height: 113)
         .rootSwipeExclusion("mapCarousel")
         .accessibilityElement(children: .contain)
         .accessibilityLabel(app.T("Kết quả", "Results"))
@@ -1719,15 +1807,17 @@ struct MapExploreView: View {
                 udPreviewID = ev.id
             }
         } label: {
-            HStack(spacing: 10) {
-                udThumb(ev, size: 56)
-                VStack(alignment: .leading, spacing: 2) {
+            // Note 99 (web MapEventCards ~50): 292 x 104 card, 84 pt thumb, two-line name.
+            HStack(spacing: 12) {
+                udThumb(ev, size: 84)
+                VStack(alignment: .leading, spacing: 3) {
                     Text([app.discoveryDateBadge(ev.startsAt, timeZone: EventMarket.timeZone(ev.timeZoneID)), udTypeLabel(ev)]
                             .filter { !$0.isEmpty }.joined(separator: " · ").uppercased())
                         .font(.app(size: 10.5, weight: .semibold)).foregroundStyle(app.palette.ink2).lineLimit(1)
-                    Text(ev.name).font(.app(size: 14.5, weight: .semibold)).lineLimit(1)
-                    HStack(spacing: 6) {
-                        Text(status ?? place).font(.app(size: 12)).lineLimit(1)
+                    Text(ev.name).font(.app(size: 15, weight: .semibold)).lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 8) {
+                        Text(status ?? place).font(.app(size: 12.5)).lineLimit(1)
                             .foregroundStyle(status != nil ? app.palette.honey : app.palette.ink2)
                         Spacer(minLength: 4)
                         Text(ev.priceVnd > 0 ? EventMarket.formatMoneyShort(ev.priceVnd, currency: ev.rowCurrency) : app.T("Miễn phí", "Free"))
@@ -1735,8 +1825,8 @@ struct MapExploreView: View {
                     }
                 }
             }
-            .padding(10)
-            .frame(width: 280, height: 76, alignment: .leading)
+            .padding(.vertical, 10).padding(.leading, 10).padding(.trailing, 14)
+            .frame(width: min(292, (mapSize.width > 0 ? mapSize.width : UIScreen.main.bounds.width) - 56), height: 104, alignment: .leading)
             .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(on ? app.palette.ink : app.palette.rule, lineWidth: on ? 2 : 1))
@@ -1779,7 +1869,9 @@ struct MapExploreView: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("map.preview.back")
             }
-            Text(ev.name).font(BanbeTheme.display(20)).lineLimit(2).accessibilityAddTraits(.isHeader)
+            // Note 99 (web MapPreview title): 24 pt light, tight tracking.
+            Text(ev.name).font(.app(size: 24, weight: .light)).tracking(-0.36)
+                .lineLimit(2).accessibilityAddTraits(.isHeader)
             if !blurb.isEmpty {
                 Text(blurb).font(.app(size: 13.5)).foregroundStyle(app.palette.ink2).lineLimit(2)
             }
@@ -1849,24 +1941,66 @@ struct MapExploreView: View {
     // MARK: - Results
 
     /// THE results: inside the committed map area, every filter applied. Pins, list and count all come from this.
-    private var visibleEvents: [MapEventRow] {
-        areaBase.filter { inCategory($0, catFilter) }
-    }
+    private var visibleEvents: [MapEventRow] { results.visible }
 
     /// Inside the committed area, every filter except the category (for the category counts).
-    private var areaBase: [MapEventRow] {
-        guard let committedBounds else { return [] }
-        return baseEvents.filter { MapDiscovery.inBounds(lat: $0.lat, lng: $0.lng, committedBounds) }
-    }
+    private var areaBase: [MapEventRow] { results.areaBase }
 
     /// Matching events with no map location yet: listed apart, never counted as "in this area".
-    private var noLocationMatches: [MapEventRow] {
-        baseEvents.filter { ($0.lat == nil || $0.lng == nil) && inCategory($0, catFilter) }
-    }
+    private var noLocationMatches: [MapEventRow] { results.noLocation }
 
     /// Matching events anywhere (for "Show nearest" when this area has none).
-    private var matchingAnywhere: [MapEventRow] {
-        baseEvents.filter { $0.lat != nil && $0.lng != nil && inCategory($0, catFilter) }
+    private var matchingAnywhere: [MapEventRow] { results.anywhere }
+
+    /// Note 99 (smoothness): these lists used to be recomputed on every read (20+ per body pass, each pass re-running
+    /// the search document of every event). They are now built once per change of what they depend on: the loaded
+    /// rows, For You (on + its order), the query, the filters (type included), the committed area, the seat fill and
+    /// the minute `nowMinute`. Same predicates, same order, so the results are identical.
+    private var results: MapResultsCache.Value {
+        let key = MapResultsCache.Key(events: app.mapEvents, forYou: forYouActive ? forYouOrder : nil, query: searchQuery,
+                                      filters: filters, bounds: committedBounds,
+                                      fill: app.eventFill.mapValues { [$0.booked, $0.capacity] }, now: nowMinute)
+        if let hit = resultsCache.value(for: key) { return hit }
+        let value = computeResults(key)
+        resultsCache.store(value, for: key)
+        return value
+    }
+
+    private func computeResults(_ k: MapResultsCache.Key) -> MapResultsCache.Value {
+        // Search + For You (the two filters outside Home's filter object), before geography and Home's filters.
+        // Note 38/99: a live row 12 h past its start is over. Search drops it (`endedAfter`), so the Map must too, or
+        // "Same results as the map" is false while the end-past-events job (migration 167) is not running.
+        let endedBefore = k.now.addingTimeInterval(-12 * 3600)
+        var searched = k.events.filter { ev in ev.startsAt.map { $0 >= endedBefore } ?? true }
+        if let order = k.forYou { searched = searched.filter { order[$0.id] != nil } }
+        // The canonical search document (`SearchMatch.buildDoc`, web `src/lib/search.js`), cached per loaded row.
+        if !k.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            searched = searched.filter { SearchMatch.matches(doc: resultsCache.doc(for: $0), query: k.query) }
+        }
+        if let order = k.forYou { searched.sort { (order[$0.id] ?? .max) < (order[$1.id] ?? .max) } }
+        // Every filter except the category (so each category chip can say what tapping it would show).
+        var others = k.filters
+        others.cats = []
+        let keep = Set(HomeDiscovery.apply(searched.map(discoveryItem), others, now: k.now).map(\.key))
+        let base = searched.filter { keep.contains($0.id) }
+        let areaBase: [MapEventRow] = k.bounds.map { b in base.filter { MapDiscovery.inBounds(lat: $0.lat, lng: $0.lng, b) } } ?? []
+        let cat = k.filters.cats.first ?? "all"
+        let visible = areaBase.filter { inCategory($0, cat) }
+        // One pass grouping for the category counts (was one filter per category).
+        var tally: [String: Int] = [:]
+        for ev in areaBase {
+            let keys = ev.catKeys.isEmpty ? [effectiveCatKey(ev)].compactMap { $0 } : ev.catKeys
+            for key in Set(keys) { tally[key, default: 0] += 1 }
+        }
+        let counts = Dictionary(uniqueKeysWithValues: HomeDiscovery.categories.map { c in
+            (c.key, c.key == "all" ? areaBase.count : tally[c.key] ?? 0)
+        })
+        return MapResultsCache.Value(
+            searched: searched, base: base, areaBase: areaBase, visible: visible,
+            noLocation: base.filter { ($0.lat == nil || $0.lng == nil) && inCategory($0, cat) },
+            anywhere: base.filter { $0.lat != nil && $0.lng != nil && inCategory($0, cat) },
+            counts: counts,
+            byID: Dictionary(visible.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }))
     }
 
     /// Whether the area has any event at all (so an empty list can say "filters hide them" vs "nothing here").
@@ -1888,42 +2022,13 @@ struct MapExploreView: View {
     private var nowMinute: Date { Date(timeIntervalSince1970: (Date().timeIntervalSince1970 / 60).rounded(.down) * 60) }
 
     /// Every filter except the category (so each category chip can say what tapping it would show).
-    private var baseEvents: [MapEventRow] {
-        let searched = searchedEvents
-        var others = filters
-        others.cats = []
-        let keep = Set(HomeDiscovery.apply(searched.map(discoveryItem), others, now: nowMinute).map(\.key))
-        return searched.filter { keep.contains($0.id) }
-    }
+    private var baseEvents: [MapEventRow] { results.base }
 
     /// Search + For You (the two filters outside Home's filter object), before geography and Home's filters. The area
-    /// picker is a destination for the map now (phase 3), not an extra filter.
-    private var searchedEvents: [MapEventRow] {
-        var list = app.mapEvents
-        // For You — the SAME match set drives pins and this list.
-        if forYouActive {
-            let order = forYouOrder
-            list = list.filter { order[$0.id] != nil }
-        }
-        // Home quick event search (2026-09-27) — a by-name/area/keywords
-        // text filter, ANDed with the filters above; never a second search
-        // index (same `app.mapEvents` this screen already loads).
-        // Search-matcher fix (Issue 2) — now matches the SAME canonical
-        // search document the category chip's own coverage is built from
-        // (`SearchMatch.buildDoc`, mirrors web's `src/lib/search.js`):
-        // category label/key + aliases, area, city, organizer name,
-        // description/intro, and `keywords` as a supplement — never
-        // dependent on `keywords` alone. Normalized (case + Vietnamese-
-        // accent-insensitive, đ/d folded), multi-token AND, substring.
-        if !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            list = list.filter { SearchMatch.matches(doc: SearchMatch.buildDoc(for: $0), query: searchQuery) }
-        }
-        if forYouActive {
-            let order = forYouOrder
-            list.sort { (order[$0.id] ?? .max) < (order[$1.id] ?? .max) }
-        }
-        return list
-    }
+    /// picker is a destination for the map now (phase 3), not an extra filter. Matches the SAME canonical search
+    /// document the category chip's own coverage is built from (`SearchMatch.buildDoc`): normalized (case +
+    /// Vietnamese-accent-insensitive, đ/d folded), multi-token AND, substring. Built in `computeResults`.
+    private var searchedEvents: [MapEventRow] { results.searched }
 
     /// A stale `forYouOn` (signed out / account switch / prefs cleared) must never filter anything.
     private var hasForYouPrefs: Bool { !(app.eventPrefs?.isEmpty ?? true) }
@@ -1964,10 +2069,7 @@ struct MapExploreView: View {
     }
 
     /// What tapping each category would show in this map area, with every other active filter applied.
-    private var categoryCountMap: [String: Int] {
-        let base = areaBase
-        return Dictionary(uniqueKeysWithValues: HomeDiscovery.categories.map { c in (c.key, base.filter { inCategory($0, c.key) }.count) })
-    }
+    private var categoryCountMap: [String: Int] { results.counts }
 
     /// Real seat fill (get_public_event_fill) or nil when banbe has none; never the stale `seats_remaining`.
     private func seatFacts(_ ev: MapEventRow) -> HomeDiscovery.FillBadge? {
@@ -1986,8 +2088,8 @@ struct MapExploreView: View {
     private func priceView(_ ev: MapEventRow, font: Font) -> some View {
         HStack(spacing: 4) {
             if ev.priceVnd > 0 {
+                // Owner 2026-11-19: the outlined ticket icon read as noise; the amount alone (VoiceOver keeps "/ ticket").
                 Text(EventMarket.formatMoney(ev.priceVnd, currency: ev.rowCurrency))
-                Image(systemName: "ticket").fontWeight(.regular).foregroundStyle(app.palette.ink)
             } else {
                 Text(app.T("Miễn phí", "Free"))
             }
@@ -2220,7 +2322,7 @@ struct MapExploreView: View {
                                 return na != nb ? na > nb : orderedCategories.firstIndex { $0.key == a.key }! < orderedCategories.firstIndex { $0.key == b.key }!
                             }.map(\.key), id: \.self) { key in
                             if let cat = orderedCategories.first(where: { $0.key == key }) {
-                                categoryChip(cat, counts: counts)
+                                categoryChip(cat, counts: counts).id("map.cat.\(key)")
                             }
                         }
                     } else {
@@ -2248,21 +2350,38 @@ struct MapExploreView: View {
                 .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.75), value: catFilter)
                 .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.75), value: openNowOnly)
             }
-            // A picked filter moves to the front: scroll back there so it is never left off-screen.
-            .onChange(of: catFilter) { _, _ in
+            // A picked filter moves to the front: scroll back there so it is never left off-screen. Note 99: the unified
+            // row's order is fixed, so it scrolls the picked type itself into view (centred) and nothing else moves it.
+            .onChange(of: catFilter) { _, key in
+                if unified { udScrollToType(key, proxy: proxy, animated: true); return }
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { proxy.scrollTo("map.chip.start", anchor: .leading) }
             }
             .onChange(of: filters.free) { _, _ in
+                guard !unified else { return }
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { proxy.scrollTo("map.chip.start", anchor: .leading) }
             }
             .onChange(of: filters.almostFull) { _, _ in
+                guard !unified else { return }
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { proxy.scrollTo("map.chip.start", anchor: .leading) }
             }
             .onChange(of: openNowOnly) { _, _ in
+                guard !unified else { return }
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { proxy.scrollTo("map.chip.start", anchor: .leading) }
+            }
+            // Note 99: a type picked before the Map opened (Home, the Filters sheet) is in view on arrival too.
+            .onAppear {
+                guard unified, catFilter != "all" else { return }
+                let key = catFilter
+                DispatchQueue.main.async { udScrollToType(key, proxy: proxy, animated: false) }
             }
         }
         .rootSwipeExclusion("mapChips")
+    }
+
+    /// Note 99 (web `scrollIntoView` on `map-cat-<key>`): centre the picked type's chip; "All" leaves the row alone.
+    private func udScrollToType(_ key: String, proxy: ScrollViewProxy, animated: Bool) {
+        guard key != "all" else { return }
+        withAnimation(animated && !reduceMotion ? .easeOut(duration: 0.25) : nil) { proxy.scrollTo("map.cat.\(key)", anchor: .center) }
     }
 
     private var freeChip: some View {
@@ -2936,5 +3055,55 @@ enum MapRecentSearches {
         list = Array(list.prefix(5))
         UserDefaults.standard.set(list, forKey: key)
         return list
+    }
+}
+
+
+/// Note 99 (smoothness): the Map's results, kept between body passes and rebuilt only when an input changes. A class held
+/// in `@State`, so reading or filling it never publishes a change (no extra body pass).
+final class MapResultsCache {
+    struct Key: Equatable {
+        var events: [MapEventRow]
+        var forYou: [String: Int]?
+        var query: String
+        var filters: HomeDiscovery.Filters
+        var bounds: MapDiscovery.Bounds?
+        var fill: [String: [Int]]
+        var now: Date
+    }
+
+    struct Value {
+        var searched: [MapEventRow]
+        var base: [MapEventRow]
+        var areaBase: [MapEventRow]
+        var visible: [MapEventRow]
+        var noLocation: [MapEventRow]
+        var anywhere: [MapEventRow]
+        var counts: [String: Int]
+        var byID: [String: MapEventRow]
+    }
+
+    private var key: Key?
+    private var value: Value?
+    /// The search document of each row, rebuilt only for a row that changed (a keystroke reuses every one).
+    private var docs: [String: (row: MapEventRow, doc: String)] = [:]
+
+    func value(for key: Key) -> Value? { self.key == key ? value : nil }
+
+    func store(_ value: Value, for key: Key) {
+        self.key = key
+        self.value = value
+        // Forget the documents of rows no longer loaded.
+        if docs.count > key.events.count * 2 {
+            let ids = Set(key.events.map(\.id))
+            docs = docs.filter { ids.contains($0.key) }
+        }
+    }
+
+    func doc(for ev: MapEventRow) -> String {
+        if let hit = docs[ev.id], hit.row == ev { return hit.doc }
+        let doc = SearchMatch.buildDoc(for: ev)
+        docs[ev.id] = (ev, doc)
+        return doc
     }
 }
