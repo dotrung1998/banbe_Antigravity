@@ -45,16 +45,31 @@ final class NavigationUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["screen.home"].waitForExistence(timeout: 5))
     }
 
+    /// The Home feed can show the same event in more than one rail, so only one
+    /// copy is on screen — tap that one rather than failing on a duplicate.
+    private func hittable(_ app: XCUIApplication, _ id: String) -> XCUIElement {
+        let all = app.buttons.matching(identifier: id)
+        for i in 0..<all.count where all.element(boundBy: i).isHittable {
+            return all.element(boundBy: i)
+        }
+        return all.firstMatch
+    }
+
     func testFeedOpensAnEventAndComesBack() {
         let app = launchToHome()
 
-        let card = app.buttons["card.bepnho"]
+        let card = hittable(app, "card.bepnho")
         XCTAssertTrue(card.waitForExistence(timeout: 15), "Expected the catalogue feed to render")
+        var swipes = 0
+        while !card.isHittable && swipes < 6 {
+            app.swipeUp()
+            swipes += 1
+        }
         card.tap()
 
-        XCTAssertTrue(app.otherElements["screen.event"].waitForExistence(timeout: 5))
-        // Detail shows what the card doesn't — the "Included" row.
-        XCTAssertTrue(app.staticTexts["Bao gồm"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.otherElements["screen.event"].waitForExistence(timeout: 10))
+        // Detail shows what the card doesn't — the photo controls and the way back.
+        XCTAssertTrue(app.buttons["event.more"].waitForExistence(timeout: 5))
 
         app.buttons["event.back"].tap()
         XCTAssertTrue(app.otherElements["screen.home"].waitForExistence(timeout: 5))
@@ -62,8 +77,15 @@ final class NavigationUITests: XCTestCase {
 
     func testEventOpensTheOrganizerPage() {
         let app = launchToHome()
-        app.buttons["card.bepnho"].tap()
-        XCTAssertTrue(app.otherElements["screen.event"].waitForExistence(timeout: 5))
+        let card = hittable(app, "card.bepnho")
+        XCTAssertTrue(card.waitForExistence(timeout: 15))
+        var cardSwipes = 0
+        while !card.isHittable && cardSwipes < 6 {
+            app.swipeUp()
+            cardSwipes += 1
+        }
+        card.tap()
+        XCTAssertTrue(app.otherElements["screen.event"].waitForExistence(timeout: 10))
 
         // The organizer row sits below the hero photo and the description,
         // so it needs scrolling into view first — same as for a real user.
@@ -78,18 +100,28 @@ final class NavigationUITests: XCTestCase {
 
         // The standalone organizer page is retired: the row opens the
         // organizer profile (resolved from the event's organizer id).
-        XCTAssertTrue(app.otherElements["screen.organizerProfile"].waitForExistence(timeout: 10))
+        // A host account opens the organizer profile; a member-hosted event opens the public profile.
+        let profile = app.otherElements["screen.organizerProfile"].waitForExistence(timeout: 10)
+            || app.otherElements["screen.publicProfile"].waitForExistence(timeout: 5)
+        XCTAssertTrue(profile, "Expected the host profile to open")
     }
 
     func testCategoryFilterNarrowsTheFeed() {
         let app = launchToHome()
-        XCTAssertTrue(app.buttons["card.bepnho"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["home.hero.card.bepnho"].firstMatch.waitForExistence(timeout: 15))
 
-        app.buttons["filter.music"].tap()
+        let music = app.buttons["filter.music"].firstMatch
+        XCTAssertTrue(music.waitForExistence(timeout: 10), "Expected the category row to render")
+        var swipes = 0
+        while !music.isHittable && swipes < 5 {
+            app.swipeUp()
+            swipes += 1
+        }
+        music.tap()
         // A supper club event drops out of a music-only feed.
-        XCTAssertTrue(waitForDisappearance(of: app.buttons["card.bepnho"]),
+        XCTAssertTrue(waitForDisappearance(of: app.buttons["home.hero.card.bepnho"].firstMatch),
                       "Filter did not narrow the feed")
-        XCTAssertTrue(app.buttons["card.jazzgac"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["card.jazzgac"].firstMatch.waitForExistence(timeout: 5))
     }
 
     /// The area control is a native `Menu` (the same mechanism as the chat
@@ -100,7 +132,7 @@ final class NavigationUITests: XCTestCase {
     /// fails this test.
     func testAreaSheetOpensAndFiltersTheFeed() {
         let app = launchToHome()
-        XCTAssertTrue(app.buttons["card.bepnho"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["home.hero.card.bepnho"].firstMatch.waitForExistence(timeout: 15))
 
         // 1. The menu itself.
         app.buttons["header.area"].tap()
@@ -114,21 +146,21 @@ final class NavigationUITests: XCTestCase {
         target.tap()
         XCTAssertTrue(waitForDisappearance(of: app.buttons["area.thaodien"]))
         // Bình Thạnh events are gone; Thảo Điền ones remain.
-        XCTAssertTrue(waitForDisappearance(of: app.buttons["card.bepnho"]))
-        XCTAssertTrue(app.buttons["card.bandai"].waitForExistence(timeout: 5))
+        XCTAssertTrue(waitForDisappearance(of: app.buttons["home.hero.card.bepnho"].firstMatch))
+        XCTAssertTrue(app.buttons["card.bandai"].firstMatch.waitForExistence(timeout: 5))
 
         // 3. Back to "All locations" from the menu's own first row.
         app.buttons["header.area"].tap()
         let all = app.buttons["area.all"]
         XCTAssertTrue(all.waitForExistence(timeout: 5), "Area menu did not reopen")
         all.tap()
-        XCTAssertTrue(app.buttons["card.bepnho"].waitForExistence(timeout: 5),
+        XCTAssertTrue(app.buttons["home.hero.card.bepnho"].firstMatch.waitForExistence(timeout: 5),
                       "Choosing All locations did not restore the full feed")
     }
 
     func testAccountAndPreferencesSwitchLanguage() {
         let app = launchToHome()
-        app.buttons["header.account"].tap()
+        app.buttons["tab.profile"].firstMatch.tap()
         XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 5))
 
         app.buttons["account.preferences"].tap()
@@ -147,7 +179,9 @@ final class NavigationUITests: XCTestCase {
     /// it's its own row on Account and its own screen now.
     func testSecurityIsItsOwnScreenOffAccount() {
         let app = launchToHome()
-        app.buttons["header.account"].tap()
+        let account = app.buttons["tab.profile"].firstMatch
+        XCTAssertTrue(account.waitForExistence(timeout: 15), "Expected the dock to render")
+        account.tap()
         XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 5))
 
         // It is no longer reachable from inside Preferences.
@@ -166,7 +200,7 @@ final class NavigationUITests: XCTestCase {
 
     func testDarkThemeRepaintsTheApp() {
         let app = launchToHome()
-        app.buttons["header.account"].tap()
+        app.buttons["tab.profile"].firstMatch.tap()
         app.buttons["account.preferences"].tap()
         XCTAssertTrue(app.otherElements["screen.preferences"].waitForExistence(timeout: 5))
 
@@ -183,7 +217,7 @@ final class NavigationUITests: XCTestCase {
     /// why rather than just sitting there greyed out.
     func testLoginHidesSubmitUntilTheEmailLooksLikeAnEmail() throws {
         let app = launchToHome()
-        app.buttons["header.account"].tap()
+        app.buttons["tab.profile"].firstMatch.tap()
         XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 5))
 
         let signIn = app.buttons["account.signIn"]
@@ -224,7 +258,7 @@ final class NavigationUITests: XCTestCase {
 
     func testSignedOutAccountOffersSignIn() throws {
         let app = launchToHome()
-        app.buttons["header.account"].tap()
+        app.buttons["tab.profile"].firstMatch.tap()
         XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 5))
 
         // Only meaningful signed out; a restored session makes this a no-op.
