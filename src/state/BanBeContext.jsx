@@ -792,6 +792,7 @@ const initialState = {
   // saved/attending list. This is that missing general-purpose real-events
   // feed, merged into Home's main `feed` (see loadDiscoveryEvents below).
   discoveryEvents: [],
+  takenEventKeys: [],
   discoveryEventsLoading: false,
   // Note 43 web parity: the last discovery load failed (the onboarding reveal shows an honest offline state).
   discoveryEventsLoadFailed: false,
@@ -2728,8 +2729,25 @@ export function BanBeProvider({ children }) {
    * first — a discovery feed, not an unbounded export; revisit with real
    * pagination if this app's event volume ever makes that cap bite.
    */
+  // Audit 2026-11-19 row 14: every production key in any non-draft state (migration 226), so a demo catalogue row can
+  // never be counted (or listed) beside the real event that now owns its key — cancelled and removed real events
+  // included, which the public discovery rows cannot show. Loaded once, shared by Search and the area tree.
+  const takenKeysInFlightRef = useRef(false);
+  const loadTakenEventKeys = useCallback(async () => {
+    if (takenKeysInFlightRef.current) return;
+    takenKeysInFlightRef.current = true;
+    try {
+      const { data, error } = await supabase.rpc('get_taken_event_keys');
+      if (!error && Array.isArray(data)) {
+        set({ takenEventKeys: [...new Set(data.flatMap(r => [r.event_id, r.event_key, r.event_slug]).filter(Boolean))] });
+      }
+    } catch { /* best effort: the demo catalogue simply keeps its own keys */ }
+    takenKeysInFlightRef.current = false;
+  }, [set]);
+
   const loadDiscoveryEvents = useCallback(async () => {
     set({ discoveryEventsLoading: true });
+    loadTakenEventKeys();
     const { data: rows, error } = await withR2Columns(withR2 => supabase
       .from('events')
       .select(realEventColumns(withR2))
@@ -6445,10 +6463,14 @@ export function BanBeProvider({ children }) {
   // that aren't cancelled/ended/invite-only + real live public events), so
   // a node's count still matches what Home's feed actually shows for it.
   // Never built from (or applied to) this account's own tickets/bookings.
+  const takenDemoKeys = useMemo(() => new Set([
+    ...(s.discoveryEvents || []).map(e => e.key).filter(Boolean),
+    ...(s.takenEventKeys || []),
+  ]), [s.discoveryEvents, s.takenEventKeys]);
   const locationTree = useMemo(() => buildLocationTree([
-    ...EVENTS.filter(e => !e.cancelled && e.endedHoursAgo == null && !e.inviteOnly),
+    ...EVENTS.filter(e => !takenDemoKeys.has(e.key) && !e.cancelled && e.endedHoursAgo == null && !e.inviteOnly),
     ...(s.discoveryEvents || []).filter(e => e.status === 'live' && e.visibility === 'public'),
-  ]), [s.discoveryEvents]);
+  ]), [takenDemoKeys, s.discoveryEvents]);
   // Same { key, label, match } shape every existing `curArea` consumer
   // already reads (Home header/empty-state, Home feed + weekend strip,
   // MapExplore) — `match` is the one shared "event is in the selected node
@@ -11880,7 +11902,7 @@ export function BanBeProvider({ children }) {
 
   const value = useMemo(() => ({
     state: s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea, locationTree,
-    isSaved, isGoing, isAwaitingConfirmation, sendEventAnnouncement, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, uploadEventPhoto,
+    isSaved, isGoing, isAwaitingConfirmation, sendEventAnnouncement, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadDiscoveryEvents, loadTakenEventKeys, loadRealEventsById, uploadEventPhoto,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, goReserveAdd, backToEvent, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch, openSearch, setHomeFilters, openBrowse, setBrowse, backFromBrowse,
     loadNotifications, loadInboxThreads,
     goChat, goLogin, goDashboard, goCreate, clearCreateDefaults, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack, undoLeaveCreate, expireCreateUndo,
@@ -11920,7 +11942,7 @@ export function BanBeProvider({ children }) {
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   }), [
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea, locationTree,
-    isSaved, isGoing, isAwaitingConfirmation, sendEventAnnouncement, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, uploadEventPhoto,
+    isSaved, isGoing, isAwaitingConfirmation, sendEventAnnouncement, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadDiscoveryEvents, loadTakenEventKeys, loadRealEventsById, uploadEventPhoto,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, goReserveAdd, backToEvent, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch, openSearch, setHomeFilters, openBrowse, setBrowse, backFromBrowse,
     loadNotifications, loadInboxThreads,
     goChat, goLogin, goDashboard, goCreate, clearCreateDefaults, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack, undoLeaveCreate, expireCreateUndo,

@@ -57,19 +57,13 @@ export default function Search({ overlay = false }) {
   const leave = overlay ? () => set({ searchOverlayOpen: false }) : goHome;
   // Audit 2026-11-19 row 7: every production key in any non-draft state, so a cancelled or removed real event can
   // never hand its key back to the demo twin (discovery rows alone miss `removed`, which RLS hides). Migration 226.
-  const [remoteTakenKeys, setRemoteTakenKeys] = useState([]);
-  useEffect(() => {
-    let live = true;
-    supabase.rpc('get_taken_event_keys').then(({ data }) => {
-      if (!live || !Array.isArray(data)) return;
-      setRemoteTakenKeys(data.flatMap(r => [r.event_id, r.event_key, r.event_slug]).filter(Boolean));
-    }, () => {});
-    return () => { live = false; };
-  }, []);
+  // The set lives in the shared context (audit 2026-11-19 row 14) so the area tree counts the same catalogue; this
+  // asks for it when a deep-linked Search is the first screen that needs it.
+  useEffect(() => { if (!(s.takenEventKeys || []).length) s.loadTakenEventKeys?.(); }, [s.takenEventKeys, s.loadTakenEventKeys]);
   const takenKeys = useMemo(() => new Set([
     ...(s.discoveryEvents || []).map(e => e.key).filter(Boolean),
-    ...remoteTakenKeys,
-  ]), [s.discoveryEvents, remoteTakenKeys]);
+    ...(s.takenEventKeys || []),
+  ]), [s.discoveryEvents, s.takenEventKeys]);
   const [recent, setRecent] = useState(readRecent);
   const [catSheetOpen, setCatSheetOpen] = useState(false);
   const [fieldFocused, setFieldFocused] = useState(false);
