@@ -1,6 +1,6 @@
 # Automated product audit — Mission brief
 
-A read-only weekly audit of banbe in three passes (real end-user, senior engineer, senior UI/UX designer),
+A read-only daily audit of banbe in three passes (real end-user, senior engineer, senior UI/UX designer),
 merged into one ranked report. It finds and ranks; it never fixes. Branching happens afterwards, one branch
 per accepted P0/P1.
 
@@ -14,7 +14,7 @@ per accepted P0/P1.
 | Mode | **Build** | Plan mode is read-only and cannot write the report files |
 | Effort | **5** | ~4 hour target, enough for three passes |
 | Surface | **Freebuff Desktop** | Browser tools are Desktop-only; the end-user pass needs them |
-| Allowance | 10 hrs/day on Flash Fast (Free plan) | One weekly mission fits; do not schedule it daily |
+| Allowance | 10 hrs/day on Flash Fast (Free plan) | One daily mission fits; the 09:00 job runs it once a day |
 
 Two cautions before you start:
 

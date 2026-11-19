@@ -133,6 +133,12 @@ dist-ssr
 # graphify knowledge-graph output (generated locally, rebuild with /graphify)
 /graphify-out/
 
+# Daily product-audit reports (scripts/launchd/install.sh runs docs/audit-brief.md
+# once a day; the mission's only writes are docs/audits/<date>/*). Generated
+# output, so a run never leaves the working tree dirty — the brief itself stays
+# tracked.
+/docs/audits/
+
 
 # Archives are not publishable (the web app deploy rejects .zip) and are
 # rebuildable from the files they bundle.
