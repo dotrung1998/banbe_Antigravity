@@ -490,6 +490,8 @@ struct HomeHeroSection: View {
         list.first { $0.key == current } ?? list.first
     }
     private var currentIndex: Int { list.firstIndex { $0.key == current } ?? 0 }
+    /// The dash lit under the rail: the rail's end card ("See all") is the last page, so it lights the last dash.
+    private var dashIndex: Int { current == "home.hero.seeAll" && !list.isEmpty ? list.count : currentIndex }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -666,16 +668,20 @@ struct HomeHeroSection: View {
     private var areaActive: Bool { app.area != LocationHierarchy.allID }
     private var otherFiltersActive: Bool { app.homeFilters != .default || app.filterForYou }
 
-    /// Same card-sized slot and visual language as a rail card, with one primary action that guides the person on.
-    /// When an area or filter is active it explains that and offers to change the area / clear the filters first.
+    /// The empty tab is a real card in the hero (owner 2026-11-19: "looks better and more premium"): the rail's full
+    /// width and the hero card's height and corner, a tonal surface (with a blurred cover of what the primary action
+    /// leads to, when there is one), a tracked kicker, a serif headline, one line on what is next, ONE primary pill and
+    /// the other ways out as quiet links. Which actions appear, and what each does, is unchanged from note 97.
+    /// Web twin: the `home-hero-empty` card in HomeShellV5.jsx.
     private var emptyCard: some View {
-        let icon: String, text: String, cta: String
+        let icon: String, text: String, cta: String, headline: String
         let action: () -> Void
         let place = app.currentAreaLabel
         let narrowed = areaActive || otherFiltersActive
         // The weekend rail is built with the same area and filters (only the date differs), so `lists` already knows
         // whether "See this weekend" leads anywhere (owner 2026-11-18). Web twin: `weekendHasEvents` in HomeShellV5.jsx.
-        let weekendHasEvents = !(lists[.weekend] ?? []).isEmpty
+        let weekendList = lists[.weekend] ?? []
+        let weekendHasEvents = !weekendList.isEmpty
         let browseAll: () -> Void = {
             Haptics.selection()
             if app.unifiedDiscoveryEnabled, let onBrowseAll { onBrowseAll() } else { app.openBrowse(type: "all", scope: "all") }
@@ -683,6 +689,8 @@ struct HomeHeroSection: View {
         switch tab {
         case .foryou:
             icon = "sparkles"
+            headline = narrowed ? app.T("Chưa có gợi ý ở đây.", "No picks here yet.")
+                                : app.T("Gợi ý của bạn bắt đầu từ đây.", "Your picks start here.")
             if areaActive {
                 text = app.T("Chưa có gợi ý ở \(place). Thử đổi khu vực hoặc bỏ bớt bộ lọc.",
                              "No picks in \(place). Try another area or fewer filters.")
@@ -696,18 +704,32 @@ struct HomeHeroSection: View {
             action = { Haptics.selection(); app.openEventPreferences() }
         case .tonight:
             icon = "moon.stars"
-            text = areaActive ? app.T("Tối nay chưa có sự kiện nào ở \(place).", "Nothing on tonight in \(place).")
-                              : app.T("Tối nay chưa có sự kiện nào.", "Nothing on tonight.")
+            headline = app.T("Đêm nay yên ắng.", "A quiet night.")
+            let base = areaActive ? app.T("Tối nay chưa có sự kiện nào ở \(place).", "Nothing on tonight in \(place).")
+                                  : app.T("Tối nay chưa có sự kiện nào.", "Nothing on tonight.")
             if weekendHasEvents {
+                // A real number when it is known: the rail is capped (4 or 5), so a full rail only knows "at least".
+                let cap = app.homeV23Enabled ? 4 : 5
+                var n: Int? = nil
+                if weekendList.count < cap {
+                    n = weekendList.count
+                } else if !narrowed, let total = v23Counts?[.weekend] {
+                    n = max(total, weekendList.count)
+                }
+                let next = n.map { n in app.T("Cuối tuần này có \(n) sự kiện.", "\(n) \(n == 1 ? "event" : "events") this weekend.") }
+                    ?? app.T("Cuối tuần này vẫn có sự kiện.", "The weekend has more.")
+                text = base + " " + next
                 cta = app.T("Xem cuối tuần", "See this weekend")
                 action = { Haptics.selection(); tab = .weekend }
             } else {
                 // An empty Tonight must not send people to an empty Weekend and then a second "Browse all events".
+                text = base + " " + app.T("Cuối tuần này cũng chưa có gì.", "The weekend is quiet too.")
                 cta = app.T("Xem tất cả sự kiện", "Browse all events")
                 action = browseAll
             }
         case .weekend:
             icon = "calendar"
+            headline = app.T("Cuối tuần yên ắng.", "A quiet weekend.")
             text = areaActive ? app.T("Cuối tuần này chưa có sự kiện nào ở \(place).", "Nothing on this weekend in \(place).")
                               : app.T("Cuối tuần này chưa có sự kiện nào.", "Nothing on this weekend.")
             // Browse all events opens the every-event list, never the By type section on Home (owner 2026-11-18).
@@ -729,75 +751,46 @@ struct HomeHeroSection: View {
             return (app.T("Xem mọi sự kiện ở \(place)", "Show all events in \(place)"), browseAll)
         }()
         let showPrefsLink = tab == .foryou && narrowed && !app.hasForYouMatches
-        func pill(_ title: String, id: String, primary: Bool, run: @escaping () -> Void) -> some View {
-            SwipeSafeButton(action: run) {
-                Text(title)
-                    .font(.app(size: 15, weight: .semibold)).multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.85)
-                    .foregroundStyle(primary ? HeroColor.badgeInk : .white)
-                    .padding(.horizontal, 18).frame(maxWidth: .infinity, minHeight: 44)
-                    .background(primary ? HeroColor.badgeFill : Color.white.opacity(0.14), in: Capsule())
-                    .overlay(Capsule().strokeBorder(Color.white.opacity(primary ? 0 : 0.3), lineWidth: 1))
-                    .contentShape(Capsule())
+        let primary: HeroEmptyCard.Action
+        var links: [HeroEmptyCard.Action] = []
+        if changeArea {
+            primary = .init(title: app.T("Đổi khu vực", "Change area"), id: "home.hero.empty.area") {
+                Haptics.selection()
+                onSearchLocations()
             }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier(id)
-        }
-        return VStack(spacing: 12) {
-            Image(systemName: icon).font(.app(size: 28, weight: .light))
-            Text(text)
-                .font(.app(size: 15)).multilineTextAlignment(.center).lineSpacing(3)
-                .fixedSize(horizontal: false, vertical: true)
-            if changeArea {
-                pill(app.T("Đổi khu vực", "Change area"), id: "home.hero.empty.area", primary: true) {
-                    Haptics.selection()
-                    onSearchLocations()
-                }
-                if let clear { pill(clear.label, id: "home.hero.empty.clear", primary: false, run: clear.run) }
-                if tab == .foryou {
-                    if showPrefsLink {
-                        SwipeSafeButton(action: action) {
-                            Text(cta).font(.app(size: 14)).underline().frame(minHeight: 36).contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("home.hero.empty.cta")
-                    }
-                } else {
-                    SwipeSafeButton(action: action) {
-                        Text(cta).font(.app(size: 14)).underline().frame(minHeight: 36).contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("home.hero.empty.cta")
-                }
-            } else {
-                pill(cta, id: "home.hero.empty.cta", primary: true, run: action)
-                if let clear { pill(clear.label, id: "home.hero.empty.clear", primary: false, run: clear.run) }
-                // When "See this weekend" does lead somewhere, Browse all events stays one tap away as well.
-                if tab == .tonight, weekendHasEvents {
-                    pill(app.T("Xem tất cả sự kiện", "Browse all events"), id: "home.hero.empty.more", primary: false, run: browseAll)
-                }
+            if let clear { links.append(.init(title: clear.label, id: "home.hero.empty.clear", run: clear.run)) }
+            if tab != .foryou || showPrefsLink { links.append(.init(title: cta, id: "home.hero.empty.cta", run: action)) }
+        } else {
+            primary = .init(title: cta, id: "home.hero.empty.cta", run: action)
+            if let clear { links.append(.init(title: clear.label, id: "home.hero.empty.clear", run: clear.run)) }
+            // When "See this weekend" does lead somewhere, Browse all events stays one tap away as well.
+            if tab == .tonight, weekendHasEvents {
+                links.append(.init(title: app.T("Xem tất cả sự kiện", "Browse all events"), id: "home.hero.empty.more", run: browseAll))
             }
         }
-        .foregroundStyle(.white)
-        .padding(20)
-        .frame(width: Self.cardWidth, height: Self.cardHeight)
-        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .strokeBorder(Color.white.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("home.hero.empty")
+        let kicker = app.T(tab == .weekend ? "Cuối tuần này" : tab.vi, tab == .weekend ? "This weekend" : tab.en)
+            + (areaActive ? " · \(place)" : "")
+        return HeroEmptyCard(icon: icon, kicker: kicker, headline: headline, support: text, primary: primary, links: links,
+                             // The covers of what the primary action leads to (Tonight → this weekend), never made up.
+                             photos: tab == .tonight && weekendHasEvents && !changeArea ? weekendList.map(\.img).filter { !$0.isEmpty } : [],
+                             minHeight: Self.cardHeight)
+            // The rail holds nothing else, so the card takes the rail's whole width (inside its 24 pt margins).
+            .containerRelativeFrame(.horizontal)
+            .id("home.hero.empty.\(tab.rawValue)")
     }
 
     private var dots: some View {
         HStack(spacing: 6) {
-            ForEach(Array(list.enumerated()), id: \.element.key) { i, _ in
+            // One dash per card plus one for the end card.
+            ForEach(0..<(list.isEmpty ? 0 : list.count + 1), id: \.self) { i in
                 Capsule()
-                    .fill(i == currentIndex ? Color.white : Color.white.opacity(0.32))
-                    .frame(width: i == currentIndex ? 30 : 20, height: 3)
+                    .fill(i == dashIndex ? Color.white : Color.white.opacity(0.32))
+                    .frame(width: i == dashIndex ? 30 : 20, height: 3)
             }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 18).padding(.bottom, 22)
-        .animation(Motion.fade(.easeOut(duration: 0.2), reduce: reduceMotion), value: currentIndex)
+        .animation(Motion.fade(.easeOut(duration: 0.2), reduce: reduceMotion), value: dashIndex)
         .accessibilityHidden(true)
     }
 }
@@ -1025,5 +1018,158 @@ struct HomeByTypeSections: View {
         .buttonStyle(.plain)
         .accessibilityLabel("\(m.name), \(m.priceLabel)")
         .accessibilityIdentifier("home.event.\(m.key)")
+    }
+}
+
+// MARK: - Empty hero tab
+
+/// The card an empty hero tab shows (owner 2026-11-19). Pure view: the copy and the actions come from
+/// `HomeHeroSection.emptyCard`. Always on the dark hero, so the colours are the hero's own (light and dark theme alike).
+/// Fades and rises once on appear (none under Reduce Motion); every size follows Dynamic Type and the card grows past
+/// the hero card's height rather than clipping long Vietnamese copy.
+struct HeroEmptyCard: View {
+    struct Action {
+        let title: String
+        let id: String
+        let run: () -> Void
+    }
+
+    @EnvironmentObject private var app: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var typeSize
+    let icon: String
+    let kicker: String
+    let headline: String
+    let support: String
+    let primary: Action
+    let links: [Action]
+    let photos: [String]
+    let minHeight: CGFloat
+
+    @ScaledMetric(relativeTo: .caption) private var kickerSize: CGFloat = 11
+    @ScaledMetric(relativeTo: .title) private var headSize: CGFloat = 30
+    @ScaledMetric(relativeTo: .subheadline) private var bodySize: CGFloat = 15
+    @ScaledMetric(relativeTo: .body) private var buttonSize: CGFloat = 15
+    @State private var shown = false
+
+    private static let paper = Color(hex: 0xF7F4EC)
+    private static let ink = Color(hex: 0x1B1916)
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 16, style: .continuous) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 7) {
+                Image(systemName: icon).font(.system(size: kickerSize + 2, weight: .medium))
+                Text(kicker.uppercased())
+                    .font(.app(size: kickerSize, weight: .semibold)).tracking(1.5).lineLimit(2)
+            }
+            .foregroundStyle(.white.opacity(0.72))
+            Spacer(minLength: 18)
+            if !photos.isEmpty, !typeSize.isAccessibilitySize {
+                fan.padding(.bottom, 22).accessibilityHidden(true)
+            }
+            Text(headline)
+                .font(V23Style.serif(headSize)).tracking(-0.6)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            Text(support)
+                .font(.app(size: bodySize)).lineSpacing(2)
+                .foregroundStyle(.white.opacity(0.78))
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 8)
+            SwipeSafeButton(action: primary.run) {
+                HStack(spacing: 8) {
+                    Text(primary.title).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                    Image(systemName: "arrow.right").font(.system(size: buttonSize - 2, weight: .semibold)).accessibilityHidden(true)
+                }
+                .font(.app(size: buttonSize, weight: .semibold))
+                .foregroundStyle(Self.ink)
+                .padding(.horizontal, 20).padding(.vertical, 12)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .background(Self.paper, in: Capsule())
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier(primary.id)
+            .padding(.top, 20)
+            if !links.isEmpty {
+                // Side by side when they fit, stacked otherwise (long Vietnamese labels, large text).
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 20) { linkButtons }.frame(maxWidth: .infinity)
+                    VStack(spacing: 0) { linkButtons }.frame(maxWidth: .infinity)
+                }
+                .padding(.top, 6)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 20).padding(.top, 20).padding(.bottom, links.isEmpty ? 20 : 8)
+        .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
+        .background { surface }
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(Color.white.opacity(0.14), lineWidth: 1))
+        .opacity(shown ? 1 : 0)
+        .offset(y: shown ? 0 : 14)
+        .onAppear {
+            guard !shown else { return }
+            if reduceMotion { shown = true } else { withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.6)) { shown = true } }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("home.hero.empty")
+    }
+
+    @ViewBuilder private var linkButtons: some View {
+        ForEach(links, id: \.id) { link in
+            SwipeSafeButton(action: link.run) {
+                Text(link.title)
+                    .font(.app(size: buttonSize - 1, weight: .medium))
+                    .underline(true, color: .white.opacity(0.35))
+                    .foregroundStyle(.white.opacity(0.86))
+                    .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 4)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier(link.id)
+        }
+    }
+
+    /// A tonal night surface with a faint clay glow; with covers, the first one blurred and dimmed under it.
+    private var surface: some View {
+        ZStack {
+            LinearGradient(colors: [Color(hex: 0x302A22), Color(hex: 0x1A1813)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            if let cover = photos.first {
+                Color.clear.overlay {
+                    CatalogPhoto(path: cover, cornerRadius: 0).scaleEffect(1.3).blur(radius: 26).saturation(0.85)
+                }
+                .clipped()
+                .opacity(0.5)
+            }
+            RadialGradient(colors: [app.palette.clay.opacity(0.32), .clear], center: .topTrailing, startRadius: 0, endRadius: 280)
+            LinearGradient(stops: [.init(color: .black.opacity(0.12), location: 0), .init(color: .clear, location: 0.3),
+                                   .init(color: .black.opacity(0.55), location: 1)], startPoint: .top, endPoint: .bottom)
+        }
+        .accessibilityHidden(true)
+    }
+
+    /// Up to three covers of where the primary action leads, stacked like the See all card's fan.
+    private var fan: some View {
+        let covers = Array(photos.prefix(3))
+        return ZStack(alignment: .leading) {
+            ForEach(Array(covers.enumerated()), id: \.offset) { i, src in
+                ZStack {
+                    Color(hex: 0x2A2620)
+                    CatalogPhoto(path: src, height: 84, width: 64, cornerRadius: 0)
+                }
+                .frame(width: 64, height: 84)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.white.opacity(0.22), lineWidth: 1))
+                .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
+                .rotationEffect(.degrees([-6.0, 2.0, 8.0][i]))
+                .offset(x: CGFloat(i) * 38, y: [4.0, -2.0, 5.0][i])
+                .zIndex(Double(3 - i))
+            }
+        }
+        .frame(width: 64 + CGFloat(max(0, covers.count - 1)) * 38 + 12, height: 96, alignment: .leading)
     }
 }

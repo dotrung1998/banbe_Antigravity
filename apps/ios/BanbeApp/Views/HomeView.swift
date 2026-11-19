@@ -212,6 +212,15 @@ struct HomeView: View {
                 .padding(.bottom, BottomTabBar.contentClearance)
             }
             .task(id: app.homeWeekendScrollRequest) { await scrollToWeekendIfAsked(weekendProxy) }
+            // Prototype v2's rail end card: "See all" scrolls Home down to the "Near you" list, not into Browse. Observed
+            // here (the reader's level), never inside the lazy feed, whose later rows may not be built yet. The anchor
+            // y puts the anchor 16 pt above the band edge: the 28 pt top padding then leaves the heading 12 pt below the folded 58 pt band (the band is an overlay over the feed).
+            .onChange(of: nearYouScrollToken) { _, _ in
+                let y = (HomeHeroPinnedHeader.barHeight - 16) / max(UIScreen.main.bounds.height, 1)
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.35)) {
+                    weekendProxy.scrollTo("home.nearYou", anchor: UnitPoint(x: 0.5, y: y))
+                }
+            }
             .environment(\.scaffoldClipsContent, homeClipsContent)
             // Note 64: the v3 tour's event-card step brings the first card into view (a scroll, nothing else).
             .onReceive(OnboardingTourController.shared.$scrollRequest.dropFirst()) { _ in
@@ -731,11 +740,16 @@ struct HomeView: View {
             }
             // Prototype v2 order (note 99): Browse by type sits above the "Near you" list.
             v23Browse(snap)
+        }
+        .revealRegion(2)
+        // Direct child of the LazyVStack (an id nested inside another container is unknown until that container is
+        // built, so scrollTo would no-op while "Near you" is still off screen). Zero height, just above the heading.
+        Color.clear.frame(height: 0).id("home.nearYou")
+        VStack(spacing: 0) {
             // Note 99: time has the tabs, so the Filters badge counts only what Filters owns.
             ShortlistV23View(tab: shownHeroTab, rows: snap.shortRows, total: snap.shortTotal,
                              filterBadge: app.unifiedDiscoveryEnabled ? UnifiedDiscovery.ownedFilterCount(app.homeFilters, sort: app.homeSort) : snap.filterBadge,
                              onFilters: { app.homeFilterSheetOpen = true }, onAction: { shortlistAction($0) })
-                .id("home.nearYou")
             if app.unifiedDiscoveryEnabled && snap.udTotal > 0 {
                 UnifiedMapBanner(count: snap.udTotal, onOpen: { app.goMapExploreFromHome() })
             }
@@ -745,10 +759,6 @@ struct HomeView: View {
         }
         .id("home.tour.filters")
         .revealRegion(2)
-        // Prototype v2's rail end card: "See all" scrolls Home down to the "Near you" list, not into Browse.
-        .onChange(of: nearYouScrollToken) { _, _ in
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.35)) { proxy.scrollTo("home.nearYou", anchor: .top) }
-        }
         .sheet(isPresented: $liveNowOpen) {
             LiveNowSheet(updates: snap.live, shownIndex: reduceMotionOn ? liveIndex : nil,
                          onOpen: { id, i in liveNowOpen = false; liveIndex = i; app.goEvent(id) },

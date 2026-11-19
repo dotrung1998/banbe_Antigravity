@@ -285,3 +285,25 @@ on `unified_discovery`, switch-off unchanged):
   Simulator: tapping Bếp Nhỏ №12 on Home zoomed straight from its photo, no plate.
 - Checks: web build green, unit 1023/1023; iOS simulator build green. Web guest-shell Playwright specs still fail at
   onboarding (pre-existing, note 90), not re-run on the base commit.
+
+## Owner pass: See all, empty tab card, Map loading (2026-11-19)
+- **See all (iOS)**: the end card's tap did nothing because `.onChange(of: nearYouScrollToken)` and `.id("home.nearYou")`
+  lived inside a LazyVStack child that is not built while off screen. Now a zero-height `home.nearYou` anchor is a
+  direct LazyVStack child and the onChange sits at the ScrollViewReader level; the anchor lands the heading under
+  the folded 58 pt band (Reduce Motion: no animation). The pager's dashes now count cards + the end card and light
+  the last dash on it (`dashIndex`). Simulator: For You end card → "Near you" under the band, last dash lit.
+- **Empty tab card (iOS `HeroEmptyCard` in HomeShellV5Views.swift, web HomeShellV5.jsx + `.bb-hero-empty*`)**: full
+  rail width (24 pt gutters), min 360 tall, 16 radius, hairline, tonal gradient with clay glow + vignette or the
+  weekend's first cover blurred behind; tracked kicker (TONIGHT / THIS WEEKEND / FOR YOU [+ · area]), serif headline
+  ("A quiet night." / "Đêm nay yên ắng.", "A quiet weekend." / "Cuối tuần yên ắng.", For You "Your picks start
+  here." / "Gợi ý của bạn bắt đầu từ đây.", narrowed "No picks here yet." / "Chưa có gợi ý ở đây."), one line of
+  what's next with the real weekend count when known (web `heroLists().weekendTotal`), ONE paper primary pill and
+  the rest as quiet links; fan of up to 3 weekend covers on Tonight. Note-97 action logic and all ids unchanged.
+  Web `home-hero.spec.js` 6/6 on chromium/webkit/firefox (width check now rail − 48).
+- **Map loading (iOS MapExploreView.swift)**: "All 0" / "List · 0" came from framing only after the photo-URL fetch
+  (no committed area), and the empty black bar was `emptyCard` with no matching branch. Now the Map frames as soon
+  as rows arrive, a `MapLoadingCover` (paper/dark surface + softly pulsing pin capsules, static under Reduce
+  Motion) covers it until MapKit's first camera change after framing + 0.35 s or 1.5 s max or a failed load, chip
+  counts and "List · N" hide (spinner) until `countsKnown`, `emptyCard` needs content, the carousel needs its row.
+  Web: chip/List counts hidden while loading (no cover). Simulator (dark): cover → framed map with real counts.
+- Checks: iOS simulator build green; web build green, unit 1023/1023.

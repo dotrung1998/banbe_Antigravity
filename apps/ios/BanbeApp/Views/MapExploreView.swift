@@ -172,6 +172,13 @@ struct MapExploreView: View {
     @State private var areaScrollTo: String?
     /// False once a confirmed close (button or edge swipe) starts: the layers fade while RootView navigates.
     @State private var uiPresented = true
+    /// Owner 2026-11-19 ("when loading the map, it looks very poor"): a fresh open covers the map with a calm paper
+    /// surface and a few pulsing pin skeletons until MapKit has drawn the framed camera AND the events are in (see
+    /// `coverCanLift`), or `MapLoadingCover.maxWait` has passed, so it never blocks. A restored map (Back from Event
+    /// Detail) and the edge-swipe preview copy start without it.
+    @State private var loadingCover: Bool
+    /// Set a short grace after the first camera callback that follows the first framing (see `onMapCameraChange`).
+    @State private var mapDrawn = false
 
     /// Seeds every local `@State` directly from a saved snapshot (or plain defaults) INSIDE `init`, rather than
     /// restoring them a moment later inside `.task`: `.task` runs after the very first frame, so a return to the map
@@ -180,6 +187,7 @@ struct MapExploreView: View {
          shared: (filters: HomeDiscovery.Filters, query: String)? = nil) {
         hadRestoredState = restored != nil
         unified = shared != nil
+        _loadingCover = State(initialValue: restored == nil && !isPreview)
         self.seedQuery = seedQuery
         self.isPreview = isPreview
         self.isActive = isActive
@@ -289,6 +297,22 @@ struct MapExploreView: View {
     }
     private var outsideWindowText: String { app.T("ngoài khung giờ", "outside time window") }
     /// In-window events of the results (all of them when the window is off): what "List · N" counts.
+    /// The results are real: an area is committed and the loaded set is known (rows in, or a load that answered).
+    /// Until then a count would be the count of a not-yet-loaded set, so chips and "List" show none.
+    private var countsKnown: Bool { committedBounds != nil && app.mapEventsKnown }
+
+    /// The loading cover may go: MapKit drew the framed camera and the results are known, or the first load failed
+    /// (the cover then gives way to the "Couldn't load events" card and its retry).
+    private var coverCanLift: Bool {
+        loadingCover && ((mapDrawn && countsKnown) || (app.mapEventsLoadFailed && app.mapEvents.isEmpty))
+    }
+
+    /// A plain cross-fade (none with Reduce Motion). Idempotent: the ceiling task and `coverCanLift` both call it.
+    private func liftLoadingCover() {
+        guard loadingCover else { return }
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.35)) { loadingCover = false }
+    }
+
     private var inWindowCount: Int { windowOn ? visibleEvents.filter { isHit($0.id) }.count : visibleEvents.count }
 
     @State private var categorySheetOpen = false
@@ -329,6 +353,15 @@ struct MapExploreView: View {
             // once the camera settles (MapDiscovery.Reason).
             .onMapCameraChange(frequency: .onEnd) { context in
                 currentCameraRegion = context.region
+                // The loading cover's "map is drawn" signal. SwiftUI's Map exposes no tile-loaded callback, so this is
+                // a proxy: the first settle AFTER `frameFirstOpen` means MapKit has applied and laid out the framed
+                // camera; the 0.35 s grace gives its first tiles time to paint. `MapLoadingCover.maxWait` still caps it.
+                if loadingCover, framed, !mapDrawn {
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 350_000_000)
+                        mapDrawn = true
+                    }
+                }
                 cameraSettled(context.rect)
                 lastSettleAt = Date()
                 closePanelIfZoomedOut()
@@ -337,6 +370,13 @@ struct MapExploreView: View {
             // first) clears the highlight. A plain tap gesture layered alongside Map's own pan/pinch/rotate recognizers.
             .onTapGesture { selectedId = nil }
             .ignoresSafeArea()
+
+            if loadingCover {
+                MapLoadingCover(paper: app.palette.paper, mark: app.palette.ink, reduceMotion: reduceMotion)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .accessibilityHidden(true)
+            }
 
             layers
                 .opacity(uiPresented ? 1 : 0)
@@ -369,6 +409,13 @@ struct MapExploreView: View {
             UIAccessibility.post(notification: .announcement, argument: resultCountText(n))
         }
         .onChange(of: isActive) { _, _ in syncDock() }
+        .onChange(of: coverCanLift) { _, ready in if ready { liftLoadingCover() } }
+        .task {
+            // The cover's ceiling: never longer than `maxWait`, whatever MapKit or the network do.
+            guard loadingCover else { return }
+            try? await Task.sleep(nanoseconds: UInt64(MapLoadingCover.maxWait * 1_000_000_000))
+            liftLoadingCover()
+        }
         // Dock on demand (note 79): the dock shows except while a neighbourhood panel is open. Released whenever this
         // screen leaves, so the dock never stays hidden elsewhere.
         .onAppear { syncDock() }
@@ -395,6 +442,10 @@ struct MapExploreView: View {
         .onChange(of: committedBounds) { _, _ in listOffset = 0 }
         // City and neighbourhood of each loaded event, for the bubbles, the chips, city search counts and the area picker.
         .task(id: app.mapEvents.map(\.id)) {
+            // Frame as soon as the rows are in. `loadMapEvents` sets `mapEvents` and then still fetches the photo URLs
+            // before it returns; framing only after that left the map unframed with no committed area (every count 0,
+            // an empty card) for the whole photo fetch. `frameFirstOpen` is guarded, so the `.task` call below is a no-op.
+            if !isPreview, !hadRestoredState, !framed, !app.mapEvents.isEmpty { frameFirstOpen() }
             var cities: [String: String] = [:]
             var areas: [String: MapDiscovery.AreaKey] = [:]
             var slots: [String: MapTimeWindow.Slot] = [:]
@@ -813,7 +864,13 @@ struct MapExploreView: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "list.bullet").font(.app(size: 15, weight: .semibold)).accessibilityHidden(true)
-                    Text(app.T("Danh sách", "List") + " · \(n)").font(.app(size: 14, weight: .semibold)).lineLimit(1)
+                    if countsKnown {
+                        Text(app.T("Danh sách", "List") + " · \(n)").font(.app(size: 14, weight: .semibold)).lineLimit(1)
+                    } else {
+                        // Loading: no "· 0" for a set that is not in yet.
+                        Text(app.T("Danh sách", "List")).font(.app(size: 14, weight: .semibold)).lineLimit(1)
+                        ProgressView().controlSize(.mini).tint(app.palette.paper)
+                    }
                 }
                 .padding(.horizontal, 18)
                 .frame(minHeight: MapStack.buttonHeight)
@@ -822,10 +879,10 @@ struct MapExploreView: View {
                 .shadow(color: .black.opacity(0.28), radius: 7, y: 3)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(windowOn
+            .accessibilityLabel(!countsKnown ? app.T("Danh sách, đang tải sự kiện", "List, loading events") : windowOn
                 ? app.T("Danh sách, \(n) sự kiện trong khung giờ", n == 1 ? "List, 1 event in the window" : "List, \(n) events in the window")
                 : app.T("Danh sách, \(n) sự kiện", n == 1 ? "List, 1 event" : "List, \(n) events"))
-            .accessibilityValue("\(n)")
+            .accessibilityValue(countsKnown ? "\(n)" : "")
             .accessibilityIdentifier("map.listButton")
     }
 
@@ -887,7 +944,14 @@ struct MapExploreView: View {
 
     /// Closed list: the same empty-state messages float above the buttons (one place at a time).
     private var showEmptyCard: Bool {
-        !listOpen && !searchFieldFocused && areaPanel == nil && hasEmptyState
+        !listOpen && !searchFieldFocused && areaPanel == nil && hasEmptyState && !loadingCover && emptyStateHasContent
+    }
+
+    /// Mirrors `emptyState`'s branches: true only when one of them draws something. Rows that are in while no area is
+    /// committed yet matched none, and the card used to render as an empty paper bar above the bottom row.
+    private var emptyStateHasContent: Bool {
+        (forYouActive && visibleEvents.isEmpty)
+            || ((app.mapEventsLoading || app.mapEventsLoadFailed) && app.mapEvents.isEmpty) || committedBounds != nil
     }
 
     /// The plain "nothing in this part of the map" card with a way out: the controls under it stay hidden until the
@@ -1740,6 +1804,7 @@ struct MapExploreView: View {
     private var udShowsCarousel: Bool {
         guard unified, let id = selectedId, !listOpen, areaPanel == nil, !searchFieldFocused else { return false }
         return MapDiscovery.markerLevel(zoom: cameraZoom) == .pin && eventsByID[id] != nil
+            && (udPreviewID != nil || visibleEvents.contains { $0.id == id && $0.lat != nil && $0.lng != nil })
     }
 
     /// The area's types under its name: busiest first, then catalogue order, max 4 then "+N".
@@ -2407,7 +2472,8 @@ struct MapExploreView: View {
     private func categoryChip(_ cat: (key: String, vi: String, en: String), counts: [String: Int]) -> some View {
         let active = catFilter == cat.key
         let n = counts[cat.key] ?? 0
-        return glassChip(active: active, muted: n == 0 && !active, id: "map.cat.\(cat.key)") {
+        let known = countsKnown
+        return glassChip(active: active, muted: known && n == 0 && !active, id: "map.cat.\(cat.key)") {
             if !(active && cat.key == "all") {
                 Haptics.selection()
                 catFilter = active ? "all" : cat.key
@@ -2415,9 +2481,10 @@ struct MapExploreView: View {
         } label: {
             Image(systemName: CategoryGlyph.symbol(cat.key)).font(.app(.footnote)).accessibilityHidden(true)
             Text(app.T(cat.vi, cat.en))
-            Text("\(n)").monospacedDigit().opacity(active ? 0.85 : 0.6)
+            // While loading: glyph + name only, never the "0" of a set that is not in yet.
+            if known { Text("\(n)").monospacedDigit().opacity(active ? 0.85 : 0.6) }
         }
-        .accessibilityLabel(app.T("\(cat.vi), \(n) sự kiện", "\(cat.en), \(n) events"))
+        .accessibilityLabel(known ? app.T("\(cat.vi), \(n) sự kiện", "\(cat.en), \(n) events") : app.T(cat.vi, cat.en))
     }
 
     /// A chip over the map: glass at rest, ink when on. 36 pt tall inside a 44 pt hit area.
@@ -3105,5 +3172,44 @@ final class MapResultsCache {
         let doc = SearchMatch.buildDoc(for: ev)
         docs[ev.id] = (ev, doc)
         return doc
+    }
+}
+
+/// The Map's first-load surface (owner 2026-11-19): paper over MapKit's empty grid, with a few pin capsules that
+/// breathe softly. Static with Reduce Motion. One repeating opacity animation, no per-frame work in a body.
+struct MapLoadingCover: View {
+    /// The longest the cover ever stays, whatever MapKit or the network do.
+    static let maxWait: Double = 1.5
+
+    let paper: Color
+    let mark: Color
+    let reduceMotion: Bool
+    @State private var pulse = false
+
+    /// Pin skeletons at fixed relative spots in the free band (x, y as fractions of the screen; width in pt).
+    private static let pins: [(x: CGFloat, y: CGFloat, w: CGFloat)] = [
+        (0.28, 0.34, 64), (0.66, 0.42, 78), (0.42, 0.53, 56), (0.74, 0.61, 66), (0.24, 0.66, 72)
+    ]
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                paper
+                ForEach(Self.pins.indices, id: \.self) { i in
+                    let p = Self.pins[i]
+                    Capsule()
+                        .fill(mark.opacity(0.07))
+                        .frame(width: p.w, height: 28)
+                        .overlay(alignment: .leading) {
+                            Circle().fill(mark.opacity(0.08)).frame(width: 18, height: 18).padding(.leading, 5)
+                        }
+                        .position(x: geo.size.width * p.x, y: geo.size.height * p.y)
+                        .opacity(reduceMotion ? 1 : (pulse ? 1 : 0.45))
+                        .animation(reduceMotion ? nil : .easeInOut(duration: 1.1).repeatForever(autoreverses: true)
+                            .delay(Double(i) * 0.12), value: pulse)
+                }
+            }
+        }
+        .onAppear { if !reduceMotion { pulse = true } }
     }
 }

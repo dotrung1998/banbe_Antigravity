@@ -12,9 +12,9 @@ import AccountAvatar from '../AccountAvatar.jsx';
 import { categoryDefs } from '../../lib/eventTypes.js';
 import GlassMenu, { GlassMenuItem, GlassMenuDivider } from '../GlassMenu.jsx';
 import SeeAllFanCard from './SeeAllFanCard.jsx';
+import { SERIF } from '../event/v23Style.js';
 
 const NIGHT = '#16140f';
-const ON_DARK = 'rgba(255,255,255,.58)';
 const TABS = [['foryou', 'Dành cho bạn', 'For You'], ['tonight', 'Tối nay', 'Tonight'], ['weekend', 'Cuối tuần', 'Weekend']];
 const TYPE_DEFS = categoryDefs();
 const BROWSE_MAX = 5;
@@ -295,15 +295,21 @@ export default function HomeShellV5({
                   // knows whether "See this weekend" leads anywhere (owner 2026-11-18): an empty Tonight must not send
                   // people to an empty Weekend and a second "Browse all events". When the weekend does have events the
                   // current approach stands, and Browse all events rides along as the second option.
-                  const weekendHasEvents = (lists.weekend || []).length > 0;
+                  const weekendList = lists.weekend || [];
+                  const weekendHasEvents = weekendList.length > 0;
+                  // The real size of the weekend (same filters, before the rail's cap), when Home.jsx passes it.
+                  const weekendN = Number.isFinite(lists.weekendTotal) ? lists.weekendTotal : null;
+                  const weekendNext = weekendN != null
+                    ? T(`Cuối tuần này có ${weekendN} sự kiện.`, `${weekendN} ${weekendN === 1 ? 'event' : 'events'} this weekend.`)
+                    : T('Cuối tuần này vẫn có sự kiện.', 'The weekend has more.');
                   const browseAll = { cta: T('Xem tất cả sự kiện', 'Browse all events'), go: onBrowseAll };
                   const base = tab === 'foryou'
                     ? { icon: SPARK, text: T('Chưa có gợi ý. Trả lời vài câu hỏi để chúng tôi chọn sự kiện hợp với bạn.', 'No picks yet. Answer a few questions and we will pick events that fit you.'),
                         cta: T('Đặt sở thích', 'Set your preferences'), go: onSetPrefs }
                     : tab === 'tonight'
                       ? (weekendHasEvents
-                        ? { icon: MOON, text: T('Tối nay chưa có sự kiện nào.', 'Nothing on tonight.'), cta: T('Xem cuối tuần', 'See this weekend'), go: () => onTab('weekend'), more: browseAll }
-                        : { icon: MOON, text: T('Tối nay chưa có sự kiện nào.', 'Nothing on tonight.'), ...browseAll })
+                        ? { icon: MOON, text: T('Tối nay chưa có sự kiện nào.', 'Nothing on tonight.'), next: weekendNext, cta: T('Xem cuối tuần', 'See this weekend'), go: () => onTab('weekend'), more: browseAll }
+                        : { icon: MOON, text: T('Tối nay chưa có sự kiện nào.', 'Nothing on tonight.'), next: T('Cuối tuần này cũng chưa có gì.', 'The weekend is quiet too.'), ...browseAll })
                       : { icon: CAL, text: T('Cuối tuần này chưa có sự kiện nào.', 'Nothing on this weekend.'), ...browseAll };
                   let E = { ...base, area: false, clear: null, prefs: false };
                   if (narrowed && tab === 'foryou') {
@@ -315,27 +321,42 @@ export default function HomeShellV5({
                   } else if (narrowed && areaActive) {
                     E = { ...base, area: true, clear: T('Xem mọi sự kiện', 'Show all events'), text: tab === 'tonight' ? T(`Tối nay chưa có sự kiện nào ở ${areaTxt}.`, `Nothing on tonight in ${areaTxt}.`) : T(`Cuối tuần này chưa có sự kiện nào ở ${areaTxt}.`, `Nothing on this weekend in ${areaTxt}.`) };
                   }
-                  const sec = { minHeight: 44, padding: '0 16px', borderRadius: 999, border: '1px solid rgba(255,255,255,.35)', background: 'none', color: '#fff', fontFamily: 'inherit', fontSize: 14, fontWeight: 500, cursor: 'pointer' };
+                  // Owner 2026-11-19 ("more premium"): the empty tab is a real card in the hero, not a dashed
+                  // placeholder. Tracked kicker, serif headline, one line on what is next, ONE primary pill, and the
+                  // other ways out as quiet links. Which actions appear and what they do is unchanged (note 97).
+                  // iOS twin: HeroEmptyCard in HomeShellV5Views.swift.
+                  const headline = tab === 'foryou'
+                    ? (narrowed ? T('Chưa có gợi ý ở đây.', 'No picks here yet.') : T('Gợi ý của bạn bắt đầu từ đây.', 'Your picks start here.'))
+                    : tab === 'tonight' ? T('Đêm nay yên ắng.', 'A quiet night.') : T('Cuối tuần yên ắng.', 'A quiet weekend.');
+                  const kicker = (tab === 'foryou' ? T('Dành cho bạn', 'For You') : tab === 'tonight' ? T('Tối nay', 'Tonight') : T('Cuối tuần này', 'This weekend'))
+                    + (areaActive ? ` · ${areaTxt}` : '');
+                  // The covers of where the primary action leads (Tonight → this weekend), never made up.
+                  const covers = tab === 'tonight' && weekendHasEvents && !E.area ? weekendList.map(e => e.img).filter(Boolean).slice(0, 3) : [];
+                  const primaryId = E.area && tab === 'foryou' ? 'home-hero-empty-area' : 'home-hero-empty-cta';
+                  const links = [];
+                  if (!narrowed && E.more) links.push({ id: 'home-hero-empty-more', label: E.more.cta, go: () => E.more.go?.() });
+                  if (E.area && tab !== 'foryou') links.push({ id: 'home-hero-empty-area', label: T('Đổi khu vực', 'Change area'), go: changeArea });
+                  if (E.clear) links.push({ id: 'home-hero-empty-clear', label: E.clear, go: () => onClearFilters?.() });
+                  if (E.prefs) links.push({ id: 'home-hero-empty-prefs', label: T('Đặt sở thích', 'Set your preferences'), go: () => onSetPrefs?.() });
                   return (
-                    <div data-testid="home-hero-empty" data-empty-tab={tab} data-empty-area={areaActive || undefined}
-                      style={{ flex: '0 0 268px', height: 360, boxSizing: 'border-box', borderRadius: 16, border: '1px dashed rgba(255,255,255,.3)', background: 'rgba(255,255,255,.08)', scrollSnapAlign: 'start',
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, textAlign: 'center', padding: 20, fontSize: 15, lineHeight: 1.45 }}>
-                      <Icon d={E.icon} size={28} sw={1.2} />
-                      <span>{E.text}</span>
-                      <button type="button" data-testid={E.area && tab === 'foryou' ? 'home-hero-empty-area' : 'home-hero-empty-cta'} onClick={(e) => E.go?.(e)}
-                        style={{ minHeight: 44, padding: '0 20px', borderRadius: 999, border: 'none', background: 'rgba(247,244,236,.92)', color: '#1B1916', fontFamily: 'inherit', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>{E.cta}</button>
-                      {!narrowed && E.more && (
-                        <button type="button" data-testid="home-hero-empty-more" onClick={() => E.more.go?.()} style={sec}>{E.more.cta}</button>
+                    <div key={tab} className="bb-hero-empty" data-testid="home-hero-empty" data-empty-tab={tab} data-empty-area={areaActive || undefined}>
+                      <span aria-hidden className="bb-hero-empty__surface"
+                        style={covers[0] ? { '--bb-hero-empty-cover': `url("${covers[0]}")` } : undefined} />
+                      <div className="bb-hero-empty__kicker"><Icon d={E.icon} size={14} sw={1.6} /><span>{kicker}</span></div>
+                      {covers.length > 0 && (
+                        <div aria-hidden className="bb-hero-empty__fan" style={{ width: 64 + (covers.length - 1) * 38 + 12 }}>
+                          {covers.map((src, i) => <i key={i} style={{ backgroundImage: `url("${src}")`, '--i': i }} />)}
+                        </div>
                       )}
-                      {E.area && tab !== 'foryou' && (
-                        <button type="button" data-testid="home-hero-empty-area" onClick={changeArea} style={sec}>{T('Đổi khu vực', 'Change area')}</button>
-                      )}
-                      {E.clear && (
-                        <button type="button" data-testid="home-hero-empty-clear" onClick={() => onClearFilters?.()} style={sec}>{E.clear}</button>
-                      )}
-                      {E.prefs && (
-                        <button type="button" data-testid="home-hero-empty-prefs" onClick={() => onSetPrefs?.()}
-                          style={{ minHeight: 44, padding: '0 8px', border: 'none', background: 'none', color: ON_DARK, fontFamily: 'inherit', fontSize: 13.5, textDecoration: 'underline', cursor: 'pointer' }}>{T('Đặt sở thích', 'Set your preferences')}</button>
+                      <h3 className="bb-hero-empty__title" style={{ fontFamily: SERIF }}>{headline}</h3>
+                      <p className="bb-hero-empty__text">{E.next ? `${E.text} ${E.next}` : E.text}</p>
+                      <button type="button" data-testid={primaryId} onClick={(e) => E.go?.(e)} className="bb-hero-empty__primary">
+                        <span>{E.cta}</span><span aria-hidden>→</span>
+                      </button>
+                      {links.length > 0 && (
+                        <div className="bb-hero-empty__links">
+                          {links.map(l => <button key={l.id} type="button" data-testid={l.id} onClick={l.go} className="bb-hero-empty__link">{l.label}</button>)}
+                        </div>
                       )}
                     </div>
                   );

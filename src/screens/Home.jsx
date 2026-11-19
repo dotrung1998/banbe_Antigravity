@@ -586,7 +586,10 @@ export default function Home({ browse = false }) {
     const byKey = new Map(qItems.map(it => [it.key, it]));
     const ranked = forYouRanked.map(m => byKey.get(m.key)).filter(Boolean).filter(open);
     const soonest = applyDiscoveryFilters(qItems, base, nowMs).filter(open);
-    return { foryou: (ranked.length ? ranked : soonest).slice(0, railMax).map(shape), tonight: byDate('today'), weekend: byDate('weekend') };
+    // The empty Tonight card names the weekend's real size, so it needs the count before the rail's cap.
+    const weekendAll = applyDiscoveryFilters(qItems, { ...base, date: 'weekend' }, nowMs).filter(open);
+    return { foryou: (ranked.length ? ranked : soonest).slice(0, railMax).map(shape), tonight: byDate('today'),
+      weekend: weekendAll.slice(0, railMax).map(shape), weekendTotal: weekendAll.length };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [simpleShell, v23, qItems, homeFilters, forYouRanked, T, trStatus, Math.floor(nowMs / 60000)]);
   // Home from the v5 prototype (note 80): which hero tab is open (For You | Tonight | Weekend).

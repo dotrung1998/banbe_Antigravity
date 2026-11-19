@@ -1976,18 +1976,21 @@ export default function MapExplore() {
     const el = chipRowRef.current?.querySelector(`[data-testid="map-cat-${catFilter}"]`);
     el?.scrollIntoView?.({ inline: 'center', block: 'nearest', behavior: reduceMotion() ? 'auto' : 'smooth' });
   }, [ud, catFilter]);
+  // Owner 2026-11-19 (iOS twin `countsKnown`): until an area is committed and the first load has answered, a count
+  // would be the "0" of a set that is not in yet, so the type chips and "List" show none.
+  const countsKnown = !!committedBounds && !(loading && events.length === 0) && !(loadError && events.length === 0);
   const categoryChipEl = (c) => {
     const active = catFilter === c.key;
     const n = categoryCountMap[c.key] ?? 0;
     return (
       <button key={c.key} type="button" role="tab" aria-selected={active}
-        aria-label={T(`${c.vi}, ${n} sự kiện`, `${c.en}, ${n} event${n === 1 ? '' : 's'}`)}
+        aria-label={countsKnown ? T(`${c.vi}, ${n} sự kiện`, `${c.en}, ${n} event${n === 1 ? '' : 's'}`) : T(c.vi, c.en)}
         onClick={() => { if (!active || c.key !== 'all') setCatFilter(active ? 'all' : c.key); }}
         data-testid={`map-cat-${c.key}`}
-        style={mapChip(active, n === 0 && !active)}>
+        style={mapChip(active, countsKnown && n === 0 && !active)}>
         <CategoryGlyph cat={c.key} size={16} strokeWidth={1.8} />
         <span>{T(c.vi, c.en)}</span>
-        <span data-testid={`map-cat-count-${c.key}`} style={{ fontVariantNumeric: 'tabular-nums', opacity: active ? 0.85 : 0.6 }}>{n}</span>
+        {countsKnown && <span data-testid={`map-cat-count-${c.key}`} style={{ fontVariantNumeric: 'tabular-nums', opacity: active ? 0.85 : 0.6 }}>{n}</span>}
       </button>
     );
   };
@@ -2206,12 +2209,12 @@ export default function MapExplore() {
           ) : '🧭'}
         </div>
         <button ref={listButtonRef} type="button" onClick={openList} data-testid="map-list-button" aria-hidden={emptyOnly || undefined} tabIndex={emptyOnly ? -1 : undefined}
-          aria-label={hitSet
+          aria-label={!countsKnown ? T('Danh sách, đang tải sự kiện', 'List, loading events') : hitSet
             ? T(`Danh sách, ${hitCount} sự kiện trong khung giờ`, `List, ${hitCount} event${hitCount === 1 ? '' : 's'} in the window`)
             : T(`Danh sách, ${visibleEvents.length} sự kiện`, `List, ${visibleEvents.length} event${visibleEvents.length === 1 ? '' : 's'}`)}
           style={{ height: 44, padding: '0 18px', borderRadius: 999, background: ink, color: paper, fontSize: 14, fontWeight: 600, border: 'none', fontFamily: 'inherit', cursor: 'pointer', boxShadow: '0 4px 14px rgba(27,25,22,0.28)', display: emptyOnly ? 'none' : 'inline-flex', alignItems: 'center', gap: 8 }}>
           <svg aria-hidden="true" width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01" /></svg>
-          {T('Danh sách', 'List')} · {hitCount}
+          {T('Danh sách', 'List')}{countsKnown ? ` · ${hitCount}` : ''}
         </button>
       </div>
 

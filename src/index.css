@@ -1091,3 +1091,65 @@ input::placeholder, textarea::placeholder {
   .bb-home-head__bar { animation: none; }
   .bb-home-head__tabs { transition: none; }
 }
+
+/* Home hero: the card an empty tab shows (owner 2026-11-19, "more premium"). Always on the dark hero, so its colours
+   are the hero's own in both themes. The rail's whole width (inside its 24 px gutters) and the hero card's height and
+   corner; it grows rather than clipping long Vietnamese copy or large text. iOS twin: HeroEmptyCard. */
+.bb-hero-empty {
+  flex: 0 0 100%; min-height: 360px; box-sizing: border-box; position: relative; overflow: hidden; isolation: isolate;
+  scroll-snap-align: start; border-radius: 16px; border: 1px solid rgba(255,255,255,.14); color: #fff;
+  display: flex; flex-direction: column; align-items: flex-start; padding: 20px 20px 8px; text-align: left;
+  animation: bb-hero-empty-in .6s cubic-bezier(.22,1,.36,1) both;
+}
+@keyframes bb-hero-empty-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .bb-hero-empty { animation: none; } }
+.bb-hero-empty__surface {
+  position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden;
+  background: linear-gradient(135deg, #302a22, #1a1813);
+}
+/* The blurred cover of where the primary action leads (only when there is one), then the clay glow and the vignette. */
+.bb-hero-empty__surface::before {
+  content: ''; position: absolute; inset: -30px; opacity: .5;
+  background: var(--bb-hero-empty-cover, none) center/cover no-repeat;
+  filter: blur(26px) saturate(.85);
+}
+.bb-hero-empty__surface::after {
+  content: ''; position: absolute; inset: 0;
+  background:
+    linear-gradient(180deg, rgba(0,0,0,.12) 0%, rgba(0,0,0,0) 30%, rgba(0,0,0,.55) 100%),
+    radial-gradient(120% 80% at 100% 0%, rgba(var(--bb-clay-rgb),.32), transparent 62%);
+}
+.bb-hero-empty__kicker {
+  display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 600; letter-spacing: .14em;
+  text-transform: uppercase; color: rgba(255,255,255,.72); overflow-wrap: anywhere;
+}
+.bb-hero-empty__fan { position: relative; height: 96px; margin: auto 0 22px; flex: none; }
+.bb-hero-empty__fan i {
+  position: absolute; left: calc(var(--i) * 38px); top: 6px; width: 64px; height: 84px; border-radius: 10px;
+  background: #2a2620 center/cover no-repeat; border: 1px solid rgba(255,255,255,.22);
+  box-shadow: 0 4px 16px rgba(0,0,0,.35); z-index: calc(3 - var(--i));
+}
+.bb-hero-empty__fan i:nth-child(1) { transform: translateY(4px) rotate(-6deg); }
+.bb-hero-empty__fan i:nth-child(2) { transform: translateY(-2px) rotate(2deg); }
+.bb-hero-empty__fan i:nth-child(3) { transform: translateY(5px) rotate(8deg); }
+.bb-hero-empty__kicker + .bb-hero-empty__title { margin-top: auto; }
+.bb-hero-empty__title {
+  margin: 0; padding-top: 18px; font-size: 30px; font-weight: 400; line-height: 1.08; letter-spacing: -.02em;
+  text-wrap: balance; overflow-wrap: anywhere;
+}
+.bb-hero-empty__fan + .bb-hero-empty__title { padding-top: 0; }
+.bb-hero-empty__text { margin: 8px 0 0; font-size: 15px; line-height: 1.45; color: rgba(255,255,255,.78); text-wrap: pretty; }
+.bb-hero-empty__primary {
+  margin-top: 20px; width: 100%; min-height: 48px; padding: 12px 20px; border: none; border-radius: 999px;
+  background: #f7f4ec; color: #1b1916; font: inherit; font-size: 15px; font-weight: 600; line-height: 1.25;
+  display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; text-align: center;
+}
+.bb-hero-empty__links { width: 100%; display: flex; flex-wrap: wrap; justify-content: center; column-gap: 20px; margin-top: 6px; }
+.bb-hero-empty__link {
+  min-height: 44px; padding: 0 4px; border: none; background: none; color: rgba(255,255,255,.86); font: inherit;
+  font-size: 14px; font-weight: 500; text-decoration: underline; text-decoration-color: rgba(255,255,255,.35);
+  text-underline-offset: 3px; cursor: pointer;
+}
+.bb-hero-empty__link:hover { text-decoration-color: currentColor; }
+.bb-hero-empty__primary:focus-visible, .bb-hero-empty__link:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+@media (forced-colors: active) { .bb-hero-empty__primary { border: 1px solid ButtonText; } }

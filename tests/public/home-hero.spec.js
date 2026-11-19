@@ -96,9 +96,11 @@ test('Home opens on the photo hero: tabs, a card rail ending in See all, honest 
   await page.getByTestId('home-hero-tab-tonight').click();
   await expect(page.getByTestId('home-hero-empty')).toBeVisible();
   await expect(page.getByTestId('home-hero-tab-tonight')).toHaveAttribute('aria-selected', 'true');
-  // The empty state is a rail-card-sized card with one primary action; Tonight's switches to Weekend.
+  // The empty state is a real card: the rail's whole width (inside its 24 px gutters), at least the hero card's
+  // height, with one primary action; Tonight's switches to Weekend.
   const emptyBox = await page.getByTestId('home-hero-empty').boundingBox();
-  expect(Math.round(emptyBox.width)).toBe(268); expect(Math.round(emptyBox.height)).toBe(360);
+  const railBox = await page.getByTestId('home-hero-rail').boundingBox();
+  expect(Math.round(emptyBox.width)).toBe(Math.round(railBox.width - 48)); expect(Math.round(emptyBox.height)).toBeGreaterThanOrEqual(360);
   await page.getByTestId('home-hero-empty-cta').click();
   await expect(page.getByTestId('home-hero-tab-weekend')).toHaveAttribute('aria-selected', 'true');
 
