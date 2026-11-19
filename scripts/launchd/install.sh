@@ -9,8 +9,8 @@ set -euo pipefail
 
 PROJECT_DIR="/Users/thetrungdo/Downloads/banbe"
 DEST="$HOME/Library/Application Support/banbe"
-PLIST="$HOME/Library/LaunchAgents/com.banbe.weekly-audit.plist"
-LABEL="com.banbe.weekly-audit"
+PLIST="$HOME/Library/LaunchAgents/com.banbe.daily-audit.plist"
+LABEL="com.banbe.daily-audit"
 DOMAIN="gui/$(id -u)"
 
 [ -f "$PROJECT_DIR/docs/audit-brief.md" ] || { echo "missing audit brief" >&2; exit 1; }
@@ -21,9 +21,9 @@ DOMAIN="gui/$(id -u)"
   | /usr/bin/sed -e '/^```/d' -e '/./,$!d' > "$DEST/audit-goal.txt"
 [ -s "$DEST/audit-goal.txt" ] || { echo "goal block is empty" >&2; exit 1; }
 
-/bin/cp "$PROJECT_DIR/scripts/launchd/weekly-audit-open.sh" "$DEST/audit-runner.sh"
+/bin/cp "$PROJECT_DIR/scripts/launchd/daily-audit-open.sh" "$DEST/audit-runner.sh"
 /bin/chmod +x "$DEST/audit-runner.sh"
-/bin/cp "$PROJECT_DIR/scripts/launchd/com.banbe.weekly-audit.plist" "$PLIST"
+/bin/cp "$PROJECT_DIR/scripts/launchd/com.banbe.daily-audit.plist" "$PLIST"
 /usr/bin/plutil -lint "$PLIST"
 
 # Reload on the spot if the job is already registered, so edits take effect.

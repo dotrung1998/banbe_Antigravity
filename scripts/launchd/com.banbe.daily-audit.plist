@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-	<string>com.banbe.weekly-audit</string>
+	<string>com.banbe.daily-audit</string>
 
 	<!-- The installed copy, not the repo: launchd cannot read ~/Downloads (TCC). -->
 	<key>ProgramArguments</key>
@@ -29,8 +29,8 @@
 	<false/>
 
 	<key>StandardOutPath</key>
-	<string>/Users/thetrungdo/Library/Logs/banbe-weekly-audit.log</string>
+	<string>/Users/thetrungdo/Library/Logs/banbe-daily-audit.log</string>
 	<key>StandardErrorPath</key>
-	<string>/Users/thetrungdo/Library/Logs/banbe-weekly-audit.err.log</string>
+	<string>/Users/thetrungdo/Library/Logs/banbe-daily-audit.err.log</string>
 </dict>
 </plist>

@@ -15,7 +15,7 @@
 # best-effort hint that the app ignores. When it ignores it, the app reopens its
 # last project; otherwise the notification is the reminder to pick banbe.
 #
-# Logs: ~/Library/Logs/banbe-weekly-audit.log (and .err.log)
+# Logs: ~/Library/Logs/banbe-daily-audit.log (and .err.log)
 set -euo pipefail
 
 PROJECT_DIR="/Users/thetrungdo/Downloads/banbe"
