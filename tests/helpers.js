@@ -92,6 +92,19 @@ export async function guestToHome(page, theme = 'theme-light') {
     else if (sc.includes('Appearance')) { await page.getByTestId(theme).click().catch(() => {}); await page.getByTestId('onboarding-continue').click().catch(() => {}); }
     else if (sc.includes('Welcome')) await page.getByTestId('welcome-explore').click().catch(() => {});
     await page.waitForTimeout(1200);
+    // A first-run guest gets the onboarding preview (note 80) instead of Home: skip its questions, decline both
+    // choices and skip the tour, the same way a person can.
+    for (let k = 0; k < 8; k++) {
+      const overlay = page.getByTestId('event-onboarding-overlay');
+      if (!(await overlay.isVisible().catch(() => false))) break;
+      let acted = false;
+      for (const id of ['onboarding-skip-all', 'onboarding-consent-not-now', 'onboarding-recap-home']) {
+        const btn = page.getByTestId(id);
+        if (await btn.isVisible().catch(() => false)) { await btn.click().catch(() => {}); acted = true; break; }
+      }
+      if (!acted) break;
+      await page.waitForTimeout(500);
+    }
   }
   await page.waitForSelector('[data-screen-label="Home"]', { timeout: 8000 });
 }

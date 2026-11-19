@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useBanBe } from '../../state/BanBeContext.jsx';
 import NativeSheet from '../../components/NativeSheet.jsx';
-import { paper, ink, rule, dockGlass } from '../../theme.js';
+import { paper, ink, ink2, clay, fieldSolid, rule, dockGlass } from '../../theme.js';
 import {
   LOCATION_ALL, locationNodeLabel, locationAncestorIds, buildLocationSearchIndex, searchLocationTree,
 } from '../../lib/locationTree.js';
@@ -53,7 +53,10 @@ export default function AreaSheet({ embedded = false, onDone }) {
 
   // Manual expand state: roots that actually have events start open, plus
   // every ancestor of the current selection so it's visible on open.
+  // Filter-sheet mode matches iOS (`NativeLocationPicker`): "All locations" opens every country collapsed, and a
+  // pick opens only its own branch; the map's floating card keeps the wider start it always had.
   const [expanded, setExpanded] = useState(() => {
+    if (embedded) return new Set(locationAncestorIds(tree, curArea.key));
     const init = new Set(tree.roots.filter(r => r.count > 0).map(r => r.id));
     // Map v6: a country with a single city opens that city too ("Vietnam › TP. Hồ Chí Minh › Quận 1…" at a glance).
     for (const r of tree.roots) if (r.count > 0 && r.children.length === 1 && r.children[0].children.length) init.add(r.children[0].id);
@@ -91,6 +94,7 @@ export default function AreaSheet({ embedded = false, onDone }) {
     }
   };
   walk(tree.roots, false);
+  const totalCount = tree.roots.reduce((s, r) => s + (r.count || 0), 0);
   // Map v5 (note 73): opened from the Map, a "Cities" section comes first (MapExplore publishes `mapCities`: cities with
   // events, then the main ones). Picking one flies the map there; Home's area selection is not changed.
   const mapCityList = s.screen === 'mapExplore' && !embedded && Array.isArray(s.mapCities) ? s.mapCities : [];
@@ -130,7 +134,25 @@ export default function AreaSheet({ embedded = false, onDone }) {
 
   const centeredBackdrop = { position: 'absolute', inset: 0, zIndex: 21, background: 'rgba(12,12,12,0.32)', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '4px 16px 86px', boxSizing: 'border-box', animation: 'banbeFade 0.2s ease both' };
   const centeredCard = { ...dockGlass({ borderRadius: 26, background: 'color-mix(in srgb, var(--bb-bg) 92%, transparent)', border: '1px solid var(--bb-rule, rgba(var(--bb-fg-rgb), 0.12))' }), position: 'relative', padding: '22px 24px 16px', display: 'flex', flexDirection: 'column', maxHeight: '100%', minHeight: 0, boxSizing: 'border-box', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' };
-  const embeddedCard = { background: paper, color: ink, borderRadius: '22px 22px 0 0', position: 'relative', padding: '18px 22px 26px', display: 'flex', flexDirection: 'column', maxHeight: '94%', height: '94%', minHeight: 0, boxSizing: 'border-box', animation: leaving ? 'banbeSheetOut 0.22s cubic-bezier(.4,0,1,1) both' : 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' };
+  // Filter-sheet mode (iOS `NativeLocationPicker`, Sheets.swift): a large full-width sheet, not a narrow card — drag
+  // indicator, an inline navigation bar, the search drawer, then inset-grouped cards with the same row anatomy as iOS
+  // (count and clay checkmark trailing the name, disclosure chevron at the row's own trailing edge).
+  const embeddedCard = {
+    background: paper, color: ink, borderRadius: '22px 22px 0 0', position: 'relative', outline: 'none',
+    width: '100%', maxWidth: 560, height: '94%', maxHeight: '94%', minHeight: 0, boxSizing: 'border-box',
+    padding: '8px 16px 0', display: 'flex', flexDirection: 'column',
+    animation: leaving ? 'banbeSheetOut 0.22s cubic-bezier(.4,0,1,1) both' : 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both',
+  };
+  const embCard = { background: fieldSolid, borderRadius: 14, overflow: 'hidden', flex: 'none' };
+  const embRow = { display: 'flex', alignItems: 'stretch', minHeight: 50 };
+  const embNameBtn = { flex: 1, minWidth: 0, minHeight: 50, display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 14.5, textAlign: 'left', cursor: 'pointer' };
+  const embChevronBtn = { width: 44, minHeight: 50, flex: 'none', border: 'none', background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' };
+  // iOS's native picker draws the selection check in the accent (clay); the map card keeps ink.
+  const checkClay = (on) => (
+    <svg aria-hidden width={14} height={14} viewBox="0 0 12 12" fill="none" stroke={clay} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none', opacity: on ? 1 : 0 }}>
+      <path d="M1.5 6.5l3 3 6-7" />
+    </svg>
+  );
 
   // The embedded variant is a real modal (it covers the filter sheet), so it rides on NativeSheet: top layer, focus trap,
   // Escape and backdrop come from showModal(). The inline variant is a centred card inside a screen's own coordinate
@@ -247,10 +269,113 @@ export default function AreaSheet({ embedded = false, onDone }) {
       </div>
   );
   if (!embedded) return <div onClick={closeArea} style={centeredBackdrop}>{panel}</div>;
+
+  const currentName = curArea.key === LOCATION_ALL ? T('Tất cả khu vực', 'All areas') : curArea.label;
+  const embeddedPanel = (
+    <div style={embeddedCard} tabIndex={-1} autoFocus>
+      <div aria-hidden="true" style={{ width: 38, height: 5, borderRadius: 3, background: rule, margin: '2px auto 6px', flex: 'none' }} />
+      {/* Inline navigation bar: "Khu vực" over the current pick, Done at the trailing edge (iOS's principal toolbar item). */}
+      <div style={{ position: 'relative', flex: 'none', minHeight: 48, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 80px' }}>
+        <span style={{ fontSize: 16, fontWeight: 600, whiteSpace: 'nowrap' }}>Khu vực</span>
+        <span data-testid="area-sheet-current" style={{ fontSize: 11.5, color: ink, opacity: 0.6, marginTop: 1, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {T('Đang xem: ', 'Showing: ')}{currentName}
+        </span>
+        <button type="button" onClick={closeArea} data-testid="filter-area-done"
+          style={{ position: 'absolute', top: 0, bottom: 0, right: -6, display: 'flex', alignItems: 'center', minHeight: 44, padding: '0 8px', border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
+          {T('Xong', 'Done')}
+        </button>
+      </div>
+
+      {/* The search drawer under the nav bar (iOS `.searchable(.navigationBarDrawer(always))`). */}
+      <div className="bb-focus-ring" style={{ flex: 'none', height: 44, background: fieldSolid, borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', marginTop: 10 }}>
+        <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={ink} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5, flex: 'none' }}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></svg>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={T('Tìm khu vực, tỉnh/thành, bang…', 'Search area, province, state…')}
+          data-testid="area-sheet-search" data-bare
+          style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontSize: 14.5, color: ink, fontFamily: "var(--bb-face, 'Be Vietnam Pro'), sans-serif" }}
+        />
+        {query && <span onClick={() => setQuery('')} data-testid="area-sheet-search-clear" style={{ cursor: 'pointer', color: ink, opacity: 0.5, fontSize: 17, lineHeight: 1 }}>×</span>}
+      </div>
+
+      <div data-testid="area-sheet-tree" style={{ flex: 1, minHeight: 0, overflowY: 'auto', marginTop: 12, paddingBottom: 'calc(18px + env(safe-area-inset-bottom, 0px))', display: 'flex', flexDirection: 'column', gap: 10, overscrollBehavior: 'contain' }}>
+        {!search && (
+          <div style={embCard}>
+            <button type="button" onClick={() => pickArea(LOCATION_ALL)} data-testid="area-node-all"
+              style={{ ...embNameBtn, width: '100%', fontWeight: curArea.key === LOCATION_ALL ? 600 : 400 }}>
+              <span style={{ flex: 1, minWidth: 0 }}>{T('Tất cả khu vực', 'All areas')}</span>
+              <span style={{ fontSize: 12.5, color: ink2, flex: 'none', fontVariantNumeric: 'tabular-nums' }}>{countLabel(totalCount)}</span>
+              {checkClay(curArea.key === LOCATION_ALL)}
+            </button>
+          </div>
+        )}
+        {(rows.length > 0 || noResults) && (
+          <div style={embCard}>
+            {noResults && (
+              <div style={{ padding: '14px 12px', fontSize: 13, color: ink2 }} data-testid="area-sheet-no-results">
+                {T(`Không có khu vực nào khớp với "${query.trim()}".`, `No areas match "${query.trim()}".`)}
+              </div>
+            )}
+            {rows.map((r, i) => {
+              if (r.type === 'empty') {
+                return (
+                  <div key={r.node.id + '#empty'} style={{ padding: '12px', paddingLeft: 12 + (r.node.depth + 1) * 16, fontSize: 12.5, color: ink2, borderTop: i === 0 ? 'none' : `1px solid ${rule}` }}>
+                    {T('Chưa có sự kiện nào tại ' + labelOf(r.node) + '.', 'No events in ' + labelOf(r.node) + ' yet.')}
+                  </div>
+                );
+              }
+              const { node, expandable, isMatch } = r;
+              const on = curArea.key === node.id;
+              const open = expandable && isExpanded(node.id);
+              const label = labelOf(node);
+              const contains = expandable && !on && curArea.key !== LOCATION_ALL && locationAncestorIds(tree, curArea.key).includes(node.id);
+              return (
+                <div key={node.id} style={{ ...embRow, borderTop: i === 0 ? 'none' : `1px solid ${rule}` }}>
+                  {/* The name selects the node; only the trailing chevron expands (iOS's `expandRow`). */}
+                  <button type="button" onClick={() => pickArea(node.id)} data-testid={`area-node:${node.id}`}
+                    aria-pressed={on} aria-label={`${label}, ${countLabel(node.count)}`}
+                    style={{ ...embNameBtn, paddingLeft: 12 + node.depth * 16, fontWeight: on ? 600 : 400 }}>
+                    <span style={{ flex: '0 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span>{label}</span>
+                      {node.legacy && legacyCaption}
+                      {isMatch && node.depth > 0 && (
+                        <span style={{ fontSize: 11, fontWeight: 400, color: ink, opacity: 0.55 }}>{pathText(node)}</span>
+                      )}
+                    </span>
+                    {contains && <span aria-hidden style={{ width: 6, height: 6, borderRadius: '50%', background: clay, flex: 'none' }} />}
+                    <span style={{ flex: 1 }} />
+                    <span style={{ fontSize: 12.5, color: ink2, flex: 'none', fontVariantNumeric: 'tabular-nums' }}>{countLabel(node.count)}</span>
+                    {checkClay(on)}
+                  </button>
+                  {expandable && (
+                    <button type="button" onClick={() => toggle(node.id)} data-testid={`area-chevron:${node.id}`}
+                      aria-expanded={open} aria-label={T(`Xem bên trong ${label}`, `Show what's in ${label}`)}
+                      style={embChevronBtn}>
+                      <svg aria-hidden="true" width={12} height={12} viewBox="0 0 12 12" fill="none" stroke={ink} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none', opacity: 0.35, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.18s ease' }}>
+                        <path d="M4 2l4 4-4 4" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {/* iOS's own trailing List section: the location on/off toggle, as one tappable row. */}
+        <button type="button" onClick={toggleLocation}
+          style={{ ...embCard, display: 'flex', alignItems: 'center', gap: 10, minHeight: 52, padding: '0 14px', border: 'none', color: ink, fontFamily: 'inherit', fontSize: 13.5, textAlign: 'left', cursor: 'pointer' }}>
+          <svg aria-hidden="true" width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
+          <span>{locationLabel2}</span>
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <NativeSheet open onClose={closeArea} label={T('Khu vực', 'Area')} testId="filter-area-sheet"
       bodyTestId="filter-area-backdrop" zIndex={2300}>
-      {panel}
+      {embeddedPanel}
     </NativeSheet>
   );
 }

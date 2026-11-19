@@ -21,7 +21,7 @@ import { withR2Columns, marketColumnList, detailsColumnList } from '../lib/media
 import {
   reasonCommits, referenceRect, boundsForRect, mapResults, selectionAfter, boundsOfPoints, pointsNear, nearestPoint,
   fitCamera, distanceKm as geoKm, sameSpot, padBounds, cityFor, searchCities, cityGroups, activeFilterSummary, CITY_ZOOM,
-  clusterPins, areaKey, areaGroups, markerLevel, areaPanelCloses, AREA_ZOOM, inBounds,
+  clusterPins, areaKey, areaGroups, markerLevel, areaPanelCloses, AREA_ZOOM, AREA_MERGE_PX, mercX, mercY, inBounds,
 } from '../lib/mapDiscovery.js';
 import citiesData from '../data/cities.json';
 import { cityOfNode } from '../lib/locationTree.js';
@@ -32,6 +32,7 @@ import { fillBadge, categorySheetKeys, applyDiscoveryFilters, normalizeFilters, 
 import HomeFilterSheet from './sheets/HomeFilterSheet.jsx';
 import { secondCategory, categoryDefs, cardLine, profileFor } from '../lib/eventTypes.js';
 import { CategoryGlyph, CATEGORY_DEFS, CategorySheet, categoryGlyphMarkup, DiscoveryCard } from '../components/home/HomeDiscoveryParts.jsx';
+import EventRowV23 from '../components/list/EventRowV23.jsx';
 import { liveEventOverrides } from '../lib/countdown.js';
 import { formatMoney, formatMoneyShort, rowCurrency, rowTimeZone, cardDateBadge, VN_TIME_ZONE } from '../lib/eventMarket.js';
 import { densityHotspot } from '../lib/densityHotspot.js';
@@ -40,7 +41,7 @@ import { prefsIsEmpty } from '../lib/eventPrefs.js';
 import { mapForYouSet, applyForYouFilter } from '../lib/forYou.js';
 import { useForYouAlert } from '../lib/useForYouAlert.js';
 import ForYouChip from './ForYouChip.jsx';
-import { paper, ink, ink2, ink3, rule, alert, clay, clayBg, surface2, photoPill, RADIUS, DISPLAY_FACE, display } from '../theme.js';
+import { paper, ink, ink2, ink3, rule, clay, clayBg, surface2, photoPill, RADIUS, DISPLAY_FACE, display } from '../theme.js';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 // Category glyph per FILTER_DEFS key — no icon set exists anywhere else in
@@ -1338,11 +1339,32 @@ export default function MapExplore() {
     if (!map || !el || !g.bounds) return;
     const size = { width: el.clientWidth || 390, height: el.clientHeight || containerH };
     const mk = !!map.__isMapKit;
+    const tile = mk ? 256 : 512;
     const maxZoom = AREA_ZOOM - (mk ? 1.15 : 0.15); // engine zoom: markerLevel stays 'area' (512 px basis)
-    const cam = fitCamera(g.bounds, size, fitPad(48), { tileSize: mk ? 256 : 512, maxZoom });
-    const zoom = Math.min(maxZoom, Math.max(cam.zoom, map.getZoom() + 1));
+    const cam = fitCamera(g.bounds, size, fitPad(48), { tileSize: tile, maxZoom });
+    // Fitting the bubble is not always enough to split it: the merge rule keeps two areas together while their centres
+    // are closer than AREA_MERGE_PX, so zoom until this bubble's own closest pair clears that distance (never past the
+    // area level, so the tap still shows areas rather than every event as a price pin).
+    const keys = new Set(g.keys);
+    const sums = new Map();
+    for (const ev of visibleEvents) {
+      if (ev.lat == null || ev.lng == null) continue;
+      const a = areaInfoById.get(ev.id) || areaKey(ev, CITIES);
+      if (!keys.has(a.key)) continue;
+      const s = sums.get(a.key) || { x: 0, y: 0, n: 0 };
+      sums.set(a.key, { x: s.x + mercX(ev.lng), y: s.y + mercY(ev.lat), n: s.n + 1 });
+    }
+    const centres = [...sums.values()].map(s => ({ x: s.x / s.n, y: s.y / s.n }));
+    let closest = Infinity;
+    for (let i = 0; i < centres.length; i++) {
+      for (let j = i + 1; j < centres.length; j++) {
+        closest = Math.min(closest, Math.hypot(centres[i].x - centres[j].x, centres[i].y - centres[j].y));
+      }
+    }
+    const splitZoom = Number.isFinite(closest) && closest > 0 ? Math.log2((AREA_MERGE_PX + 10) / (closest * tile)) : -Infinity;
+    const zoom = Math.min(maxZoom, Math.max(cam.zoom, map.getZoom() + 1, splitZoom));
     moveCamera('cluster', m => m.flyTo({ center: [cam.center.lng, cam.center.lat], zoom, duration: reduceMotion() ? 0 : 600 }));
-  }, [containerH, topControlsBottom, moveCamera]);
+  }, [visibleEvents, areaInfoById, containerH, topControlsBottom, moveCamera]);
   // Map v5 (note 73): fly to a city (search row, area picker, city bubble). A destination: commits its area once, keeps
   // every filter, works with no events there (the city's own box, never guessed from events), sheet to mid.
   const flyToCity = useCallback((id) => {
@@ -1542,15 +1564,6 @@ export default function MapExplore() {
   const en = s.lang === 'en';
   // "Th 4, 05.03 · 19:00" in the venue's own zone (events.tz, migration 195), never the viewer's clock.
   const eventWhen = (ev) => whenLabel(ev.startsAt, ev.tz, en);
-  // Price per ticket in the event's own currency; 0 is genuinely free.
-  const priceLine = (ev) => (ev.priceVnd > 0
-    ? `${formatMoney(ev.priceVnd, ev.currency)} ${T('/ vé', '/ ticket')}`
-    : T('Miễn phí', 'Free'));
-  // Amount + an outlined ticket icon (iOS parity: "/ ticket" kept getting cut off); the label keeps "/ ticket".
-  const priceTicket = (ev) => (ev.priceVnd > 0 ? (<>
-    {formatMoney(ev.priceVnd, ev.currency)}
-    <svg aria-hidden="true" width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinejoin="round"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h15A1.5 1.5 0 0 1 21 7.5V10a2 2 0 0 0 0 4v2.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16.5V14a2 2 0 0 0 0-4z" /><path d="M14.5 6v2M14.5 11v2M14.5 16v2" /></svg>
-  </>) : T('Miễn phí', 'Free'));
   const nearDistance = (ev) => (s.located === true && s.userCoords && ev.hasLocation ? distanceLabel(haversineKm(s.userCoords, ev), en) : null);
   const sectionLabel = { padding: '12px 0 4px', fontSize: 11.5, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: ink2 };
   // Solid chip (content sits on an opaque layer). 36pt tall.
@@ -1735,50 +1748,35 @@ export default function MapExplore() {
       {T('Xoá', 'Clear')}
     </button>
   );
-  const SeatPill = ({ ev, testId }) => {
+  // Compact list rows are the shared v2.3 row, exactly as Home, Search and Browse show them (when · type kicker, name,
+  // then place/status with the price at the right edge). The negative margin cancels the scroll container's 16 px gutter
+  // so the row's own 20 px inset lines up with every other list; `data-dim` keeps the outside-the-window grouping.
+  const compactRow = (ev, prefix, dim = false) => {
+    const cat = CATEGORY_DEFS.find(c => c.key === ev.catKey && c.key !== 'all');
     const f = seatFacts(ev);
-    if (!f) return null;
-    if (f.soldOut) return <span data-testid={testId} style={{ fontSize: 12, fontWeight: 600, color: alert }}>{T('Hết chỗ', 'Sold out')}</span>;
-    if (f.almostFull && f.left != null) return <span data-testid={testId} style={{ fontSize: 12, fontWeight: 600, color: ink }}>{T(`Còn ${f.left} chỗ`, `${f.left} left`)}</span>;
-    return null;
+    const free = !(ev.priceVnd > 0);
+    return (
+      <div key={ev.id} data-dim={dim ? 'true' : undefined} style={{ margin: '0 -16px', opacity: dim ? MAP_DIM.rowOpacity : 1 }}>
+        <EventRowV23
+          row={{
+            key: ev.id, name: ev.name, img: ev.img,
+            when: eventWhen(ev),
+            type: cat ? T(cat.vi, cat.en) : null,
+            place: [ev.area, nearDistance(ev)].filter(Boolean).join(' · '),
+            priceLabel: free ? T('Miễn phí', 'Free') : formatMoney(ev.priceVnd, ev.currency),
+            isFree: free,
+            status: f?.soldOut ? { tone: 'alert', text: T('Hết chỗ', 'Sold out') }
+              : f?.almostFull && f.left != null ? { tone: 'honey', text: T(`Còn ${f.left} chỗ`, `${f.left} left`) } : null,
+            saved: isSaved(ev.id),
+          }}
+          T={T}
+          testId={`${prefix}-${ev.id}`}
+          onOpen={() => openEventDetail(ev.id)}
+          onToggleSave={() => toggleFav(ev.id)}
+        />
+      </div>
+    );
   };
-
-  const compactRow = (ev, prefix, dim = false) => (
-    <div
-      onClick={() => openEventDetail(ev.id)}
-      data-testid={`${prefix}-${ev.id}`}
-      role="button"
-      tabIndex={0}
-      aria-current={ev.id === selectedId ? 'true' : undefined}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEventDetail(ev.id); } }}
-      style={{ display: 'flex', gap: 12, padding: '7px 0', cursor: 'pointer', alignItems: 'flex-start', animation: 'banbeRowIn 0.3s cubic-bezier(.22,.61,.36,1) backwards', background: ev.id === selectedId ? 'rgba(var(--bb-fg-rgb),0.05)' : 'transparent', opacity: dim ? MAP_DIM.rowOpacity : 1 }}
-      data-dim={dim ? 'true' : undefined}
-    >
-      {ev.img && <div style={{ width: 64, height: 64, borderRadius: RADIUS.thumb, backgroundImage: `url(${ev.img})`, backgroundSize: 'cover', backgroundPosition: 'center', flexShrink: 0 }} />}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.name}</div>
-        {/* Venue date · time (the event's own zone), then the area, plus a distance only when it helps
-            choose (≤ 50 km, Event Detail's rule; a viewer abroad saw "9662,0 km" on every row). */}
-        <div data-testid={`${prefix}-when-${ev.id}`} style={{ fontSize: 13, color: ink2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {eventWhen(ev)}
-        </div>
-        <div data-testid={`${prefix}-area-${ev.id}`} style={{ fontSize: 13, color: ink2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {[ev.area, nearDistance(ev)].filter(Boolean).join(' · ')}
-        </div>
-        {/* Stage 3: an honest "no map location" state for an event with no (or not-yet-confirmed)
-            coordinates, never a silently-omitted row or an invented pin. */}
-        {!ev.hasLocation && (
-          <div data-testid={`${prefix}-no-location-${ev.id}`} style={{ fontSize: 10.5, color: ink, opacity: 0.55, marginTop: 2 }}>
-            {T('Chưa có vị trí trên bản đồ', 'No map location yet')}
-          </div>
-        )}
-      </div>
-      <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-        <div data-testid={`${prefix}-price-${ev.id}`} aria-label={priceLine(ev)} style={{ fontSize: 14, fontWeight: 600, color: ink, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{priceTicket(ev)}</div>
-        <SeatPill ev={ev} testId={`${prefix}-seats-${ev.id}`} />
-      </div>
-    </div>
-  );
 
   // ---- Map E+: neighbourhood chips and the open panel ----
   // One chip per neighbourhood with results in the map area (never merged, unlike the bubbles), most events first.
@@ -2312,7 +2310,7 @@ export default function MapExplore() {
       {/* The list: a layer that slides up to just under the shared controls, with a veil over the strip above it. A pull down
           from its top (finger, mouse or wheel), its Map button and Esc all return to the map. Its rows exist only while it
           is open; it is hidden from tab order and screen readers while closed. */}
-      <MapListSheet open={listOpen} onClose={() => setListOpen(false)} top={listTop} scrollRef={listRef} mapButtonBottom={dockClear + 16} T={T}>
+      <MapListSheet open={listOpen} onClose={() => setListOpen(false)} top={listTop} scrollRef={listRef} mapButtonBottom={dockClear + 24} T={T}>
         <div data-testid="map-full-count" style={{ padding: '2px 16px 6px', flex: 'none' }}>
           {mapCity && (
             <div data-testid="map-sheet-city" style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: clay, display: 'flex', alignItems: 'center', gap: 4, paddingTop: 4 }}>
@@ -2423,6 +2421,7 @@ export default function MapExplore() {
           T={T}
           canSortNearest={ud ? (s.located === true && !!s.userCoords) : false}
           areaLabel={areaChipLabel}
+          locationLabel={curArea.key === 'all' ? '' : curArea.label}
           forYou={hasPrefs ? { on: forYouActive, set: setForYouOn } : null}
           onApply={(draft, sort) => {
             if (ud) {

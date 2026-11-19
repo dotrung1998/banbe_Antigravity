@@ -70,7 +70,7 @@ const MAP_DATE_OPTIONS = ['any', 'today', 'tomorrow', 'weekend'];
 // only (the type chips already choose the type, and the list keeps its own order), over that list's `items`.
 // `unified` (note 99, switch unified_discovery; owner 2026-11-19): the type comes FIRST, as the compact Browse-by-type
 // tiles (5 busiest + "Tất cả loại" with its own searchable sheet), single choice, and replaces the Category pills.
-export default function HomeFilterSheet({ items, filters, sort, onApply, onClose, T, now, canSortNearest, areaLabel, simpleShell = false, mapMode = false, forYou = null, browseMode = false, title = null, unified = false }) {
+export default function HomeFilterSheet({ items, filters, sort, onApply, onClose, T, now, canSortNearest, areaLabel, locationLabel, simpleShell = false, mapMode = false, forYou = null, browseMode = false, title = null, unified = false }) {
   const dateOptions = mapMode ? MAP_DATE_OPTIONS : DATE_OPTIONS;
   const [draft, setDraft] = useState(() => normalizeFilters(filters));
   const [draftSort, setDraftSort] = useState(sort || 'soonest');
@@ -123,7 +123,7 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
     <NativeSheet open onClose={onClose} label={title || T('Bộ lọc', 'Filters')} testId="home-filter-sheet"
       bodyTestId="home-filter-backdrop" zIndex={2100}>
       <div
-        style={{ background: paper, color: ink, borderRadius: '22px 22px 0 0', maxHeight: '88%', width: '100%', display: 'flex', flexDirection: 'column', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both', filter: areaOpen ? 'blur(6px) brightness(0.8)' : 'none', transition: 'filter 0.25s ease' }}>
+        style={{ background: paper, color: ink, borderRadius: '22px 22px 0 0', maxHeight: '88%', width: '100%', display: 'flex', flexDirection: 'column', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both', filter: areaOpen ? 'blur(3px)' : 'none', opacity: areaOpen ? 0.55 : 1, transition: 'filter 0.25s ease, opacity 0.25s ease' }}>
         {/* Reset on the left, close (×) on the right; equal side columns keep the title centred. */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', padding: '10px 14px 8px' }}>
           <button type="button" onClick={() => { setDraft(normalizeFilters(DEFAULT_FILTERS)); setDraftSort('soonest'); }} data-testid="home-filter-reset"
@@ -165,7 +165,7 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
             style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', minHeight: 48, marginTop: 6, padding: 0, border: 'none', borderBottom: `1px solid ${rule}`, background: 'none', color: ink, fontFamily: 'inherit', fontSize: 13.5, cursor: 'pointer', textAlign: 'left' }}>
             <svg aria-hidden="true" width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
             <span style={{ fontWeight: 600 }}>{T('Khu vực', 'Location')}</span>
-            <span style={{ flex: 1, minWidth: 0, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: ink2 }}>{areaLabel || T('Mọi nơi', 'Everywhere')}</span>
+            <span style={{ flex: 1, minWidth: 0, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: ink2 }}>{(locationLabel !== undefined ? locationLabel : areaLabel) || T('Mọi nơi', 'Everywhere')}</span>
             <svg aria-hidden="true" width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none', opacity: 0.55 }}><path d="m9 5 7 7-7 7" /></svg>
           </button>
 

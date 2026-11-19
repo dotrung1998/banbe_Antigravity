@@ -42,7 +42,7 @@ export default function EventRowV23({ row, onOpen, testId, T = EN, onToggleSave 
           <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {row.status
               ? <span style={{ fontWeight: 600, color: row.status.tone === 'alert' ? 'var(--bb-alert)' : 'var(--bb-honey)' }}>{row.status.text}</span>
-              : <span style={{ opacity: 0.72 }}>{row.place}</span>}
+              : <span data-testid="event-row-place" style={{ opacity: 0.72 }}>{row.place}</span>}
           </span>
           {row.priceLabel ? <span data-testid="event-row-price" style={{ flex: 'none', fontSize: 14, fontWeight: 600, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', color: row.isFree ? 'var(--bb-honey)' : 'inherit' }}>{row.priceLabel}</span> : null}
         </span>
