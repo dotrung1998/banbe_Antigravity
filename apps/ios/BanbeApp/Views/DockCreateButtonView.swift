@@ -114,8 +114,8 @@ struct DockCreateButtonView: View {
 
     // MARK: Simple Shell centre "+"
 
-    /// Ink disc, paper "+", 26pt (the touch target is the whole disc; the bar slot around it is wider).
-    private static let discSize: CGFloat = 26
+    /// Prototype v2's centre "+": one 52 pt clay circle, no label.
+    private static let discSize: CGFloat = 52
 
     /// Simple Shell follow-up (plan item 3): the popover is bound to `app.dockCreateOpen`, so a dock drag released
     /// over this slot opens the same menu, from the same anchor, as a tap.
@@ -124,21 +124,13 @@ struct DockCreateButtonView: View {
             Haptics.light()
             app.dockCreateOpen = true
         } label: {
-            // Web twin (note 80): a 26pt ink disc with a small "+" and a "Create" label under it, like the other slots.
-            VStack(spacing: 3) {
-                Image(systemName: "plus")
-                    .font(.app(size: 14, weight: .bold))
-                    .foregroundStyle(app.palette.paper)
-                    .frame(width: Self.discSize, height: Self.discSize)
-                    .background(app.palette.ink, in: Circle())
-                Text(app.T("Tạo", "Create"))
-                    .font(.app(size: 11, weight: .medium))
-                    .foregroundStyle(app.palette.ink)
-                    .opacity(0.75)
-                    .lineLimit(1)
-                    .accessibilityHidden(true)
-            }
-            .frame(minWidth: 44, minHeight: BottomTabBar.barHeight - 10)
+            // Prototype v2's dock has no label here: one clay circle with a white "+" (the label stays for VoiceOver).
+            Image(systemName: "plus")
+                .font(.app(size: 24, weight: .regular))
+                .foregroundStyle(.white)
+                .frame(width: Self.discSize, height: Self.discSize)
+                .background(app.palette.clay, in: Circle())
+                .frame(minWidth: 44, minHeight: BottomTabBar.barHeight - 10)
             .scaleEffect(scrubHover ? 0.9 : 1)
             .opacity(scrubHover ? 0.82 : 1)
             .animation(Motion.animation(.spring(response: 0.22, dampingFraction: 0.7), reduce: reduceMotion), value: scrubHover)

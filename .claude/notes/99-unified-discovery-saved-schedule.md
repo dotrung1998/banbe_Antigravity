@@ -172,3 +172,33 @@ an Xong button — instead of the app's shared top search bar.
   paper instead of the dark smear over the tiles.
 - Checks: build green, unit 1022/1022, `map-unified` 8 + `home-unified` 5 tests = 39/39 on chromium, firefox and
   webkit. Not re-checked on a phone (the status strip in particular only shows on a real iPhone home-screen app).
+
+## iOS mirror of the web prototype-v2 passes (2026-11-19)
+
+The web passes 1–3 and the Map follow-up were web-only; this pass ports what the iOS app was missing.
+
+- **Home order**: hero → live line → shared state bar → Browse by type → "Near you" list → map banner →
+  `banbe · pick an evening, meet a few people`. The Browse block is one `v23Browse(_:)` builder, rendered above the
+  shortlist for both switch states.
+- **Shortlist**: heading **"Gần bạn" / "Near you"**, sub `N events · soonest first` (`N of M events` when filters
+  narrow it), and the empty card says "Nothing in Near you matches these filters".
+- **See all**: under `unified_discovery` the rail's end card scrolls Home to the `home.nearYou` anchor
+  (`nearYouScrollToken` + the existing `ScrollViewReader` proxy passed into `v23GoerFeed`); the shortlist end card's
+  "Browse by type" opens the in-place `UnifiedTypeSheet` instead of Browse.
+- **Dock (Simple Shell)**: 338 × 62 pill with a hairline border and one soft lift, icon-only slots, a solid ink active
+  capsule with a paper glyph, 26 pt account avatar, a clay 52 pt centre "+" with no label, and the Saved count in a
+  clay capsule on the calendar (`favorites.count`).
+- **Map**: the dock window hides entirely at `mapExplore` when all three switches are on; `dockClear` is 0 there, so
+  the bottom row (zoom · List · N · locate) sits 22 pt off the bottom and the carousel/preview ride above it; the chip
+  row is the time chip + hairline + All + every type with its count (busiest first); neighbourhood chips are off and a
+  preview closes when the camera leaves pin level.
+- **Search (unified)**: source chips ("From Home" / "Home + Map"), recent chips while no query is typed, the Filters
+  row, a results head ("N results for …" / "N events") with "Same results as the map", `EventRowV23View` rows with
+  save hearts, the "Nothing matches" card with Clear filters, and the "See on the map · N" CTA.
+
+Not mirrored (deliberate, iOS keeps its own shell): Search still opens as iOS's own screen under the shared persistent
+bar rather than the prototype's bottom sheet with its own field and Xong; the Map keeps that shared bar instead of a
+glass back + capsule row; the Filters button does not show the picked type's name; the filter sheet is not type-first;
+an area bubble still opens its panel (chips are gone but bubble taps are unchanged); Home's hero empty card still opens
+Browse. Checked: `xcodegen generate` + `xcodebuild … -destination 'generic/platform=iOS Simulator'` build green; no
+simulator run, no UI tests, nothing visually checked.

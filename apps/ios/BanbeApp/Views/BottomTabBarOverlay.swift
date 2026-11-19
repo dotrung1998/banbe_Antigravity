@@ -488,7 +488,13 @@ final class BottomTabBarOverlay {
 
     private func applyVisibility() {
         let othersHideDock = appLocked || forcedHidden || storyViewerOpen || pulseViewerOpen || modalActionSheetPresented || surveyModalOpen || onboardingOpen || shareCardOpen || !openSheets.isEmpty
-        let shouldShow = !(othersHideDock || dockCreateTrayOpen)
+        // Prototype v2 (note 99): the unified Map is a full-screen view with NO dock — its own bottom row carries zoom,
+        // "List · N" and locate. Only the three switches together do this; legacy Simple Shell keeps its Map tab.
+        let unifiedMap = currentScreen == .mapExplore
+            && (appState?.simpleShellEnabled ?? false)
+            && (appState?.homeV23Enabled ?? false)
+            && (appState?.unifiedDiscoveryEnabled ?? false)
+        let shouldShow = !(othersHideDock || dockCreateTrayOpen || unifiedMap)
             && BottomTabBar.visibleScreens.contains(currentScreen)
         guard shouldShow != lastShown else { return }
         lastShown = shouldShow

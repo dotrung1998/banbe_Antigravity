@@ -368,6 +368,11 @@ struct MapExploreView: View {
         // screen leaves, so the dock never stays hidden elsewhere.
         .onAppear { syncDock() }
         .onChange(of: areaPanel) { _, _ in syncDock() }
+        // Prototype v2: leaving pin level (area or city) closes the preview card. A carousel selection is kept.
+        .onChange(of: cameraZoom) { _, zoom in
+            guard unified, MapDiscovery.markerLevel(zoom: zoom) != .pin else { return }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { udPreviewID = nil }
+        }
         .onChange(of: listOpen) { _, open in
             listUnmountTask?.cancel()
             if open {
@@ -557,7 +562,7 @@ struct MapExploreView: View {
             areaPanelLayer
 
             MapListOverlay(isOpen: $listOpen, top: freeTop, background: app.palette.paper,
-                           closeTitle: app.T("Bản đồ", "Map"), bottomInset: MapStack.dockClear + 12) { probe in
+                           closeTitle: app.T("Bản đồ", "Map"), bottomInset: dockClear + 12) { probe in
                 if listMounted { resultsList(probe) } else { Color.clear }
             }
 
@@ -580,7 +585,8 @@ struct MapExploreView: View {
         // they would have taken, instead of leaving a gap above the dock. The reserved room (reference rect) is unchanged.
         let drop: CGFloat = showAreaChips && !emptyOnly ? 0 : MapStack.chipsHeight + MapStack.gap
         return ZStack(alignment: .bottom) {
-            if showAreaChips && !emptyOnly && !udShowsCarousel {
+            // Prototype v2: the unified Map has no neighbourhood chips or panel; results are the pins and the carousel.
+            if showAreaChips && !emptyOnly && !udShowsCarousel && !unified {
                 areaChipsRow
                     .padding(.bottom, MapStack.dockClear + MapStack.chipsBottom)
             }
@@ -589,7 +595,9 @@ struct MapExploreView: View {
                 Group {
                     if let id = udPreviewID, let ev = eventsByID[id] { udPreviewCard(ev) } else { udCarousel }
                 }
-                .padding(.bottom, MapStack.dockClear + MapStack.chipsBottom)
+                // Above the bottom row (nothing to clear: the unified Map has no dock).
+                .padding(.bottom, unified ? dockClear + 22 + MapStack.buttonHeight + 12
+                                          : MapStack.dockClear + MapStack.chipsBottom)
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
             // The day + hours: events inside are bold on the map, the rest dimmed; "All days" turns it off. It rides above
@@ -606,7 +614,7 @@ struct MapExploreView: View {
             }
             if !listOpen && areaPanel == nil && !emptyOnly && !(udShowsCarousel && udPreviewID != nil) {
                 Group { if unified { udButtonsRow } else { buttonsRow } }
-                    .padding(.bottom, MapStack.dockClear + MapStack.fabBottom - drop - udLift)
+                    .padding(.bottom, unified ? 22 : MapStack.dockClear + MapStack.fabBottom - drop - udLift)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
@@ -682,7 +690,8 @@ struct MapExploreView: View {
     /// Neighbourhood chips: one per neighbourhood with results, most events first. Hidden at city level and while the
     /// list, the panel or the search is open (their room stays reserved).
     private var showAreaChips: Bool {
-        areaPanel == nil && !listOpen && !searchFieldFocused && MapDiscovery.markerLevel(zoom: cameraZoom) != .city && !areaChipItems.isEmpty
+        !unified && areaPanel == nil && !listOpen && !searchFieldFocused
+            && MapDiscovery.markerLevel(zoom: cameraZoom) != .city && !areaChipItems.isEmpty
     }
 
     private struct AreaChipItem: Identifiable {
@@ -1482,6 +1491,8 @@ struct MapExploreView: View {
 
     /// The time bar's row is gone in unified mode: the buttons and the empty card settle into its room.
     private var udLift: CGFloat { unified ? MapStack.timeHeight + 10 : 0 }
+    /// Prototype v2: the unified Map draws NO dock, so nothing at the bottom has to clear one.
+    private var dockClear: CGFloat { unified ? 0 : MapStack.dockClear }
     static let udMinZoom: Double = 3
     static let udMaxZoom: Double = 19
 
@@ -2066,7 +2077,20 @@ struct MapExploreView: View {
                                     .environmentObject(app)
                                     .presentationCompactAdaptation(.popover)
                             }
-                    }
+                        Rectangle().fill(app.palette.rule).frame(width: 1, height: 22).accessibilityHidden(true)
+                        // Prototype v2's row: All, then EVERY type with its count (busiest first, empty last). The
+                        // other narrowing lives in the Filters sheet (the search row's sliders button).
+                        ForEach(["all"] + orderedCategories.filter { $0.key != "all" }
+                            .sorted { a, b in
+                                let na = counts[a.key] ?? 0, nb = counts[b.key] ?? 0
+                                if (na > 0) != (nb > 0) { return na > 0 }
+                                return na != nb ? na > nb : orderedCategories.firstIndex { $0.key == a.key }! < orderedCategories.firstIndex { $0.key == b.key }!
+                            }.map(\.key), id: \.self) { key in
+                            if let cat = orderedCategories.first(where: { $0.key == key }) {
+                                categoryChip(cat, counts: counts)
+                            }
+                        }
+                    } else {
                     if hasForYouPrefs { forYouChip.fixedSize(horizontal: true, vertical: false) }
                     if showSeats && openNowOnly { seatsChip }
                     if filters.free { freeChip }
@@ -2084,6 +2108,7 @@ struct MapExploreView: View {
                     ForEach(rest, id: \.key) { cat in categoryChip(cat, counts: counts) }
                     glassChip(active: false, id: "map.cat.showAll") { searchFieldFocused = false; categorySheetOpen = true } label: {
                         Text(app.T("Tất cả danh mục", "All categories"))
+                    }
                     }
                 }
                 .padding(.horizontal, 16)

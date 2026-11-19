@@ -113,12 +113,16 @@ struct BottomTabBar: View {
         return letters.isEmpty ? "?" : letters
     }
 
+    enum BadgeTone { case alert, clay }
+
     private struct Item: Identifiable {
         let id: String
         let icon: (Color, Bool) -> AnyView
         let label: String
         let action: () -> Void
         let badge: Int
+        /// Prototype v2: the calendar's Saved count wears a clay capsule instead of the alert red.
+        var tone: BadgeTone = .alert
         // Notifications' badge (per-account read_at) caps at "9+" — this
         // app's existing convention. Inbox's badge counts CONVERSATIONS
         // with an unread message, not raw messages (refreshUnreadMessageCount(),
@@ -158,7 +162,10 @@ struct BottomTabBar: View {
         let all: [Item] = [
             Item(id: "home", icon: { AnyView(HomeGlyph(color: $0, filled: $1)) }, label: app.T("Trang chính", "Home"), action: { app.goHome() }, badge: 0),
             Item(id: "map", icon: { AnyView(MapGlyph(color: $0, filled: $1)) }, label: app.T("Bản đồ", "Map"), action: { app.goMapExplore() }, badge: 0),
-            Item(id: "schedule", icon: { AnyView(ScheduleGlyph(color: $0, filled: $1)) }, label: app.T("Lịch", "Schedule"), action: { app.goSchedule() }, badge: 0),
+            // Prototype v2's dock (note 99): the calendar carries the Saved count in a clay capsule — Schedule reads
+            // the account's Saved list from the server, so the number is the real one.
+            Item(id: "schedule", icon: { AnyView(ScheduleGlyph(color: $0, filled: $1)) }, label: app.T("Lịch", "Schedule"),
+                 action: { app.goSchedule() }, badge: simpleShell ? app.favorites.count : 0, tone: .clay),
             // Unread count: number of conversations with an unread message
             // — see refreshUnreadMessageCount() (AppState+Data.swift),
             // refreshed on the same 5s poll as unreadNotifications.
@@ -499,30 +506,35 @@ struct BottomTabBar: View {
                     // Home, Browse and the quick panel, so the dock cannot fall back to initials while the header
                     // shows the photo. Guests keep the person glyph (the avatar renders one for them as well).
                     if item.id == "profile", app.isSignedIn {
-                        AccountAvatarView(size: iconSize)
+                        // Prototype v2's 26 pt account initials in the dock's slot.
+                        AccountAvatarView(size: simpleShell ? 26 : iconSize)
                     } else {
-                        item.icon(app.palette.ink, isActive)
-                            .frame(width: iconSize, height: iconSize)
+                        // Prototype v2: the active capsule is solid ink, so its glyph is drawn in paper.
+                        item.icon(simpleShell && isActive ? app.palette.paper : app.palette.ink, isActive)
+                            .frame(width: simpleShell ? 23 : iconSize, height: simpleShell ? 23 : iconSize)
                     }
                 }
                 .opacity(isActive ? 1 : 0.72)
                 // Icon under the lifted pill swells with it (Photos-style).
                 .scaleEffect(1 + (pressScale - 1) * 1.9 * iconProximity(item))
-                Text(item.label)
-                    .font(.app(size: 11, weight: isActive ? .bold : .medium))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .foregroundStyle(app.palette.ink)
-                    .opacity(isActive ? 1 : 0.75)
-                    .accessibilityHidden(true)
+                // Prototype v2's dock is icon-only; the name stays as the item's VoiceOver label.
+                if !simpleShell {
+                    Text(item.label)
+                        .font(.app(size: 11, weight: isActive ? .bold : .medium))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .foregroundStyle(app.palette.ink)
+                        .opacity(isActive ? 1 : 0.75)
+                        .accessibilityHidden(true)
+                }
             }
             if item.badge > 0 {
                 Text(badgeText)
                     .font(.app(size: 9, weight: .bold))
-                    .foregroundStyle(BanbeTheme.onAlert)
+                    .foregroundStyle(item.tone == .clay ? .white : BanbeTheme.onAlert)
                     .padding(.horizontal, 4)
                     .frame(minWidth: 14, minHeight: 14)
-                    .background(BanbeTheme.alert, in: Capsule())
+                    .background(item.tone == .clay ? app.palette.clay : BanbeTheme.alert, in: Capsule())
                     .offset(x: 7, y: -5)
                     .accessibilityIdentifier("tab.\(item.id).badge")
                     .accessibilityLabel(app.T("\(item.badge) mục mới", "\(item.badge) new item(s)"))
@@ -565,7 +577,9 @@ struct BottomTabBar: View {
                 let x = min(geo.size.width - shapeWidth / 2, max(shapeWidth / 2, center))
 
                 Capsule()
-                    .fill(isDragging ? app.palette.clay.opacity(0.28) : app.palette.ink.opacity(0.12))
+                    // Prototype v2 (Simple Shell): one solid ink capsule behind the active glyph.
+                    .fill(isDragging ? app.palette.clay.opacity(0.28)
+                                     : (simpleShell ? app.palette.ink : app.palette.ink.opacity(0.12)))
                     .overlay(Capsule().strokeBorder(app.palette.clay.opacity(isDragging ? 0.9 : 0), lineWidth: 1.5))
                     .shadow(color: app.palette.clay.opacity(isDragging ? 0.65 : 0), radius: isDragging ? 12 : 0)
                     .frame(width: shapeWidth, height: shapeHeight)
@@ -590,22 +604,23 @@ struct BottomTabBar: View {
         .contentShape(Rectangle())
         .gesture(scrubGesture(barWidth: geo.size.width))
         }
-        .frame(height: barHeight)
+        // Prototype v2's dock: 62 pt tall inside the same 72 pt band; the legacy bar keeps its 72.
+        .frame(height: simpleShell ? 62 : barHeight)
         // Task 1b follow-up: widened from 320 (fit for 4 icons) to fit the
         // new Home tab without cramping the existing four — matches the
         // web bar's own bump. Task 5: widened again, to `Self.barWidth`,
-        // as part of the flatter/more-elongated pill shape.
-        .frame(maxWidth: Self.barWidth)
+        // as part of the flatter/more-elongated pill shape. Simple Shell mirrors prototype v2's 338 pt pill.
+        .frame(maxWidth: simpleShell ? 338 : Self.barWidth)
         .backgroundPreferenceValue(TabItemFrameKey.self) { anchors in
             GeometryReader { proxy in
                 Color.clear.onAppear { resolveFrames(anchors, proxy) }
                     .onChange(of: proxy.size) { _, _ in resolveFrames(anchors, proxy) }
             }
         }
-        // Static surface that follows light/dark (no glass).
+        // Static surface that follows light/dark (no glass). Prototype v2: one hairline border and one soft lift.
         .background(app.palette.surface1, in: Capsule())
-        .overlay(Capsule().strokeBorder(app.palette.ink.opacity(0.06)))
-        .shadow(color: .black.opacity(0.16), radius: 14, x: 0, y: 6)
+        .overlay(Capsule().strokeBorder(simpleShell ? app.palette.divider : app.palette.ink.opacity(0.06)))
+        .shadow(color: .black.opacity(simpleShell ? 0.14 : 0.16), radius: simpleShell ? 30 : 14, x: 0, y: simpleShell ? 10 : 6)
         // Simple Shell (note 66): the "+" inside the bar, in the centre slot. An overlay, so it is NOT inside the
         // scrub gesture's view: a tap on it is a plain Button tap, and a scrub never selects it.
         .overlay {

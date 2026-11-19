@@ -36,6 +36,8 @@ struct HomeView: View {
     @State private var liveNowOpen = false
     /// Note 99: the "All types" sheet of the unified type tiles.
     @State private var udTypeSheetOpen = false
+    /// Prototype v2 (note 99): "See all" on the rail scrolls Home to the "Near you" list.
+    @State private var nearYouScrollToken = 0
     @StateObject private var forYouAlert = ForYouAlertModel()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -155,7 +157,7 @@ struct HomeView: View {
                                 .revealRegion(0)
                             HostHomeSections(actionItems: sortActionCenterItems(hostActionItems)).revealRegion(1)
                         } else {
-                            simpleGoerFeed(snap)
+                            simpleGoerFeed(snap, proxy: weekendProxy)
                         }
                     } else {
                     // Note 50/51 order: Pulse ticker → Next-up (note-37 reminder only) → Action Center / guest banner → stories (only if any) →
@@ -693,14 +695,14 @@ struct HomeView: View {
     /// Hero → (saved, only without a hero) → one chip row → "N events · cards | list | map" → cards, with the stories
     /// row after the 3rd card and the Pulse ticker after the 6th → the rest of today's feed footer.
     @ViewBuilder
-    private func simpleGoerFeed(_ snap: Snapshot) -> some View {
-        if app.homeV23Enabled { v23GoerFeed(snap) } else { classicGoerFeed(snap) }
+    private func simpleGoerFeed(_ snap: Snapshot, proxy: ScrollViewProxy) -> some View {
+        if app.homeV23Enabled { v23GoerFeed(snap, proxy: proxy) } else { classicGoerFeed(snap) }
     }
 
     /// v2.3 (note 81): hero (rail of 4 + See all fan card) → Next up tickets (else the one hero block) → live line +
     /// Shortlist → Browse by type (closes Home).
     @ViewBuilder
-    private func v23GoerFeed(_ snap: Snapshot) -> some View {
+    private func v23GoerFeed(_ snap: Snapshot, proxy: ScrollViewProxy) -> some View {
         let items = app.isSignedIn ? sortActionCenterItems(goerActionItems) : []
         HomeHeroSection(tab: heroTabBinding, lists: snap.heroLists, onSeeAll: { heroSeeAll($0) },
                         onSearchLocations: { areaSearchOpen = true },
@@ -726,22 +728,41 @@ struct HomeView: View {
                 || UnifiedDiscovery.ownedFilterCount(app.homeFilters, sort: app.homeSort) > 0 {
                 UnifiedStateBar(count: snap.udTotal, onMap: { app.goMapExploreFromHome() }, onClear: { clearUnified() })
             }
+            // Prototype v2 order (note 99): Browse by type sits above the "Near you" list.
+            v23Browse(snap)
             // Note 99: time has the tabs, so the Filters badge counts only what Filters owns.
             ShortlistV23View(tab: shownHeroTab, rows: snap.shortRows, total: snap.shortTotal,
                              filterBadge: app.unifiedDiscoveryEnabled ? UnifiedDiscovery.ownedFilterCount(app.homeFilters, sort: app.homeSort) : snap.filterBadge,
                              onFilters: { app.homeFilterSheetOpen = true }, onAction: { shortlistAction($0) })
+                .id("home.nearYou")
             if app.unifiedDiscoveryEnabled && snap.udTotal > 0 {
                 UnifiedMapBanner(count: snap.udTotal, onOpen: { app.goMapExploreFromHome() })
             }
+            Text("banbe · " + app.T("chọn một buổi, gặp vài người", "pick an evening, meet a few people"))
+                .font(.app(size: 12)).foregroundStyle(app.palette.ink3)
+                .frame(maxWidth: .infinity).padding(.top, 28)
         }
         .id("home.tour.filters")
         .revealRegion(2)
+        // Prototype v2's rail end card: "See all" scrolls Home down to the "Near you" list, not into Browse.
+        .onChange(of: nearYouScrollToken) { _, _ in
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.35)) { proxy.scrollTo("home.nearYou", anchor: .top) }
+        }
         .sheet(isPresented: $liveNowOpen) {
             LiveNowSheet(updates: snap.live, shownIndex: reduceMotionOn ? liveIndex : nil,
                          onOpen: { id, i in liveNowOpen = false; liveIndex = i; app.goEvent(id) },
                          onClose: { liveNowOpen = false })
                 .environmentObject(app)
         }
+        if !app.homeStories.isEmpty { storyRow.padding(.top, 20) }
+        if app.isSignedIn { surveyDiscoveryRow }
+        tagline
+        hostLink
+    }
+
+    /// The in-place Browse by type (note 99) — one block, rendered above the "Near you" list.
+    @ViewBuilder
+    private func v23Browse(_ snap: Snapshot) -> some View {
         Group {
             if app.unifiedDiscoveryEnabled {
                 UnifiedBrowseSection(counts: snap.udCounts, onToggle: { toggleUnifiedType($0) },
@@ -751,19 +772,15 @@ struct HomeView: View {
                                   onFind: { app.openBrowse(type: "all", scope: "all") }, seeAllTotal: snap.browseTotal)
             }
         }
-            .id("home.tour.browse")
-            .revealRegion(2)
-            .sheet(isPresented: $udTypeSheetOpen) {
-                UnifiedTypeSheet(counts: snap.udCounts, selected: app.homeFilters.cats.first) { key in
-                    udTypeSheetOpen = false
-                    app.pickFilter(key)
-                }
-                .environmentObject(app)
+        .id("home.tour.browse")
+        .revealRegion(2)
+        .sheet(isPresented: $udTypeSheetOpen) {
+            UnifiedTypeSheet(counts: snap.udCounts, selected: app.homeFilters.cats.first) { key in
+                udTypeSheetOpen = false
+                app.pickFilter(key)
             }
-        if !app.homeStories.isEmpty { storyRow.padding(.top, 20) }
-        if app.isSignedIn { surveyDiscoveryRow }
-        tagline
-        hostLink
+            .environmentObject(app)
+        }
     }
 
     private var reduceMotionOn: Bool { UIAccessibility.isReduceMotionEnabled }
@@ -802,7 +819,10 @@ struct HomeView: View {
         switch act {
         case "clear-filters": app.clearFilters(); app.homeSort = "soonest"
         case "map": app.goMapExploreFromHome()
-        default: app.openBrowse(type: "all", scope: "all")
+        // Prototype v2: Browse is unreachable from Home in this mode; the end card opens the in-place type sheet.
+        default:
+            if app.unifiedDiscoveryEnabled { udTypeSheetOpen = true }
+            else { app.openBrowse(type: "all", scope: "all") }
         }
     }
 
@@ -862,8 +882,12 @@ struct HomeView: View {
 
     /// "See all" on a hero rail: For You turns the For You filter on, Tonight / Weekend set the date, then the feed shows.
     private func heroSeeAll(_ tab: HomeHeroTab) {
-        // v2.3: See all opens Browse for THAT tab.
-        if app.homeV23Enabled { app.openBrowse(type: "all", scope: tab.rawValue); return }
+        // v2.3: See all opens Browse for THAT tab. Prototype v2 (unified discovery): it scrolls Home down to the
+        // "Near you" list instead — Browse is unreachable from Home in that mode.
+        if app.homeV23Enabled {
+            if app.unifiedDiscoveryEnabled { nearYouScrollToken += 1; return }
+            app.openBrowse(type: "all", scope: tab.rawValue); return
+        }
         switch tab {
         case .foryou:
             if !app.filterForYou && app.hasForYouMatches { app.filterForYou = true }

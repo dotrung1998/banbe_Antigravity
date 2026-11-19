@@ -87,8 +87,11 @@ struct SearchView: View {
             header
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
+                    if app.unifiedDiscoveryEnabled { unifiedMeta(q) }
                     if app.unifiedDiscoveryEnabled { UnifiedSearchFilterRow(onOpen: { udFilterSheetOpen = true }) }
-                    if q.isEmpty { idle } else { results(eventHits, hosts, areas) }
+                    if app.unifiedDiscoveryEnabled {
+                        unifiedResults(q.isEmpty ? udNarrowed(all) : eventHits)
+                    } else if q.isEmpty { idle } else { results(eventHits, hosts, areas) }
                 }
                 .padding(.bottom, 60)
             }
@@ -186,6 +189,138 @@ struct SearchView: View {
         .padding(.horizontal, atHomeBar ? 20 : 16).padding(.top, 8).padding(.bottom, 10)
         .overlay(alignment: .bottom) { Rectangle().fill(app.palette.rule).frame(height: 1).opacity(atHomeBar ? 0 : 1) }
         .onChange(of: focused) { was, now in if was && !now { commit() } }
+    }
+
+    // MARK: Unified discovery (prototype v2)
+
+    /// "Từ Trang chủ" / "Trang chủ + Bản đồ" meta chips, then the recent searches while no query is typed.
+    @ViewBuilder
+    private func unifiedMeta(_ q: String) -> some View {
+        HStack(spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: "house").font(.app(size: 11, weight: .semibold)).accessibilityHidden(true)
+                Text(app.T("Từ Trang chủ", "From Home")).font(.app(size: 11.5, weight: .semibold))
+            }
+            .padding(.horizontal, 10).frame(height: 26)
+            .background(app.palette.block, in: Capsule())
+            HStack(spacing: 5) {
+                Image(systemName: "arrow.triangle.2.circlepath").font(.app(size: 11, weight: .semibold)).accessibilityHidden(true)
+                Text(app.T("Trang chủ + Bản đồ", "Home + Map")).font(.app(size: 11.5, weight: .semibold))
+            }
+            .foregroundStyle(app.palette.ink2)
+            .padding(.horizontal, 10).frame(height: 26)
+            .overlay(Capsule().strokeBorder(app.palette.rule, lineWidth: 1))
+        }
+        .padding(.horizontal, 20).padding(.top, 10)
+        .accessibilityIdentifier("search.meta")
+
+        if !recent.isEmpty && q.isEmpty {
+            Text(app.T("Gần đây", "Recent").uppercased())
+                .font(.app(size: 11, weight: .semibold)).tracking(1.4).foregroundStyle(app.palette.ink3)
+                .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 8)
+            FlowRow(spacing: 8) {
+                ForEach(recent, id: \.self) { r in
+                    Button { app.searchQuery = r } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "clock").font(.app(size: 13)).opacity(0.55).accessibilityHidden(true)
+                            Text(r).font(.app(size: 14, weight: .medium)).lineLimit(1)
+                        }
+                        .padding(.horizontal, 14).frame(height: 38)
+                        .background(app.palette.surface2, in: Capsule())
+                        .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("search.recent")
+                }
+            }
+            .padding(.horizontal, 20)
+        }
+    }
+
+    /// The SAME result set the Map shows: one `EventRowV23` per event, the shared filters already applied, a results
+    /// head and a "See on the map · N" CTA. No host/area groups and no trending block in this mode.
+    @ViewBuilder
+    private func unifiedResults(_ hits: [Doc]) -> some View {
+        let q = query
+        let now = Date()
+        let rows = hits.map { d in (d.event.key, app.v23Row(d.event, item: app.discoveryItem(for: d.event, now: now))) }
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(q.isEmpty
+                     ? app.T("\(rows.count) sự kiện", "\(rows.count) \(rows.count == 1 ? "event" : "events")")
+                     : app.T("\(rows.count) kết quả cho “\(q)”", "\(rows.count) result\(rows.count == 1 ? "" : "s") for “\(q)”"))
+                    .font(BanbeTheme.display(19))
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 0)
+                HStack(spacing: 5) {
+                    Circle().fill(app.palette.update).frame(width: 6, height: 6).accessibilityHidden(true)
+                    Text(app.T("Cùng kết quả với bản đồ", "Same results as the map"))
+                        .font(.app(size: 12)).foregroundStyle(app.palette.ink3).lineLimit(1)
+                }
+            }
+            .padding(.horizontal, 20).padding(.top, 24).padding(.bottom, 12)
+
+            ForEach(rows, id: \.0) { key, row in
+                EventRowV23View(row: row, idPrefix: "search.event",
+                                onToggleSave: { app.toggleFavorite(key) },
+                                onOpen: { commit(); focused = false; app.goEvent(key) })
+            }
+
+            if rows.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(app.T("Tìm kiếm", "Search").uppercased())
+                        .font(.app(size: 11, weight: .semibold)).tracking(1.4).foregroundStyle(app.palette.ink3)
+                    Text(app.T("Không có sự kiện nào khớp.", "Nothing matches.")).font(.app(size: 16, weight: .medium))
+                    Text(q.isEmpty
+                         ? app.T("Thử bớt bộ lọc, hoặc chọn Mọi lúc.", "Try fewer filters, or pick Any time.")
+                         : app.T("Không có gì khớp “\(q)”. Thử một từ khác hoặc bỏ bộ lọc.", "Nothing matches “\(q)”. Try another word or drop the filters."))
+                        .font(.app(size: 13)).foregroundStyle(app.palette.ink2).fixedSize(horizontal: false, vertical: true)
+                    Button {
+                        app.searchQuery = ""
+                        app.homeFilters = .default
+                        app.homeSort = "soonest"
+                    } label: {
+                        Text(app.T("Xoá bộ lọc", "Clear filters"))
+                            .font(.app(size: 14, weight: .semibold)).foregroundStyle(app.palette.paper)
+                            .padding(.horizontal, 16).frame(minHeight: 40)
+                            .background(app.palette.ink, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 6)
+                    .accessibilityIdentifier("search.empty.clearFilters")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(18)
+                .background(app.palette.block, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .padding(.horizontal, 20)
+                .accessibilityIdentifier("search.empty")
+            }
+
+            if !rows.isEmpty {
+                Button {
+                    commit()
+                    focused = false
+                    app.seeSearchOnMap(q)
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "map").font(.app(size: 17, weight: .semibold)).accessibilityHidden(true)
+                        Text(app.T("Xem trên bản đồ", "See on the map")).font(.app(size: 15.5, weight: .semibold))
+                        Text("\(rows.count)").font(.app(size: 12)).monospacedDigit()
+                            .padding(.horizontal, 7).frame(minWidth: 24, minHeight: 24)
+                            .overlay(Capsule().strokeBorder(Color.white.opacity(0.6), lineWidth: 1))
+                    }
+                    .foregroundStyle(app.palette.paper)
+                    .frame(maxWidth: .infinity, minHeight: 54)
+                    .background(app.palette.ink, in: Capsule())
+                    .shadow(color: .black.opacity(0.24), radius: 13, y: 6)
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 16).padding(.top, 18)
+                .accessibilityIdentifier("search.seeOnMap")
+            }
+        }
+        .padding(.bottom, 24)
     }
 
     // MARK: Idle (empty query)

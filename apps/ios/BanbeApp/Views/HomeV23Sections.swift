@@ -17,13 +17,8 @@ struct ShortlistV23View: View {
     let onAction: (String) -> Void
 
     private var label: ViEn { ViEn(tab.vi, tab.en) }
-    private var sub: ViEn {
-        switch tab {
-        case .foryou: return ViEn("chọn cho bạn", "picked for you")
-        case .tonight: return ViEn("tối nay", "tonight")
-        case .weekend: return ViEn("cuối tuần này", "this weekend")
-        }
-    }
+    /// Prototype v2 (note 99): the list is "Near you", always soonest first — the tab's own name is the band above it.
+    private var sub: ViEn { ViEn("gần nhất trước", "soonest first") }
 
     var body: some View {
         let n = rows.count
@@ -31,10 +26,12 @@ struct ShortlistV23View: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .bottom, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(app.T("Chọn lọc", "Shortlist")).font(.app(size: 19)).accessibilityAddTraits(.isHeader)
+                    Text(app.T("Gần bạn", "Near you")).font(.app(size: 19)).accessibilityAddTraits(.isHeader)
                     Button(action: onFilters) {
-                        Text(app.T("\(n) sự kiện · \(sub.vi)", "\(n) \(n == 1 ? "event" : "events") · \(sub.en)"))
-                            .font(.app(size: 13)).opacity(0.72)
+                        Text(filterBadge > 0 && total > n
+                             ? app.T("\(n) trên \(total) sự kiện · \(sub.vi)", "\(n) of \(total) events · \(sub.en)")
+                             : app.T("\(n) sự kiện · \(sub.vi)", "\(n) \(n == 1 ? "event" : "events") · \(sub.en)"))
+                            .font(.app(size: 12.5)).foregroundStyle(app.palette.ink2)
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("home.filterSummary")
@@ -66,7 +63,7 @@ struct ShortlistV23View: View {
                      empty: {
                          EndCardView(model: total > 0
                             ? EndCardModel(kind: "empty", eyebrow: label,
-                                           title: ViEn("Không có gì trong \(label.vi) khớp bộ lọc.", "Nothing in \(label.en) matches these filters."),
+                                           title: ViEn("Không có gì trong Gần bạn khớp bộ lọc.", "Nothing in Near you matches these filters."),
                                            body: ViEn("Xoá bộ lọc để xem lại mọi thứ.", "Clear the filters to see everything again."),
                                            actions: [.init(act: "clear-filters", label: ViEn("Xoá bộ lọc", "Clear filters"), primary: true, testId: "home.shortlistClear")])
                             : EndCardModel(kind: "empty", eyebrow: label,
