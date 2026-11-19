@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  parseColor, hsla, transformStyle, loadMapStyle, MAP_PROVIDER, PREMIUM_DARK, curatedDarkPaint, toDark, restrainLight,
+  parseColor, hsla, transformStyle, loadMapStyle, MAP_PROVIDER, PREMIUM_DARK, PAPER_LIGHT, curatedDarkPaint, toDark, restrainLight,
 } from '../../src/lib/mapStyle.js';
 
 const style = () => ({
@@ -48,6 +48,16 @@ test('light transform is restrained and does not mutate the input', () => {
   assert.equal(out.sources.openmaptiles.url, src.sources.openmaptiles.url);
 });
 
+test('light transform uses the curated paper palette', () => {
+  const out = transformStyle(style(), 'light');
+  assert.equal(layer(out, 'background').paint['background-color'], PAPER_LIGHT.land);
+  assert.equal(layer(out, 'water').paint['fill-color'], PAPER_LIGHT.water);
+  assert.equal(layer(out, 'park').paint['fill-color'], PAPER_LIGHT.park);
+  assert.equal(layer(out, 'road_minor_casing').paint['line-color'], PAPER_LIGHT.roadCasing);
+  assert.ok(parseColor(layer(out, 'label_city').paint['text-color']).l < 0.3, 'dark ink labels on paper');
+  assert.ok(parseColor(layer(out, 'water').paint['fill-color']).h > 180, 'water stays blue, not beige');
+});
+
 test('dark transform uses the curated ink palette instead of a lightness inversion', () => {
   const out = transformStyle(style(), 'dark');
   const land = parseColor(layer(out, 'background').paint['background-color']);
@@ -55,7 +65,7 @@ test('dark transform uses the curated ink palette instead of a lightness inversi
   const park = parseColor(layer(out, 'park').paint['fill-color']);
   assert.equal(layer(out, 'background').paint['background-color'], PREMIUM_DARK.land);
   assert.ok(land.l > 0.05 && land.l < 0.2, 'land is a deep ink, not black');
-  assert.ok(water.l < land.l, 'water sits below the land');
+  assert.ok(water.s > land.s && water.l < 0.2, 'water is the bluer, more saturated plane');
   assert.ok(park.s > 0.2 && park.h > 120 && park.h < 200, 'parks stay green-teal');
   assert.equal(layer(out, 'park').paint['fill-opacity'], 0.95);
   assert.equal(layer(out, 'road_minor_casing').paint['line-color'], PREMIUM_DARK.roadCasing);
@@ -83,7 +93,7 @@ test('dark buildings and labels are readable without shouting', () => {
   const text = parseColor(layer(out, 'label_city').paint['text-color']);
   const halo = parseColor(layer(out, 'label_city').paint['text-halo-color']);
   assert.ok(text.l > 0.8 && halo.l < 0.1, 'light city names on a deep halo');
-  assert.equal(layer(out, 'poi_r20').paint['icon-opacity'], 0.65);
+  assert.equal(layer(out, 'poi_r20').paint['icon-opacity'], 0.55);
 });
 
 test('loadMapStyle caches, and falls back to the raw style URL on failure', async () => {

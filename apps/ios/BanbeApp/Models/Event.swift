@@ -110,8 +110,8 @@ struct MapEventRow: Codable, Identifiable, Hashable {
     var catKeys: [String] {
         [catKey, EventTypes.secondCategory(details?.values ?? [:], primary: catKey)].compactMap { $0 }
     }
-    /// Same directions link as Event Detail (`CatalogEvent.mapsURL`).
-    var mapsURL: URL? { CatalogEvent.mapsURL(lat: lat, lng: lng) }
+    /// Same directions link as Event Detail (`CatalogEvent.mapsURL`), labeled with what this row knows.
+    var mapsURL: URL? { CatalogEvent.mapsURL(lat: lat, lng: lng, label: CatalogEvent.pinLabel([name, area, city])) }
     var location: EventLocation {
         EventLocation(countryCode: countryCode, stateProvince: stateProvince, city: city, area: area, neighborhood: neighborhood,
                       lat: lat, lng: lng)

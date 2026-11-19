@@ -105,38 +105,78 @@ export const PREMIUM_DARK = {
   land: '#121730',
   landBlocks: '#171d3a',
   landInset: '#1a2038',
-  water: '#0a1226',
-  waterLine: '#0e1830',
-  park: '#16342f',
-  parkLine: '#1f453c',
-  wood: '#14302c',
-  grass: '#17342f',
-  pitch: '#1a3733',
+  water: '#0a1a3a',
+  waterLine: '#102a52',
+  park: '#1c443d',
+  parkLine: '#276256',
+  wood: '#183b34',
+  grass: '#1b4038',
+  pitch: '#1e443c',
   cemetery: '#182a2a',
   hospital: '#1d233f',
   school: '#1c2a3a',
   sand: '#2a2f4d',
   ice: '#1b2747',
-  building: '#1b2140',
-  buildingLine: '#262d52',
-  roadCasing: '#0e1530',
+  building: '#191f3d',
+  buildingLine: '#242b4e',
+  roadCasing: '#0c1226',
   bridgeCasing: '#1b2242',
-  roadMinor: '#2b3559',
-  roadTunnel: '#222a49',
-  roadSecondary: '#3a4675',
-  roadPrimary: '#4b598f',
-  roadMotorway: '#7585c4',
+  roadMinor: '#273052',
+  roadTunnel: '#1e2745',
+  roadSecondary: '#344070',
+  roadPrimary: '#4b5990',
+  roadMotorway: '#7d8ccb',
   roadPath: '#2a3150',
   rail: '#333b61',
   boundary: '#2f3860',
   textStrong: '#eef1ff',
   text: '#d5dcf7',
   textSoft: '#c9d3f2',
-  textMinor: '#9aa6d4',
+  textMinor: '#aab6dd',
   textHalo: '#080d1e',
 };
 
+/**
+ * The light basemap palette: warm paper instead of Liberty's plain white/beige. Water is a soft blue, parks sage,
+ * arterials warm apricot, and every label sits on the app's own paper tone, so the map belongs to the app rather
+ * than looking like a generic embedded map.
+ */
+export const PAPER_LIGHT = {
+  land: '#F5F1E8',
+  landBlocks: '#EFEAE0',
+  landInset: '#F1ECE2',
+  water: '#C9DCE8',
+  waterLine: '#BCD3E2',
+  park: '#D8E6CE',
+  parkLine: '#B9D0AC',
+  wood: '#CFDFC3',
+  grass: '#D6E4CB',
+  pitch: '#DDE8D3',
+  cemetery: '#DDE3D6',
+  hospital: '#F4E6E4',
+  school: '#F1EDD9',
+  sand: '#EFE5CF',
+  ice: '#E4EEF2',
+  building: '#E9E3D6',
+  buildingLine: '#DCD4C5',
+  roadCasing: '#DED6C7',
+  bridgeCasing: '#D6CDBD',
+  roadMinor: '#FFFFFF',
+  roadSecondary: '#FFFDF7',
+  roadPrimary: '#FBEAC8',
+  roadMotorway: '#F6D59C',
+  roadPath: '#F3EEE4',
+  rail: '#D8D1C3',
+  boundary: '#CFC7B8',
+  textStrong: '#2A2620',
+  text: '#3F3A32',
+  textSoft: '#5C554A',
+  textMinor: '#6E6658',
+  textHalo: '#F7F3EA',
+};
+
 const D = PREMIUM_DARK;
+const L = PAPER_LIGHT;
 
 // Paint keys only; widths, opacity ramps, filters and layouts stay exactly as the provider defines them.
 const CURATED_DARK = {
@@ -197,10 +237,11 @@ const CURATED_DARK = {
   water_name_line_label: { 'text-color': D.textMinor, 'text-halo-color': D.textHalo },
   waterway_line_label: { 'text-color': D.textMinor, 'text-halo-color': D.textHalo },
 
-  highway_name_label: { 'text-color': D.textMinor, 'text-halo-color': D.textHalo },
-  'highway-name-major': { 'text-color': D.textMinor, 'text-halo-color': D.textHalo },
-  'highway-name-minor': { 'text-color': D.textMinor, 'text-halo-color': D.textHalo },
-  'highway-name-path': { 'text-color': D.textMinor, 'text-halo-color': D.textHalo },
+  // Street names were being painted but disappeared into the road at 12–14 px: lift them off the asphalt with a
+  // crisp halo and near-full opacity (the provider's 0.72 is too quiet for a night map).
+  'highway-name-major': { 'text-color': D.textMinor, 'text-halo-color': D.textHalo, 'text-halo-width': 1.2, 'text-halo-blur': 0.4, 'text-opacity': 0.96 },
+  'highway-name-minor': { 'text-color': D.textMinor, 'text-halo-color': D.textHalo, 'text-halo-width': 1.2, 'text-halo-blur': 0.4, 'text-opacity': 0.9 },
+  'highway-name-path': { 'text-color': D.textMinor, 'text-halo-color': D.textHalo, 'text-opacity': 0.8 },
   airport: { 'text-color': D.textMinor, 'text-halo-color': D.textHalo },
 
   label_city: { 'text-color': D.textStrong, 'text-halo-color': D.textHalo },
@@ -208,15 +249,94 @@ const CURATED_DARK = {
   label_town: { 'text-color': D.text, 'text-halo-color': D.textHalo },
   label_village: { 'text-color': D.textSoft, 'text-halo-color': D.textHalo },
   label_state: { 'text-color': D.textSoft, 'text-halo-color': D.textHalo },
-  label_other: { 'text-color': D.textSoft, 'text-halo-color': D.textHalo },
+  label_other: { 'text-color': D.textSoft, 'text-halo-color': D.textHalo, 'text-opacity': 0.84 },
   label_country_1: { 'text-color': D.textSoft, 'text-halo-color': D.textHalo },
   label_country_2: { 'text-color': D.textSoft, 'text-halo-color': D.textHalo },
   label_country_3: { 'text-color': D.textSoft, 'text-halo-color': D.textHalo },
 
-  poi_r20: { 'text-color': D.textMinor, 'text-halo-color': D.textHalo, 'icon-opacity': 0.65 },
-  poi_r7: { 'text-color': D.textMinor, 'text-halo-color': D.textHalo, 'icon-opacity': 0.65 },
-  poi_r1: { 'text-color': D.textMinor, 'text-halo-color': D.textHalo, 'icon-opacity': 0.65 },
-  poi_transit: { 'text-color': D.textMinor, 'text-halo-color': D.textHalo, 'icon-opacity': 0.7 },
+  poi_r20: { 'text-color': D.textMinor, 'text-halo-color': D.textHalo, 'icon-opacity': 0.55 },
+  poi_r7: { 'text-color': D.textMinor, 'text-halo-color': D.textHalo, 'icon-opacity': 0.55 },
+  poi_r1: { 'text-color': D.textMinor, 'text-halo-color': D.textHalo, 'icon-opacity': 0.55 },
+  poi_transit: { 'text-color': D.textMinor, 'text-halo-color': D.textHalo, 'icon-opacity': 0.62 },
+};
+
+const CURATED_LIGHT = {
+  background: { 'background-color': L.land },
+
+  park: { 'fill-color': L.park, 'fill-opacity': 0.95, 'fill-outline-color': L.parkLine },
+  park_outline: { 'line-color': L.parkLine, 'line-opacity': 0.45 },
+  landuse_residential: { 'fill-color': L.landBlocks, 'fill-opacity': 0.85 },
+  landcover_wood: { 'fill-color': L.wood, 'fill-opacity': 0.7 },
+  landcover_grass: { 'fill-color': L.grass, 'fill-opacity': 0.5 },
+  landcover_ice: { 'fill-color': L.ice },
+  landcover_wetland: { 'fill-color': L.waterLine },
+  landcover_sand: { 'fill-color': L.sand },
+  landuse_pitch: { 'fill-color': L.pitch },
+  landuse_track: { 'fill-color': L.landInset },
+  landuse_cemetery: { 'fill-color': L.cemetery },
+  landuse_hospital: { 'fill-color': L.hospital },
+  landuse_school: { 'fill-color': L.school },
+
+  water: { 'fill-color': L.water },
+  waterway_river: { 'line-color': L.waterLine },
+  waterway_other: { 'line-color': L.waterLine },
+  waterway_tunnel: { 'line-color': L.waterLine, 'line-opacity': 0.65 },
+
+  aeroway_fill: { 'fill-color': L.landInset },
+  aeroway_runway: { 'line-color': L.roadCasing },
+  aeroway_taxiway: { 'line-color': L.roadCasing },
+
+  road_motorway_casing: { 'line-color': L.roadCasing },
+  road_trunk_primary_casing: { 'line-color': L.roadCasing },
+  road_secondary_tertiary_casing: { 'line-color': L.roadCasing },
+  road_minor_casing: { 'line-color': L.roadCasing },
+  road_link_casing: { 'line-color': L.roadCasing },
+  road_service_track_casing: { 'line-color': L.roadCasing },
+  road_motorway_link_casing: { 'line-color': L.roadCasing },
+
+  road_motorway: { 'line-color': L.roadMotorway },
+  road_motorway_link: { 'line-color': L.roadMotorway },
+  road_trunk_primary: { 'line-color': L.roadPrimary },
+  road_secondary_tertiary: { 'line-color': L.roadSecondary },
+  road_link: { 'line-color': L.roadSecondary },
+  road_minor: { 'line-color': L.roadMinor },
+  road_service_track: { 'line-color': L.roadMinor },
+  road_path_pedestrian: { 'line-color': L.roadPath },
+  road_major_rail: { 'line-color': L.rail },
+  road_major_rail_hatching: { 'line-color': L.roadCasing },
+  road_transit_rail: { 'line-color': L.rail },
+  road_transit_rail_hatching: { 'line-color': L.roadCasing },
+
+  building: { 'fill-color': L.building, 'fill-outline-color': L.buildingLine },
+  'building-3d': { 'fill-extrusion-color': L.building, 'fill-extrusion-opacity': 0.85 },
+
+  boundary_3: { 'line-color': L.boundary, 'line-opacity': 0.5 },
+  boundary_2: { 'line-color': L.boundary, 'line-opacity': 0.7 },
+  boundary_disputed: { 'line-color': L.boundary, 'line-opacity': 0.4 },
+
+  water_name_point_label: { 'text-color': L.textMinor, 'text-halo-color': L.textHalo },
+  water_name_line_label: { 'text-color': L.textMinor, 'text-halo-color': L.textHalo },
+  waterway_line_label: { 'text-color': L.textMinor, 'text-halo-color': L.textHalo },
+
+  'highway-name-major': { 'text-color': L.textMinor, 'text-halo-color': L.textHalo, 'text-halo-width': 1.2, 'text-halo-blur': 0.3, 'text-opacity': 0.96 },
+  'highway-name-minor': { 'text-color': L.textMinor, 'text-halo-color': L.textHalo, 'text-halo-width': 1.2, 'text-halo-blur': 0.3, 'text-opacity': 0.9 },
+  'highway-name-path': { 'text-color': L.textMinor, 'text-halo-color': L.textHalo, 'text-opacity': 0.8 },
+  airport: { 'text-color': L.textMinor, 'text-halo-color': L.textHalo },
+
+  label_city: { 'text-color': L.textStrong, 'text-halo-color': L.textHalo },
+  label_city_capital: { 'text-color': L.textStrong, 'text-halo-color': L.textHalo },
+  label_town: { 'text-color': L.text, 'text-halo-color': L.textHalo },
+  label_village: { 'text-color': L.textSoft, 'text-halo-color': L.textHalo },
+  label_state: { 'text-color': L.textSoft, 'text-halo-color': L.textHalo },
+  label_other: { 'text-color': L.textSoft, 'text-halo-color': L.textHalo, 'text-opacity': 0.84 },
+  label_country_1: { 'text-color': L.textSoft, 'text-halo-color': L.textHalo },
+  label_country_2: { 'text-color': L.textSoft, 'text-halo-color': L.textHalo },
+  label_country_3: { 'text-color': L.textSoft, 'text-halo-color': L.textHalo },
+
+  poi_r20: { 'text-color': L.textMinor, 'text-halo-color': L.textHalo, 'icon-opacity': 0.65 },
+  poi_r7: { 'text-color': L.textMinor, 'text-halo-color': L.textHalo, 'icon-opacity': 0.65 },
+  poi_r1: { 'text-color': L.textMinor, 'text-halo-color': L.textHalo, 'icon-opacity': 0.65 },
+  poi_transit: { 'text-color': L.textMinor, 'text-halo-color': L.textHalo, 'icon-opacity': 0.7 },
 };
 
 /** Curated dark paint for a layer, or null when it is not in the palette (generic recolour then applies). */
@@ -238,6 +358,27 @@ export function curatedDarkPaint(layer) {
     if (/secondary|link|street/.test(id)) return { 'line-color': D.roadSecondary };
     if (/rail/.test(id)) return { 'line-color': D.rail };
     return { 'line-color': D.roadMinor };
+  }
+  return null;
+}
+
+/** Same contract for the light paper palette. */
+export function curatedLightPaint(layer) {
+  const id = layer?.id;
+  if (!id) return null;
+  if (CURATED_LIGHT[id]) return CURATED_LIGHT[id];
+  if (id.startsWith('tunnel_')) {
+    if (/_casing$/.test(id)) return { 'line-color': L.roadCasing, 'line-opacity': 0.55 };
+    if (/rail/.test(id)) return { 'line-color': L.rail, 'line-opacity': 0.5 };
+    return { 'line-color': L.roadPath, 'line-opacity': 0.7 };
+  }
+  if (id.startsWith('bridge_')) {
+    if (/_casing$/.test(id)) return { 'line-color': L.bridgeCasing };
+    if (/motorway/.test(id)) return { 'line-color': L.roadMotorway };
+    if (/trunk_primary/.test(id)) return { 'line-color': L.roadPrimary };
+    if (/secondary|link|street/.test(id)) return { 'line-color': L.roadSecondary };
+    if (/rail/.test(id)) return { 'line-color': L.rail };
+    return { 'line-color': L.roadMinor };
   }
   return null;
 }
@@ -268,7 +409,7 @@ export function transformStyle(style, mode = 'light', provider = MAP_PROVIDER) {
   const keep = new Set(provider.keepLabelLayers);
   out.layers = out.layers.filter(l => !provider.hiddenLayers.includes(l.id)).map(layer => {
     const paint = { ...(layer.paint || {}) };
-    const curated = dark ? curatedDarkPaint(layer) : null;
+    const curated = dark ? curatedDarkPaint(layer) : curatedLightPaint(layer);
     for (const prop of Object.keys(paint)) {
       if (!prop.endsWith('-color')) continue;
       if (curated && prop in curated) continue;

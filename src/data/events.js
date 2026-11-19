@@ -210,7 +210,17 @@ export function distanceLabel(userCoords, located, ev) {
 
 export function mapsUrl(ev) {
   if (ev.lat == null || ev.lng == null) return null;
-  return 'https://www.google.com/maps/search/?api=1&query=' + ev.lat + ',' + ev.lng;
+  const base = 'https://www.google.com/maps/search/?api=1&query=';
+  // A verified street address is the one thing Google can reliably geocode to a place; a query made only of
+  // coordinates always lands on a coordinate card ("10.771408,106.698212"). Keep coordinates only when there
+  // is genuinely no address to give it, so the pin stays exact instead of guessing at the district.
+  const address = typeof ev.addressLine === 'string' ? ev.addressLine.trim() : '';
+  if (!address) return base + ev.lat + ',' + ev.lng;
+  const query = [ev.name, address, ev.area || ev.locationLabel, ev.city]
+    .map(v => (typeof v === 'string' ? v.trim() : ''))
+    .filter(Boolean)
+    .join(', ');
+  return base + encodeURIComponent(query);
 }
 
 export function img(id) {

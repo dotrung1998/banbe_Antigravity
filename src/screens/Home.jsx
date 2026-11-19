@@ -878,7 +878,10 @@ export default function Home({ browse = false }) {
         time: start,
         // "to 22:30", "(+1)" when it ends after midnight, or open-ended (note 82).
         timeNote: endTime ? T(`đến ${endTime}${nextDay ? ' (+1)' : ''}`, `to ${endTime}${nextDay ? ' (+1)' : ''}`) : endOpen ? T('không giờ kết thúc', 'open-ended') : null,
-        mapsUrl: real?.lat != null ? mapsUrl({ lat: real.lat, lng: real.lng }) : (demo ? mapsUrl(demo) : null),
+        mapsUrl: real?.lat != null ? mapsUrl({
+          lat: real.lat, lng: real.lng, name: real.name, addressLine: real.addressLine,
+          area: real.area, city: real.city,
+        }) : (demo ? mapsUrl(demo) : null),
       };
     }
     return nextUpGroups(s.paymentBookings || [], evInfo, nowMs2).map(g => ({

@@ -84,7 +84,7 @@ async function photon(q, bias) {
 // Vietnamese diacritics are folded so "nguyen van dau" still matches "Nguyễn Văn Đậu".
 const fold = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase();
 const STOP = new Set(['so', 'no', 'the', 'and', 'vietnam', 'viet', 'nam', 'hcm', 'tphcm', 'pho', 'ho', 'chi', 'minh', 'vn']);
-function tokens(q) {
+export function tokens(q) {
   // Keep house numbers even when single-digit ("Số 5 Lý Tự Trọng"): they are what makes a query an address.
   return [...new Set(fold(q).split(/[^a-z0-9]+/).filter(t => (t.length > 1 || /^\d+$/.test(t)) && !STOP.has(t)))];
 }
@@ -106,7 +106,7 @@ function coverageOf(row, qTokens) {
 
 // "Số 5 Lý Tự Trọng" is an address query: a school NAMED Lý Tự Trọng on another street is a false
 // friend. When the query carries a number, the road/street has to carry the words.
-function roadCoverageOf(row, qTokens) {
+export function roadCoverageOf(row, qTokens) {
   const significant = qTokens.filter(t => !/^\d+$/.test(t));
   if (!significant.length) return 1;
   const addr = row.address || {};
@@ -142,11 +142,14 @@ function scoreRow(row, qTokens, coverage, roadCoverage, bias) {
   return score;
 }
 
-function dedupeAndRank(rows, q, bias) {
+export function dedupeAndRank(rows, q, bias) {
   const qTokens = tokens(q);
   const seenPlace = new Set();
   const seenPoint = new Set();
   const out = [];
+  // House numbers belong to scoring and road checks, not to the text-coverage gate: a street-level row for
+  // "123 Lê Lợi" legitimately omits "123", and counting it would throw the exact street away.
+  const contentCount = qTokens.filter(t => !/^\d+$/.test(t)).length;
   for (const row of rows) {
     if (!row || row.lat == null || row.lon == null) continue;
     const place = String(row.place_id || '');
@@ -154,7 +157,7 @@ function dedupeAndRank(rows, q, bias) {
     if ((place && seenPlace.has(place)) || seenPoint.has(point)) continue;
     const coverage = coverageOf(row, qTokens);
     // A multi-word query that shares almost nothing with the result is provider noise, not a suggestion.
-    if (qTokens.length >= 3 ? coverage < 0.7 : qTokens.length === 2 ? coverage < 0.4 : false) continue;
+    if (contentCount >= 3 ? coverage < 0.7 : contentCount === 2 ? coverage < 0.4 : false) continue;
     const numeric = qTokens.some(t => /^\d+$/.test(t));
     const roadCoverage = numeric ? roadCoverageOf(row, qTokens) : 1;
     if (numeric && qTokens.filter(t => !/^\d+$/.test(t)).length >= 2 && roadCoverage < 0.34) {
@@ -167,17 +170,19 @@ function dedupeAndRank(rows, q, bias) {
     out.push({ row, score: scoreRow(row, qTokens, coverage, roadCoverage, bias) });
   }
   out.sort((a, b) => b.score - a.score);
-  // A strong local match makes other continents noise. When the best row is far away, nothing is dropped:
-  // that is a legitimate search for a place outside the bias (a US venue searched from Vietnam, say).
+  // A local match makes other continents noise. This looks at any local row, not only the best one: a foreign
+  // house number can win on its number bonus, which used to keep the bias from firing. When nothing is local,
+  // nothing is dropped: that is a legitimate search for a place outside the bias (a US venue from Vietnam).
   const kmOf = (r) => roughKm(parseFloat(r.lat), parseFloat(r.lon), bias.lat, bias.lon);
-  const local = out.length > 0 && kmOf(out[0].row) < 150;
-  const kept = local ? out.filter(x => kmOf(x.row) < 1500) : out;
+  const hasLocal = out.some(x => kmOf(x.row) < 150);
+  const kept = hasLocal ? out.filter(x => kmOf(x.row) < 1500) : out;
   return kept.slice(0, MAX_ROWS).map(x => x.row);
 }
 
 // Strip noise the geocoders choke on: a leading "Số", a trailing country, doubled commas.
-function cleanQuery(q) {
+export function cleanQuery(q) {
   return q
+    .trim()
     .replace(/\s+/g, ' ')
     .replace(/^(số|so)\s+/i, '')
     .replace(/[,\s]+(việt nam|vietnam)$/i, '')

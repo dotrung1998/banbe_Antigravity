@@ -178,8 +178,9 @@ struct AdminEventsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     line(app.T("Địa chỉ", "Address"), [row.addressLine, row.area, row.city].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: ", ").isEmpty ? app.T("Không Có Thông Tin", "Not Provided") : [row.addressLine, row.area, row.city].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: ", "))
                     line(app.T("Đã xác minh (chủ nhà tự khai)", "Address confirmed (host-provided)"), (row.addressVerified ?? false) ? app.T("Có", "Yes") : app.T("Không", "No"))
-                    if let lat = row.lat, let lng = row.lng, let url = URL(string: "https://www.google.com/maps/search/?api=1&query=\(lat),\(lng)") {
-                        Link(app.T("Mở trên Google Maps", "Open in Google Maps") + " (\(String(format: "%.5f", lat)), \(String(format: "%.5f", lng)))", destination: url)
+                    if let lat = row.lat, let lng = row.lng,
+                       let url = CatalogEvent.mapsURL(lat: lat, lng: lng, label: CatalogEvent.pinLabel([row.name, row.addressLine, row.area, row.city])) {
+                        Link(app.T("Mở trên bản đồ", "Open in Maps") + " (\(String(format: "%.5f", lat)), \(String(format: "%.5f", lng)))", destination: url)
                             .font(.app(size: 11.5, weight: .semibold))
                     }
                 }

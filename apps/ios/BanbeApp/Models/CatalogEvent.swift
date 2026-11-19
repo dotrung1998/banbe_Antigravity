@@ -85,6 +85,9 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
     /// `AppState.eventLocation(_:)` resolves demo events from their live DB
     /// row instead.
     var location: EventLocation? = nil
+    /// Real events only (set by `fromReal`, not in `CodingKeys`): the verified street line, used to label the
+    /// directions pin with the real address instead of its coordinates.
+    var addressLine: String? = nil
     /// Real events only (set by `fromReal`, not in `CodingKeys`): search keywords and the
     /// organizer row id, so Search can match keywords and open the host (note 50).
     var keywords: [String]? = nil
@@ -131,19 +134,36 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
         return URL(string: AppConfig.apiBaseURL + path)
     }
 
-    /// Google Maps directions, same link the web event page opens.
+    /// Directions in Apple Maps, labeled with the event's own name/address rather than its raw coordinates.
+    ///
+    /// Real-event-maps-link fix pass (2026-09-28) — `nil` (no link at all) for an event with no confirmed
+    /// coordinates, same honesty rule web's own `mapsUrl(ev)` (src/data/events.js) applies — never a link that
+    /// silently opens at 0,0.
     var mapsURL: URL? {
-        // Real-event-maps-link fix pass (2026-09-28) — `nil` (no link at
-        // all) for an event with no confirmed coordinates, same honesty
-        // rule web's own `mapsUrl(ev)` (src/data/events.js) already
-        // applies — never a link that silently opens at 0,0.
-        Self.mapsURL(lat: lat, lng: lng)
+        Self.mapsURL(lat: lat, lng: lng, label: Self.pinLabel(
+            [name, addressLine, location?.area ?? locationLabel, location?.city]
+        ))
     }
 
-    /// The one directions link (Event Detail and the Map card); nil without confirmed coordinates.
-    static func mapsURL(lat: Double?, lng: Double?) -> URL? {
+    /// `ll` places the pin exactly and `q` labels it (Apple's documented "label a coordinate" form) — a keyword
+    /// search for a venue MapKit doesn't know would drop no pin at all. `nil` without confirmed coordinates.
+    static func mapsURL(lat: Double?, lng: Double?, label: String? = nil) -> URL? {
         guard let lat, let lng else { return nil }
-        return URL(string: "https://www.google.com/maps/search/?api=1&query=\(lat),\(lng)")
+        var comps = URLComponents(string: "https://maps.apple.com/")
+        comps?.queryItems = [
+            URLQueryItem(name: "ll", value: "\(lat),\(lng)"),
+            URLQueryItem(name: "z", value: "17"),
+        ]
+        if let label, !label.isEmpty { comps?.queryItems?.append(URLQueryItem(name: "q", value: label)) }
+        return comps?.url
+    }
+
+    /// "Name, street address, area, city" without repeating a part Apple's place labels already share.
+    static func pinLabel(_ parts: [String?]) -> String {
+        var seen = Set<String>()
+        return parts.compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }
+            .joined(separator: ", ")
     }
 
     /// Whether this event is still live in the feed (not cancelled, not over).
@@ -425,6 +445,7 @@ extension CatalogEvent {
             intro: introOrNil,
             includedItems: itemsOrNil,
             location: real.location,
+            addressLine: real.addressLine,
             keywords: real.keywords,
             organizerId: real.organizerId
         )
