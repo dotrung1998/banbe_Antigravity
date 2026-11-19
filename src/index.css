@@ -1000,7 +1000,13 @@ input::placeholder, textarea::placeholder {
 /* The band's middle holds ONE thing at a time: the area chip while the tabs show, and the view + area pill once the
    feed is moving and the tabs have folded away (owner 2026-11-22). They share one grid cell, so the bar never reflows
    and the two can cross-fade in place. */
-.bb-home-head__mid { flex: 1 1 auto; min-width: 0; display: grid; place-items: center; }
+.bb-home-head__mid {
+  flex: 1 1 auto; min-width: 0; display: grid; place-items: center;
+  /* Audit 2026-11-19 row 20: the implicit auto track was sized by the widest child's max-content, so at 320 the area
+     chip (and the hidden view pill sharing its cell) grew past the middle and sat under the search circle. One
+     minmax(0,1fr) track makes both children shrink to the bar's remaining width, ellipsis included. */
+  grid-template-columns: minmax(0, 1fr);
+}
 .bb-home-head__mid > * { grid-area: 1 / 1; }
 .bb-home-head__area {
   flex: 0 1 auto; min-width: 0; max-width: 100%;

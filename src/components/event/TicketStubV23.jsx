@@ -85,7 +85,8 @@ export default function TicketStubV23({ block, time, countdown, placeLine, mapsU
             </div>
           )}
           <div data-testid="event-fact-where" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 4, fontSize: 13, color: 'var(--bb-fg-2)' }}>
-            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{placeLine}</span>
+            {/* Audit 2026-11-19 row 20: at 320 the venue now takes a second line instead of "Quận 1…". */}
+            <span style={{ minWidth: 0, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', lineHeight: 1.35 }}>{placeLine}</span>
             {mapsUrl && (
               // 44 px hit area around the prototype's 30 px pill.
               <a href={mapsUrl} target="_blank" rel="noopener noreferrer" data-testid="event-maps-link" onClick={onDirections} className="bbv23-press"
@@ -99,7 +100,9 @@ export default function TicketStubV23({ block, time, countdown, placeLine, mapsU
         </div>
       </div>
       <Perf />
-      <div data-testid="event-price-strip" style={{ position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 18px', borderRadius: calendar ? 0 : '0 0 25px 25px', background: confirmed ? 'color-mix(in srgb, var(--bb-update) 14%, var(--bb-surface-2))' : 'var(--bb-surface-2)', transition: 'background-color .42s cubic-bezier(.22,.61,.36,1)' }}>
+      {/* Audit 2026-11-19 row 20: the strip and the calendar lip wrap instead of colliding at 320 ("/ ticket" used to
+          land on the seat pill, "Save the date" on the chips). */}
+      <div data-testid="event-price-strip" style={{ position: 'relative', overflow: 'hidden', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12, rowGap: 8, padding: '14px 18px', borderRadius: calendar ? 0 : '0 0 25px 25px', background: confirmed ? 'color-mix(in srgb, var(--bb-update) 14%, var(--bb-surface-2))' : 'var(--bb-surface-2)', transition: 'background-color .42s cubic-bezier(.22,.61,.36,1)' }}>
         <div data-testid="event-price" style={{ display: 'flex', alignItems: 'baseline', gap: 4, minWidth: 0 }}>
           {price && <b style={{ fontFamily: SERIF, fontSize: 24, fontWeight: 400, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{price}</b>}
           {perTicket && <span style={{ fontSize: 12, color: 'var(--bb-fg-3)' }}>{perTicket}</span>}
@@ -119,8 +122,8 @@ export default function TicketStubV23({ block, time, countdown, placeLine, mapsU
       {calendar && (
         <>
           <Perf />
-          <div data-testid="event-stub-lip" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '4px 12px 4px 18px', borderRadius: '0 0 25px 25px', background: 'var(--bb-surface-1)' }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flex: 'none', fontSize: 12, fontWeight: 600, color: 'var(--bb-fg-2)', whiteSpace: 'nowrap' }}>
+          <div data-testid="event-stub-lip" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10, rowGap: 4, padding: '4px 12px 4px 18px', borderRadius: '0 0 25px 25px', background: 'var(--bb-surface-1)' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, fontSize: 12, fontWeight: 600, color: 'var(--bb-fg-2)', whiteSpace: 'nowrap' }}>
               <span style={{ color: 'var(--bb-clay)', display: 'inline-flex' }}><IconCal /></span>{saveLabel}
             </span>
             {calendar}
