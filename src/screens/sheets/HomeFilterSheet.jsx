@@ -264,7 +264,8 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
             {!canSortNearest && <div style={{ fontSize: 11.5, opacity: 0.6, marginTop: 8 }}>{T('Bật vị trí để sắp xếp theo khoảng cách.', 'Turn on location to sort by distance.')}</div>}
           </Section>
           )}
-          <div style={{ height: 12 }} />
+          {/* Audit 2026-11-19 row 28: room to scroll the price histogram clear of the footer CTA. */}
+          <div style={{ height: 28 }} />
         </div>
 
         <div style={{ padding: '12px 20px 26px' }}>
@@ -272,11 +273,17 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
             style={{ ...inkButton({ width: '100%', padding: 15, borderRadius: RADIUS.pill }), border: 'none', fontFamily: 'inherit' }}>
             {cta}
           </button>
-          <div style={{ fontSize: 11.5, opacity: 0.55, textAlign: 'center', marginTop: 8 }}>
-            {mapMode
-              ? T(`trên tổng ${total} sự kiện trong vùng bản đồ`, `out of ${total} event${total === 1 ? '' : 's'} in this map area`)
-              : T(`trên tổng ${total} sự kiện`, `out of ${total} events`)}
-          </div>
+          {/* Audit 2026-11-19 row 28: the CTA already says the count when nothing is narrowed, so the sub-line only
+              adds the total when it differs (or names the map area). */}
+          {mapMode ? (
+            <div style={{ fontSize: 11.5, opacity: 0.55, textAlign: 'center', marginTop: 8 }}>
+              {T(`trên tổng ${total} sự kiện trong vùng bản đồ`, `out of ${total} event${total === 1 ? '' : 's'} in this map area`)}
+            </div>
+          ) : resultCount !== total ? (
+            <div style={{ fontSize: 11.5, opacity: 0.55, textAlign: 'center', marginTop: 8 }}>
+              {T(`trên tổng ${total} sự kiện`, `out of ${total} events`)}
+            </div>
+          ) : null}
         </div>
       </div>
       {areaOpen && <AreaSheet embedded onDone={() => setAreaOpen(false)} />}
