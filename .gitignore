@@ -151,6 +151,11 @@ dist-ssr
 !/docs/audits/2026-11-19-cc/shots/home-320-dark-after.png
 !/docs/audits/2026-11-19-cc/shots/home-390-light-after.png
 !/docs/audits/2026-11-19-cc/shots/home-390-dark-after.png
+!/docs/audits/2026-11-19-cc/shots/filter-390-light-before.png
+!/docs/audits/2026-11-19-cc/shots/filter-390-light-after.png
+!/docs/audits/2026-11-19-cc/shots/filter-390-dark-after.png
+!/docs/audits/2026-11-19-cc/shots/filter-320-light-after.png
+!/docs/audits/2026-11-19-cc/shots/filter-320-dark-after.png
 
 
 # Archives are not publishable (the web app deploy rejects .zip) and are

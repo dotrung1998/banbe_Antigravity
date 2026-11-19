@@ -37,7 +37,8 @@ function Pill({ active, onClick, children, count, testId, disabled }) {
   return (
     <button type="button" onClick={onClick} disabled={disabled} aria-pressed={active} data-testid={testId}
       style={{
-        display: 'inline-flex', alignItems: 'center', gap: 6, height: 38, padding: '0 14px', borderRadius: RADIUS.pill,
+        // Audit 2026-11-19 row 25 (visual pass follow-up): every chip in this sheet is a 44 px target, like Close/Reset.
+        display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 44, padding: '0 14px', borderRadius: RADIUS.pill,
         border: active ? '1px solid transparent' : `1px solid ${rule}`, fontFamily: 'inherit', fontSize: 13.5, cursor: disabled ? 'default' : 'pointer',
         background: active ? 'rgba(var(--bb-fg-rgb), 0.9)' : 'transparent', color: active ? 'var(--bb-bg)' : ink,
         opacity: disabled && !active ? 0.4 : 1, fontWeight: active ? 600 : 500, whiteSpace: 'nowrap',
@@ -193,7 +194,7 @@ export default function HomeFilterSheet({ items, filters, sort, onApply, onClose
 
           <Section title={mapMode ? T('Giá mỗi vé', 'Price per ticket') : T('Giá', 'Price')} right={
             <button type="button" onClick={() => setForTwo(v => !v)} aria-pressed={forTwo} data-testid="home-filter-for-two"
-              style={{ border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, opacity: forTwo ? 1 : 0.6, cursor: 'pointer', padding: 0 }}>
+              style={{ border: 'none', background: 'none', color: ink, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, opacity: forTwo ? 1 : 0.6, cursor: 'pointer', padding: 0, minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>
               {forTwo ? '✓ ' : ''}{T('Giá cho 2 người', 'Price for 2')}
             </button>
           }>
