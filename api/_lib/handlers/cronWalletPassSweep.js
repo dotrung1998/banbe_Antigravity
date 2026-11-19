@@ -9,8 +9,10 @@ import { refreshWalletPass } from '../walletRefresh.js';
 const BATCH = 200;
 
 export default async function handler(req, res) {
+  // Fails CLOSED when CRON_SECRET is unset (audit 2026-11-19 row 11), like the media and push sweeps: an unset
+  // secret must not turn the endpoint into a public one.
   const secret = process.env.CRON_SECRET;
-  if (secret && (req.headers.authorization || '') !== `Bearer ${secret}`) {
+  if (!secret || (req.headers.authorization || '') !== `Bearer ${secret}`) {
     return res.status(401).json({ error: 'UNAUTHORIZED' });
   }
   const cfg = readWalletConfig();

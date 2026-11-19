@@ -123,10 +123,12 @@ async function sendReminder(admin, row, { urgent }) {
 
 export default async function handler(req, res) {
   // Same signed-invocation check as the other cron jobs — without it
-  // this is a free "delete anyone's receipts early" button.
+  // this is a free "delete anyone's receipts early" button. Fails CLOSED when
+  // CRON_SECRET is unset (audit 2026-11-19 row 11): an unset secret used to skip
+  // the check entirely, which is exactly the state a misconfigured deploy is in.
   const secret = process.env.CRON_SECRET;
   const auth = req.headers.authorization || '';
-  if (secret && auth !== `Bearer ${secret}`) {
+  if (!secret || auth !== `Bearer ${secret}`) {
     return res.status(401).json({ error: 'UNAUTHORIZED' });
   }
 
