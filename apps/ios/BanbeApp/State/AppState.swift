@@ -836,6 +836,9 @@ final class AppState: ObservableObject {
     // never appear on Home no matter its status. This is the iOS port of
     // web's identical `discoveryEvents`/`loadDiscoveryEvents`.
     @Published var discoveryEvents: [CatalogEvent] = []
+    /// Audit 2026-11-19 row 7: every production event id/key/slug in any non-draft state (migration 226), so Search
+    /// never falls back to a demo twin for a real event it cannot see (cancelled/ended/removed).
+    @Published var takenEventKeys: Set<String> = []
     @Published var discoveryEventsLoading = false
     /// The last discovery load failed (offline, server error). The list is
     /// still emptied as before; this only lets a screen say so honestly.

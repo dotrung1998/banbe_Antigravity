@@ -9,6 +9,7 @@ import { searchBarStore, useSearchBar } from '../lib/searchBarStore.js';
 import { searchBarTop } from '../components/PersistentSearchBar.jsx';
 import { SAFE_TOP } from '../lib/viewport.js';
 import { useBanBe } from '../state/BanBeContext.jsx';
+import { supabase } from '../lib/supabase.js';
 import { EVENTS, bg, catalogStartMs } from '../data/events.js';
 import { paper, ink, ink2, rule, display, fieldGlass, RADIUS } from '../theme.js';
 import { inlineEmptyAction } from '../components/ui/InlineEmpty.jsx';
@@ -54,6 +55,21 @@ export default function Search({ overlay = false }) {
   const ud = flagOn(s.featureFlags, 'simple_shell') && flagOn(s.featureFlags, 'home_v23') && flagOn(s.featureFlags, 'unified_discovery');
   // As an overlay, "leaving" just closes it (Home is already there underneath).
   const leave = overlay ? () => set({ searchOverlayOpen: false }) : goHome;
+  // Audit 2026-11-19 row 7: every production key in any non-draft state, so a cancelled or removed real event can
+  // never hand its key back to the demo twin (discovery rows alone miss `removed`, which RLS hides). Migration 226.
+  const [remoteTakenKeys, setRemoteTakenKeys] = useState([]);
+  useEffect(() => {
+    let live = true;
+    supabase.rpc('get_taken_event_keys').then(({ data }) => {
+      if (!live || !Array.isArray(data)) return;
+      setRemoteTakenKeys(data.flatMap(r => [r.event_id, r.event_key, r.event_slug]).filter(Boolean));
+    }, () => {});
+    return () => { live = false; };
+  }, []);
+  const takenKeys = useMemo(() => new Set([
+    ...(s.discoveryEvents || []).map(e => e.key).filter(Boolean),
+    ...remoteTakenKeys,
+  ]), [s.discoveryEvents, remoteTakenKeys]);
   const [recent, setRecent] = useState(readRecent);
   const [catSheetOpen, setCatSheetOpen] = useState(false);
   const [fieldFocused, setFieldFocused] = useState(false);
@@ -149,14 +165,15 @@ export default function Search({ overlay = false }) {
         && !isEventOver({ startsAt: e.startsAt, tz: e.tz, endTime: e.endTime, endOpen: e.endOpen }, now))
       .map(e => ({ key: e.key, name: e.name, img: e.photoUrl, organizerId: e.organizerId, organizerName: e.organizerName, area: e.area, catKey: e.catKey,
         startsAt: e.startsAt, priceVnd: e.priceVnd, currency: e.currency, tz: e.tz, endTime: e.endTime, endOpen: e.endOpen, doc: buildEventSearchDoc(e) }));
-    const realKeys = new Set(real.map(e => e.key));
-    const demo = EVENTS.filter(e => !realKeys.has(e.key) && !e.inviteOnly).map(e => ({
+    // The shadow set comes from ALL real keys (any status), never from the live-filtered list above: a cancelled or
+    // removed event frees its key otherwise, and its demo twin returns (audit 2026-11-19 row 7).
+    const demo = EVENTS.filter(e => !takenKeys.has(e.key) && !e.inviteOnly).map(e => ({
       key: e.key, name: e.name, img: e.img, organizerId: null, organizerName: e.hostShort, area: e.locationLabel, catKey: e.cat,
       startsAt: catalogStartMs(e, s.homeLiveEvents?.[e.key]?.starts_at), price: e.price, tz: e.tz, endTime: e.endTime, endOpen: e.endOpen,
       doc: buildEventSearchDoc({ ...e, catLabel: e.cat, area: e.locationLabel, organizerName: e.hostShort, description: e.desc, details: s.homeLiveEvents?.[e.key]?.details }),
     }));
     return [...real, ...demo.filter(d => !isEventOver({ startsAt: d.startsAt, tz: d.tz, endTime: d.endTime, endOpen: d.endOpen }, now))];
-  }, [s.discoveryEvents, s.homeLiveEvents]);
+  }, [s.discoveryEvents, s.homeLiveEvents, takenKeys]);
 
   const query = q.trim();
   // Note 99: the event hits are narrowed to what Home's filters (type, time, price, seats) let through. Home is live

@@ -57,7 +57,9 @@ struct SearchView: View {
     private var docs: [Doc] {
         let now = Date()
         let real = app.discoveryEvents.filter(\.isOpen)
-        let realKeys = Set(real.map(\.key))
+        // Audit 2026-11-19 row 7: keys from EVERY real event, never from the open-only list, so a cancelled or removed
+        // event cannot free its key and bring back the demo twin (app.takenEventKeys adds the `removed` rows).
+        let realKeys = Set(app.discoveryEvents.map(\.key)).union(app.takenEventKeys)
         let demo = EventCatalog.all.filter { !realKeys.contains($0.key) && !$0.inviteOnly }.map(app.withLive).filter(\.isOpen)
         // Note 99 (owner): in unified mode the sheet promises "Same results as the map", so it lists only events the
         // Map can plot (a loaded Map row with lat/lng; `CatalogEvent.key` == `MapEventRow.id`). Until the Map rows are

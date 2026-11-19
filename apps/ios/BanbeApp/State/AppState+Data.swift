@@ -3844,6 +3844,24 @@ try await SupabaseService.client
             }
             discoveryAlertVersions = Dictionary(rows.map { ($0.id, ForYouAlert.version(reviewedAt: $0.reviewedAt, submittedAt: $0.submittedAt, status: $0.status, visibility: $0.visibility)) }, uniquingKeysWith: { a, _ in a })
             discoveryEvents = shaped
+            // Audit 2026-11-19 row 7 — the discovery query hides `removed` rows; this narrow RPC lists every taken key.
+            struct TakenKeyRow: Decodable {
+                let eventId: String?
+                let eventKey: String?
+                let eventSlug: String?
+                enum CodingKeys: String, CodingKey {
+                    case eventId = "event_id", eventKey = "event_key", eventSlug = "event_slug"
+                }
+            }
+            var taken = Set(rows.map(\.id))
+            if let keyRows: [TakenKeyRow] = try? await SupabaseService.client.rpc("get_taken_event_keys").execute().value {
+                for r in keyRows {
+                    for k in [r.eventId, r.eventKey, r.eventSlug] {
+                        if let k, !k.isEmpty { taken.insert(k) }
+                    }
+                }
+            }
+            takenEventKeys = taken
             discoveryEventsLoadFailed = false
             // Real seat fill for the cards (note 50, migration 186) — best-effort, see loadPublicEventFill.
             await loadPublicEventFill(ids: rows.filter { $0.status == "live" && $0.visibility == "public" }.map(\.id))
