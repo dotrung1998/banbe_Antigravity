@@ -1,7 +1,7 @@
 # APPLIED — audit 2026-11-19 (CC)
 
-Working tree: local `main`, nothing pushed, no PR, no deploy. Production DB: migrations 222, 224–227, 229 and
-230 applied 2026-11-19; 223 held for the web client deploy. One commit per finding (rows 37+38 share one
+Working tree: `main` pushed to `origin/main` on 2026-11-19 (Vercel auto-deployed); no PR, no merge. Production DB:
+migrations 222, 223, 224–227, 229, 230 and 231 applied 2026-11-19. One commit per finding (rows 37+38 share one
 copy commit, as they touch the same two strings). All migrations are new files; no applied migration was edited.
 
 `/docs/audits/` is generated output and stays ignored, with one narrow exception `.gitignore` now carries (owner,
@@ -13,7 +13,7 @@ the two fix commits themselves. The ledger is committed just after them, because
 | # | Status | Commit | Files | Check |
 |---|--------|--------|-------|-------|
 | 1 | applied | `014874b` | `supabase/migrations/20261231000222_222_bookings_insert_lock.sql`, `supabase/rollbacks/…222…`, `supabase/tests/222_bookings_insert_lock/` | local Postgres (`g-db`, `ON_ERROR_STOP=1`), 5/5; production 2026-11-19 |
-| 2 | applied | `166a58f` | migration `…223_223_organizers_private_columns.sql` + rollback + `supabase/tests/223_organizers_column_grants/`, `src/state/BanBeContext.jsx`, `src/screens/sheets/PaymentQrManager.jsx` | local Postgres 9/9; `npm run build` green; production 223 **held** until the web client deploy (the live bundle still selects organizers' bank columns) |
+| 2 | applied | `166a58f`, `2bcf62a6` | migration `…223_223_organizers_private_columns.sql` + rollback + `supabase/tests/223_organizers_column_grants/`, `supabase/migrations/20261231000231_231_organizer_payouts_read_only.sql` + rollback, `src/state/BanBeContext.jsx`, `src/screens/sheets/PaymentQrManager.jsx` | local Postgres 9/9; `npm run build` green; production 223 applied 2026-11-19 after the web client deploy (`index-z0hlFZy6.js` reads `organizer_payouts`). 231 closes the view's default INSERT/UPDATE/DELETE grants: authenticated SELECT true, INSERT/UPDATE/DELETE false; simulated UPDATE → `42501 permission denied for view`, SELECT 6 rows, service-role read 200 |
 | 3 | applied | `e97b1a8` | migration `…224_224_events_client_write_guard.sql` + rollback + `supabase/tests/224_events_client_write_guard/` | local Postgres 13/13; production 2026-11-19 |
 | 4 | applied | `7264ca0` | `api/send-email.js` (deleted), `src/lib/sendEmail.js` (deleted), `README.md` | `npm run build` green |
 | 5 | applied (owner action: rotate the password) | `68d960e` | `apps/ios/BanbeAppUITests/ScreenshotCatalogTests.swift`, `apps/ios/BanbeAppUITests/UITestAuthHelpers.swift`, 6 UI-test files | read env, no literal credential left. The password in git history must be rotated by the owner |
@@ -56,8 +56,7 @@ the two fix commits themselves. The ledger is committed just after them, because
 
 ## Needs owner
 
-- 223 is held: deploy the web client (`166a58f`) before applying it — the live bundle still selects the organizers
-  bank columns. Exact command in `docs/runbooks/2026-11-19-audit-production-rollout.md` §6.
+- 223 and 231 are live; smoke-test payment, payout, QR and admin tax code on www.banbe.app (runbook §5).
 - Optional: record migration 183 (idempotent, ACL-only) so production history matches reality; the ACLs are already
   closed (row 41).
 - 182/184 stay deliberately unpushed.

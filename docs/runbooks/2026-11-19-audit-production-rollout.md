@@ -1,26 +1,27 @@
-# Production rollout — audit 2026-11-19 (migrations 222–230)
+# Production rollout — audit 2026-11-19 (migrations 222–231)
 
 Project `ukchdgdnwytretvqjjqu` (BanBe), linked with Supabase CLI 2.121.0.
 Repo `/Users/thetrungdo/Downloads/banbe`, branch `main`.
-Executed 2026-11-19 20:21–20:25 UTC. Local commits only; nothing deployed.
+Executed 2026-11-19 20:21–20:36 UTC, then pushed to `origin/main`; Vercel built and served the new client.
 
 ## Status after this run
 
 | Migration | Audit row | Commit | Status |
 |---|---|---|---|
 | `20261231000222_222_bookings_insert_lock` | 1 | `014874b` | **applied to production** |
-| `20261231000223_223_organizers_private_columns` | 2 | `166a58f` | **held** — needs the web client deployed first (see §6) |
+| `20261231000223_223_organizers_private_columns` | 2 | `166a58f` | **applied after the web deploy** (see §6) |
 | `20261231000224_224_events_client_write_guard` | 3 | `e97b1a8` | **applied to production** |
 | `20261231000225_225_no_booking_after_event_ends` | 6 | `911b62b` | **applied to production** |
 | `20261231000226_226_taken_event_keys` | 7 | `e270b69` | **applied to production** |
 | `20261231000227_227_checkin_requires_payment` | 9 | `ae95390` | **applied to production** |
 | `20261231000229_229_event_photos_insert_scope` | 32 | `e9db089` | **applied to production** |
 | `20261231000230_230_verify_payment_expired_state` | 10 | `d27be3e8` | **applied to production** |
+| `20261231000231_231_organizer_payouts_read_only` | 2 follow-up | `2bcf62a6` | **applied to production** |
 | `20261222000183_183_server_only_payment_functions_and_unused_views` | 41 | — | **not recorded, effects already present** (see §7) |
 
-`supabase migration list --linked` after the push still shows **182, 183, 184 and 223** as
-local-only. 182/184 are the old migrations the retention notes deliberately did not push; 223
-is held for the client deploy. Do not run `db push --include-all` without reading §6.
+`supabase migration list --linked` after the push shows **182, 183 and 184** as local-only;
+182/184 are the old migrations the retention notes deliberately did not push, and 183 is the
+unrecorded ACL patch from §7. 223 and 231 are applied.
 
 ## 1. Preconditions
 
@@ -171,18 +172,22 @@ Run as a signed-in guest on production, in this order:
 
 Expected: 1–5 unchanged; 6–8 are the new refusals. Any 403 on 3–5 means 223 was applied early.
 
-## 6. Held: 223 — deploy the web client first
+## 6. 223 — applied after the web deploy
 
 Evidence collected 2026-11-19: the live bundle
-`https://www.banbe.app/assets/index-CS6nEv4E.js` contains `bank_account_no` 3 times and
-`organizer_payouts` **0** times. The pre-audit client still selects `bank_name`,
+`https://www.banbe.app/assets/index-CS6nEv4E.js` contained `bank_account_no` 3 times and
+`organizer_payouts` **0** times. The pre-audit client still selected `bank_name`,
 `bank_account_no`, `pay_qr_path`, `pay_note`, `billing_address`, `tax_code` and `momo_phone`
 directly from `organizers` (`src/state/BanBeContext.jsx`, `PaymentDetails.jsx`,
-`PaymentQrManager.jsx` at `e7e3a22b`). Migration 223 revokes those columns from
-`authenticated`; applying it before the client ships would break payment, payout, QR and admin
-tax-code screens.
+`PaymentQrManager.jsx` at `e7e3a22b`). Applying 223 before the client shipped would have broken
+payment, payout, QR and admin tax-code screens, so it was held until the push deployed the new
+client.
 
-Order:
+Pushing `main` triggered Vercel's Git build. By 20:32 UTC the served bundle was
+`/assets/index-z0hlFZy6.js`, which contains `organizer_payouts` 3 times. 223 was applied at
+20:33 UTC with the command below, so the live client and the database match.
+
+Order (reproduce on a fresh environment):
 
 1. Deploy the web build that contains commit `166a58f` (it reads `organizer_payouts`).
 2. Smoke-test payment, payout, QR and admin review on the deployed build.
@@ -211,11 +216,27 @@ applied 224–230.)
 supabase db query --linked "select to_regclass('public.organizer_payouts') is not null as view_exists, has_column_privilege('authenticated','public.organizers','bank_account_no','SELECT') as bank_column_readable;"
 ```
 
-Expected after 223: `view_exists = true`, `bank_column_readable = false`. Then repeat smoke
-tests 3–5; they must still pass through the view.
+Observed after 223: `view_exists = true`, `bank_column_readable = false`. A simulated
+`authenticated` session saw 6 payout rows where it was host or booker.
+
+### 6.1 Follow-up 231 — the view is read-only
+
+223 created the view but Supabase's default privileges left ALL on it for `authenticated`
+(`relacl arwdDxtm`). PostgreSQL reports `pg_relation_is_updatable = 28` (INSERT/UPDATE/DELETE),
+so a guest with a booking could update a host's bank/tax columns through the view with the view
+owner's rights. 231 revokes everything and grants SELECT back (`2bcf62a6`, applied 20:35 UTC).
+
+```bash
+supabase db query --linked "select has_table_privilege('authenticated','public.organizer_payouts','SELECT') sel, has_table_privilege('authenticated','public.organizer_payouts','UPDATE') upd;"
+```
+
+Observed: `sel = true`, `upd = false`; a simulated authenticated UPDATE fails with
+`42501: permission denied for view organizer_payouts`, SELECT still returns the same rows, and
+service-role reads return 200.
 
 Rollback 223 with its rollback file (§4), delete its history row, and redeploy the previous web
-build if the view path fails.
+build if the view path fails. 231's rollback restores the pre-231 ALL grant (it reopens the
+auto-updatable view; diagnose only).
 
 ## 7. Row 41 — production ACL check (answered)
 
@@ -290,5 +311,9 @@ old value; the repo's HEAD no longer contains a literal (`68d960e`).
   anon/authenticated; 227 lookups paid-only; 229 policy host-scoped; 230 expired guard present.
 - 20:23 UTC — pending list: 182, 183, 184, 223.
 - 20:24 UTC — live bundle check: `bank_account_no` 3, `organizer_payouts` 0 → 223 held.
+- 20:30 UTC — `git push origin main` (43 commits, fast-forward `a5f2a6ea..9e2b8685`).
+- 20:32 UTC — served bundle switched to `index-z0hlFZy6.js`; `organizer_payouts` 3 → 223 applied.
+- 20:35 UTC — live 223 audit: ACLs all on the view, bitmask 28, simulated UPDATE succeeded → 231 written and applied.
+- 20:36 UTC — 231 verified: SELECT true, INSERT/UPDATE/DELETE false, UPDATE denied (42501), SELECT 6 rows, service role 200.
 - 20:24 UTC — row 41 ACL query: all false → no live P0.
 - 20:25 UTC — row 5 admin PUT 200, password sign-in 200, `apps/ios/.env.uitest` written 0600.
