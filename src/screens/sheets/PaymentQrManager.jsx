@@ -101,7 +101,7 @@ export function GuestPaymentQr({ orgId, path }) {
   useEffect(() => {
     let alive = true;
     if (!orgId || !path) return undefined;
-    supabase.from('organizers').select('pay_qr_payload').eq('id', orgId).maybeSingle()
+    supabase.from('organizer_payouts').select('pay_qr_payload').eq('id', orgId).maybeSingle()
       .then(({ data }) => { if (alive) setStored(data?.pay_qr_payload || ''); }, () => {});
     return () => { alive = false; };
   }, [orgId, path]);
@@ -134,7 +134,7 @@ export function HostPaymentQr() {
   useEffect(() => {
     let alive = true;
     if (!orgId) return undefined;
-    supabase.from('organizers').select('pay_qr_path, pay_qr_payload').eq('id', orgId).maybeSingle()
+    supabase.from('organizer_payouts').select('pay_qr_path, pay_qr_payload').eq('id', orgId).maybeSingle()
       .then(({ data }) => {
         if (alive && data) setQr({ path: data.pay_qr_path || '', payload: data.pay_qr_payload || '' });
       }, () => {});

@@ -26,8 +26,7 @@ extension AppState {
                     id, qty, total_vnd, code, status, paid_marked_at, proof_uploaded_at, created_at, event_id,
                     payment_state, payment_ref, hold_expires_at, transaction_id, verify_due_at, dispute_reason, cancel_reason, nudge_count,
                     purchaser_id, recipient_name, recipient_email, recipient_dob, gifted_at, claim_code, claimed_at, claimed_by_user_id, admission_token,
-                    events(name, organizers(name, pay_methods, bank_name, bank_account_name,
-                                            bank_account_no, momo_phone, pay_note))
+                    events(name, organizer_id, organizers(name, pay_methods))
                     """)
                 .or("user_id.eq.\(uid.uuidString),purchaser_id.eq.\(uid.uuidString)")
                 .order("created_at", ascending: false)
@@ -35,7 +34,22 @@ extension AppState {
             // Only the newest in-flight call may write state — see
             // paymentBookingsSeq's own doc comment (AppState.swift).
             guard seq == paymentBookingsSeq else { return }
-            paymentBookings = rows.map(\.asPayable)
+            // Audit 2026-11-19 row 2: bank/pay-note columns are no longer readable on `organizers`; they live in the
+            // booker-scoped `organizer_payouts` view (host, platform admin, or a guest with a booking for that host).
+            let orgIDs = Array(Set(rows.compactMap { $0.events?.organizerId }))
+            var payoutByOrg: [String: OrganizerPayoutRow] = [:]
+            if !orgIDs.isEmpty {
+                do {
+                    let payouts: [OrganizerPayoutRow] = try await SupabaseService.client
+                        .from("organizer_payouts")
+                        .select("id, bank_name, bank_account_name, bank_account_no, momo_phone, pay_note")
+                        .in("id", values: orgIDs).execute().value
+                    payoutByOrg = Dictionary(uniqueKeysWithValues: payouts.map { ($0.id, $0) })
+                } catch {
+                    print("loadPaymentBookings payout lookup failed:", error)
+                }
+            }
+            paymentBookings = rows.map { $0.asPayable(payout: $0.events?.organizerId.flatMap { payoutByOrg[$0] }) }
             paymentBookingsLoadFailed = false
             syncLiveActivities() // tickets loaded: L7 event-day card check (switch live_activity)
             // The reserve flow's own countdown (Home's held-event banner) must
@@ -251,7 +265,7 @@ extension AppState {
             guard let orgID = myOrganizerIDs.first else { return }
             do {
                 let row: PayoutRow? = try await SupabaseService.client
-                    .from("organizers")
+                    .from("organizer_payouts")
                     .select("bank_name, bank_account_name, bank_account_no, momo_phone, pay_note, billing_address, tax_code")
                     .eq("id", value: orgID)
                     .single().execute().value
@@ -629,6 +643,25 @@ private struct PayoutRow: Decodable {
     }
 }
 
+/// One row of `organizer_payouts` (audit 2026-11-19 row 2).
+private struct OrganizerPayoutRow: Decodable {
+    let id: String
+    let bankName: String?
+    let bankAccountName: String?
+    let bankAccountNo: String?
+    let momoPhone: String?
+    let payNote: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case bankName = "bank_name"
+        case bankAccountName = "bank_account_name"
+        case bankAccountNo = "bank_account_no"
+        case momoPhone = "momo_phone"
+        case payNote = "pay_note"
+    }
+}
+
 private struct PayableBookingRow: Decodable {
     let id: UUID
     let qty: Int
@@ -659,25 +692,21 @@ private struct PayableBookingRow: Decodable {
 
     struct EventRow: Decodable {
         let name: String?
+        let organizerId: String?
         let organizers: OrganizerRow?
+
+        enum CodingKeys: String, CodingKey {
+            case name, organizers
+            case organizerId = "organizer_id"
+        }
     }
     struct OrganizerRow: Decodable {
         let name: String?
         let payMethods: [String]?
-        let bankName: String?
-        let bankAccountName: String?
-        let bankAccountNo: String?
-        let momoPhone: String?
-        let payNote: String?
 
         enum CodingKeys: String, CodingKey {
             case name
             case payMethods = "pay_methods"
-            case bankName = "bank_name"
-            case bankAccountName = "bank_account_name"
-            case bankAccountNo = "bank_account_no"
-            case momoPhone = "momo_phone"
-            case payNote = "pay_note"
         }
     }
 
@@ -706,7 +735,7 @@ private struct PayableBookingRow: Decodable {
         case admissionToken = "admission_token"
     }
 
-    var asPayable: PayableBooking {
+    func asPayable(payout: OrganizerPayoutRow?) -> PayableBooking {
         let org = events?.organizers
         return PayableBooking(
             id: id, eventKey: eventId, qty: qty, totalVnd: totalVnd, code: code ?? "", status: status,
@@ -719,11 +748,11 @@ private struct PayableBookingRow: Decodable {
             eventName: events?.name ?? "",
             organizerName: org?.name ?? "",
             payMethods: org?.payMethods ?? [],
-            bankName: org?.bankName ?? "",
-            bankAccountName: org?.bankAccountName ?? "",
-            bankAccountNo: org?.bankAccountNo ?? "",
-            momoPhone: org?.momoPhone ?? "",
-            payNote: org?.payNote ?? "",
+            bankName: payout?.bankName ?? "",
+            bankAccountName: payout?.bankAccountName ?? "",
+            bankAccountNo: payout?.bankAccountNo ?? "",
+            momoPhone: payout?.momoPhone ?? "",
+            payNote: payout?.payNote ?? "",
             disputeReason: disputeReason,
             cancelReason: cancelReason,
             nudgeCount: nudgeCount ?? 0,

@@ -35,8 +35,9 @@ extension AppState {
         }
     }
 
-    private struct EventOrganizerQR: Decodable {
-        let organizers: PayQRColumns?
+    private struct EventOrganizerRef: Decodable {
+        let organizerId: String?
+        enum CodingKeys: String, CodingKey { case organizerId = "organizer_id" }
     }
 
     private struct DestinationQRRow: Decodable {
@@ -60,7 +61,7 @@ extension AppState {
         guard let orgID = myOrganizerIDs.first else { return }
         do {
             let row: PayQRColumns = try await SupabaseService.client
-                .from("organizers")
+                .from("organizer_payouts")
                 .select("pay_qr_path, pay_qr_payload")
                 .eq("id", value: orgID)
                 .single().execute().value
@@ -122,12 +123,23 @@ extension AppState {
 
     func loadPayQR(forEventKey eventKey: String) async {
         do {
-            let row: EventOrganizerQR = try await SupabaseService.client
+            // Audit 2026-11-19 row 2: pay-QR columns are no longer readable through the events embed; read the
+            // event's organizer id, then its organizer_payouts row (visible to a guest holding a booking).
+            let ref: EventOrganizerRef = try await SupabaseService.client
                 .from("events")
-                .select("organizers(pay_qr_path, pay_qr_payload)")
+                .select("organizer_id")
                 .eq("id", value: eventKey)
                 .single().execute().value
-            let qr = PayQR(path: row.organizers?.payQrPath ?? "", payload: row.organizers?.payQrPayload ?? "")
+            guard let orgID = ref.organizerId else {
+                payQRByEvent[eventKey] = PayQR(path: "", payload: "")
+                return
+            }
+            let row: PayQRColumns = try await SupabaseService.client
+                .from("organizer_payouts")
+                .select("pay_qr_path, pay_qr_payload")
+                .eq("id", value: orgID)
+                .single().execute().value
+            let qr = PayQR(path: row.payQrPath ?? "", payload: row.payQrPayload ?? "")
             payQRByEvent[eventKey] = qr
         } catch {
             print("loadPayQR failed:", error)

@@ -3501,15 +3501,31 @@ export function BanBeProvider({ children }) {
                recipient_name, admission_token, claim_code,
                payment_state, payment_ref, hold_expires_at, transaction_id, verify_due_at, dispute_reason, cancel_reason, nudge_count,
                events(id, key, name, event_date, event_time, area, organizer_id,
-                      organizers(id, name, pay_methods, bank_name, bank_account_name,
-                                 bank_account_no, momo_phone, pay_note, pay_qr_path))`)
+                      organizers(id, name, pay_methods))`)
       .eq('user_id', uid)
       .order('created_at', { ascending: false });
     if (error) {
       console.warn('loadPaymentBookings failed:', error);
       return set({ paymentsLoading: false, paymentBookings: [], paymentBookingsLoadFailed: true });
     }
-    set({ paymentsLoading: false, paymentBookings: data || [], paymentBookingsLoadFailed: false });
+    // Audit 2026-11-19 row 2: the bank/pay-note columns moved to organizer_payouts (readable by the host, a platform
+    // admin, or a guest holding a booking for that host). Merge the row in so the payment screen keeps one shape.
+    const rows = data || [];
+    const orgIds = [...new Set(rows.map(r => r.events?.organizer_id).filter(Boolean))];
+    let payoutByOrg = {};
+    if (orgIds.length) {
+      const { data: payouts } = await supabase
+        .from('organizer_payouts')
+        .select('id, bank_name, bank_account_name, bank_account_no, momo_phone, pay_note, pay_qr_path, pay_qr_payload')
+        .in('id', orgIds);
+      payoutByOrg = Object.fromEntries((payouts || []).map(p => [p.id, p]));
+    }
+    const merged = rows.map(r => {
+      const org = r.events?.organizers;
+      if (!org) return r;
+      return { ...r, events: { ...r.events, organizers: { ...org, ...(payoutByOrg[r.events.organizer_id] || {}) } } };
+    });
+    set({ paymentsLoading: false, paymentBookings: merged, paymentBookingsLoadFailed: false });
   }, [set, s.user?.id]);
 
   const openPaymentDetails = useCallback((bookingId, back = 'profile') => {
@@ -4751,7 +4767,7 @@ export function BanBeProvider({ children }) {
     // payout/banking field — those stay out of every review/public query.
     const { data, error } = await withR2Columns(withR2 => supabase
       .from('events')
-      .select(`${realEventColumns(withR2)}, organizers(name, organizer_type, verified, tax_code)`)
+      .select(`${realEventColumns(withR2)}, organizers(name, organizer_type, verified)`)
       .eq('status', 'review')
       .order('submitted_at', { ascending: true }));
     if (error) {
@@ -4761,12 +4777,20 @@ export function BanBeProvider({ children }) {
     }
     const rows = data || [];
     const photoUrlByEvent = await firstPhotoUrlByEvent(rows.map(r => r.id));
+    // Audit 2026-11-19 row 2: tax_code is no longer a public organizers column; admins read it from the
+    // booker-scoped view (a platform admin sees every row there).
+    const orgIds = [...new Set(rows.map(r => r.organizer_id).filter(Boolean))];
+    let taxByOrg = {};
+    if (orgIds.length) {
+      const { data: payouts } = await supabase.from('organizer_payouts').select('id, tax_code').in('id', orgIds);
+      taxByOrg = Object.fromEntries((payouts || []).map(p => [p.id, p.tax_code || '']));
+    }
     const shaped = rows.map(r => shapeRealEvent(r, {
       photoUrl: photoUrlByEvent[r.id],
       organizerName: r.organizers?.name,
       organizerType: r.organizers?.organizer_type,
       organizerVerified: r.organizers?.verified,
-      organizerHasTaxCode: !!(r.organizers?.tax_code || '').trim(),
+      organizerHasTaxCode: !!(taxByOrg[r.organizer_id] || '').trim(),
     }));
     set({ adminEvents: shaped, adminEventsLoading: false });
   }, [set]);
@@ -4985,7 +5009,7 @@ export function BanBeProvider({ children }) {
     const orgId = s.myOrganizerIds[0];
     if (!orgId) return;
     const { data } = await supabase
-      .from('organizers')
+      .from('organizer_payouts')
       .select('bank_name, bank_account_name, bank_account_no, momo_phone, pay_note, billing_address, tax_code')
       .eq('id', orgId).maybeSingle();
     if (!data) return;

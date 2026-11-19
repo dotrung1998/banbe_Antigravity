@@ -3663,14 +3663,25 @@ extension AppState {
         let id: String
         let organizerType: String?
         let verified: Bool?
-        let taxCode: String?
+        var taxCode: String?
         enum CodingKeys: String, CodingKey { case id, organizerType = "organizer_type", verified, taxCode = "tax_code" }
+    }
+    private struct OrganizerTaxRow: Decodable {
+        let id: String
+        let taxCode: String?
+        enum CodingKeys: String, CodingKey { case id, taxCode = "tax_code" }
     }
     private func organizerIdentities(for organizerIDs: [String]) async -> [String: OrganizerIdentityRow] {
         guard !organizerIDs.isEmpty else { return [:] }
         do {
-            let orgs: [OrganizerIdentityRow] = try await SupabaseService.client
-                .from("organizers").select("id, organizer_type, verified, tax_code").in("id", values: organizerIDs).execute().value
+            var orgs: [OrganizerIdentityRow] = try await SupabaseService.client
+                .from("organizers").select("id, organizer_type, verified").in("id", values: organizerIDs).execute().value
+            // Audit 2026-11-19 row 2: tax_code is not a public organizers column any more; a platform admin reads
+            // it from organizer_payouts, which returns every row for an admin.
+            let taxes: [OrganizerTaxRow] = (try? await SupabaseService.client
+                .from("organizer_payouts").select("id, tax_code").in("id", values: organizerIDs).execute().value) ?? []
+            let taxByID = Dictionary(uniqueKeysWithValues: taxes.map { ($0.id, $0.taxCode) })
+            for i in orgs.indices { orgs[i].taxCode = taxByID[orgs[i].id] ?? nil }
             return Dictionary(uniqueKeysWithValues: orgs.map { ($0.id, $0) })
         } catch {
             print("organizerIdentities failed:", error)
