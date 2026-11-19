@@ -557,6 +557,9 @@ struct BottomTabBar: View {
         }
         .frame(minWidth: 44, maxWidth: .infinity, minHeight: SimpleDock.height)
         .contentShape(Rectangle())
+        // The slot is tapped like a button; say so, or it stays a plain group for VoiceOver and XCUITest.
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("tab.\(item.id)")
         .tourTarget("tour.dock.\(item.id)")
         .accessibilityLabel(item.label)

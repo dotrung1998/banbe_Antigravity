@@ -35,6 +35,7 @@ struct SecurityView: View {
                 // opened from (AccountGroupView). `goBack()` already routes
                 // `.security` to `.accountGroup` correctly.
                 BackLink(label: app.backLabel(for: app.backTargetScreen)) { app.goBack() }
+                    .accessibilityIdentifier("security.back")
 
                 Text(app.T("Bảo mật", "Security"))
                     .font(BanbeTheme.display(27))
