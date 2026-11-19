@@ -517,7 +517,8 @@ export default function Search({ overlay = false }) {
               <button type="button" data-testid="search-empty-clear"
                 onClick={() => { setQ(''); set({ searchQuery: '' }); setHomeFilters({ ...DEFAULT_FILTERS }); set({ homeSort: 'soonest' }); }}
                 style={{ minHeight: 40, padding: '0 16px', borderRadius: 999, border: 'none', background: ink, color: paper, fontFamily: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-                {T('Xoá bộ lọc', 'Clear filters')}
+                {/* Audit 2026-11-19 row 22: name what the button clears — with no filter on it is the query. */}
+                {udOwned === 0 && query ? T('Xoá tìm kiếm', 'Clear search') : T('Xoá bộ lọc', 'Clear filters')}
               </button>
             </div>
           )}
