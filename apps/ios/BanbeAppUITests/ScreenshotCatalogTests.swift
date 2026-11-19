@@ -12,8 +12,9 @@ import XCTest
 /// comments for the xcresulttool export mechanics.
 ///
 /// Signed-in flows reuse the SAME shared, dedicated test account
-/// (`doqanh0906+banbe-fast-suite-shared@gmail.com`) `EventDetailOpenInMapUITests`/
-/// `MapExploreSelectionUITests` already sign into over the real network —
+/// (`UITestAccount`, read from the environment — no credential lives in the repo)
+/// `EventDetailOpenInMapUITests`/`MapExploreSelectionUITests` already sign into
+/// over the real network —
 /// the only signed-in fixture this codebase has (09-auth-onboarding.md: "no
 /// guest browsing of any screen" means every screen but splash/langPick/
 /// themePick/login/policy requires a real session). This is a deliberate
@@ -27,8 +28,8 @@ import XCTest
 /// the flows this pass could not reach at all, and why.
 final class ScreenshotCatalogTests: XCTestCase {
 
-    private let testEmail = "doqanh0906+banbe-fast-suite-shared@gmail.com"
-    private let testPassword = "BanbeE2e!Test1234"
+    private var testEmail: String { UITestAccount.email }
+    private var testPassword: String { UITestAccount.password }
 
     override func setUp() {
         continueAfterFailure = false
@@ -59,6 +60,7 @@ final class ScreenshotCatalogTests: XCTestCase {
     private func launchSignedIn(role: String = "goer", scenario: String = "default") -> XCUIApplication {
         let app = launch(role: role, scenario: scenario)
         if app.reachLogin(timeout: 45) {
+            UITestAccount.assertConfigured()
             app.buttons["login.method.password"].tap()
             let email = app.textFields["login.email"]
             XCTAssertTrue(email.waitForExistence(timeout: 5))
@@ -200,6 +202,7 @@ final class ScreenshotCatalogTests: XCTestCase {
 
         if app.reachLogin(timeout: 18) {
             capture("01-onboarding-auth", 4, "login", "Login", "Mandatory sign-in gate — no guest browsing exists in this app.", role: "goer", app: app)
+            UITestAccount.assertConfigured()
             app.buttons["login.method.password"].tap()
             let email = app.textFields["login.email"]
             XCTAssertTrue(email.waitForExistence(timeout: 5))

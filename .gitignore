@@ -143,3 +143,8 @@ dist-ssr
 # Archives are not publishable (the web app deploy rejects .zip) and are
 # rebuildable from the files they bundle.
 *.zip
+
+# Local signed-in UI-test account for apps/ios/BanbeAppUITests (audit 2026-11-19 row 5).
+# Format: BANBE_UI_TEST_EMAIL=... / BANBE_UI_TEST_PASSWORD=... (one per line), then
+# `set -a; source apps/ios/.env.uitest; set +a` before xcodebuild. Never commit it.
+/apps/ios/.env.uitest

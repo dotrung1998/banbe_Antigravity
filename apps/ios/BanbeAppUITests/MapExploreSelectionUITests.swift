@@ -29,15 +29,16 @@ final class MapExploreSelectionUITests: XCTestCase {
         app.launch()
 
         if app.reachLogin(timeout: 45) {
+            UITestAccount.assertConfigured()
             app.buttons["login.method.password"].tap()
             let email = app.textFields["login.email"]
             XCTAssertTrue(email.waitForExistence(timeout: 5))
             email.tap()
-            email.typeText("doqanh0906+banbe-fast-suite-shared@gmail.com")
+            email.typeText(UITestAccount.email)
             let password = app.secureTextFields["login.password"]
             XCTAssertTrue(password.waitForExistence(timeout: 5))
             password.tap()
-            password.typeText("BanbeE2e!Test1234")
+            password.typeText(UITestAccount.password)
             app.buttons["login.submit"].tap()
         }
 
