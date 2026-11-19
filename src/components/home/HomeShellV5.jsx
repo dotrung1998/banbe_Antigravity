@@ -107,6 +107,9 @@ export default function HomeShellV5({
   };
 
   const tabs = [...TABS, ...(canHost ? [['hosting', 'Tổ chức', 'Hosting']] : [])];
+  // Audit 2026-11-19 row 36: a guest has no preferences, so "For You" is showing the whole catalogue — call it All
+  // rather than promise personalisation that is not there.
+  const tabLabel = (k, vi, en) => (k === 'foryou' && !user ? T('Tất cả', 'All') : T(vi, en));
   const currentTabLabel = (() => { const t = tabs.find(x => x[0] === tab); return t ? T(t[1], t[2]) : ''; })();
   const areaText = areaActive ? areaLabel : T('Mọi nơi', 'Everywhere');
 
@@ -202,7 +205,7 @@ export default function HomeShellV5({
               )}>
               {TABS.map(([k, vi, en]) => (
                 <GlassMenuItem key={k} testId={`home-view-${k}`} checked={!hosting && tab === k}
-                  onClick={() => { onTab(k); onReturnToEvents?.(); }}>{T(vi, en)}</GlassMenuItem>
+                  onClick={() => { onTab(k); onReturnToEvents?.(); }}>{tabLabel(k, vi, en)}</GlassMenuItem>
               ))}
               {canHost && (
                 <>
@@ -245,7 +248,7 @@ export default function HomeShellV5({
           {tabs.map(([k, vi, en]) => (
             <button key={k} type="button" role="tab" aria-selected={tab === k} data-testid={`home-hero-tab-${k}`}
               onClick={() => { onTab(k); onReturnToEvents?.(); }}
-              tabIndex={compact ? -1 : 0} className="bb-home-head__tab">{T(vi, en)}</button>
+              tabIndex={compact ? -1 : 0} className="bb-home-head__tab">{tabLabel(k, vi, en)}</button>
           ))}
         </div>
       </div>
