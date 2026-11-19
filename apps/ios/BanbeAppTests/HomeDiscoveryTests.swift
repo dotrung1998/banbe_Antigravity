@@ -58,6 +58,9 @@ final class HomeDiscoveryTests: XCTestCase {
         XCTAssertEqual(D.fillBadge(booked: 17, capacity: 20), D.FillBadge(left: 3, almostFull: true, soldOut: false, going: 17))
         XCTAssertEqual(D.fillBadge(booked: 40, capacity: 50), D.FillBadge(left: 10, almostFull: true, soldOut: false, going: 40))
         XCTAssertEqual(D.fillBadge(booked: 4, capacity: 20), D.FillBadge(left: 16, almostFull: false, soldOut: false, going: nil))
+        // Audit 2026-11-19 row 8: no bookings is not social proof, however few seats the event has.
+        XCTAssertEqual(D.fillBadge(booked: 0, capacity: 3), D.FillBadge(left: 3, almostFull: false, soldOut: false, going: nil))
+        XCTAssertEqual(D.fillBadge(booked: 1, capacity: 3), D.FillBadge(left: 2, almostFull: true, soldOut: false, going: nil))
         XCTAssertEqual(D.fillBadge(booked: 20, capacity: 20), D.FillBadge(left: 0, almostFull: false, soldOut: true, going: 20))
         XCTAssertEqual(D.fillBadge(booked: 25, capacity: 20), D.FillBadge(left: 0, almostFull: false, soldOut: true, going: 25))
     }

@@ -129,7 +129,9 @@ export function fillBadge(booked, capacity) {
   const left = Math.max(capacity - booked, 0);
   out.left = left;
   out.soldOut = left === 0;
-  out.almostFull = left > 0 && (left <= ALMOST_FULL_SEATS || left / capacity <= ALMOST_FULL_SHARE);
+  // Audit 2026-11-19 row 8: "almost full" is social proof, so it needs at least one booking. A capacity-3 event at
+  // 0 booked has left = 3 and used to claim it.
+  out.almostFull = booked > 0 && left > 0 && (left <= ALMOST_FULL_SEATS || left / capacity <= ALMOST_FULL_SHARE);
   out.going = booked >= SOCIAL_PROOF_MIN ? booked : null;
   return out;
 }

@@ -147,7 +147,9 @@ enum HomeDiscovery {
         let left = max(capacity - booked, 0)
         return FillBadge(
             left: left,
-            almostFull: left > 0 && (left <= almostFullSeats || Double(left) / Double(capacity) <= almostFullShare),
+            // Audit 2026-11-19 row 8: "almost full" is social proof, so it needs at least one booking (a capacity-3
+            // event at 0 booked used to claim it with left = 3).
+            almostFull: booked > 0 && left > 0 && (left <= almostFullSeats || Double(left) / Double(capacity) <= almostFullShare),
             soldOut: left == 0,
             going: booked >= socialProofMin ? booked : nil
         )

@@ -46,6 +46,9 @@ test('fill badge: unknown counts give nothing; almost full by seats or share; so
   assert.deepEqual(fillBadge(17, 20), { left: 3, almostFull: true, soldOut: false, going: 17 });
   assert.deepEqual(fillBadge(40, 50), { left: 10, almostFull: true, soldOut: false, going: 40 });
   assert.deepEqual(fillBadge(4, 20), { left: 16, almostFull: false, soldOut: false, going: null });
+  // Audit 2026-11-19 row 8: no bookings is not social proof, however few seats the event has.
+  assert.deepEqual(fillBadge(0, 3), { left: 3, almostFull: false, soldOut: false, going: null });
+  assert.deepEqual(fillBadge(1, 3), { left: 2, almostFull: true, soldOut: false, going: null });
   assert.deepEqual(fillBadge(20, 20), { left: 0, almostFull: false, soldOut: true, going: 20 });
   assert.deepEqual(fillBadge(25, 20), { left: 0, almostFull: false, soldOut: true, going: 25 });
 });
