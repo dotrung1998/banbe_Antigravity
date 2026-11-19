@@ -1379,6 +1379,7 @@ export default function Home({ browse = false }) {
           areaLabel={areaName} areaActive={curArea.key !== 'all'}
           filtersActive={filterBadge > 0 || curArea.key !== 'all'} hasPrefs={!!s.eventPrefs && !prefsIsEmpty(s.eventPrefs)}
           onClearFilters={() => { clearFilters(); set({ homeSort: 'soonest' }); }}
+          guestNotice={goerHero === 'guest' ? <GuestBrowseBanner /> : null}
           onOpenEvent={goEvent} onToggleSave={toggleFav} onSeeAll={heroSeeAll} onAccount={() => setQuickOpen(true)}
           onSearch={openSearch} onArea={openAreaMenu} onMap={openMapWithContext} onFilters={() => set({ homeFilterSheetOpen: true })} filterSummary={shellFilterSummary}
           onFindType={() => setCategorySheetOpen(true)} onPickType={shellPickType}
@@ -1418,7 +1419,6 @@ export default function Home({ browse = false }) {
             )}
             {goerHero === 'action' && <ActionCenter items={actionItems} onSeeAll={goNotifications} T={T} />}
             {goerHero === 'checklist' && <ActivationChecklistCard />}
-            {goerHero === 'guest' && <GuestBrowseBanner />}
             {goerHero === 'none' && savedUpcomingEl}
             {/* Prototype v2 order: the live line and the shared-state bar sit between the hero and Browse by type. */}
             <LiveLine updates={live} index={Math.min(liveIndex, Math.max(0, live.length - 1))} onIndex={setLiveIndex} onOpen={() => setLiveOpen(true)} T={T} />

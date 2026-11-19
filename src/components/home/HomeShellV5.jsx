@@ -44,6 +44,9 @@ export default function HomeShellV5({
   onOpenEvent, onSeeAll, onAccount, onSearch, onArea, onMap, onFilters, filterSummary, onFindType, onPickType, onSetPrefs, onBrowseAll,
   onToggleSave = null,
   typeCounts, badgeDate, trStatus, children, hostBody, below, shortlist = null, seeAll = null, onBrowseType = null, browseTotal = null,
+  // Audit 2026-11-19 row 29 (visual pass follow-up): the guest sign-in banner sits under the band, above the photo hero,
+  // so the floating dock can never sit on it (at 320×700 it used to cover 36 px of it at rest).
+  guestNotice = null,
   // Note 99 (switch unified_discovery): Browse by type that filters Home in place replaces the grid below, and the
   // search circle carries a dot while the shared query is on.
   unifiedBrowse = null, searchActive = false, unifiedChrome = false,
@@ -252,6 +255,7 @@ export default function HomeShellV5({
           ))}
         </div>
       </div>
+      {guestNotice}
       <section data-testid="home-photo-hero" data-tab={tab} aria-label={T('Gợi ý nổi bật', 'Featured events')}
         style={{ position: 'relative', overflow: 'hidden', contain: 'paint', background: NIGHT, color: '#fff' }}>
         <div aria-hidden style={{ position: 'absolute', inset: -30, transform: 'scale(1.1) translateZ(0)', willChange: 'transform', backfaceVisibility: 'hidden',

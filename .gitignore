@@ -136,8 +136,21 @@ dist-ssr
 # Daily product-audit reports (scripts/launchd/install.sh runs docs/audit-brief.md
 # once a day; the mission's only writes are docs/audits/<date>/*). Generated
 # output, so a run never leaves the working tree dirty — the brief itself stays
-# tracked.
-/docs/audits/
+# tracked. Exception (owner, 2026-11-19): the applied-findings ledger and the
+# before/after screenshots for rows 25 and 29 are delivery evidence and are
+# tracked; everything else in the folder stays generated.
+/docs/audits/*
+!/docs/audits/2026-11-19-cc/
+/docs/audits/2026-11-19-cc/*
+!/docs/audits/2026-11-19-cc/APPLIED.md
+!/docs/audits/2026-11-19-cc/shots/
+/docs/audits/2026-11-19-cc/shots/*
+!/docs/audits/2026-11-19-cc/shots/home-320-light-before.png
+!/docs/audits/2026-11-19-cc/shots/home-320-dark-before.png
+!/docs/audits/2026-11-19-cc/shots/home-320-light-after.png
+!/docs/audits/2026-11-19-cc/shots/home-320-dark-after.png
+!/docs/audits/2026-11-19-cc/shots/home-390-light-after.png
+!/docs/audits/2026-11-19-cc/shots/home-390-dark-after.png
 
 
 # Archives are not publishable (the web app deploy rejects .zip) and are
