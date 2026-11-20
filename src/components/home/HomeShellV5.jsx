@@ -44,7 +44,7 @@ const GEAR = <><circle cx="12" cy="12" r="3.2" /><path d="M19.4 15a1.7 1.7 0 0 0
  */
 export default function HomeShellV5({
   T, lang, tab, onTab, onReturnToEvents, lists, items, canHost, user, dateLabel, areaLabel, areaActive = false, filtersActive = false, hasPrefs = true, onClearFilters,
-  onOpenEvent, onSeeAll, onAccount, onSearch, onArea, onMap, onFilters, filterSummary, onFindType, onPickType, onSetPrefs, onBrowseAll,
+  onOpenEvent, onSeeAll, onAccount, onSearch, onArea, onMap, onFilters, filterSummary, onFindType, onPickType, onSetPrefs, onEditPrefs = null, onBrowseAll,
   onToggleSave = null, onSuggestBrowse = null,
   typeCounts, badgeDate, trStatus, children, hostBody, below, shortlist = null, seeAll = null, onBrowseType = null, browseTotal = null,
   // Audit 2026-11-19 row 29 (visual pass follow-up): the guest sign-in banner sits under the band, above the photo hero,
@@ -304,7 +304,8 @@ export default function HomeShellV5({
                   </div>
                 ))}
                 {list.length > 0 && seeAll && (
-                  <SeeAllFanCard photos={list.map(e => e.img)} label={seeAll.label} count={seeAll.count} onOpen={() => onSeeAll(tab)} T={T} />
+                  <SeeAllFanCard photos={list.map(e => e.img)} label={seeAll.label} count={seeAll.count} onOpen={() => onSeeAll(tab)} T={T}
+                    art={tab} onEditPrefs={tab === 'foryou' && onEditPrefs ? onEditPrefs : null} />
                 )}
                 {/* A short pager (1 or 2 events) offers other ways to look (Weekend, All events, Browse by type) in the
                     same card size; the rule and words are shared with iOS (listEnd.heroSuggestions). */}

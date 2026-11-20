@@ -677,7 +677,10 @@ struct HomeHeroSection: View {
 
     @ViewBuilder private var seeAllCard: some View {
         if let counts = v23Counts {
-            SeeAllFanCard(photos: list.map(\.img), label: ViEn(tab.vi, tab.en), count: counts[tab] ?? list.count) { onSeeAll(tab) }
+            SeeAllFanCard(photos: list.map(\.img), label: ViEn(tab.vi, tab.en), count: counts[tab] ?? list.count,
+                          art: tab.rawValue,
+                          // For You, signed in: "Edit preferences" opens the same For You editor as everywhere else.
+                          onEditPrefs: tab == .foryou && app.isSignedIn ? { app.openEventPreferences(returnTo: .home) } : nil) { onSeeAll(tab) }
         } else {
             classicSeeAllCard
         }

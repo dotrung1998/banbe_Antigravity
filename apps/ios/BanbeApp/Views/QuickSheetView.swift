@@ -214,10 +214,24 @@ struct QuickSheetView: View {
                     }
                     Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 20)
+                .padding(.leading, 20).padding(.trailing, 72)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .overlay(alignment: .topTrailing) {
+                Button { onClose(); app.openEventPreferences(returnTo: .home) } label: {
+                    Image(systemName: "sparkles").font(.app(size: 18, weight: .regular))
+                        .foregroundStyle(app.palette.ink)
+                        .frame(width: 42, height: 42)
+                        .background(app.palette.block, in: Circle())
+                        .overlay(Circle().strokeBorder(app.palette.rule, lineWidth: 1))
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 20).padding(.top, 4)
+                .accessibilityLabel(app.T("Sửa sở thích Dành cho bạn", "Edit For You preferences"))
+                .accessibilityIdentifier("quick.forYouPrefs")
+            }
             .accessibilityIdentifier("quick.account")
 
             // Hosting mode: the same switch as Account.

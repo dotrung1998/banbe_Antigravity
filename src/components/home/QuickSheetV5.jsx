@@ -16,7 +16,7 @@ const seg = (on) => ({ height: 30, padding: '0 11px', border: 'none', borderRadi
   background: on ? 'var(--bb-fg)' : 'transparent', color: on ? 'var(--bb-bg)' : 'var(--bb-fg-2)', fontWeight: on ? 600 : 400 });
 
 export default function QuickSheetV5({ onClose }) {
-  const { state: s, set, T, pickTheme, toggleLang, goProfile, goLogin, logout, openAccountGroup, goSavedList, toggleOrganizerMode, canHost, goCreate, goDashboard, openAdminEvents } = useBanBe();
+  const { state: s, set, T, pickTheme, toggleLang, goProfile, goLogin, logout, openAccountGroup, goSavedList, toggleOrganizerMode, canHost, goCreate, goDashboard, openAdminEvents, openEventPreferences } = useBanBe();
   // A first-time host gets the Host setup sheet after the switch turns on; it sits under this panel, so step aside.
   useEffect(() => { if (s.hostSetupOpen) onClose(); }, [s.hostSetupOpen, onClose]);
   // The dock slides away while this sheet is open (iOS parity).
@@ -69,7 +69,8 @@ export default function QuickSheetV5({ onClose }) {
         {view === 'prefs' && user ? <NotificationPrefs embedded onBack={() => setView('main')} /> : (<>
         {user ? (
           <>
-            <button type="button" onClick={go(goProfile)} data-testid="quick-account" style={{ display: 'flex', alignItems: 'center', gap: 16, width: '100%', padding: '8px 20px 0', border: 'none', background: 'none', color: 'inherit', font: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
+            <div style={{ position: 'relative' }}>
+            <button type="button" onClick={go(goProfile)} data-testid="quick-account" style={{ display: 'flex', alignItems: 'center', gap: 16, width: '100%', padding: '8px 72px 0 20px', border: 'none', background: 'none', color: 'inherit', font: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
               <span style={{ flex: 'none', width: 64, height: 64, display: 'block' }}>
                 <AccountAvatar name={name} avatarUrl={user.avatarUrl} size={64} />
               </span>
@@ -78,6 +79,15 @@ export default function QuickSheetV5({ onClose }) {
                 <span style={{ display: 'inline-block', marginTop: 6, fontSize: 13, borderBottom: '1px solid var(--bb-rule)' }}>{T('Tài khoản', 'Account')} ›</span>
               </span>
             </button>
+            <button type="button" onClick={go(() => openEventPreferences('home'))} data-testid="quick-foryou-prefs"
+              aria-label={T('Sửa sở thích Dành cho bạn', 'Edit For You preferences')} title={T('Sửa sở thích Dành cho bạn', 'Edit For You preferences')}
+              style={{ position: 'absolute', top: 4, right: 20, width: 42, height: 42, borderRadius: '50%', display: 'grid', placeItems: 'center', padding: 0, cursor: 'pointer',
+                border: '1px solid var(--bb-rule)', background: 'var(--bb-block)', color: 'var(--bb-fg)' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M10 4l1.6 4.4L16 10l-4.4 1.6L10 16l-1.6-4.4L4 10l4.4-1.6z" /><path d="M18 14l.8 2.2L21 17l-2.2.8L18 20l-.8-2.2L15 17l2.2-.8z" />
+              </svg>
+            </button>
+            </div>
             <div style={{ margin: '18px 20px 0' }}>
               <button type="button" role="switch" aria-checked={hostOn} disabled={s.organizerModeBusy} onClick={onHost} data-testid="quick-host-switch"
                 style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', padding: '12px 14px', border: 'none', borderRadius: 16, color: 'inherit', font: 'inherit', cursor: 'pointer',

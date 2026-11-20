@@ -1426,6 +1426,8 @@ export default function Home({ browse = false }) {
           onSearch={openSearch} onArea={openAreaMenu} onMap={openMapWithContext} onFilters={() => set({ homeFilterSheetOpen: true })} filterSummary={shellFilterSummary}
           onFindType={() => setCategorySheetOpen(true)} onPickType={shellPickType}
           onSetPrefs={() => openEventPreferences('home')}
+          // For You's See all card: a small "Edit preferences" pill, signed-in only (a guest has no preferences to edit).
+          onEditPrefs={s.user ? () => openEventPreferences('home') : null}
           // "Browse all events" opens the every-event list itself (owner 2026-11-18): it used to scroll Home down to
           // the By type section, which only ever held a handful of events, never all of them.
           onBrowseAll={() => { if (ud) { scrollToNearby(); return; } browseTypesFrom(curTab); }}

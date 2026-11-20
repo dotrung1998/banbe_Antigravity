@@ -274,6 +274,22 @@ dialog.bb-native-sheet {
 [data-search-sheet="true"] [data-search-body]::-webkit-scrollbar { display: none; }
 /* The scrim is the dialog itself, so the platform backdrop stays clear. */
 dialog.bb-native-sheet::backdrop { background: transparent; }
+/* The status-bar strip inside the top layer (2026-11-20). A modal dialog paints ABOVE `body::before`, so the strip the
+   system samples (iOS 26.1+ reads the topmost fixed element at the very top) became the dialog's translucent scrim,
+   which the browser composited against the desk colour (#EFEBE0 on .bb-stage) and showed as light cream in dark theme.
+   Repeat the strip as the dialog's own first paint: the theme's band colour (`--bb-band`, written on <html> by
+   themeColor.js), opaque, over the scrim, inside the phone frame's insets. Dark stays dark, light stays light. */
+dialog.bb-native-sheet::before {
+  content: '';
+  position: fixed;
+  top: var(--bb-dlg-t, 0px);
+  left: var(--bb-dlg-l, 0px);
+  right: var(--bb-dlg-r, 0px);
+  height: var(--bb-strip-h);
+  background: var(--bb-band, #f7f4ec);
+  pointer-events: none;
+  z-index: 1;
+}
 /* Full-size, bottom-aligned box the panel sits in. Kept as its own node so a scrim press and a panel press are easy
    to tell apart by target. */
 .bb-native-sheet-body {

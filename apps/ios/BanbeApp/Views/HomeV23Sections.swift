@@ -372,6 +372,10 @@ struct HeroSuggestCard: View {
                     .font(.app(size: 11, weight: .semibold)).tracking(1.5)
                     .foregroundStyle(.white.opacity(0.62))
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                // Owner 2026-11-20: the card's line-art sketch fills the upper area (web HeroLineArt, same drawing).
+                HeroLineArt(kind: model.id)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .padding(.top, 28)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(app.T(model.title.vi, model.title.en))
                         .font(BanbeTheme.display(26)).lineSpacing(0)
@@ -396,6 +400,27 @@ struct HeroSuggestCard: View {
     }
 }
 
+// MARK: - Hero line art
+
+/// Line-art sketch for the hero end cards: the HeroArt* template vector imagesets, generated from the web's
+/// src/lib/heroLineArt.js by scripts/gen-hero-line-art.mjs (228 × 140 at 1:1, so the 1.5 stroke stays 1.5 pt).
+/// Decorative, hidden from VoiceOver. Drawn white at 62% over the card's glass, as on web.
+struct HeroLineArt: View {
+    let kind: String
+
+    private static let kinds: Set<String> = ["tonight", "weekend", "all", "browse", "foryou"]
+
+    var body: some View {
+        let k = Self.kinds.contains(kind) ? kind : "all"
+        Image("HeroArt" + k.prefix(1).uppercased() + k.dropFirst())
+            .renderingMode(.template)
+            .resizable()
+            .frame(width: 228, height: 140)
+            .foregroundStyle(.white.opacity(0.62))
+            .accessibilityHidden(true)
+    }
+}
+
 // MARK: - See all fan card
 
 /// The last card of the Home rail: three photos swing into a fan, the tab's chip arrives and glows gold once, each
@@ -406,6 +431,10 @@ struct SeeAllFanCard: View {
     let photos: [String]
     let label: ViEn
     let count: Int
+    /// The tab id (foryou/tonight/weekend/all): its line-art sketch stands in for a fan of fewer than 3 photos.
+    var art: String = "all"
+    /// For You, signed in: a small "Edit preferences" pill that opens the For You preferences editor.
+    var onEditPrefs: (() -> Void)? = nil
     let onOpen: () -> Void
     @State private var t: CGFloat = 1
     @State private var chip: CGFloat = 1
@@ -416,9 +445,16 @@ struct SeeAllFanCard: View {
     var body: some View {
         SwipeSafeButton(action: onOpen) {
             ZStack {
+                if sketch {
+                    HeroLineArt(kind: art)
+                        .offset(y: 8 + (1 - t) * 14)
+                        .opacity(Double(t))
+                        .frame(maxHeight: .infinity, alignment: .top)
+                        .padding(.top, 44)
+                }
                 ZStack {
-                    ForEach(Array(photos.prefix(3).enumerated()), id: \.offset) { i, src in
-                        let n = min(3, photos.count)
+                    ForEach(Array(fanPhotos.enumerated()), id: \.offset) { i, src in
+                        let n = fanPhotos.count
                         let pos = n == 1 ? 1 : n == 2 ? [0, 2][i] : i
                         photo(src, pos: pos)
                     }
@@ -455,7 +491,31 @@ struct SeeAllFanCard: View {
         .onAppear(perform: play)
         .accessibilityLabel(app.T("Xem cả \(count) sự kiện trong \(label.vi)", "See all \(count) events in \(label.en)"))
         .accessibilityIdentifier("home.hero.seeAll")
+        .overlay(alignment: .topTrailing) {
+            if let onEditPrefs {
+                SwipeSafeButton(action: onEditPrefs) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "slider.horizontal.3").font(.app(size: 11, weight: .semibold)).accessibilityHidden(true)
+                        Text(app.T("Sửa sở thích", "Edit preferences")).font(.app(size: 12, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12).frame(minHeight: 32)
+                    .background(Color.white.opacity(0.12), in: Capsule())
+                    .overlay(Capsule().strokeBorder(Color.white.opacity(0.28), lineWidth: 1))
+                    .padding(6)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(6)
+                .accessibilityIdentifier("home.hero.editPrefs")
+            }
+        }
     }
+
+    /// Fewer than 3 real photos would make a lone or lopsided fan (owner 2026-11-20): draw the tab's sketch instead.
+    private var realPhotos: [String] { photos.filter { !$0.isEmpty } }
+    private var sketch: Bool { realPhotos.count < 3 }
+    private var fanPhotos: [String] { sketch ? [] : Array(realPhotos.prefix(3)) }
 
     private func photo(_ src: String, pos: Int) -> some View {
         let rest: [(CGFloat, CGFloat, Double)] = [(-58, 8, -8), (0, -6, 0), (58, 8, 8)]
