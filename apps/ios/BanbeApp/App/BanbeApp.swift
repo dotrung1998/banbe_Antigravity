@@ -4,7 +4,7 @@ import SwiftUI
 struct BanbeApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var authViewModel = AuthViewModel()
-    @StateObject private var appState = AppState()
+    @StateObject private var appState: AppState
     /// Note 83: the font choice. The root is keyed on it, so a change redraws every screen in the new face at once.
     @AppStorage(AppFontPref.key) private var fontChoice = AppFontChoice.current.rawValue
     @Environment(\.scenePhase) private var scenePhase
@@ -13,7 +13,11 @@ struct BanbeApp: App {
         StorageImageCache.install()
         // AppDelegate is instantiated by UIKit before any SwiftUI @StateObject
         // exists, so it can't reach `appState` any other way — set once here.
-        AppDelegate.appState = appState
+        // The instance is built here and handed to both: reading `appState` inside init() would touch the
+        // StateObject before SwiftUI installs it ("Accessing StateObject's object without being installed on a View").
+        let state = AppState()
+        _appState = StateObject(wrappedValue: state)
+        AppDelegate.appState = state
         BanbeLoadingVisual.prewarm()
         // .claude/notes/18-ios-personal-team-signing.md — developer-only
         // signal (console, never a user-facing banner) that this build was

@@ -986,11 +986,11 @@ input::placeholder, textarea::placeholder {
   isolation: isolate;
 }
 /* Home section headers (Browse by type, Near you) pin under the folded 58 px band like iOS grouped lists. Each is sticky
-   only inside its own section wrapper, so the next section's header pushes it off and takes its place. Opaque paper, and
-   under the band (z 20) and every menu/sheet. */
+   only inside its own section wrapper, so the next section's header pushes it off and takes its place. Opaque paper with
+   no hairline under it (owner 2026-11-20), and under the band (z 20) and every menu/sheet. */
 .bb-sticky-head {
   position: sticky; top: 58px; z-index: 5;
-  background: var(--bb-bg); border-bottom: 1px solid var(--bb-divider);
+  background: var(--bb-bg);
 }
 
 /* Only once content has slid under it: a hair of a lift. The hairline already separates; a card shadow would not. */

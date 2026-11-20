@@ -52,7 +52,7 @@ enum PhotoLoader {
     static func cachedAnySize(path: String, maxPixel: CGFloat) -> UIImage? {
         if let exact = cached(path: path, maxPixel: maxPixel) { return exact }
         let stable = stableKey(path)
-        sizesLock.lock(); let sizes = sizesByPath[stable] ?? []; sizesLock.unlock()
+        let sizes = sizesLock.withLock { sizesByPath[stable] ?? [] }
         for size in sizes.sorted(by: >) {
             if let hit = memory.object(forKey: "\(stable)@\(size)" as NSString) { return hit }
         }
@@ -103,7 +103,7 @@ enum PhotoLoader {
 
             let cost = Int(image.size.width * image.size.height * image.scale * image.scale * 4)
             memory.setObject(image, forKey: cacheKey as NSString, cost: cost)
-            sizesLock.lock(); sizesByPath[stableKey(path), default: []].insert(Int(maxPixel)); sizesLock.unlock()
+            _ = sizesLock.withLock { sizesByPath[stableKey(path), default: []].insert(Int(maxPixel)) }
             return image
         }
     }
@@ -115,7 +115,7 @@ enum PhotoLoader {
     /// tickets, …) — those live elsewhere entirely.
     static func clearCache() {
         memory.removeAllObjects()
-        sizesLock.lock(); sizesByPath = [:]; sizesLock.unlock()
+        sizesLock.withLock { sizesByPath = [:] }
         StorageImageCache.clear()
         session.configuration.urlCache?.removeAllCachedResponses()
     }

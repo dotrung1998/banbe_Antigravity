@@ -58,9 +58,12 @@ final class TicketRetentionStore: ObservableObject {
         if changed { save(for: user) }
     }
 
+    /// A pure read: it is called from view bodies (My Tickets filters its rows with it), so it must never assign the
+    /// @Published `hidden` (that was "Publishing changes from within view updates"). Before this account's set is
+    /// loaded it reads the saved list straight from UserDefaults; `reconcile`/`remove` load and publish outside body.
     func isHidden(_ id: UUID, user: UUID) -> Bool {
-        load(for: user)
-        return hidden.contains(id)
+        if loadedFor == user.uuidString { return hidden.contains(id) }
+        return (UserDefaults.standard.stringArray(forKey: key("hidden", user)) ?? []).contains(id.uuidString)
     }
 
     func remove(_ ids: Set<UUID>, user: UUID) {

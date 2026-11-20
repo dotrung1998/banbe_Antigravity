@@ -38,7 +38,11 @@ struct VerificationsView: View {
     }
 
     var body: some View {
-        ScreenScaffold(scrollPositionID: $app.verificationsScrollAnchorID) {
+        ScreenScaffold(scrollPositionID: Binding(
+            get: { app.verificationsScrollAnchorID },
+            // Deferred like Account's anchor: the setter runs inside layout (see AccountView.accountScrollAnchorBinding).
+            set: { [app] v in DispatchQueue.main.async { if app.verificationsScrollAnchorID != v { app.verificationsScrollAnchorID = v } } }
+        )) {
             VStack(alignment: .leading, spacing: 0) {
                 // Sub-section-of-a-group back-navigation fix (2026-09-29,
                 // second pass) — label now also distinguishes the

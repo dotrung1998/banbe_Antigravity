@@ -1602,7 +1602,14 @@ struct AccountView: View {
     private var accountScrollAnchorBinding: Binding<String?> {
         Binding(
             get: { app.accountScrollAnchorIDByTab[modeKey] },
-            set: { app.accountScrollAnchorIDByTab[modeKey] = $0 }
+            // SwiftUI calls this setter from inside layout (`.scrollPosition(id:)` reports the leading id), so writing
+            // the @Published dictionary here was "Publishing changes from within view updates". Write after the
+            // update, and only when it actually changed.
+            set: { [app, modeKey] v in
+                DispatchQueue.main.async {
+                    if app.accountScrollAnchorIDByTab[modeKey] != v { app.accountScrollAnchorIDByTab[modeKey] = v }
+                }
+            }
         )
     }
 }

@@ -2084,16 +2084,11 @@ struct HomePinnedSectionHeader: ViewModifier {
     func body(content: Content) -> some View {
         content
             .frame(maxWidth: .infinity, alignment: .leading)
+            // Opaque paper only: no hairline under a pinned header (owner 2026-11-20, same as web).
             .background {
-                GeometryReader { g in
-                    app.palette.paper
-                        .overlay(alignment: .bottom) {
-                            Rectangle().fill(app.palette.divider).frame(height: 1)
-                                .opacity(g.frame(in: .named(Self.space)).minY < 0.5 ? 1 : 0)
-                        }
-                }
-                .accessibilityHidden(true)
-                .allowsHitTesting(false)
+                app.palette.paper
+                    .accessibilityHidden(true)
+                    .allowsHitTesting(false)
             }
     }
 }
