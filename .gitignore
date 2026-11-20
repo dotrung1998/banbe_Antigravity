@@ -99,6 +99,9 @@ dist-ssr
 !/supabase/_localtest/retention_suites_run.sh
 .migration-state/
 
+# Local-only credentials for the R2 migration scripts (never committed).
+.r2-secrets.local
+
 # Modern Web Guidance skill install (~200 vendored guide files, pinned in
 # skills-lock.json). Reinstall with `npx modern-web-guidance@latest` instead of
 # committing it: it is not part of the app and it pushed the published web app

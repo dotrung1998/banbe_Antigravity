@@ -27,6 +27,11 @@ import { createClient } from '@supabase/supabase-js';
 import { inspectImage } from '../api/_lib/imageSafe.js';
 import { r2Config, putObject, getObject } from '../api/_lib/r2.js';
 import { VARIANTS, publicKey, refOf, IMMUTABLE_CACHE, eventIsPublic } from '../api/_lib/media.js';
+import { loadSecrets } from './lib/secrets.mjs';
+
+// Credentials come from the environment, else `.r2-secrets.local` / `.env.local` /
+// `.env` (see .r2-secrets.local.example). Nothing is ever echoed.
+const secrets = loadSecrets().values;
 
 const args = process.argv.slice(2);
 const flag = (n) => args.includes(`--${n}`);
@@ -37,10 +42,10 @@ const LIMIT = Number(opt('limit') || 0) || Infinity;
 const STATE = opt('state') || '.migration-state/media-r2.jsonl';
 const eventIds = list('event-ids'), orgIds = list('organizer-ids');
 
-const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const url = secrets.SUPABASE_URL, key = secrets.SUPABASE_SERVICE_ROLE_KEY;
 if (!url || !key) { console.error('SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY required'); process.exit(2); }
 const admin = createClient(url, key, { auth: { persistSession: false } });
-const cfg = r2Config();
+const cfg = r2Config(secrets);
 if (APPLY && (!cfg.ok || !cfg.publicBaseUrl)) { console.error('R2_* and MEDIA_PUBLIC_BASE_URL required for --apply', cfg.missing || ''); process.exit(2); }
 if (APPLY && !ALL && !eventIds.length && !orgIds.length) { console.error('--apply needs --event-ids / --organizer-ids (or --all)'); process.exit(2); }
 
@@ -90,6 +95,9 @@ function makeVariants(buf, ext) {
 async function copyOne({ bucket, path, kind, scope, eventId, organizerId, label }) {
   const id = `${bucket}/${path}`;
   if (done.has(id)) return 'skipped-done';
+  // One asset per legacy object (`media_assets_legacy_uq`) and a ref must carry the
+  // row's own scope (`guard_r2_ref`). A cloned event that reuses this storage path
+  // therefore keeps the untouched Supabase copy and is skipped here, not failed.
   const dup = must(await admin.from('media_assets').select('id,status').eq('legacy_bucket', bucket).eq('legacy_path', path).neq('status', 'deleted').maybeSingle());
   if (dup?.status === 'published') { audit({ id, status: 'ok', note: 'already migrated' }); return 'skipped-done'; }
 
