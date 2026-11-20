@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test:unit": "node --test 'tests/unit/**/*.test.mjs'",
     "r2:preflight": "node scripts/r2-preflight.mjs",
-    "r2:migrate": "node scripts/migrate-media-to-r2.mjs"
+    "r2:migrate": "node scripts/migrate-media-to-r2.mjs",
+    "graph:notes": "node scripts/second-brain-code-graph.mjs"
   },
   "dependencies": {
     "@sparticuz/chromium": "^131.0.1",

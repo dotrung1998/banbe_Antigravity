@@ -19,9 +19,11 @@ Index: `docs/second-brain/Home.md`.
 
 ## Answering
 
-1. Search the vault first: `rg -l "<terms>" docs/second-brain .claude/notes`.
-2. Prefer `.claude/notes/*` for how the app behaves, `Decisions.md` for why, `docs/second-brain/wiki/*` for conventions.
-3. Answer from the file and cite the path. If the vault is silent, say "not in the vault" before using general
+1. Start at `docs/second-brain/graph/Code map.md` (`START-HERE.md` explains the three hops): pick the area, read its
+   **Start with** `file:line`, open that file. Grep is the fallback, not the first move.
+2. Search the vault: `rg -l "<terms>" docs/second-brain .claude/notes`.
+3. Prefer `.claude/notes/*` for how the app behaves, `Decisions.md` for why, `docs/second-brain/wiki/*` for conventions.
+4. Answer from the file and cite the path. If the vault is silent, say "not in the vault" before using general
    knowledge.
 
 ## Session memory

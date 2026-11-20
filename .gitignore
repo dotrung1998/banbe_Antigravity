@@ -111,6 +111,13 @@ dist-ssr
 !/docs/second-brain/raw/inbox/README.md
 !/docs/second-brain/raw/compiled/README.md
 
+# Obsidian: the vault config is tracked (graph colours, plugins, template folder), but per-window
+# state and the local trash are machine-specific and must never be committed.
+/docs/second-brain/.obsidian/workspace.json
+/docs/second-brain/.obsidian/workspace-mobile.json
+/docs/second-brain/.obsidian/cache
+/docs/second-brain/.trash/
+
 # Modern Web Guidance skill install (~200 vendored guide files, pinned in
 # skills-lock.json). Reinstall with `npx modern-web-guidance@latest` instead of
 # committing it: it is not part of the app and it pushed the published web app

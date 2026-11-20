@@ -4,6 +4,8 @@ Index for the banbe second brain. Keep this page short: it is a map, not a note.
 
 ## Start here
 
+- [[START-HERE]] — the graph-first entry point: three hops before any repo scan
+- [[graph/Code map|Code map]] — generated code map (one note per area; `Cmd+G` for the live graph)
 - [[Decisions]] — what was decided and why (the anti-re-litigation log)
 - [[wiki/Project map]] — where everything lives in the repo
 - [[wiki/Conventions]] — how this project builds, verifies and ships

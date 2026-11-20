@@ -162,9 +162,30 @@ All run in `Asia/Ho_Chi_Minh`, deliver `local` (`~/.hermes/cron/output/<job>/`),
 | banbe Friday wind-down | Fri 17:00 | `banbe-weekly-review.sh` | week's commits, hotspots, branches, what Monday starts with |
 | banbe second-brain compile | 03:15 daily | agent + `banbe-inbox-changed.sh` monitor | distils the inbox into `raw/compiled/<date>-digest.md` |
 | banbe apple notes to inbox | Sun 08:00, **paused** | `banbe-apple-notes-export.sh` | Apple Notes → inbox; needs macOS Automation permission |
+| banbe code graph | Sun 04:30 | `banbe-code-graph.sh` | `graphify update .` + regenerate `docs/second-brain/graph/`; no model, silent unless it fails |
 
 The first five are `--no-agent`: no model, no tokens. The compile job runs the agent only when the inbox fingerprint
 changes; it was run once manually and produced a real digest citing its sources.
+
+### Obsidian vault and the code map
+
+`docs/second-brain` is registered as an Obsidian vault (entry in `~/Library/Application Support/obsidian/obsidian.json`),
+so `Cmd+G` is the live graph and backlinks work without any plugin. Obsidian only renders Markdown — it cannot read
+code — so the code graph is bridged into the vault as generated notes:
+
+| Path | What it is |
+| --- | --- |
+| `docs/second-brain/START-HERE.md` | **the first file an agent opens** — three hops, graph before grep, refresh and truth hierarchy |
+| `docs/second-brain/graph/Code map.md` | 24 areas, ~18k symbols, each row linking an area note with a `file:line` "Start with" |
+| `docs/second-brain/graph/<area>.md` | one note per area: key symbols, top files, connected areas |
+| `scripts/second-brain-code-graph.mjs` | the generator (`npm run graph:notes`); deterministic, so an unchanged graph leaves git clean |
+
+Refresh: `graphify update .` then `npm run graph:notes`. The cron job **banbe code graph** does both every Sunday at
+04:30 via `~/.hermes/scripts/banbe-code-graph.sh` (log: `~/.hermes/logs/banbe-code-graph.log`).
+
+Obsidian vs Graphify: Obsidian replaces the *manual* browsing/updating of the note graph — it is live, nothing to
+rebuild. It cannot replace Graphify, which is the only piece that understands code; the generated notes are what make
+Graphify's output visible in Obsidian at all.
 
 ### Memory
 

@@ -1,5 +1,10 @@
 # Second brain — rules for agents
 
+> **Open [[START-HERE]] first.** Do not scan the repository to find out how banbe works: start at
+> [[graph/Code map|Code map]], pick the area, read its **Start with** `file:line`, and only then search. The map is
+> generated from the Graphify code graph by `scripts/second-brain-code-graph.mjs`; `START-HERE` explains the three hops
+> and the refresh.
+
 This folder is a plain-Markdown vault. Any agent (Hermes, Freebuff, a future one) may read it. The rules below are what
 keep it useful instead of a dump.
 

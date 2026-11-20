@@ -3,11 +3,13 @@
 A plain folder of Markdown files that outlives any one agent session. It is the "second brain" from the Hermes Agent
 fundamentals video, wired to **this** repo instead of a generic vault.
 
-Open it as a vault in Obsidian (`File → Open folder as vault`) if you want the graph view; nothing here depends on
-Obsidian. Every agent on this machine can read it as ordinary files.
+This folder is registered as an Obsidian vault on this machine — `Cmd+G` for the live graph, `Cmd+click` for
+backlinks. Nothing here depends on Obsidian: every agent on this machine reads it as ordinary files.
 
 ```
 docs/second-brain/
+  START-HERE.md      the first file an agent opens: three hops, graph before grep
+  graph/             generated code map (Code map.md + one note per area) — do not hand-edit
   AGENTS.md          rules for agents: raw vs wiki, routing table, "answer from the vault"
   Home.md            the index — start here
   Decisions.md       what was decided and why, one row each, linked to .claude/notes

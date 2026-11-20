@@ -1,5 +1,13 @@
 # banbe
 
+## Start with the graph, not a repo scan
+
+Open `docs/second-brain/START-HERE.md` before searching this repository. It points at
+`docs/second-brain/graph/Code map.md` — a generated map of the code graph (~18k symbols, one note per area) where you pick
+an area, read its `file:line`, and only then grep. Refresh with `graphify update .` then
+`node scripts/second-brain-code-graph.mjs`; Obsidian (`docs/second-brain` is the vault) renders the same notes as a
+live graph. Search when the map has no answer, then record the gap in `docs/second-brain/raw/inbox/`.
+
 ## Web platform Baseline
 
 This project's Baseline target is **Baseline Widely available**, with the app's own, stricter floor: **Safari 16.2 /

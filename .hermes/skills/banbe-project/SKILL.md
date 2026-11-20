@@ -9,6 +9,10 @@ banbe is an event/ticketing app: React 19 + Vite web app (`src/`), SwiftUI iOS a
 Supabase backend (`supabase/migrations/`), Vercel functions (`api/`). Read `CLAUDE.md` first — it indexes 101 numbered
 notes in `.claude/notes/` that are the system of record for behaviour.
 
+For code navigation, open `docs/second-brain/graph/Code map.md` first: it is generated from the Graphify graph, one
+note per area with a `file:line` entry point. Area note → file, not a repo-wide grep; refresh with
+`graphify update .` then `npm run graph:notes`.
+
 ## Commands
 
 ```bash
