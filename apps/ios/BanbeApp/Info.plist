@@ -32,9 +32,9 @@
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>MEDIA_PUBLIC_BASE_URL</key>
-	<string></string>
+	<string>https://media.banbe.app</string>
 	<key>MEDIA_R2_READS</key>
-	<string></string>
+	<string>1</string>
 	<key>NSCameraUsageDescription</key>
 	<string>banbe uses your camera to scan a guest's ticket QR code at check-in, to scan an event team invite, and to attach a photo to a chat message.</string>
 	<key>NSFaceIDUsageDescription</key>
