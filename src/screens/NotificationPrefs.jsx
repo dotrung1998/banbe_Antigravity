@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { supabase } from '../lib/supabase.js';
 import { flagOn } from '../lib/featureFlags.js';
+import { islandEnabled } from '../lib/islandPrefs.js';
 import { NOTIF_PREF_GROUPS, groupOn, toggleGroup } from '../lib/notificationPrefs.js';
 import { paper, ink, ink3, alert, divider } from '../theme.js';
 
@@ -89,6 +90,13 @@ export default function NotificationPrefs({ embedded = false, onBack = null } = 
           <button type="button" role="switch" aria-checked={!!digest} aria-disabled={digest == null || saving} data-testid="notif-pref-news" onClick={toggleDigest}
             style={{ ...row, cursor: digest == null ? 'default' : 'pointer', opacity: digest == null ? 0.6 : 1 }}>
             {lbl(T('Tin từ banbe', 'News from banbe'), T('Bản tin cuối tuần, tối thứ Năm. Tắt trừ khi bạn bật.', "This weekend's events, Thursday evening. Off unless you turn it on."))}{sw(!!digest)}
+          </button>
+        )}
+        {!embedded && islandEnabled(s.featureFlags) && (
+          <button type="button" data-testid="notif-pref-island" onClick={() => set({ screen: 'islandSettings' })}
+            style={{ ...row, cursor: 'pointer' }}>
+            {lbl(T('Đảo Động cho thông báo', 'Dynamic Island toasts'), T('Chọn kiểu, vị trí và chuyển động.', 'Pick the style, position and motion.'))}
+            <span aria-hidden style={{ fontSize: 13, color: ink, opacity: 0.6 }}>›</span>
           </button>
         )}
         <div style={{ ...row, opacity: 0.6 }}>

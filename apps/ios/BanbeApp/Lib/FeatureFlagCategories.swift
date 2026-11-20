@@ -18,7 +18,7 @@ enum FeatureFlagCategories {
     static let all: [Category] = [
         Category(key: "onboarding", vi: "Giới thiệu & khám phá", en: "Onboarding & discovery", flags: ["onboarding_version", "intent_foryou", "market_share"]),
         Category(key: "rewards", vi: "Phần thưởng & gắn kết", en: "Rewards & engagement", flags: ["rewards", "rewards_v2"]),
-        Category(key: "notifications", vi: "Thông báo & giữ chân", en: "Notifications & retention", flags: ["push_enabled", "event_reminders", "follow_alerts", "weekly_digest", "live_activity"]),
+        Category(key: "notifications", vi: "Thông báo & giữ chân", en: "Notifications & retention", flags: ["push_enabled", "event_reminders", "follow_alerts", "weekly_digest", "live_activity", "island_toasts"]),
         Category(key: "events", vi: "Sự kiện & tổng kết", en: "Events & recaps", flags: ["event_recap", "host_recap"]),
         Category(key: "types", vi: "Loại sự kiện", en: "Event types", flags: ["event_type_profiles"]),
         Category(key: "layout", vi: "Bố cục ứng dụng", en: "App layout", flags: ["simple_shell", "polaroid_cards", "home_v23", "unified_discovery"]),

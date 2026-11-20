@@ -1,0 +1,172 @@
+// The admin demo's cases (note 101). Data only: `src/screens/AdminIslandDemo.jsx` turns each into a dynaura call.
+// `[vi, en]` pairs are read with the app's own T() at render time. Every dynaura capability the web app can use has
+// at least one case here: plain states, actions, two actions, promise, progress, in-place update, live timer, live
+// wave, rich card, avatar card, custom body, avatars, typing, queue, confetti, sticky and long-copy overflow.
+
+export const ISLAND_CASE_GROUPS = [
+  { key: 'basic', vi: 'Cơ bản', en: 'Basics' },
+  { key: 'actions', vi: 'Có nút hành động', en: 'With actions' },
+  { key: 'async', vi: 'Đang tải & hoàn tất', en: 'Loading & done' },
+  { key: 'live', vi: 'Đang diễn ra', en: 'Live' },
+  { key: 'cards', vi: 'Thẻ lớn', en: 'Rich cards' },
+  { key: 'people', vi: 'Người & tin nhắn', en: 'People & messages' },
+  { key: 'edge', vi: 'Cạnh & lỗi', en: 'Edge cases' },
+];
+
+export const ISLAND_CASES = [
+  {
+    key: 'saved', group: 'basic', mode: 'toast', type: 'success', duration: 3200,
+    vi: 'Lưu nhanh', en: 'Quick save',
+    noteVi: 'Đảo nhỏ, không mô tả, có giờ bên phải.', noteEn: 'Compact island, no description, time on the right.',
+    title: ['Đã lưu · Lịch banbe', 'Saved · banbe Schedule'], trailing: ['19:00', '19:00'],
+  },
+  {
+    key: 'booking', group: 'basic', mode: 'toast', type: 'success',
+    vi: 'Giữ chỗ xong', en: 'Seat held',
+    noteVi: 'Xác nhận kèm mô tả và nút mở vé.', noteEn: 'Confirmation with a description and an open-ticket button.',
+    title: ['Đã giữ chỗ', 'Seat held'],
+    description: ['3 vé · Bếp nhà Bông · T7 19:00', '3 tickets · Bếp nhà Bông · Sat 19:00'],
+    action: ['Xem vé', 'View ticket'],
+  },
+  {
+    key: 'reminder', group: 'basic', mode: 'toast', type: 'warning',
+    vi: 'Nhắc sự kiện', en: 'Event reminder',
+    noteVi: 'Cảnh báo nhẹ, giờ còn lại bên phải.', noteEn: 'Gentle warning, time left on the right.',
+    title: ['Sự kiện bắt đầu sau 3 giờ', 'Starts in 3 hours'],
+    description: ['Bếp nhà Bông · 18:30 mở cửa', 'Bếp nhà Bông · doors 18:30'], trailing: ['3 giờ', '3h'],
+  },
+  {
+    key: 'message', group: 'basic', mode: 'toast', type: 'info',
+    vi: 'Tin nhắn mới', en: 'New message',
+    noteVi: 'Tin nhắn kèm nút trả lời.', noteEn: 'A message with a reply button.',
+    title: ['Lan nhắn cho bạn', 'Lan sent you a message'],
+    description: ['“Mình gửi chỉ đường tới quán nhé.”', '“I’ll send directions to the venue.”'],
+    action: ['Trả lời', 'Reply'],
+  },
+  {
+    key: 'payment-sent', group: 'basic', mode: 'toast', type: 'success', duration: 5000,
+    vi: 'Đã gửi tiền', en: 'Payout sent',
+    noteVi: 'Tiền đã đi, có dấu ✓ bên phải.', noteEn: 'Money is on its way, check mark on the right.',
+    title: ['Đã gửi 500.000 ₫ cho host', 'Sent 500,000 ₫ to the host'], trailing: ['✓', '✓'],
+  },
+  {
+    key: 'retry', group: 'actions', mode: 'toast', type: 'error', duration: 7000,
+    vi: 'Lỗi có thử lại', en: 'Error with retry',
+    noteVi: 'Hai nút: thử lại và để sau.', noteEn: 'Two buttons: retry and later.',
+    title: ['Thanh toán chưa xong', 'Payment failed'],
+    description: ['Thẻ bị từ chối. Chỗ vẫn giữ trong 6 phút.', 'Card declined. Your seat is held for 6 minutes.'],
+    action: ['Thử lại', 'Retry'], secondary: ['Để sau', 'Later'],
+  },
+  {
+    key: 'undo', group: 'actions', mode: 'toast', type: 'success', duration: 6000,
+    vi: 'Xoá có hoàn tác', en: 'Delete with undo',
+    noteVi: 'Nút chính và nút phụ Hoàn tác.', noteEn: 'Primary action plus an Undo secondary.',
+    title: ['Đã xoá tin nhắn', 'Message deleted'],
+    action: ['Mở thư mục', 'Open folder'], secondary: ['Hoàn tác', 'Undo'],
+  },
+  {
+    key: 'sticky', group: 'actions', mode: 'toast', type: 'info', duration: null,
+    vi: 'Ghim trên đảo', en: 'Pinned on the island',
+    noteVi: 'Không tự tắt; chỉ đóng bằng nút hoặc vuốt.', noteEn: 'Never times out; close with the button or a swipe.',
+    title: ['Đang ghim trên đảo', 'Pinned on the island'],
+    description: ['Chạm ra ngoài để bỏ ghim.', 'Tap outside to unpin.'], action: ['Đóng', 'Close'],
+  },
+  {
+    key: 'dispute', group: 'actions', mode: 'toast', type: 'error', duration: 9000,
+    vi: 'Tranh chấp cần trả lời', en: 'Dispute needs a reply',
+    noteVi: 'Lỗi có hạn chót, hai lựa chọn.', noteEn: 'A deadline error with two choices.',
+    title: ['Khách báo chưa nhận được tiền', 'Guest says payment is missing'],
+    description: ['Phản hồi trước 18:00 để giữ chỗ.', 'Reply before 18:00 to keep the seat.'],
+    action: ['Xem tranh chấp', 'View dispute'], secondary: ['Để sau', 'Later'],
+  },
+  {
+    key: 'promise', group: 'async', mode: 'promise',
+    vi: 'Loading → thành công', en: 'Loading → success',
+    noteVi: 'Cùng một viên đảo đổi trạng thái sau 1,6 giây.', noteEn: 'The same island morphs after 1.6 seconds.',
+    title: ['Đang lưu chỗ…', 'Holding your seat…'],
+    successTitle: ['Đã giữ chỗ', 'Seat held'], successDescription: ['Bếp nhà Bông · T7 19:00', 'Bếp nhà Bông · Sat 19:00'],
+    errorTitle: ['Không giữ được chỗ', 'Could not hold the seat'],
+  },
+  {
+    key: 'progress', group: 'async', mode: 'progress',
+    vi: 'Tải ảnh có tiến trình', en: 'Upload progress',
+    noteVi: 'Số % chạy, thanh đầy dần, rồi xong.', noteEn: 'Rolling percent, filling bar, then done.',
+    title: ['Đang tải ảnh sự kiện', 'Uploading event photos'], successTitle: ['Đã tải xong 6 ảnh', '6 photos uploaded'],
+  },
+  {
+    key: 'update', group: 'async', mode: 'update',
+    vi: 'Cập nhật tại chỗ', en: 'Update in place',
+    noteVi: 'Một id, không xếp thêm đảo mới.', noteEn: 'One id; no second island is stacked.',
+    title: ['Đang chuẩn bị ảnh…', 'Preparing photos…'], successTitle: ['Ảnh đã sẵn sàng', 'Photos are ready'],
+  },
+  {
+    key: 'live-timer', group: 'live', mode: 'live', liveKind: 'timer', type: 'live',
+    vi: 'Đồng hồ đang chạy', en: 'Running timer',
+    noteVi: 'Thẻ hoạt động trực tiếp, có nút Xem.', noteEn: 'A live activity with an open button.',
+    title: ['Sự kiện đang diễn ra', 'Event is live'], description: ['Bếp nhà Bông · 42 người đã vào', 'Bếp nhà Bông · 42 checked in'],
+    action: ['Xem', 'View'],
+  },
+  {
+    key: 'live-wave', group: 'live', mode: 'live', liveKind: 'wave', type: 'live',
+    vi: 'Sóng nhạc', en: 'Waveform',
+    noteVi: 'Kiểu waveform thay cho đồng hồ.', noteEn: 'Waveform instead of a timer.',
+    title: ['Nhạc đang phát', 'Now playing'], description: ['Playlist của host · 12 bài', 'Host’s playlist · 12 tracks'],
+  },
+  {
+    key: 'card-ticket', group: 'cards', mode: 'card-ticket', type: 'info', duration: 9000,
+    vi: 'Thẻ vé', en: 'Ticket card',
+    noteVi: 'Đảo mở thành thẻ có tab và vé mini.', noteEn: 'The island becomes a card with a tab and a mini ticket.',
+    title: ['Vé của bạn đã sẵn sàng', 'Your ticket is ready'], trailing: ['T7', 'SAT'],
+    action: ['Mở vé', 'Open ticket'],
+  },
+  {
+    key: 'card-host', group: 'cards', mode: 'card-host', type: 'info', duration: 9000,
+    vi: 'Thẻ host', en: 'Host card',
+    noteVi: 'Avatar lớn, tên, trạng thái, đường xé.', noteEn: 'Big avatar, name, presence and a tear line.',
+    title: ['Chào mừng đến nhà', 'Welcome to the house'], description: ['Host mở cửa lúc 18:30. Có chỉ đường trong tin nhắn.', 'Your host opens the doors at 18:30. Directions are in your messages.'],
+    action: ['Nhắn host', 'Message host'],
+  },
+  {
+    key: 'custom-seats', group: 'cards', mode: 'custom-seats', type: 'info', duration: 7000,
+    vi: 'Nội dung tự vẽ', en: 'Custom body',
+    noteVi: 'Không có hàng tiêu đề: toàn bộ đảo là nội dung của bạn.', noteEn: 'No title row: the whole island is your own body.',
+  },
+  {
+    key: 'avatars', group: 'people', mode: 'toast', type: 'info', duration: 6000,
+    vi: 'Nhóm avatar', en: 'Avatar group',
+    noteVi: 'Ba mặt chồng nhau và chip +2.', noteEn: 'Three overlapping faces and a +2 chip.',
+    title: ['5 người vừa tham gia', '5 people just joined'], avatars: ['Lan', 'Minh', 'Hà', 'Vy', 'Tú'], avatarMax: 3,
+  },
+  {
+    key: 'typing', group: 'people', mode: 'toast', type: 'info', duration: 5000,
+    vi: 'Đang nhập', en: 'Typing',
+    noteVi: 'Avatar chữ cái và ba chấm động.', noteEn: 'Initial avatar and animated dots.',
+    title: ['Lan đang nhập…', 'Lan is typing…'], avatar: 'Lan', typing: true,
+  },
+  {
+    key: 'long', group: 'edge', mode: 'toast', type: 'info', duration: 9000,
+    vi: 'Chữ dài', en: 'Long copy',
+    noteVi: 'Tiêu đề dài và mô tả nhiều dòng vẫn xuống dòng đúng.', noteEn: 'A long title and multi-line description still wrap correctly.',
+    title: ['Thông báo từ host về thay đổi địa điểm và giờ mở cửa', 'A host announcement about a new venue and later doors'],
+    description: ['Địa điểm mới ở Quận 3, cách chỗ cũ 1,2 km. Cửa mở lúc 19:00 thay vì 18:30. Vé cũ vẫn dùng được, không cần đổi.', 'The new venue is in District 3, 1.2 km from the old one. Doors open at 19:00 instead of 18:30. Existing tickets still work.'],
+  },
+  {
+    key: 'queue', group: 'edge', mode: 'queue',
+    vi: 'Ba thông báo xếp hàng', en: 'Three queued',
+    noteVi: 'Hiện lần lượt, mỗi cái 1,4 giây.', noteEn: 'One after another, 1.4 seconds each.',
+  },
+  {
+    key: 'confetti', group: 'edge', mode: 'toast', type: 'success', confetti: true, duration: 5000,
+    vi: 'Confetti', en: 'Confetti',
+    noteVi: 'Tự tắt khi hệ thống bật Giảm chuyển động.', noteEn: 'Skipped when the system asks for reduced motion.',
+    title: ['Bạn đã có huy hiệu mới', 'You earned a new badge'], description: ['Người mở đường · 3 sự kiện', 'Trailblazer · 3 events'],
+  },
+  {
+    key: 'offline', group: 'edge', mode: 'toast', type: 'error', duration: null,
+    vi: 'Mất kết nối', en: 'Offline',
+    noteVi: 'Lỗi ghim, có thử lại và chi tiết.', noteEn: 'A pinned error with retry and details.',
+    title: ['Không kết nối được', 'You are offline'],
+    description: ['Kiểm tra mạng rồi thử lại. Thông báo vẫn ở đây.', 'Check your connection and try again. The notice stays put.'],
+    action: ['Thử lại', 'Retry'], secondary: ['Chi tiết', 'Details'],
+  },
+];

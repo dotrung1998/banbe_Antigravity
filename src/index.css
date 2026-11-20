@@ -1197,3 +1197,50 @@ input::placeholder, textarea::placeholder {
 .bb-hero-empty__link:hover { text-decoration-color: currentColor; }
 .bb-hero-empty__primary:focus-visible, .bb-hero-empty__link:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 @media (forced-colors: active) { .bb-hero-empty__primary { border: 1px solid ButtonText; } }
+
+/* ------------------------------------------------------------------------
+   Web Dynamic Island (note 101, switch island_toasts). dynaura draws the pill;
+   these rules put it over the app's own column, give it the app's face and add
+   the frosted variant. The physical Dynamic Island belongs to iOS and is drawn
+   above every web view, so this pill sits at the same place rather than inside
+   it: top of the page in a Safari tab, top of the app just below the Island in
+   a Home Screen app.
+   ------------------------------------------------------------------------ */
+.dynaura-root {
+  --dynaura-font: var(--bb-face, 'Be Vietnam Pro'), system-ui, sans-serif;
+  left: 50%;
+  right: auto;
+  width: min(480px, 100vw);
+  transform: translateX(-50%);
+}
+html[data-island-motion="calm"] .dynaura-root { --dynaura-duration: 320ms; }
+
+html[data-island-theme="glass"] .dynaura-island,
+.dynaura-island.bb-island-glass {
+  -webkit-backdrop-filter: blur(24px) saturate(1.55);
+  backdrop-filter: blur(24px) saturate(1.55);
+  box-shadow: 0 0 0 1px var(--dynaura-ring), 0 18px 44px -14px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+@media (prefers-reduced-transparency: reduce) {
+  html[data-island-theme="glass"] .dynaura-island,
+  .dynaura-island.bb-island-glass {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: #141416;
+  }
+}
+@media (forced-colors: active) { .dynaura-island { border: 1px solid CanvasText; } }
+
+/* On desktop the app is drawn inside the 415px phone frame; keep the island in that frame, under its fake status
+   bar (top) or above its bottom edge. 100dvh is the frame's own height reference (see .bb-device above). */
+@media (min-width: 700px) and (min-height: 560px) and (hover: hover) and (pointer: fine) {
+  .dynaura-root { width: 415px; }
+  .dynaura-root[data-y="top"] {
+    top: calc((100vh - min(874px, calc(100vh - 32px))) / 2 + 67px);
+    top: calc((100dvh - min(874px, calc(100dvh - 32px))) / 2 + 67px);
+  }
+  .dynaura-root[data-y="bottom"] {
+    bottom: calc((100vh - min(874px, calc(100vh - 32px))) / 2 + 22px);
+    bottom: calc((100dvh - min(874px, calc(100dvh - 32px))) / 2 + 22px);
+  }
+}

@@ -1,6 +1,8 @@
 import { applyMapSurface } from './lib/mapSurface.js'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+// Note 101: dynaura's stylesheet without its Google Fonts import (the island uses the app's own face).
+import 'dynaura/styles-no-font.css'
 import './index.css'
 import { applyGlassOpacity } from './lib/glassOpacity.js'
 import { installZoomOrigin } from './lib/zoomOrigin.js'

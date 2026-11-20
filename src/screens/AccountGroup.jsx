@@ -8,6 +8,7 @@ import { RowIcon, ROW_ACCENT_COLORS } from './Account.jsx';
 import { computeHostActionCount, computeRefundActionCount, computeMyRefundActionCount, formatBadgeCount } from '../lib/badges.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
 import { projectDemoAllowed } from '../lib/projectDemo.js';
+import { islandEnabled } from '../lib/islandPrefs.js';
 import ProjectDemoPicker from '../components/project/ProjectDemoPicker.jsx';
 import TicketDemoPicker from '../components/project/TicketDemoPicker.jsx';
 import { ticketDemoAllowed } from '../lib/ticketDemo.js';
@@ -552,6 +553,10 @@ export default function AccountGroup() {
             <Row icon="alertShield" label={T('Tài Khoản Thử Nghiệm', 'Test Accounts')} trailing="›" testId="admin-test-accounts" onClick={() => set({ screen: 'adminTestAccounts' })} />
             <Row icon="alertShield" label={T('Sửa ngày sinh', 'Birthday corrections')} trailing="›" testId="admin-dob-corrections" onClick={() => set({ screen: 'adminDobCorrections' })} />
             <Row icon="sliders" label={T('Công tắc tính năng', 'Feature switches')} trailing="›" testId="admin-features" onClick={() => set({ screen: 'adminFeatures' })} />
+            {/* Migration 222, note 101: every island case on demand, while the switch is on. */}
+            {islandEnabled(s.featureFlags) && (
+              <Row icon="sliders" label={T('Bản demo Đảo Động', 'Dynamic Island demo')} trailing="›" testId="admin-island-demo" onClick={() => set({ screen: 'adminIslandDemo' })} />
+            )}
             {/* Migration 216: admins only, while switch project_hub_demo is on. Opens the hub on sample data, nothing is saved. */}
             {projectDemoAllowed(s) && (
               <div onClick={() => setDemoPicker(true)} data-testid="admin-project-demo" role="button" tabIndex={0}

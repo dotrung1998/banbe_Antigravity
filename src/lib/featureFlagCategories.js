@@ -10,7 +10,7 @@ export const CONTROL_KEYS = { [ONBOARDING_CONTROL]: ['onboarding_v2', 'onboardin
 export const FLAG_CATEGORIES = [
   { key: 'onboarding', vi: 'Giới thiệu & khám phá', en: 'Onboarding & discovery', flags: [ONBOARDING_CONTROL, 'intent_foryou', 'market_share'] },
   { key: 'rewards', vi: 'Phần thưởng & gắn kết', en: 'Rewards & engagement', flags: ['rewards', 'rewards_v2'] },
-  { key: 'notifications', vi: 'Thông báo & giữ chân', en: 'Notifications & retention', flags: ['push_enabled', 'event_reminders', 'follow_alerts', 'weekly_digest', 'live_activity'] },
+  { key: 'notifications', vi: 'Thông báo & giữ chân', en: 'Notifications & retention', flags: ['push_enabled', 'event_reminders', 'follow_alerts', 'weekly_digest', 'live_activity', 'island_toasts'] },
   { key: 'events', vi: 'Sự kiện & tổng kết', en: 'Events & recaps', flags: ['event_recap', 'host_recap'] },
   { key: 'types', vi: 'Loại sự kiện', en: 'Event types', flags: ['event_type_profiles'] },
   { key: 'layout', vi: 'Bố cục ứng dụng', en: 'App layout', flags: ['simple_shell', 'polaroid_cards', 'home_v23', 'unified_discovery'] },

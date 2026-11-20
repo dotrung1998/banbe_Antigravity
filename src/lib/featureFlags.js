@@ -9,7 +9,7 @@
 //   everything, which is the behaviour from before flags existed.
 // - Anything that is not a boolean is ignored.
 
-export const FLAG_KEYS = ['rewards', 'rewards_v2', 'push_enabled', 'app_events', 'event_reminders', 'event_recap', 'host_recap', 'follow_alerts', 'weekly_digest', 'intent_foryou', 'live_activity', 'market_share', 'onboarding_v2', 'onboarding_v3', 'event_type_profiles', 'simple_shell', 'polaroid_cards', 'event_project_hub', 'project_qr_invite', 'project_delegate_checkin', 'project_delegate_payments', 'project_delegate_refunds', 'project_hub_demo', 'ticket_demo', 'home_v23', 'unified_discovery'];
+export const FLAG_KEYS = ['rewards', 'rewards_v2', 'push_enabled', 'app_events', 'event_reminders', 'event_recap', 'host_recap', 'follow_alerts', 'weekly_digest', 'intent_foryou', 'live_activity', 'island_toasts', 'market_share', 'onboarding_v2', 'onboarding_v3', 'event_type_profiles', 'simple_shell', 'polaroid_cards', 'event_project_hub', 'project_qr_invite', 'project_delegate_checkin', 'project_delegate_payments', 'project_delegate_refunds', 'project_hub_demo', 'ticket_demo', 'home_v23', 'unified_discovery'];
 // push_enabled (migration 194): real push notifications (iPhone), dark until an admin turns it on.
 // app_events (migration 196): first-party measurement; nothing is sent until an admin turns it on.
 // Migrations 199/200: event_reminders is on unless an admin turns it off; the rest stay dark until set.
@@ -24,7 +24,9 @@ export const FLAG_KEYS = ['rewards', 'rewards_v2', 'push_enabled', 'app_events',
 // home_v23 (migration 218, note 81): web Home, Browse by type and Event Detail in the v2.3 design, on top of simple_shell; dark until set.
 // unified_discovery (migration 221, note 99): Home and Map share one search/type/time/filters, on top of home_v23; dark until set.
 // project_hub_demo (migration 216): admins can open the hub on sample data (src/lib/projectDemo.js); dark until set.
-export const OFF_UNLESS_SET = ['rewards_v2', 'push_enabled', 'app_events', 'event_recap', 'host_recap', 'follow_alerts', 'weekly_digest', 'intent_foryou', 'live_activity', 'market_share', 'onboarding_v2', 'onboarding_v3', 'event_type_profiles', 'polaroid_cards', 'event_project_hub', 'project_qr_invite', 'project_delegate_checkin', 'project_delegate_payments', 'project_delegate_refunds', 'project_hub_demo', 'ticket_demo', 'home_v23', 'unified_discovery'];
+// island_toasts (migration 232, note 101): web notifications rise on a Dynamic-Island-style pill (src/lib/islandPrefs.js);
+// dark until an admin turns it on.
+export const OFF_UNLESS_SET = ['rewards_v2', 'push_enabled', 'app_events', 'event_recap', 'host_recap', 'follow_alerts', 'weekly_digest', 'intent_foryou', 'live_activity', 'island_toasts', 'market_share', 'onboarding_v2', 'onboarding_v3', 'event_type_profiles', 'polaroid_cards', 'event_project_hub', 'project_qr_invite', 'project_delegate_checkin', 'project_delegate_payments', 'project_delegate_refunds', 'project_hub_demo', 'ticket_demo', 'home_v23', 'unified_discovery'];
 const CACHE_KEY = 'banbe_feature_flags_v1';
 
 /** Keep only known keys with real booleans. Unknown keys from a newer server are ignored, never trusted. */

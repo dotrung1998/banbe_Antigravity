@@ -15,6 +15,7 @@
   "dependencies": {
     "@sparticuz/chromium": "^131.0.1",
     "@supabase/supabase-js": "^2.49.1",
+    "dynaura": "^0.2.2",
     "jspdf": "^4.2.1",
     "jsqr": "^1.4.0",
     "jszip": "^3.10.2",

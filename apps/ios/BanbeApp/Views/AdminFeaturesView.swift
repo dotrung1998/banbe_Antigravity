@@ -68,6 +68,11 @@ struct AdminFeaturesView: View {
              hintVi: "Vào ngày sự kiện, iPhone hiện tên, giờ và địa điểm trên Màn hình khoá cho người có vé. Tạo ngay trên máy. Cần kiểm tra trên thiết bị thật trước khi bật. Mặc định tắt.",
              hintEn: "On event day, the iPhone shows the event name, time and place on the Lock Screen for ticket holders. Created on the device. Check on a real device before turning on. Off by default.",
              onVi: "Đang bật", onEn: "On", offVi: "Đang tắt", offEn: "Off"),
+        // Migration 232, note 101. Web only: the iPhone app shows the switch but does not use it.
+        Flag(key: "island_toasts", vi: "Đảo Động cho thông báo (web)", en: "Dynamic Island toasts (web)",
+             hintVi: "Thông báo trong ứng dụng trên web hiện trên một viên đảo động. Mọi người chọn kiểu, vị trí và chuyển động ở Tài khoản › Thông báo. Quản trị viên có bản demo trong Duyệt & kiểm duyệt. Mặc định tắt. Cần migration 232.",
+             hintEn: "Web in-app notifications rise on a Dynamic-Island-style pill. People choose the style, position and motion in Account › Notifications. Admins get a demo in Review & moderation. Off by default. Needs migration 232.",
+             onVi: "Đang bật", onEn: "On", offVi: "Đang tắt", offEn: "Off"),
         Flag(key: "market_share", vi: "Chia sẻ qua Zalo / Nhắn tin", en: "Share via Zalo / Text",
              hintVi: "Thêm nút chia sẻ qua Zalo (sự kiện ở Việt Nam) và Nhắn tin cho bạn (sự kiện ở Mỹ) cạnh nút chia sẻ của hệ thống. Mặc định tắt.",
              hintEn: "Adds Share via Zalo (Vietnam events) and Text a friend (US events) next to the system share. Off by default.",

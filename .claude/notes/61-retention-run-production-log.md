@@ -75,3 +75,22 @@ admin_event_wipe=true (untouched), rewards=false (untouched), rewards_v2=false (
 app_events=false, event_reminders=true, event_recap=false, host_recap=false, follow_alerts=false, weekly_digest=false,
 intent_foryou=false, live_activity=false, market_share=false. Migrations not applied: 182–184 only (held back on
 purpose, other workstream).
+
+## 2026-11-20 — island_toasts switch (migration 232)
+
+- **Scope:** web-only client switch; migration 232 inserts one `app_feature_flag_defs` row and one
+  `app_feature_flags` row (seeded false). No data changes, no schema change.
+- **Renumbered from 222:** a tracked `20261231000222_222_bookings_insert_lock.sql` already owns version 222. The island
+  file was renamed to `20261231000232_232_island_toasts_switch.sql` so the version is unique; the duplicate pending
+  222 no longer appears in `supabase migration list`.
+- **Pending check:** before applying, remote was 223–231 applied, **232 pending**, and 182–184 still pending by
+  design. `supabase db push` was deliberately **not** used because it would have applied 182–184 too.
+- **Applied:** the 232 SQL plus a `supabase_migrations.schema_migrations` row
+  (`20261231000232` / `232_island_toasts_switch`) through `supabase db query --linked`, in one transaction. Then
+  `app_feature_flags.island_toasts` was set to **true** with `updated_at = now()` and an audit row
+  (`enabled=true`, `admin_id NULL` — ops SQL, not an admin-UI action).
+- **Verified:** `migration list --linked` shows 232 applied; `get_feature_flags() ->> 'island_toasts' = true`; the
+  running local app read the linked endpoint, its admin row showed ON, and a test toast appeared on the island.
+  The browser probes had no console/network errors. 182–184 are still pending.
+- **Deployment:** no web deploy was made. The island code is still local/uncommitted; the deployed bundle does not
+  contain it yet. Rollback: set the flag false, or run the 232 rollback to drop the switch.

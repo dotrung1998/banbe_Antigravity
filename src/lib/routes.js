@@ -49,6 +49,8 @@ const STATIC = {
   adminEvents: '/admin/events',
   adminTestAccounts: '/admin/test-accounts',
   adminFeatures: '/admin/features',
+  adminIslandDemo: '/admin/island-toasts',
+  islandSettings: '/settings/island',
   adminRetention: '/admin/retention',
   adminManageEvents: '/admin/events/manage',
   adminDobCorrections: '/admin/birthday-corrections',

@@ -67,11 +67,15 @@ const AdminEvents = lazy(() => import('./screens/AdminEvents.jsx'));
 const AdminTestAccounts = lazy(() => import('./screens/AdminTestAccounts.jsx'));
 const AdminFeatures = lazy(() => import('./screens/AdminFeatures.jsx'));
 const AdminRetention = lazy(() => import('./screens/AdminRetention.jsx'));
+const AdminIslandDemo = lazy(() => import('./screens/AdminIslandDemo.jsx'));
 import EventRecap from './screens/EventRecap.jsx';
 import HostRecap from './screens/HostRecap.jsx';
 const AdminManageEvents = lazy(() => import('./screens/AdminManageEvents.jsx'));
 const AdminDobCorrections = lazy(() => import('./screens/AdminDobCorrections.jsx'));
 import ToastStack from './screens/ToastStack.jsx';
+import IslandHost from './components/island/IslandHost.jsx';
+import IslandToasts from './components/island/IslandToasts.jsx';
+import IslandSettings from './screens/IslandSettings.jsx';
 import { EVENTS } from './data/events.js';
 import Policy from './screens/Policy.jsx';
 import Guide from './screens/Guide.jsx';
@@ -154,6 +158,8 @@ const SCREENS = {
   adminEvents: AdminEvents,
   adminTestAccounts: AdminTestAccounts,
   adminFeatures: AdminFeatures,
+  adminIslandDemo: AdminIslandDemo,
+  islandSettings: IslandSettings,
   adminRetention: AdminRetention,
   eventRecap: EventRecap,
   hostRecap: HostRecap,
@@ -435,6 +441,8 @@ function Shell() {
   // Prototype v2 (unified discovery): the Map is a full-screen view with NO dock (its own bottom row carries zoom,
   // List · N and locate). Only Simple Shell drops it; the legacy dock keeps its Map tab.
   const unifiedMap = flagOn(state.featureFlags, 'simple_shell') && flagOn(state.featureFlags, 'home_v23') && flagOn(state.featureFlags, 'unified_discovery');
+  // Note 101: while the switch is on, proactive notifications rise on the island instead of the card stack.
+  const islandOn = flagOn(state.featureFlags, 'island_toasts');
   const showBar = showsBottomBar(state.screen) && !(unifiedMap && state.screen === 'mapExplore')
     && !state.storyViewer && !state.pulseOpen && !state.areaAsking && !state.dockSuppressed && !state.storySurveyModalPublicId && !eventOnboardingActive;
 
@@ -991,7 +999,9 @@ function Shell() {
       {state.deleteAccountStayOpen && <DeleteAccountStaySheet />}
       {state.hostSetupOpen && state.user && <HostSetupSheet />}
       {state.saveToast && state.user && <SaveToast key={state.saveToast.id} toast={state.saveToast} aboveDock={showBar} />}
-      <ToastStack />
+      {/* Host first: its mount effect must exist before IslandToasts can hand it a queued notification. */}
+      {islandOn && <IslandHost />}
+      {islandOn ? <IslandToasts /> : <ToastStack />}
       {/* account gate (web parity) — blocking overlay above every screen until the server gate clears */}
       <AccountGate />
       {/* event onboarding (note 34) — below the gate, above every screen */}

@@ -93,6 +93,16 @@ const FLAGS = [
     hintEn: 'On event day, the iPhone shows the event name, time and place on the Lock Screen for ticket holders. Created on the device. Check on a real device before turning on. Off by default.',
   },
   {
+    // Migration 222, note 101. Web only: the iPhone app shows the switch but does not use it.
+    key: 'island_toasts',
+    vi: 'Đảo Động cho thông báo (web)',
+    en: 'Dynamic Island toasts (web)',
+    hintVi: 'Thông báo trong ứng dụng hiện trên một viên đảo động ở đầu trang (và ngay dưới Đảo Động khi thêm vào Màn hình chính). Mọi người chọn kiểu, vị trí và chuyển động ở Tài khoản › Thông báo. Quản trị viên có bản demo đầy đủ trong Duyệt & kiểm duyệt. Mặc định tắt. Cần migration 232.',
+    hintEn: 'In-app notifications rise on a Dynamic-Island-style pill at the top of the page (just below the Island in a Home Screen app). People choose the style, position and motion in Account › Notifications. Admins get a full demo in Review & moderation. Off by default. Needs migration 232.',
+    stateOn: ['Đang bật', 'On'],
+    stateOff: ['Đang tắt', 'Off'],
+  },
+  {
     key: 'market_share',
     vi: 'Chia sẻ qua Zalo / Nhắn tin',
     en: 'Share via Zalo / Text',
