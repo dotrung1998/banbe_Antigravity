@@ -102,6 +102,15 @@ dist-ssr
 # Local-only credentials for the R2 migration scripts (never committed).
 .r2-secrets.local
 
+# Second brain (docs/second-brain): captures and job output are generated, so a
+# nightly capture can never dirty the tree or be committed by accident. Only the
+# hand-written wiki/, Templates/ and indexes are tracked. See
+# docs/second-brain/AGENTS.md for the raw-vs-wiki ownership rule.
+/docs/second-brain/raw/inbox/
+/docs/second-brain/raw/compiled/
+!/docs/second-brain/raw/inbox/README.md
+!/docs/second-brain/raw/compiled/README.md
+
 # Modern Web Guidance skill install (~200 vendored guide files, pinned in
 # skills-lock.json). Reinstall with `npx modern-web-guidance@latest` instead of
 # committing it: it is not part of the app and it pushed the published web app
