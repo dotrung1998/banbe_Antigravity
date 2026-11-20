@@ -441,6 +441,27 @@ struct SeeAllFanCard: View {
     @State private var glow = false
 
     private static let gold = Color(red: 0.8, green: 0.62, blue: 0.16)
+    /// The chip's top edge from the card's top. Web (`SeeAllFanCard.jsx`) puts its container at `top: 128` and the chip
+    /// at `translateY(62px)`, so 191 px — 6 px under the 140 px sketch that starts at 45. Measured on web 2026-11-20.
+    private static let chipTop: CGFloat = 191
+
+    /// The tab's chip, drawn over the card from the card's top edge so its distance from the drawing can never drift.
+    /// The entrance is web's: 22 pt above its resting place, sliding down (web animates `translateY` 40 → 62).
+    private var tabChip: some View {
+        HStack(spacing: 4) {
+            Text("★").foregroundStyle(Self.gold)
+            Text(label.t(app.isEN))
+        }
+        .font(.app(size: 12, weight: .semibold))
+        .foregroundStyle(app.palette.ink)
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        .background(app.palette.paper, in: Capsule())
+        .overlay(Capsule().stroke(Self.gold.opacity(0.7), lineWidth: 1))
+        .shadow(color: Self.gold.opacity(glow ? 0.5 : 0), radius: glow ? 7 : 0)
+        .padding(.top, Self.chipTop)
+        .offset(y: (1 - chip) * -22)
+        .opacity(chip)
+    }
 
     var body: some View {
         SwipeSafeButton(action: onOpen) {
@@ -458,19 +479,6 @@ struct SeeAllFanCard: View {
                         let pos = n == 1 ? 1 : n == 2 ? [0, 2][i] : i
                         photo(src, pos: pos)
                     }
-                    HStack(spacing: 4) {
-                        Text("★").foregroundStyle(Self.gold)
-                        Text(label.t(app.isEN))
-                    }
-                    .font(.app(size: 12, weight: .semibold))
-                    .foregroundStyle(app.palette.ink)
-                    .padding(.horizontal, 12).padding(.vertical, 6)
-                    .background(app.palette.paper, in: Capsule())
-                    .overlay(Capsule().stroke(Self.gold.opacity(0.7), lineWidth: 1))
-                    .shadow(color: Self.gold.opacity(glow ? 0.5 : 0), radius: glow ? 7 : 0)
-                    .offset(y: 62 + (1 - chip) * -22)
-                    .opacity(chip)
-                    .zIndex(3)
                 }
                 .offset(y: 128 - 180)
                 VStack(spacing: 4) {
@@ -482,6 +490,9 @@ struct SeeAllFanCard: View {
             }
             .foregroundStyle(.white)
             .frame(width: 268, height: 360)
+            // The tab's star chip is anchored to the card's TOP edge (web geometry, see `tabChip`), not to the centred
+            // fan stack it used to hang off — that stack's own offset left it ~10 pt too high, against the sketch.
+            .overlay(alignment: .top) { tabChip }
             .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.18), lineWidth: 1))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
