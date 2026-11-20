@@ -501,13 +501,6 @@ struct HomeHeroSection: View {
         list.first { $0.key == current } ?? list.first
     }
     private var currentIndex: Int { list.firstIndex { $0.key == current } ?? 0 }
-    /// The dash lit under the rail: the rail's end card ("See all") is the last page, so it lights the last dash.
-    private var dashIndex: Int {
-        if list.isEmpty { return currentIndex }
-        if current == "home.hero.seeAll" { return list.count }
-        if let i = suggestions.firstIndex(where: { "home.hero.suggest.\($0.id)" == current }) { return list.count + 1 + i }
-        return currentIndex
-    }
     /// A short pager (1 or 2 events) offers other ways to look after the See all card: Weekend, All events, Browse by
     /// type. The rule and the words are shared with web (ListEnd.heroSuggestions, tests/fixtures/list-end.json).
     private var suggestions: [ListEnd.HeroSuggestion] {
@@ -828,16 +821,19 @@ struct HomeHeroSection: View {
 
     private var dots: some View {
         HStack(spacing: 6) {
-            // One dash per card plus one for the end card and one per suggestion card.
-            ForEach(0..<(list.isEmpty ? 0 : list.count + 1 + suggestions.count), id: \.self) { i in
+            // Web parity: one dash per EVENT, not per page. The See all card and the suggestion cards sit after the
+            // events on the same track, so while either is showing the last event's dash stays lit (web reads the
+            // rail's offset and clamps it to `list.count - 1`, and its dots are `list.map` only). Counting every card
+            // here made iOS show five dashes where web shows two for the same rail (owner screenshot, 2026-11-20).
+            ForEach(Array(list.enumerated()), id: \.element.key) { i, _ in
                 Capsule()
-                    .fill(i == dashIndex ? Color.white : Color.white.opacity(0.32))
-                    .frame(width: i == dashIndex ? 30 : 20, height: 3)
+                    .fill(i == currentIndex ? Color.white : Color.white.opacity(0.32))
+                    .frame(width: i == currentIndex ? 30 : 20, height: 3)
             }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 18).padding(.bottom, 22)
-        .animation(Motion.fade(.easeOut(duration: 0.2), reduce: reduceMotion), value: dashIndex)
+        .animation(Motion.fade(.easeOut(duration: 0.2), reduce: reduceMotion), value: currentIndex)
         .accessibilityHidden(true)
     }
 }
