@@ -151,7 +151,9 @@ private struct ScheduleScreen: View {
 
     // MARK: header
 
-    /// Same logo + title as Account's header (112pt wordmark, display 27); Today and the month button sit on the row below.
+    /// The same title as Account's and Activity's headers: display 30, no wordmark, on the shared 52pt row (owner
+    /// 2026-11-20 — Schedule was the only dock header still carrying the logo, at 27, so its bar read as a different
+    /// section). Today and the month button sit on the row below.
     @ViewBuilder
     private var header: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -164,10 +166,15 @@ private struct ScheduleScreen: View {
         }
     }
 
-    /// banbe wordmark + "Schedule", identical to Account/Messages (width, font, spacing).
+    /// "Schedule", identical to Account's "Tài khoản" and Activity's "Hoạt động": display 30, no wordmark.
     private var titleRow: some View {
         HStack(alignment: .center) {
-            DockHeaderTitle(title: app.T("Lịch", "Schedule"), identifier: "schedule.title")
+            Text(app.T("Lịch", "Schedule"))
+                .font(BanbeTheme.display(30))
+                .foregroundStyle(app.palette.ink)
+                .lineLimit(1)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("schedule.title")
             Spacer(minLength: 0)
         }
         .frame(height: DockHeaderTitle.rowHeight)  // note 53: same row height as the other dock headers

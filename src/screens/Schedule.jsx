@@ -4,7 +4,7 @@
 // All rules live in lib/schedulePresentation.js (unit-tested). "Saved" plans are the account's Saved list, read from the server (note 99).
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import DockHeaderTitle, { DOCK_HEADER } from '../components/ui/DockHeaderTitle.jsx';
+import { DOCK_HEADER } from '../components/ui/DockHeaderTitle.jsx';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, display } from '../theme.js';
 import * as SP from '../lib/schedulePresentation.js';
@@ -279,9 +279,11 @@ export default function Schedule() {
           Today sit on the row below, like ScheduleView's header. */}
       {/* Pinned like iOS ScheduleView: title, month/Today, Mine/Discover and the week strip stay put; the agenda scrolls. */}
       <div data-testid="schedule-fixed-header" style={{ position: 'sticky', top: 0, zIndex: 6, background: paper, paddingBottom: 8 }}>
-      {/* Note 53: the shared dock header — same logo, gap, title, row height and padding as Home/Messages/Account. */}
+      {/* Dock header, Account/Activity parity: the same plain light 30px title on the same 52px row with the same
+          20px gutter — no wordmark (Account and Activity don't carry one either; the logo made Schedule the odd one
+          out, owner 2026-11-20). */}
       <div style={{ padding: `${DOCK_HEADER.top} ${DOCK_HEADER.side}px 0`, display: 'flex', alignItems: 'center', height: DOCK_HEADER.rowHeight, boxSizing: 'content-box' }}>
-        <DockHeaderTitle as="h1" title={T('Lịch', 'Schedule')} testId="schedule-title" />
+        <h1 data-testid="schedule-title" style={{ margin: 0, fontSize: 30, fontWeight: 300, letterSpacing: '-.01em', color: ink }}>{T('Lịch', 'Schedule')}</h1>
       </div>
       <div style={{ padding: '10px 20px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
         <button type="button" onClick={() => setMonthOpen(true)} data-testid="schedule-month-open"
