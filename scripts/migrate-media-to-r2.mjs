@@ -20,7 +20,7 @@
 //   node scripts/migrate-media-to-r2.mjs --rollback [--event-ids e1]  # drop R2 pointers
 import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync, appendFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, appendFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createClient } from '@supabase/supabase-js';
@@ -49,8 +49,6 @@ const cfg = r2Config(secrets);
 if (APPLY && (!cfg.ok || !cfg.publicBaseUrl)) { console.error('R2_* and MEDIA_PUBLIC_BASE_URL required for --apply', cfg.missing || ''); process.exit(2); }
 if (APPLY && !ALL && !eventIds.length && !orgIds.length) { console.error('--apply needs --event-ids / --organizer-ids (or --all)'); process.exit(2); }
 
-const done = new Set();
-if (existsSync(STATE)) for (const l of readFileSync(STATE, 'utf8').split('\n').filter(Boolean)) { const r = JSON.parse(l); if (r.status === 'ok') done.add(r.id); }
 const audit = (rec) => { mkdirSafe(STATE); appendFileSync(STATE, JSON.stringify({ at: new Date().toISOString(), ...rec }) + '\n'); };
 function mkdirSafe(p) { execFileSync('mkdir', ['-p', p.split('/').slice(0, -1).join('/') || '.']); }
 const sha = (b) => createHash('sha256').update(b).digest('hex');
@@ -94,11 +92,14 @@ function makeVariants(buf, ext) {
 
 async function copyOne({ bucket, path, kind, scope, eventId, organizerId, label }) {
   const id = `${bucket}/${path}`;
-  if (done.has(id)) return 'skipped-done';
-  // One asset per legacy object (`media_assets_legacy_uq`) and a ref must carry the
-  // row's own scope (`guard_r2_ref`). A cloned event that reuses this storage path
-  // therefore keeps the untouched Supabase copy and is skipped here, not failed.
-  const dup = must(await admin.from('media_assets').select('id,status').eq('legacy_bucket', bucket).eq('legacy_path', path).neq('status', 'deleted').maybeSingle());
+  // `media_assets_legacy_uq` allows one row per (legacy_bucket, legacy_path), and
+  // `guard_r2_ref` wants the ref's scope to be the row's own. A cloned event that
+  // reuses this storage path therefore books its copy under `<path>#<scope>` while
+  // the bytes still come from `path`; only this script ever reads legacy_path.
+  const priorRows = must(await admin.from('media_assets').select('id,status,event_id,organizer_id').eq('legacy_bucket', bucket).eq('legacy_path', path).neq('status', 'deleted'));
+  const mine = priorRows.some((a) => (eventId ? a.event_id === eventId : a.organizer_id === organizerId));
+  const legacyKey = priorRows.length && !mine ? `${path}#${scope}` : path;
+  const dup = must(await admin.from('media_assets').select('id,status').eq('legacy_bucket', bucket).eq('legacy_path', legacyKey).neq('status', 'deleted').maybeSingle());
   if (dup?.status === 'published') { audit({ id, status: 'ok', note: 'already migrated' }); return 'skipped-done'; }
 
   const { data: blob, error } = await admin.storage.from(bucket).download(path);
@@ -123,7 +124,7 @@ async function copyOne({ bucket, path, kind, scope, eventId, organizerId, label 
   if (!dup) {
     must(await admin.from('media_assets').insert({
       id: assetId, kind, scope, event_id: eventId, organizer_id: organizerId, owner_user_id: await ownerOf(eventId, organizerId),
-      ext: head.ext, status: 'pending', source: 'migration', legacy_bucket: bucket, legacy_path: path, legacy_sha256: originalSha,
+      ext: head.ext, status: 'pending', source: 'migration', legacy_bucket: bucket, legacy_path: legacyKey, legacy_sha256: originalSha,
       variants: stored, declared: {},
     }));
   }

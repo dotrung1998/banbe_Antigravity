@@ -207,12 +207,21 @@ việc đó **không** nằm trong runbook này.
   - CORS fail → `AllowedOrigins` thiếu đúng origin (có/không `www`), hoặc chưa bấm **Save**.
   - purge warning → token thiếu quyền **Cache Purge** (không phải Cache Rules).
 
-## Giới hạn đã biết: event nhân bản dùng chung một ảnh
+## Event nhân bản dùng chung một ảnh
 
 `media_assets_legacy_uq` chỉ cho **một** asset cho mỗi `(legacy_bucket, legacy_path)`, và
-trigger `guard_r2_ref` bắt `r2_ref` phải mang đúng scope `ev-<event_id>` của chính hàng đó.
-Nên khi hai event (bản gốc + bản clone) trỏ cùng một `storage_path`, chỉ event đầu tiên được
-chuyển; hàng của event clone giữ URL Supabase và client tự fallback (đọc vẫn đúng).
+trigger `guard_r2_ref` bắt `r2_ref` mang đúng scope `ev-<event_id>` của chính hàng đó.
 
-Đây là hành vi đúng của thiết kế, không phải lỗi migration. Muốn chuyển nốt phải đổi schema
-(unique index thêm `event_id`) — một migration riêng, và tốn thêm dung lượng R2 cho bản sao.
+Script xử lý bằng **legacy_path có scope**: khi object đã có asset của một event khác, bản
+clone được ghi với `legacy_path = "<path>#<scope>"` (ví dụ
+`event-photos/vuonsau/DSCF4212.jpg#ev-canhchua`) trong khi bytes vẫn tải từ `path` thật.
+Nhờ vậy mỗi event có asset và ref riêng, **không cần đổi schema**, và chuyển private/xoá
+asset của event này không ảnh hưởng event kia. `legacy_path` chỉ dùng cho dedupe/audit của
+script — không chỗ nào trong `api/` đọc nó.
+
+Đã chuyển 43 ảnh clone ngày 2026-11-20. Những gì còn trong backlog **không phải clone**:
+
+- 4 ảnh của event `banrieng` (`visibility: invite`) — không public nên ngoài phạm vi chuyển.
+- 1 avatar organizer mồ côi (đã gỡ khỏi `organizers.avatar_path`).
+
+Chạy lại `--apply --all` phải báo `migrated: 0`; còn `to copy: 4` là đúng, không phải lỗi.
