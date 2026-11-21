@@ -280,7 +280,7 @@ async function postApply() {
       process.exit(2);
     }
   } else {
-    body = process.env.APPLY_PROMPT || process.env.ISSUE_BODY || '';
+    body = process.env.APPLY_PROMPT || '';
   }
   body = body.trim();
   if (!body) {

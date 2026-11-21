@@ -20,6 +20,8 @@ Bạn là kỹ sư triển khai cho banbe. Đây là mission **cấu hình tối
 - Không đổi schema, migration, DB, deploy, secret. Không thêm dependency trừ khi finding bắt buộc.
 - Giữ floor **Safari 16.2 / iOS 16.2** (Baseline Widely available của app).
 - Branch `fix/audit-<date>`; commit nhỏ theo từng finding; không rewrite ngoài phạm vi.
+- **Không secret, không PII — tuyệt đối:** không đưa vào APPLY.md, PR, commit, log, ảnh hay test fixture: `.env`, API key/token/webhook, service-role key, JWT, mật khẩu, connection string, email, số điện thoại, tên khách, địa chỉ nhà, mã booking/payment, ảnh có mặt người. Cần dữ liệu thật → `<redacted>` + mô tả hình dạng, hoặc fixture giả. Finding về secret chỉ ghi `path:line` + loại, che giá trị, báo owner riêng — không mở PR chứa secret.
+- **Bố cục thương mại:** bản thử đang bọc app trong khung iPhone (`.bb-device` / `.bb-screen`, `src/App.jsx:864`, `src/styles.css:600`); mục tiêu thương mại là **từng màn hình có bố cục riêng** (390 / 768 / 1280+), không dùng một khung điện thoại. Prototype ở `docs/prototypes/` là nguồn thiết kế nhưng **chưa được audit lại và chưa áp dụng**. Nếu APPLY có mục commercial layout: đối chiếu prototype + audit trước, giữ khung thử sau một điều kiện/flag để không phá bản thử, và không trộn thay đổi bố cục thương mại với fix P0/P1 khác trong cùng commit. Nếu APPLY không có mục này: **không** tự refactor khung.
 
 ## 3. Kiểm
 
@@ -32,6 +34,7 @@ Bạn là kỹ sư triển khai cho banbe. Đây là mission **cấu hình tối
 - Mở PR vào `main`, **không merge**: `fix(audit): <date> — <tóm tắt>`.
 - Body gồm: findings đã sửa, cách sửa, bằng chứng, test đã chạy, rủi ro/rollback, checklist Preview (route + viewport + theme).
 - Không commit `.env`, ảnh chụp tạm, `dist/`, `graphify-out/`.
+- Không dán secret/PII vào body PR, ảnh, log hay test fixture; che email/số điện thoại/địa chỉ/mã đơn trước khi chụp. Nếu phát hiện secret: chỉ nêu `path:line` + loại, không chép giá trị.
 
 ## 5. Trả lời
 
@@ -57,6 +60,14 @@ Bạn là kỹ sư triển khai cho banbe. Đây là mission **cấu hình tối
 - **Sai thế nào:** ...
 - **Sửa nhỏ nhất:** ...
 - **Nghiệm thu:** ...
+
+### Commercial layout — <màn> (chỉ khi audit yêu cầu)
+
+- **Prototype:** `docs/prototypes/<file>.html` (hoặc `missing`).
+- **Hiện tại:** route + ảnh 390/768/1280; ghi `trial shell` nếu đang trong khung iPhone.
+- **Lệch:** bố cục / state / copy / flow so với prototype.
+- **Việc cần làm:** màn này cần bố cục gì ở 390/768/1280+; giữ khung thử đến khi có điều kiện chuyển.
+- **Nghiệm thu:** route + viewport + ảnh before/after.
 
 ## Không làm
 

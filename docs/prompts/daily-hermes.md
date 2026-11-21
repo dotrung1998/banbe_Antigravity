@@ -20,7 +20,7 @@
   | `.claude/skills/modern-web-guidance/`, `~/.cache/ms-playwright/` | D/E | tool + browser cache, gitignored hoặc ngoài repo |
 
   Ngoài bảng này: không ghi. Mọi thay đổi ngoài `docs/audits/` ghi vào mục **"Thay đổi ngoài audit dir"** — người duyệt commit, agent không commit.
-- **Không in** secret, token, email, tên khách, số booking. Nếu thấy secret trong source: ghi `path:line` và mô tả, không chép giá trị.
+- **Không in / không ghi** secret, token, webhook URL, service-role key, JWT, mật khẩu, connection string, email, số điện thoại, tên khách, địa chỉ nhà, số booking/payment. Nếu thấy secret trong source: ghi `path:line` + loại, không chép giá trị. APPLY.md và tin Discord cũng phải sạch: che `<redacted>` trước khi ghi; ảnh phải che PII trước khi lưu.
 - **Không bịa.** Thiếu bằng chứng → `UNKNOWN` hoặc `blocked: <lý do>`, không phải PASS.
 - Mỗi kết luận phải có **`path:line`, route, hoặc đường dẫn ảnh**. Nhận định chung chung không tính là phát hiện.
 - **Được gửi đúng một prompt apply** (mục K; có thể 2–3 tin nếu dài) qua `scripts/cloud-notify.mjs apply`; không gửi gì khác, không tạo issue, không commit.
@@ -75,6 +75,10 @@ Cộng với PR đang mở và workflow run fail trong 24h (nếu có `gh`). Xu�
 - **6 chỗ**: Home band · Event Detail · Giữ chỗ · Hoàn tiền & tranh chấp · Khách xem · Nền tảng (Safari 16.2).
 - **7 chiều**, chấm 0–5 kèm lý do: Logic · Dễ · Đẹp · Calm · Moat · An toàn · Nhanh. Ghi điểm và trọng số đã dùng; đổi trọng số thì nói rõ.
 - Kiểm tối thiểu: tap ≥ 44pt, tương phản ≥ 4.5:1, không tràn ngang, Reduce Motion, empty/error state, dead end.
+- **Bố cục thương mại (bắt buộc có trong report):** bản web hiện là bản thử — trên desktop app nằm trong khung iPhone (`.bb-device` / `.bb-screen`, `src/App.jsx:864`, `src/styles.css:600`). Khi thương mại, **từng màn hình có bố cục riêng** (390 / 768 / 1280+), không bọc trong một khung điện thoại. Prototype đã có trong `docs/prototypes/` nhưng **chưa được audit lại và chưa áp dụng vào app**. Vì vậy:
+  - Không chấm “hẹp / khung điện thoại” là lỗi P1 khi đó là khung thử; ghi `trial shell` và đánh giá phần bên trong khung.
+  - Audit prototype ↔ app: màn nào có prototype, lệch bố cục/state/copy/flow, màn nào thiếu; kiểm 390 / 768 / 1280, light/dark, ảnh before/after cùng route. Ảnh 1440 hiện là khung thử, không phải bố cục thương mại.
+  - Xuất mục **Commercial layout gaps** trong AUDIT.md: màn → prototype → lệch → việc cần làm → P0/P1/P2. Đây là input cho prompt apply; **không tự sửa app**.
 - **Golden set:** `node scripts/golden-shots.mjs --out docs/audits/<date>/golden` (dev server đang chạy) ghi 10 ảnh (5 màn × 390/1440 light) vào thư mục audit, dựng state bằng fixture chứ không mở URL trần. So với `docs/agent-os/vault/golden/shots/`; lệch ngoài ý muốn là P1/P2. Home/Event vẫn đọc Supabase production nên **bỏ qua khác biệt số liệu** (số vé, thứ tự carousel); chỉ báo lệch bố cục, typography, màu hoặc trạng thái UI. **Không** ghi đè golden; chỉ chạy không `--out` khi UI cố ý đổi và commit ảnh cùng thay đổi đó. Script fail → `golden: blocked — <stderr>`, **không** thay bằng ảnh chụp sai màn.
 - **Ảnh bổ sung:** 10 ảnh golden nằm trong `docs/audits/<date>/golden/`; ngoài ra tối đa **12 ảnh** trong `docs/audits/<date>/shots/` cho 320 hoặc dark của màn có phát hiện. Ảnh before/after phải cùng route, cùng viewport.
 - **Baseline scan:** `npx modern-web-guidance@latest legacy-scan src --json` — ghi số vi phạm + 3 file đầu; so với 4 vi phạm còn lại đã biết trong note 90. Không cài được → `skill missing: modern-web-guidance`, không thay bằng trí nhớ.

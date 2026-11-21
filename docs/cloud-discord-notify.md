@@ -125,7 +125,7 @@ The script splits on line boundaries at 1,800 characters and closes/reopens ``` 
 
 This needs `DISCORD_WEBHOOK_WEEKLY` in the audit machine's `.env` (gitignored) or shell — the same URL as the Actions secret, which Actions cannot hand to the audit session. Without it the script prints the full prompt and exits non-zero, so the audit can paste it into chat as `apply: not sent — <reason>` instead of losing it.
 
-The apply mission (`docs/prompts/apply-hermes.md`) tells the new session to re-check every finding against HEAD, fix P0/P1 plus selected P2, run build/unit/targeted Playwright, open a PR (never merge) with a preview checklist, and stop if nothing is still true.
+The apply mission (`docs/prompts/apply-hermes.md`) tells the new session to re-check every finding against HEAD, fix P0/P1 plus selected P2, run build/unit/targeted Playwright, open a PR (never merge) with a preview checklist, and stop if nothing is still true. It also forbids secrets and PII in the prompt, PR, logs, screenshots and fixtures — the webhook URL itself is a secret and stays in `.env`.
 
 ## Limits worth knowing
 
