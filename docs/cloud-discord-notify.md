@@ -17,8 +17,8 @@ channel webhooks. No Mac, no Freebuff session and no deploy is involved.
 | banbe monitor | `health` job | hourly; one alert per incident, ✅ recovered when it clears |
 | banbe Friday wind-down | `weekly` job | Fri 17:00 |
 | banbe weekly dependency audit | `deps` job | Sun 18:00 |
+| banbe daily audit / code graph / second-brain compile | `prompt` job | 05:00 daily: posts a ready-to-paste Freebuff Mission. The vault and graph notes now live in the repo; `graphify` itself is still a local install |
 | nightly verified `git bundle` | **stays on the Mac** — it backs up uncommitted local work | — |
-| second-brain compile / code graph / daily audit | **stays on the Mac** — needs the local vault, `graphify` and a model | — |
 | Apple Notes export | **stays on the Mac** — macOS Automation permission | — |
 
 Files: `.github/workflows/discord-notify.yml` (schedule) and `scripts/cloud-notify.mjs` (what gets said).
@@ -93,6 +93,25 @@ hermes cron resume "<job name>"  # bring one back whenever you want
 The script reads `~/.hermes/cron/jobs.json` read-only, gets the ids of enabled jobs, and calls
 `hermes cron pause <id>` for each. Nothing is removed; `hermes cron remove` is never used.
 
+## The daily Freebuff mission prompt
+
+Hermes' `banbe daily audit` cannot move here: its scheduler is an in-process ticker on the Mac, and Freebuff
+refuses automated runs (its CLI has no headless prompt and repeated automated use is recorded as a strike). So the
+`prompt` job posts the mission as **plain text** to `#banbe-reports` every day at 05:00 ICT; a person pastes it into
+a Freebuff session, which then does the work with a human in the loop. The message itself runs nothing.
+
+The message stays short on purpose: it names the day's jobs and points at
+[`docs/prompts/daily-hermes.md`](prompts/daily-hermes.md), the versioned mission that carries the full checklist —
+standup, health, technical audit, UI/UX review (6 places + 7 dimensions), dependency check, and the Friday/Sunday
+variants. That file also fixes the **source ladder** (repo → standards → articles → video, with caps), so a run
+cannot pass off a listicle or a YouTube video as evidence for a P0/P1.
+
+Preview it without sending:
+
+```bash
+node scripts/cloud-notify.mjs prompt --dry-run
+```
+
 ## Limits worth knowing
 
 - GitHub's scheduled runs can start a few minutes late; hourly means "about hourly".
@@ -102,6 +121,8 @@ The script reads `~/.hermes/cron/jobs.json` read-only, gets the ids of enabled j
   an alert or miss a recovery message; the checks themselves still run. A quiet channel means healthy — check
   *Actions* if a failure was expected.
 - The cloud jobs cannot see uncommitted local files or the second brain compiler; those stay with Hermes on the Mac.
+- The `prompt` job only sends text. Nothing in this repo can start or drive a Freebuff session; pasting the mission
+  is the step that gives Freebuff its instructions.
 - If Cloudflare ever bot-challenges the runner, the App check reports `HTTP 403`; point the `APP_URL` variable at the
   Vercel deployment hostname instead.
 - The Supabase check reads `/rest/v1/events?select=id&limit=1`, **not** `/rest/v1/`: Supabase answers the OpenAPI root

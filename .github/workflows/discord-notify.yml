@@ -24,12 +24,13 @@ on:
     - cron: '0 * * * *' # hourly — health, silent while healthy
     - cron: '0 10 * * 5' # 17:00 Fri ICT — week in review
     - cron: '0 11 * * 0' # 18:00 Sun ICT — dependency audit
+    - cron: '0 22 * * *' # 05:00 daily ICT — Freebuff mission prompt
   workflow_dispatch:
     inputs:
       job:
         description: 'Which notification to send'
         type: choice
-        options: [standup, health, weekly, deps, test]
+        options: [standup, health, weekly, deps, prompt, test]
         default: test
 
 permissions:
@@ -61,6 +62,7 @@ jobs:
             "0 * * * *")   job=health  ;;
             "0 10 * * 5")  job=weekly  ;;
             "0 11 * * 0")  job=deps    ;;
+            "0 22 * * *")  job=prompt  ;;
             "")
               job="${DISPATCH_JOB:-test}"
               ;;

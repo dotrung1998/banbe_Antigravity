@@ -11,6 +11,7 @@
  *   node scripts/cloud-notify.mjs health      # hourly — one alert per incident, a recovery message, repeats every 6h
  *   node scripts/cloud-notify.mjs weekly      # Fri 17:00 ICT — the week's commits + hotspots
  *   node scripts/cloud-notify.mjs deps        # Sun 18:00 ICT — outdated packages + npm audit
+ *   node scripts/cloud-notify.mjs prompt      # 05:00 daily ICT — copy-paste Mission for a Freebuff session
  *   node scripts/cloud-notify.mjs test        # one message, to prove the webhook wiring
  *
  * Flags: --dry-run  print the payload and send nothing
@@ -55,6 +56,7 @@ const CHANNEL_OF = {
   health: 'alerts',
   weekly: 'weekly',
   deps: 'weekly',
+  prompt: 'weekly',
   test: 'alerts',
 };
 
@@ -178,6 +180,36 @@ async function post(channel, embedPayload) {
   if (!url) {
     console.warn(`no webhook configured for "${channel}" — set DISCORD_WEBHOOK_${channel.toUpperCase()} in repo secrets`);
     console.log(JSON.stringify(payload, null, 2));
+    return { sent: false };
+  }
+  const target = `${url}${url.includes('?') ? '&' : '?'}wait=true`;
+  const response = await fetch(target, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(`Discord rejected the ${channel} message: HTTP ${response.status} ${clip(body, 300)}`);
+  }
+  console.log(`posted ${channel} (HTTP ${response.status})`);
+  return { sent: true };
+}
+
+// Plain text (no embed) so the mission prompt is one drag-select away from the
+// clipboard. Discord caps `content` at 2000 characters; dailyPrompt() stays under.
+async function postText(channel, content) {
+  const payload = { username: 'banbe cloud', allowed_mentions: { parse: [] }, content };
+  if (DRY_RUN) {
+    console.log(`dry run — would post to ${channel}:`);
+    console.log(content);
+    return { sent: false, dryRun: true };
+  }
+  const url = process.env[`DISCORD_WEBHOOK_${channel.toUpperCase()}`] || process.env.DISCORD_WEBHOOK;
+  if (!url) {
+    console.warn(`no webhook configured for "${channel}" — set DISCORD_WEBHOOK_${channel.toUpperCase()} in repo secrets`);
+    console.log(content);
     return { sent: false };
   }
   const target = `${url}${url.includes('?') ? '&' : '?'}wait=true`;
@@ -319,6 +351,37 @@ function deps() {
       { name: 'npm audit · prod deps', value: summary },
     ],
   });
+}
+
+// Hermes cannot move to the cloud (its scheduler is an in-process ticker on the
+// Mac) and Freebuff refuses automated runs, so the audit stays human-in-the-loop:
+// this posts the mission, a person pastes it into a Freebuff session.
+function dailyPrompt() {
+  const date = today();
+  const head = git(['rev-parse', '--short', 'HEAD']) || 'unknown';
+  const weekday = new Intl.DateTimeFormat('en-GB', { timeZone: TIME_ZONE, weekday: 'long' }).format(new Date());
+  const weekdayVi = {
+    Monday: 'Thứ Hai', Tuesday: 'Thứ Ba', Wednesday: 'Thứ Tư',
+    Thursday: 'Thứ Năm', Friday: 'Thứ Sáu', Saturday: 'Thứ Bảy', Sunday: 'Chủ Nhật',
+  }[weekday] || weekday;
+  const extra = weekday === 'Friday'
+    ? 'Thứ Sáu: thêm week review 7 ngày (commit, 6 file hotspot, branch, "Monday starts with").'
+    : weekday === 'Sunday'
+      ? 'Chủ nhật: thêm deps sâu + code graph (nếu có graphify).'
+      : 'Hôm nay không có việc riêng của thứ Sáu/Chủ nhật.';
+  const text = [
+    `**Mission hôm nay — ${date} (${weekdayVi})** · HEAD \`${head}\``,
+    'Dán khối dưới vào một phiên Freebuff mới (Mission):',
+    '```text',
+    'Mission: banbe daily — đọc docs/prompts/daily-hermes.md rồi làm đủ các mục.',
+    'Hôm nay: standup 24h · health app/Supabase/R2 · audit kỹ thuật P0–P3 · review UI/UX (6 chỗ + 7 chiều, có nguồn ngoài) · deps nhanh.',
+    extra,
+    `Ghi docs/audits/${date}/AUDIT.md và một dòng vào docs/second-brain/audits/index.md.`,
+    'Chỉ báo cáo: KHÔNG sửa source, KHÔNG commit/push/deploy/migration. Mọi kết luận cần path:line, route hoặc ảnh; thiếu bằng chứng thì ghi blocked, không bịa.',
+    'Bỏ qua backup git bundle và Apple Notes (chỉ chạy trên Mac).',
+    '```',
+  ].join('\n');
+  return text.length <= 1900 ? text : `${text.slice(0, 1890)}…`;
 }
 
 function readHealthState() {
@@ -475,6 +538,7 @@ function testMessage() {
       '• health — hourly, silent while healthy',
       '• week in review — Fri 17:00',
       '• dependency audit — Sun 18:00',
+      '• Freebuff mission prompt — 05:00 daily',
     ].join('\n'),
     color: BRAND.clay,
   });
@@ -485,9 +549,14 @@ function testMessage() {
 async function main() {
   const job = JOB || 'test';
   if (!CHANNEL_OF[job]) {
-    console.error(`unknown job "${job}" — use standup | health | weekly | deps | test`);
+    console.error(`unknown job "${job}" — use standup | health | weekly | deps | prompt | test`);
     process.exit(2);
   }
+  if (job === 'prompt') {
+    await postText('weekly', dailyPrompt());
+    return;
+  }
+
   if (job === 'health') {
     const outcome = await health();
     if (outcome.embed) {
