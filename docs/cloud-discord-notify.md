@@ -37,8 +37,9 @@ Files: `.github/workflows/discord-notify.yml` (schedule) and `scripts/cloud-noti
    | `DISCORD_WEBHOOK_WEEKLY` | week in review + dependency audit |
 
    All three may hold the same URL; a bare `DISCORD_WEBHOOK` is used as the fallback for any unset one.
-   Optional: `SUPABASE_ANON_KEY` (adds the Supabase REST check to health; `SUPABASE_URL` already exists for the backup
-   job) and the repository **variable** `APP_URL` (defaults to `https://www.banbe.app`).
+   Optional: **secrets** `SUPABASE_URL` (`https://<project-ref>.supabase.co`, no trailing slash) and
+   `SUPABASE_ANON_KEY` (the legacy `anon` JWT — the `sb_publishable_…` key is not a JWT) add the Supabase check to
+   health. `APP_URL` is a repository **variable** (defaults to `https://www.banbe.app`).
 3. **Merge the workflow to the default branch.** GitHub only runs `schedule` triggers from the default branch. Then
    *Actions* → *Discord notifications (cloud)* → *Run workflow* → job `test`.
 
@@ -103,3 +104,7 @@ The script reads `~/.hermes/cron/jobs.json` read-only, gets the ids of enabled j
 - The cloud jobs cannot see uncommitted local files or the second brain compiler; those stay with Hermes on the Mac.
 - If Cloudflare ever bot-challenges the runner, the App check reports `HTTP 403`; point the `APP_URL` variable at the
   Vercel deployment hostname instead.
+- The Supabase check reads `/rest/v1/events?select=id&limit=1`, **not** `/rest/v1/`: Supabase answers the OpenAPI root
+  with `401 {"message":"Invalid API key","hint":"Only the service_role API key can be used for this endpoint."}` even
+  for a perfectly valid anon key. If `events` is ever renamed or its anon RLS removed, that check starts failing for a
+  reason that is not an outage.

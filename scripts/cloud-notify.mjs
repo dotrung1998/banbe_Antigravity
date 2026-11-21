@@ -24,7 +24,8 @@
  *
  * Env: GITHUB_REPOSITORY + GITHUB_TOKEN (provided by Actions) for PRs and runs,
  *      APP_URL (default https://www.banbe.app) for the health check,
- *      SUPABASE_URL + SUPABASE_ANON_KEY for the optional API check,
+ *      SUPABASE_URL + SUPABASE_ANON_KEY for the optional API check
+ *        (reads /rest/v1/events, not the service_role-only /rest/v1/ root),
  *      NOTIFY_STATE_DIR for the health state file (defaults to a temp dir),
  *      HEALTH_REPEAT_HOURS for how often an unchanged failure repeats (default 6).
  */
@@ -365,11 +366,16 @@ async function health() {
   const supabaseUrl = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
   const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
   if (supabaseUrl && anonKey) {
-    await probe('Supabase REST', `${supabaseUrl}/rest/v1/`, {
+    // Not the /rest/v1/ OpenAPI root: Supabase answers that one with
+    // 401 "Only the `service_role` API key can be used for this endpoint",
+    // so an anon key would fail even when the API is perfectly healthy.
+    // Probe a table the anon role can read (RLS still applies).
+    await probe('Supabase REST', `${supabaseUrl}/rest/v1/events?select=id&limit=1`, {
       headers: { apikey: anonKey, authorization: `Bearer ${anonKey}`, 'user-agent': 'banbe-cloud-notify/1.0' },
     });
   } else {
-    checks.push({ name: 'Supabase REST', ok: true, skipped: true, detail: 'skipped — no SUPABASE_ANON_KEY secret' });
+    const missing = [!supabaseUrl && 'SUPABASE_URL', !anonKey && 'SUPABASE_ANON_KEY'].filter(Boolean).join(' + ');
+    checks.push({ name: 'Supabase REST', ok: true, skipped: true, detail: `skipped — no ${missing} secret` });
   }
 
   // Skipped checks are shown but not counted: "1 of 2" must mean two real checks.
