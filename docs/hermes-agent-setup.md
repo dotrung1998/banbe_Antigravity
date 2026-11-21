@@ -150,22 +150,39 @@ with `unknown_skill`; project skills load automatically from the repo instead �
 
 ### Scheduled jobs (`hermes cron list`)
 
-All run in `Asia/Ho_Chi_Minh`, deliver `local` (`~/.hermes/cron/output/<job>/`), and write a note into
-`docs/second-brain/raw/inbox/` (gitignored).
+All run in `Asia/Ho_Chi_Minh` and deliver `local` (`~/.hermes/cron/output/<job>/`). Most also write a note into
+`docs/second-brain/raw/inbox/` (gitignored); the audit job writes `docs/second-brain/audits/index.md` instead.
 
 | Job | When | Script | What it does |
 | --- | --- | --- | --- |
 | banbe standup | 09:00 Mon–Fri | `banbe-standup.sh` | commits since yesterday, dirty files, notes touched, TODO count |
 | banbe nightly backup | 02:30 daily | `banbe-backup.sh` | verified `git bundle --all` + uncommitted patch, 21-day retention |
-| banbe health check | every 6 h | `banbe-health.sh` | site 200, cron ticker heartbeat, disk free — **silent when healthy** |
-| banbe weekly dependency audit | Sun 18:00 | `banbe-deps-audit.sh` | `npm outdated` + `npm audit`, silent when clean |
+| banbe monitor | every 60m (rolling) | `banbe-health.sh` | app + deep link, Supabase auth/REST, Cloudflare edge (zone/R2 with a token), cron ticker, disk — **silent when healthy** |
+| banbe weekly dependency audit | Sun 18:00, **paused** | `banbe-deps-audit.sh` | folded into the daily audit's Sunday branch |
 | banbe Friday wind-down | Fri 17:00 | `banbe-weekly-review.sh` | week's commits, hotspots, branches, what Monday starts with |
 | banbe second-brain compile | 03:15 daily | agent + `banbe-inbox-changed.sh` monitor | distils the inbox into `raw/compiled/<date>-digest.md` |
 | banbe apple notes to inbox | Sun 08:00, **paused** | `banbe-apple-notes-export.sh` | Apple Notes → inbox; needs macOS Automation permission |
-| banbe code graph | Sun 04:30 | `banbe-code-graph.sh` | `graphify update .` + regenerate `docs/second-brain/graph/`; no model, silent unless it fails |
+| banbe code graph | 04:30 daily | `banbe-code-graph.sh` | `graphify update .` + regenerate `docs/second-brain/graph/`; skips when HEAD is unchanged, keeps 7 dated snapshots; no model |
+| banbe daily audit | 05:00 daily | agent | the one audit job: technical pass + the `docs/agent-os` six lenses, written to `docs/audits/<date>/AUDIT.md`, the Obsidian index and the Hermes memory line |
 
-The first five are `--no-agent`: no model, no tokens. The compile job runs the agent only when the inbox fingerprint
-changes; it was run once manually and produced a real digest citing its sources.
+Every job except **banbe second-brain compile** and **banbe daily audit** is `--no-agent`: no model, no tokens. The
+compile job runs the agent only when the inbox fingerprint changes. The audit job never edits source, commits, pushes or
+deploys; it only reports.
+
+### One audit, one monitor
+
+`docs/audits/` (dated technical reports) and `docs/agent-os/` (the daily UI/UX/design/emotion/safety review) used to be
+two manual loops. One cron now owns both: **banbe daily audit** reads the code map first, then the agent-os lenses, then
+the newest report, and writes a single dated audit. The same run appends to
+`docs/second-brain/audits/index.md` and rewrites the `AUDIT-STATE-BEGIN … AUDIT-STATE-END` block in
+`~/.hermes/memories/MEMORY.md`, so both Obsidian and the next agent session know the last audit.
+
+### Can Hermes open Freebuff on a schedule?
+
+No. Freebuff CLI 0.2.36 exposes only `login` and `doctor` plus an interactive TUI; `freebuff --help` has no headless or
+prompt flag, and the desktop app's URL scheme handles only `auth`, `user` and `agentic-lab` — nothing that starts a
+mission or picks a model. A cron can open the app, but cannot drive a session. Scheduled work therefore stays in Hermes
+(free model: `upstage/solar-mini4:free`); Freebuff remains the interactive surface for code changes and PRs.
 
 ### Obsidian vault and the code map
 
@@ -180,8 +197,10 @@ code — so the code graph is bridged into the vault as generated notes:
 | `docs/second-brain/graph/<area>.md` | one note per area: key symbols, top files, connected areas |
 | `scripts/second-brain-code-graph.mjs` | the generator (`npm run graph:notes`); deterministic, so an unchanged graph leaves git clean |
 
-Refresh: `graphify update .` then `npm run graph:notes`. The cron job **banbe code graph** does both every Sunday at
-04:30 via `~/.hermes/scripts/banbe-code-graph.sh` (log: `~/.hermes/logs/banbe-code-graph.log`).
+Refresh: `graphify update .` then `npm run graph:notes`. The cron job **banbe code graph** does both every day at 04:30
+via `~/.hermes/scripts/banbe-code-graph.sh` (log: `~/.hermes/logs/banbe-code-graph.log`). It skips the rebuild when the
+graph is already built at HEAD and no tracked source changed (a rebuild re-clusters areas and would rename notes), and it
+keeps only the 7 newest dated `graphify-out/` snapshots.
 
 Obsidian vs Graphify: Obsidian replaces the *manual* browsing/updating of the note graph — it is live, nothing to
 rebuild. It cannot replace Graphify, which is the only piece that understands code; the generated notes are what make
@@ -189,8 +208,9 @@ Graphify's output visible in Obsidian at all.
 
 ### Memory
 
-Three entries written through the `memory` tool (verified in `~/.hermes/memories/MEMORY.md`): repo path + commands, the
-vault's raw/wiki rule, and the "never claim applied without a log line" rule.
+Four entries in `~/.hermes/memories/MEMORY.md`: repo path + commands, the vault's raw/wiki rule, the "never claim
+applied without a log line" rule, and the `AUDIT-STATE` block that the daily audit job rewrites (last audit date, commit,
+P0/P1 counts and the report path).
 
 Note: the memory filter rejects entries that name agent config files (e.g. an `AGENTS.md` path) as
 `agent_config_mod`. Phrase such entries without the filename.
@@ -317,3 +337,35 @@ was committed or pushed.
   not.
 - The Apple Notes export (paused; the first run will ask for Automation permission).
 - iOS anything: none of this builds or runs the iOS app.
+
+
+
+## Freebuff audit path — why the daily audit stays on the Hermes fallback
+
+The job (`cef258de16be`, `0 5 * * *`, `--no-agent --script banbe-freebuff-audit.sh`) is wired correctly. Since 2026-11-21
+the wrapper has one path — `hermes -z … --yolo` — because Freebuff refuses automated runs.
+
+**Observed**
+- 08:14:08 → 08:40:56 ICT, execution `ef11ea38…`: `freebuff_failed exit=143 result=NO_RESULT` (1165 s), then
+  `fallback_ok exit=0` (443 s) and `done exit=0`.
+- 16:32 → 16:41 ICT, a driver that typed the real 3.9 KB prompt into the TUI got a full turn: 39 tool calls,
+  `npm run build` exit 0, `test:unit` 1054/1054, and `docs/audits/2026-11-21/AUDIT.md` written (146 lines, 90
+  `path:line` citations).
+- The next automated launch was refused:
+
+      Freebuff free mode is for people using the Freebuff CLI, Freebuff Desktop and freebuff.com themselves. This request
+      came from the Freebuff CLI run by another program, with no terminal attached, so it was refused and recorded as
+      strike 1 of 5 on this account. 5 strikes suspend the account.
+
+**Inferred, not proven**
+- The earlier freeze was a pty deadlock in our driver (one 4 KB write without draining a ~1 KB output buffer), not proof
+  that the CLI cannot read keys; the controlling terminal and Enter timing mattered too.
+- Which pattern trips the check is unknown. It is not literally "no TTY" — the driver had one — and it escalated only
+  after several runs, so treat any automated CLI use as refused rather than as a threshold to tune.
+
+**Consequence**
+- Automating the CLI breaks the service's terms and spends strikes on this account, so the job never attempts it: the
+  wrapper launches only `hermes -z`, and `banbe-freebuff-pty.py` stays at its pre-experiment form, unused.
+- No official headless or ACP path is released (#947 open, #1477 and #1611 unmerged).
+- The report the automated run wrote was replaced by the 08:34 Hermes audit; a copy is at
+  `~/.hermes/freebuff/freebuff-audit-20261121-1641.md`.
