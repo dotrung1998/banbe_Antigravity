@@ -33,8 +33,17 @@
     {
       "id": "task-audit-2026-11-22",
       "type": "text",
-      "text": "Audit 3 màn: Event Detail · Confirmed · Home",
+      "text": "Audit tiếp: Reserve · Refund · Guest (3/6 còn lại)",
       "x": 20,
+      "y": 72,
+      "width": 300,
+      "height": 88
+    },
+    {
+      "id": "task-audit-2026-11-21",
+      "type": "text",
+      "text": "AUDIT 2026-11-21 — Event/Confirmed/Home: 3 P1 gap, 12 ảnh",
+      "x": 740,
       "y": 72,
       "width": 300,
       "height": 88
