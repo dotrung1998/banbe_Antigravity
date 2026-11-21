@@ -1,0 +1,97 @@
+name: Discord notifications (cloud)
+
+# Mac-independent scheduled reports, delivered to Discord channels by webhook.
+# This exists because Hermes' scheduler is an in-process ticker on the owner's
+# Mac: when that Mac sleeps, nothing fires. GitHub runs these instead.
+#
+# One-time setup (docs/cloud-discord-notify.md):
+#   1. Discord channel -> Edit Channel -> Integrations -> Webhooks -> New Webhook,
+#      copy the URL (repeat per channel).
+#   2. Repo -> Settings -> Secrets and variables -> Actions:
+#        DISCORD_WEBHOOK_STANDUP   standup channel URL
+#        DISCORD_WEBHOOK_ALERTS    health-alert channel URL
+#        DISCORD_WEBHOOK_WEEKLY    weekly-review / audit channel URL
+#      (All three may be the same URL; DISCORD_WEBHOOK alone also works.)
+#      Optional: SUPABASE_ANON_KEY secret, APP_URL repository variable.
+#   3. Merge to the default branch (scheduled workflows only run from it), then
+#      run this workflow manually with job = test.
+#
+# Times are UTC; the comment shows Vietnam time (UTC+7).
+
+on:
+  schedule:
+    - cron: '0 2 * * 1-5' # 09:00 Mon-Fri ICT — standup
+    - cron: '0 * * * *' # hourly — health, silent while healthy
+    - cron: '0 10 * * 5' # 17:00 Fri ICT — week in review
+    - cron: '0 11 * * 0' # 18:00 Sun ICT — dependency audit
+  workflow_dispatch:
+    inputs:
+      job:
+        description: 'Which notification to send'
+        type: choice
+        options: [standup, health, weekly, deps, test]
+        default: test
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+
+concurrency:
+  group: discord-notify-${{ github.event.schedule || github.event.inputs.job }}
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Picked before checkout so hourly runs only fetch a shallow tree.
+      - name: Pick the job for this schedule
+        id: pick
+        shell: bash
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
+          DISPATCH_JOB: ${{ github.event.inputs.job }}
+        run: |
+          set -euo pipefail
+          job=""
+          case "${SCHEDULE:-}" in
+            "0 2 * * 1-5") job=standup ;;
+            "0 * * * *")   job=health  ;;
+            "0 10 * * 5")  job=weekly  ;;
+            "0 11 * * 0")  job=deps    ;;
+            "")
+              job="${DISPATCH_JOB:-test}"
+              ;;
+            *)
+              echo "unexpected schedule '${SCHEDULE}'" >&2
+              exit 1
+              ;;
+          esac
+          echo "job=${job}" >> "$GITHUB_OUTPUT"
+          # git log needs real history only for the 24h / 7-day windows.
+          case "$job" in
+            standup|weekly) echo "depth=0" >> "$GITHUB_OUTPUT" ;;
+            *) echo "depth=1" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: ${{ steps.pick.outputs.depth }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Send the notification
+        env:
+          DISCORD_WEBHOOK_STANDUP: ${{ secrets.DISCORD_WEBHOOK_STANDUP }}
+          DISCORD_WEBHOOK_ALERTS: ${{ secrets.DISCORD_WEBHOOK_ALERTS }}
+          DISCORD_WEBHOOK_WEEKLY: ${{ secrets.DISCORD_WEBHOOK_WEEKLY }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          APP_URL: ${{ vars.APP_URL || 'https://www.banbe.app' }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/cloud-notify.mjs "${{ steps.pick.outputs.job }}"
