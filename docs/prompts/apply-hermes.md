@@ -9,6 +9,7 @@ Bạn là kỹ sư triển khai cho banbe. Đây là mission **cấu hình tối
 
 ## 1. Trước khi sửa
 
+- **Kanban:** mở đầu bằng `node scripts/kanban.mjs upsert docs/second-brain/kanban/apply.canvas apply-<date> doing "APPLY <date> — đang sửa"`. Mở PR xong → `done` với `APPLY <date> — PR #<n> · <x> mục`; dừng vì stale/thiếu gap list → `todo` + lý do ngắn. Chỉ sửa card `apply-<date>`.
 - Đọc `AGENTS.md`, `docs/second-brain/START-HERE.md` rồi `graph/Code map.md`; chỉ grep khi map không trả lời.
 - `git rev-parse --short HEAD` và `git status`; đối chiếu từng finding với HEAD.
 - Finding không còn đúng / đã được sửa → ghi `stale: <lý do>`, bỏ qua, không sửa mò.

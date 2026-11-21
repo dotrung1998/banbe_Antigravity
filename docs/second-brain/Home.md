@@ -11,6 +11,8 @@ Index for the banbe second brain. Keep this page short: it is a map, not a note.
 - [[wiki/Conventions]] — how this project builds, verifies and ships
 - [[Skills/README]] — turning a repeated process into a callable skill
 - [[audits/index|Audits]] — the one daily audit: `docs/audits` reports + the `docs/agent-os` lenses
+- [[wiki/prototype-priority]] — 3 màn prototype ưu tiên (2026-11-21) + backlog
+- [[kanban/README|Mission Kanban]] — TODO · DOING · DONE cho audit và apply
 - [[AGENTS]] — the rules agents follow in this vault
 
 ## Live areas

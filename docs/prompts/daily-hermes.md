@@ -13,6 +13,7 @@
   |---|---|---|
   | `docs/audits/<YYYY-MM-DD>/` (AUDIT.md + tối đa 12 ảnh) | luôn | report |
   | `docs/second-brain/audits/index.md` | luôn | **một dòng** |
+  | `docs/second-brain/kanban/audit.canvas` | mỗi lần chạy | một card `audit-<date>`, qua `scripts/kanban.mjs` |
   | `docs/second-brain/raw/compiled/<date>-digest.md` | mục H | digest, không promote `wiki/` |
   | `docs/second-brain/graph/*.md`, `graphify-out/` | mục G | generated; graph notes là file tracked, đổi thì báo |
   | `docs/agent-os/vault/golden/shots/` | chỉ khi UI cố ý đổi | 10 ảnh chuẩn, commit cùng thay đổi |
@@ -26,6 +27,8 @@
 - **Được gửi đúng một prompt apply** (mục K; có thể 2–3 tin nếu dài) qua `scripts/cloud-notify.mjs apply`; không gửi gì khác, không tạo issue, không commit.
 
 ## 1. Trước khi làm (ghi vào header của report)
+
+- **Kanban:** mở đầu bằng `node scripts/kanban.mjs upsert docs/second-brain/kanban/audit.canvas audit-<date> doing "AUDIT <date> — đang chạy"`. Kết thúc, cùng key, `done` với `AUDIT <date> — P0=<n> P1=<n> · apply <sent|printed|none>`. Bị chặn giữa chừng → `todo` + lý do ngắn. Chỉ sửa card `audit-<date>`.
 
 ```bash
 date +%F
