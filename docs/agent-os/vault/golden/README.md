@@ -2,35 +2,53 @@
 
 Ảnh tham chiếu để một lần audit trả lời được "màn này trông thế nào khi đúng", thay vì mỗi lần chấm theo cảm giác.
 
-## Năm màn
+## Vì sao không chụp thẳng URL
 
-| # | Màn | Route | Dữ liệu cần | Ảnh |
-|---|---|---|---|---|
-| 1 | Home | `/` | feed công khai, không cần đăng nhập | `home-390-light.png`, `home-1440-light.png` |
-| 2 | Event Detail | `/event/<key>` | một event công khai còn vé | `event-390-light.png`, `event-1440-light.png` |
-| 3 | Giữ chỗ | `/event/<key>/reserve` | mở từ Event Detail, có draft | `reserve-390-light.png`, `reserve-1440-light.png` |
-| 4 | Vé | `/ticket` | một booking vừa xác nhận | `ticket-390-light.png`, `ticket-1440-light.png` |
-| 5 | Tài khoản | `/profile` | đã đăng nhập | `account-390-light.png`, `account-1440-light.png` |
+Ba trong năm màn **không mở được bằng một URL trần**. `src/lib/routes.js` nói rõ:
 
-Mười ảnh, **chỉ light**. Dark mode kiểm trực tiếp trong lúc chấm, không cần ảnh tham chiếu.
+| Màn | URL | Cold load thực tế |
+|---|---|---|
+| Event | `/event/<key>` | đúng màn |
+| Giữ chỗ | `/event/<key>/reserve` | cần `attendeeDrafts` trong state, không có thì rơi về Event |
+| Vé | `/ticket` | `confirmed` luôn có `parent: '/'`, nên mở link lạnh là về Home |
+| Tài khoản | `/profile` | cần session; khách bị đưa về Welcome/Login |
 
-## Chụp
+Vì vậy ảnh golden của Reserve, Vé và Account được dựng bằng **state fixture trong dev server**, không phải bằng cách mở URL. Script dùng `window.__banbeDevSet` — setter chỉ tồn tại khi `import.meta.env.DEV` — rồi **assert `data-screen-label`** trước khi ghi ảnh. Không đăng nhập, không ghi DB, không gọi production.
+
+## Chạy
 
 ```bash
-npm run dev   # ghi lại PID, chờ HTTP 200
-npx playwright screenshot --viewport-size="390,844" --wait-for-timeout=1500 \
-  http://localhost:5173/ docs/agent-os/vault/golden/shots/home-390-light.png
+npm run dev                                   # shell 1
+npx playwright install chromium               # lần đầu
+node scripts/golden-shots.mjs                 # shell 2 — chỉ khi UI cố ý đổi, ghi đè bộ chuẩn
+node scripts/golden-shots.mjs --out docs/audits/2026-11-21/golden   # audit: chụp ra chỗ khác, golden không đổi
+node scripts/golden-shots.mjs --only ticket   # một màn, cả hai width
 ```
 
-Thiếu browser thì `npx playwright install chromium` (cache ngoài repo). Vẫn không chạy được thì ghi `golden: blocked — <lý do>`, **không** lấy ảnh cũ thay ảnh mới.
+- Ghi **10 ảnh** vào `shots/`: 5 màn × 390 và 1440, light.
+- Sai màn → script exit 1 và **không** ghi ảnh sai.
+- Máy Linux tối giản thiếu thư viện hệ thống: `npx playwright install-deps chromium` (cần root). Không cài được thì ghi `golden: blocked — <lỗi>`; **không** chụp URL trần thay cho màn state.
+
+## Năm màn
+
+| # | key | Màn | Fixture |
+|---|---|---|---|
+| 1 | `home` | Home | khách, feed thật từ catalogue |
+| 2 | `event` | Event Detail | event `bepnho`, bắt đầu 26/11 19:00 ICT |
+| 3 | `reserve` | Giữ chỗ | 1 vé, người nhận "Linh", DOB 12/04/1995 |
+| 4 | `ticket` | Vé | booking `confirmed`, mã `1B159C`, user "Trung" |
+| 5 | `account` | Tài khoản | user "Trung", goer |
+
+Ảnh: `home-390-light.png`, `home-1440-light.png`, … (10 file).
 
 ## Luật dùng ảnh
 
-- Ảnh trong `shots/` là **chuẩn**, không phải ảnh đẹp nhất từng chụp. Chỉ thay khi sản phẩm cố ý đổi.
-- Mỗi lần chạy chụp lại cùng route/size rồi so cạnh nhau; lệch ngoài ý muốn là một phát hiện P1/P2.
-- Ảnh của lần chạy nằm ở `docs/audits/<ngày>/`, không ghi đè golden.
-- Tối đa 10 ảnh golden; thêm màn thứ sáu thì bỏ một màn.
+- Ảnh trong `shots/` là **chuẩn đã commit**. Chỉ thay khi UI cố ý đổi, và thay trong cùng commit với thay đổi đó.
+- Mỗi lần audit chạy `--out docs/audits/<ngày>/golden` rồi so cạnh; **không** ghi đè `shots/`. Lệch ngoài ý muốn là P1/P2.
+- Ảnh của lần audit nằm ở `docs/audits/<ngày>/shots/`, **không** ghi đè golden.
+- Fixture không phải dữ liệu production: golden kiểm **layout**, không kiểm logic booking, giá hay RLS. Hành vi vẫn cần một lượt tài khoản thật.
+- Tối đa 10 ảnh; thêm màn thứ sáu thì bỏ một màn.
 
 ## Trạng thái
 
-`shots/` **chưa có ảnh** — lần chạy đầu tiên trên máy có dữ liệu thật chụp đủ 10 ảnh và commit. Cho tới lúc đó, báo cáo ghi `golden: not captured`, không được coi là đã có chuẩn.
+10 ảnh đã có trong `shots/` (chụp lần đầu 2026-11-21 bằng `scripts/golden-shots.mjs`). Lần chạy nào cũng phải so với bộ này trước khi kết luận "không đổi".

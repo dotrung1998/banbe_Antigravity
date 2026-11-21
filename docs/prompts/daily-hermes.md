@@ -15,6 +15,7 @@
   | `docs/second-brain/audits/index.md` | luôn | **một dòng** |
   | `docs/second-brain/raw/compiled/<date>-digest.md` | mục H | digest, không promote `wiki/` |
   | `docs/second-brain/graph/*.md`, `graphify-out/` | mục G | generated; graph notes là file tracked, đổi thì báo |
+  | `docs/agent-os/vault/golden/shots/` | chỉ khi UI cố ý đổi | 10 ảnh chuẩn, commit cùng thay đổi |
   | `dist/` | mục C (`npm run build`) | generated, gitignored |
   | `.claude/skills/modern-web-guidance/`, `~/.cache/ms-playwright/` | D/E | tool + browser cache, gitignored hoặc ngoài repo |
 
@@ -38,6 +39,7 @@ node -e "try{console.log(require('./graphify-out/graph.json').built_at_commit)}c
 - **Ảnh: phải thử, không được bỏ qua.** Chạy `npm run dev` (ghi PID, chờ HTTP 200), rồi chụp bằng Playwright CLI:
   `npx playwright screenshot --viewport-size="390,844" --wait-for-timeout=1500 <url> <out>.png` (thêm `--full-page` khi cần).
   Thiếu browser → `npx playwright install chromium` (cache ngoài repo). Chỉ khi lệnh chụp vẫn fail mới ghi `visual: blocked — <stderr>`; **không** ghi `not checked` khi chưa chạy thử, và không lấy ảnh cũ thay ảnh mới. Chụp xong thì dừng đúng PID dev server.
+  **Reserve, Vé và Account không mở được bằng URL trần** (`routes.js` đưa Reserve về Event, `/ticket` về Home, `/profile` cần session). Ba màn đó chỉ chụp qua `scripts/golden-shots.mjs`; không chụp URL trần rồi coi là ảnh màn đó.
 
 ## 2. Các job, theo thứ tự
 
@@ -72,8 +74,8 @@ Cộng với PR đang mở và workflow run fail trong 24h (nếu có `gh`). Xu�
 - **6 chỗ**: Home band · Event Detail · Giữ chỗ · Hoàn tiền & tranh chấp · Khách xem · Nền tảng (Safari 16.2).
 - **7 chiều**, chấm 0–5 kèm lý do: Logic · Dễ · Đẹp · Calm · Moat · An toàn · Nhanh. Ghi điểm và trọng số đã dùng; đổi trọng số thì nói rõ.
 - Kiểm tối thiểu: tap ≥ 44pt, tương phản ≥ 4.5:1, không tràn ngang, Reduce Motion, empty/error state, dead end.
-- **Golden set:** chụp lại 5 route trong `docs/agent-os/vault/golden/README.md` (390 + 1440, light = 10 ảnh) vào `docs/audits/<date>/shots/`; nếu `golden/shots/` đã có ảnh thì so cạnh và ghi lệch (P1/P2). Chưa có ảnh → `golden: not captured` và nêu route nào sẽ chụp.
-- **Ảnh bổ sung:** tối đa **12 ảnh** trong `docs/audits/<date>/shots/`; 10 ảnh golden ở trên, 2 ảnh còn lại cho 320 hoặc dark của màn có phát hiện. Ảnh before/after phải cùng route, cùng viewport.
+- **Golden set:** `node scripts/golden-shots.mjs --out docs/audits/<date>/golden` (dev server đang chạy) ghi 10 ảnh (5 màn × 390/1440 light) vào thư mục audit, dựng state bằng fixture chứ không mở URL trần. So với `docs/agent-os/vault/golden/shots/`; lệch ngoài ý muốn là P1/P2. **Không** ghi đè golden; chỉ chạy không `--out` khi UI cố ý đổi và commit ảnh cùng thay đổi đó. Script fail → `golden: blocked — <stderr>`, **không** thay bằng ảnh chụp sai màn.
+- **Ảnh bổ sung:** 10 ảnh golden nằm trong `docs/audits/<date>/golden/`; ngoài ra tối đa **12 ảnh** trong `docs/audits/<date>/shots/` cho 320 hoặc dark của màn có phát hiện. Ảnh before/after phải cùng route, cùng viewport.
 - **Baseline scan:** `npx modern-web-guidance@latest legacy-scan src --json` — ghi số vi phạm + 3 file đầu; so với 4 vi phạm còn lại đã biết trong note 90. Không cài được → `skill missing: modern-web-guidance`, không thay bằng trí nhớ.
 
 ### E. Nguồn để rà soát và cho advice — đọc kỹ phần này
@@ -156,7 +158,7 @@ HEAD <sha> · status <clean|dirty n> · graph <fresh|stale n|none> · visual <ch
 6 chỗ: ...
 7 chiều: logic x/5 · dễ x/5 · đẹp x/5 · calm x/5 · moat x/5 · an toàn x/5 · nhanh x/5
 Ảnh: shots/... (hoặc "blocked — <stderr>")
-Golden: <khớp | lệch: ... | not captured>
+Golden: <khớp | lệch: ... | blocked: ...>
 
 ## Nguồn đã dùng
 repo: ... · chuẩn: ... · bài viết: ... · video: ...
