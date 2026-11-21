@@ -21,7 +21,9 @@ Bạn là kỹ sư triển khai cho banbe. Đây là mission **cấu hình tối
 - Giữ floor **Safari 16.2 / iOS 16.2** (Baseline Widely available của app).
 - Branch `fix/audit-<date>`; commit nhỏ theo từng finding; không rewrite ngoài phạm vi.
 - **Không secret, không PII — tuyệt đối:** không đưa vào APPLY.md, PR, commit, log, ảnh hay test fixture: `.env`, API key/token/webhook, service-role key, JWT, mật khẩu, connection string, email, số điện thoại, tên khách, địa chỉ nhà, mã booking/payment, ảnh có mặt người. Cần dữ liệu thật → `<redacted>` + mô tả hình dạng, hoặc fixture giả. Finding về secret chỉ ghi `path:line` + loại, che giá trị, báo owner riêng — không mở PR chứa secret.
-- **Bố cục thương mại:** bản thử đang bọc app trong khung iPhone (`.bb-device` / `.bb-screen`, `src/App.jsx:864`, `src/styles.css:600`); mục tiêu thương mại là **từng màn hình có bố cục riêng** (390 / 768 / 1280+), không dùng một khung điện thoại. Prototype ở `docs/prototypes/` là nguồn thiết kế nhưng **chưa được audit lại và chưa áp dụng**. Nếu APPLY có mục commercial layout: đối chiếu prototype + audit trước, giữ khung thử sau một điều kiện/flag để không phá bản thử, và không trộn thay đổi bố cục thương mại với fix P0/P1 khác trong cùng commit. Nếu APPLY không có mục này: **không** tự refactor khung.
+- **Bố cục thương mại:** bản thử đang bọc app trong khung iPhone (`.bb-device` / `.bb-screen`, `src/App.jsx:864`, `src/styles.css:600`); mục tiêu thương mại là **từng màn hình có bố cục riêng** (390 / 768 / 1280+), không dùng một khung điện thoại. Prototype ở `docs/prototypes/` là nguồn thiết kế nhưng **chưa được audit lại và chưa áp dụng**.
+  - **APPLY phải kèm gap list đã audit:** màn → prototype canonical (path) → lệch → việc cần làm → nghiệm thu. Thiếu gap list hoặc không rõ prototype canonical → **dừng mục đó**, ghi `blocked: commercial gap list missing`, **không tự audit lại prototype**, không tự chọn màn.
+  - Có gap list: giữ khung thử sau một điều kiện/flag để không phá bản thử, không trộn thay đổi bố cục thương mại với fix P0/P1 khác trong cùng commit. APPLY không có mục này → **không** tự refactor khung.
 
 ## 3. Kiểm
 
