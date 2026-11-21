@@ -8,7 +8,7 @@
  * public endpoints, then posts an embed to a Discord webhook.
  *
  *   node scripts/cloud-notify.mjs standup     # 09:00 Mon-Fri ICT — commits, PRs, failed runs
- *   node scripts/cloud-notify.mjs health      # hourly — silent unless a check fails
+ *   node scripts/cloud-notify.mjs health      # hourly — one alert per incident, a recovery message, repeats every 6h
  *   node scripts/cloud-notify.mjs weekly      # Fri 17:00 ICT — the week's commits + hotspots
  *   node scripts/cloud-notify.mjs deps        # Sun 18:00 ICT — outdated packages + npm audit
  *   node scripts/cloud-notify.mjs test        # one message, to prove the webhook wiring
@@ -24,9 +24,14 @@
  *
  * Env: GITHUB_REPOSITORY + GITHUB_TOKEN (provided by Actions) for PRs and runs,
  *      APP_URL (default https://www.banbe.app) for the health check,
- *      SUPABASE_URL + SUPABASE_ANON_KEY for the optional API check.
+ *      SUPABASE_URL + SUPABASE_ANON_KEY for the optional API check,
+ *      NOTIFY_STATE_DIR for the health state file (defaults to a temp dir),
+ *      HEALTH_REPEAT_HOURS for how often an unchanged failure repeats (default 6).
  */
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 const JOB = process.argv[2];
 const DRY_RUN = process.argv.includes('--dry-run') || process.env.DRY_RUN === '1';
@@ -35,6 +40,14 @@ const ALWAYS = process.argv.includes('--always');
 const APP_URL = process.env.APP_URL || 'https://www.banbe.app';
 const TIME_ZONE = 'Asia/Ho_Chi_Minh';
 const BRAND = { gold: 0xf6c453, moss: 0x8a9a7b, clay: 0xc0653f, red: 0xd64541 };
+
+// Health needs to remember what it last said so hourly runs do not repeat an
+// alert and so a recovery can be announced. GitHub Actions persists this file
+// through the actions/cache steps in the workflow.
+const STATE_DIR = process.env.NOTIFY_STATE_DIR || path.join(os.tmpdir(), 'banbe-notify-state');
+const STATE_FILE = path.join(STATE_DIR, 'health.json');
+const REPEAT_HOURS_RAW = Number.parseFloat(process.env.HEALTH_REPEAT_HOURS ?? '6');
+const REPEAT_HOURS = Number.isFinite(REPEAT_HOURS_RAW) && REPEAT_HOURS_RAW >= 0 ? REPEAT_HOURS_RAW : 6;
 
 const CHANNEL_OF = {
   standup: 'standup',
@@ -49,16 +62,20 @@ const clip = (value, max) => {
   return s.length <= max ? s : `${s.slice(0, Math.max(0, max - 1))}…`;
 };
 
-const ictNow = () =>
-  new Intl.DateTimeFormat('en-GB', {
-    timeZone: TIME_ZONE,
-    weekday: 'short',
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(new Date());
+const ictFormat = new Intl.DateTimeFormat('en-GB', {
+  timeZone: TIME_ZONE,
+  weekday: 'short',
+  day: '2-digit',
+  month: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+const ictFrom = (value) => {
+  const date = value ? new Date(value) : new Date();
+  return Number.isNaN(date.getTime()) ? 'unknown' : ictFormat.format(date);
+};
+const ictNow = () => ictFrom();
 
 const today = () =>
   new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(
@@ -151,16 +168,16 @@ async function post(channel, embedPayload) {
     allowed_mentions: { parse: [] },
     embeds: [embedPayload],
   };
+  if (DRY_RUN) {
+    console.log(`dry run — would post to ${channel}:`);
+    console.log(JSON.stringify(payload, null, 2));
+    return { sent: false, dryRun: true };
+  }
   const url = process.env[`DISCORD_WEBHOOK_${channel.toUpperCase()}`] || process.env.DISCORD_WEBHOOK;
   if (!url) {
     console.warn(`no webhook configured for "${channel}" — set DISCORD_WEBHOOK_${channel.toUpperCase()} in repo secrets`);
     console.log(JSON.stringify(payload, null, 2));
     return { sent: false };
-  }
-  if (DRY_RUN) {
-    console.log(`dry run — would post to ${channel}:`);
-    console.log(JSON.stringify(payload, null, 2));
-    return { sent: false, dryRun: true };
   }
   const target = `${url}${url.includes('?') ? '&' : '?'}wait=true`;
   const response = await fetch(target, {
@@ -303,6 +320,24 @@ function deps() {
   });
 }
 
+function readHealthState() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeHealthState(state) {
+  try {
+    fs.mkdirSync(STATE_DIR, { recursive: true });
+    fs.writeFileSync(STATE_FILE, `${JSON.stringify(state, null, 2)}\n`);
+  } catch (error) {
+    console.warn(`could not persist health state at ${STATE_FILE}: ${error.message}`);
+  }
+}
+
 async function health() {
   const checks = [];
   const probe = async (name, url, options = {}) => {
@@ -334,24 +369,93 @@ async function health() {
       headers: { apikey: anonKey, authorization: `Bearer ${anonKey}`, 'user-agent': 'banbe-cloud-notify/1.0' },
     });
   } else {
-    checks.push({ name: 'Supabase REST', ok: true, detail: 'skipped — no SUPABASE_ANON_KEY secret' });
+    checks.push({ name: 'Supabase REST', ok: true, skipped: true, detail: 'skipped — no SUPABASE_ANON_KEY secret' });
   }
 
-  const failed = checks.filter((check) => !check.ok);
-  console.log(`health: ${checks.length - failed.length}/${checks.length} ok`);
-  for (const check of checks) console.log(`  ${check.ok ? 'ok  ' : 'FAIL'} ${check.name}: ${check.detail}`);
-  if (!failed.length && !ALWAYS) {
-    console.log('healthy — nothing posted (alerts are sent only when a check fails)');
-    return null;
+  // Skipped checks are shown but not counted: "1 of 2" must mean two real checks.
+  const considered = checks.filter((check) => !check.skipped);
+  const failed = considered.filter((check) => !check.ok);
+  const failing = failed.map((check) => check.name).sort();
+  const healthy = failing.length === 0;
+  const previous = readHealthState();
+  const now = new Date().toISOString();
+  const state = {
+    status: healthy ? 'ok' : 'fail',
+    since: previous?.status === (healthy ? 'ok' : 'fail') && previous?.since ? previous.since : now,
+    failing,
+    last_alert_at: previous?.last_alert_at ?? null,
+    last_check_at: now,
+    repeat_hours: REPEAT_HOURS,
+  };
+
+  console.log(
+    `health: ${considered.length - failed.length}/${considered.length} ok · previous state: ${previous?.status ?? 'none'} · repeat ${REPEAT_HOURS}h`
+  );
+  for (const check of checks) {
+    console.log(`  ${check.skipped ? 'skip' : check.ok ? 'ok  ' : 'FAIL'} ${check.name}: ${check.detail}`);
   }
-  return embed({
-    title: failed.length ? '🚨 banbe health check failed' : 'banbe health check (manual)',
-    description: failed.length
-      ? `**${failed.length} of ${checks.length}** checks failed at ${ictNow()} ICT.`
-      : `Every check passed at ${ictNow()} ICT.`,
-    color: failed.length ? BRAND.red : BRAND.moss,
-    fields: checks.map((check) => ({ name: check.name, value: `${check.ok ? '✅' : '❌'} ${check.detail}` })),
-  });
+
+  const fields = checks.map((check) => ({
+    name: check.name,
+    value: `${check.skipped ? '➖' : check.ok ? '✅' : '❌'} ${check.detail}`,
+  }));
+
+  if (healthy) {
+    if (previous?.status === 'fail') {
+      const since = previous.since ? `${ictFrom(previous.since)} ICT` : 'an earlier check';
+      return {
+        alert: false,
+        state,
+        embed: embed({
+          title: '✅ banbe recovered',
+          description: `Every check passes again at ${ictNow()} ICT — the failure had been open since ${since}.`,
+          color: BRAND.moss,
+          fields,
+        }),
+      };
+    }
+    if (ALWAYS) {
+      return {
+        alert: false,
+        state,
+        embed: embed({
+          title: 'banbe health check (manual)',
+          description: `Every check passed at ${ictNow()} ICT.`,
+          color: BRAND.moss,
+          fields,
+        }),
+      };
+    }
+    console.log('healthy — nothing posted (alerts are sent only when a check fails)');
+    return { alert: false, state, embed: null };
+  }
+
+  const previousFailing = Array.isArray(previous?.failing) ? [...previous.failing].sort() : [];
+  const sameFailure = previous?.status === 'fail' && JSON.stringify(previousFailing) === JSON.stringify(failing);
+  const lastAlertAt = Date.parse(previous?.last_alert_at || '');
+  const sinceLastAlertMs = Number.isFinite(lastAlertAt) ? Date.now() - lastAlertAt : Number.POSITIVE_INFINITY;
+  if (sameFailure && sinceLastAlertMs < REPEAT_HOURS * 3600_000) {
+    const nextAt = Number.isFinite(lastAlertAt)
+      ? `${ictFrom(new Date(lastAlertAt + REPEAT_HOURS * 3600_000).toISOString())} ICT`
+      : 'later';
+    console.log(
+      `same failure as the last alert (${failing.join(', ')}) — suppressed; next repeat after ${nextAt} (HEALTH_REPEAT_HOURS=${REPEAT_HOURS})`
+    );
+    return { alert: true, state, embed: null };
+  }
+
+  return {
+    alert: true,
+    state,
+    embed: embed({
+      title: '🚨 banbe health check failed',
+      description: sameFailure
+        ? `**${failing.length} of ${considered.length}** checks still failing at ${ictNow()} ICT; repeating after ${REPEAT_HOURS}h without recovery.`
+        : `**${failing.length} of ${considered.length}** checks failed at ${ictNow()} ICT.`,
+      color: BRAND.red,
+      fields,
+    }),
+  };
 }
 
 function testMessage() {
@@ -378,20 +482,26 @@ async function main() {
     console.error(`unknown job "${job}" — use standup | health | weekly | deps | test`);
     process.exit(2);
   }
+  if (job === 'health') {
+    const outcome = await health();
+    if (outcome.embed) {
+      const result = await post('alerts', outcome.embed);
+      if (result.sent && outcome.alert) outcome.state.last_alert_at = new Date().toISOString();
+      // A failure that could not be delivered must stay visible in the Actions run.
+      if (!result.sent && !result.dryRun && outcome.alert) process.exitCode = 1;
+    }
+    if (!DRY_RUN) writeHealthState(outcome.state);
+    return;
+  }
+
   let payload = null;
   if (job === 'standup') payload = await standup();
   else if (job === 'weekly') payload = await weekly();
   else if (job === 'deps') payload = deps();
-  else if (job === 'health') payload = await health();
   else payload = testMessage();
 
   if (!payload) return;
-  const channel = CHANNEL_OF[job];
-  const result = await post(channel, payload);
-  if (job === 'health' && !result.sent && !result.dryRun) {
-    // A failed check with no webhook must still be visible in the Actions run.
-    process.exitCode = 1;
-  }
+  await post(CHANNEL_OF[job], payload);
 }
 
 main().catch((error) => {

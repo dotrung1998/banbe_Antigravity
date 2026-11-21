@@ -35,7 +35,7 @@ on:
 permissions:
   contents: read
   pull-requests: read
-  actions: read
+  actions: write # actions/cache save/restore for the health state
 
 concurrency:
   group: discord-notify-${{ github.event.schedule || github.event.inputs.job }}
@@ -84,6 +84,17 @@ jobs:
         with:
           node-version: 22
 
+      # Health remembers its last state so it alerts once per incident and can
+      # announce a recovery. Restore the newest cache entry, save a new one.
+      - name: Restore health state
+        if: steps.pick.outputs.job == 'health'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/notify-state
+          key: health-state-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            health-state-
+
       - name: Send the notification
         env:
           DISCORD_WEBHOOK_STANDUP: ${{ secrets.DISCORD_WEBHOOK_STANDUP }}
@@ -94,4 +105,19 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NOTIFY_STATE_DIR: ${{ runner.temp }}/notify-state
+          HEALTH_REPEAT_HOURS: ${{ vars.HEALTH_REPEAT_HOURS || '6' }}
         run: node scripts/cloud-notify.mjs "${{ steps.pick.outputs.job }}"
+
+      # Best effort: a lost state only means the next hour may repeat an alert.
+      - name: Ensure health state is writable
+        if: always() && steps.pick.outputs.job == 'health'
+        run: mkdir -p "${{ runner.temp }}/notify-state"
+
+      - name: Save health state
+        if: always() && steps.pick.outputs.job == 'health'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/notify-state
+          key: health-state-${{ github.run_id }}-${{ github.run_attempt }}

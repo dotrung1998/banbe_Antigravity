@@ -14,7 +14,7 @@ channel webhooks. No Mac, no Freebuff session and no deploy is involved.
 | Hermes job (Mac) | Cloud replacement | When (ICT) |
 | --- | --- | --- |
 | banbe standup | `standup` job | 09:00 Mon–Fri |
-| banbe monitor | `health` job | hourly, silent while healthy |
+| banbe monitor | `health` job | hourly; one alert per incident, ✅ recovered when it clears |
 | banbe Friday wind-down | `weekly` job | Fri 17:00 |
 | banbe weekly dependency audit | `deps` job | Sun 18:00 |
 | nightly verified `git bundle` | **stays on the Mac** — it backs up uncommitted local work | — |
@@ -33,7 +33,7 @@ Files: `.github/workflows/discord-notify.yml` (schedule) and `scripts/cloud-noti
    | Secret | Channel it feeds |
    | --- | --- |
    | `DISCORD_WEBHOOK_STANDUP` | standup |
-   | `DISCORD_WEBHOOK_ALERTS` | health failures |
+   | `DISCORD_WEBHOOK_ALERTS` | health failures + recovery |
    | `DISCORD_WEBHOOK_WEEKLY` | week in review + dependency audit |
 
    All three may hold the same URL; a bare `DISCORD_WEBHOOK` is used as the fallback for any unset one.
@@ -42,8 +42,25 @@ Files: `.github/workflows/discord-notify.yml` (schedule) and `scripts/cloud-noti
 3. **Merge the workflow to the default branch.** GitHub only runs `schedule` triggers from the default branch. Then
    *Actions* → *Discord notifications (cloud)* → *Run workflow* → job `test`.
 
-Until a webhook secret is set the job stays green and prints the message plus a `no webhook configured` warning in the
-log — nothing is lost, but nothing is delivered either.
+Until a webhook secret is set the job prints the message plus a `no webhook configured` warning in the log — nothing is
+lost, but nothing is delivered. A failing health check also exits non-zero in that state, so the missing alert shows up
+as a red run instead of disappearing.
+
+**Which channels.** Two is enough: a quiet `#banbe-alerts` for `DISCORD_WEBHOOK_ALERTS` (health: failures and the
+recovery message) and `#banbe-reports` for `DISCORD_WEBHOOK_STANDUP` **and** `DISCORD_WEBHOOK_WEEKLY` (standup, Friday
+review, dependency audit). Leave `#general` for conversation — alerts get buried there and read as noise on a busy
+server. On a one-person server, one `#banbe-dev` channel and a single `DISCORD_WEBHOOK` is the smallest setup that
+still works.
+
+## How the health job behaves
+
+- The first failure posts one 🚨 alert; before that the channel stays quiet.
+- While the same checks keep failing it stays quiet and repeats at most once every `HEALTH_REPEAT_HOURS` (default 6;
+  set that name as a repository **variable** to change it). Hourly runs still check, they just do not re-post.
+- A different failing set (for example Supabase goes down while the app is already down) alerts immediately.
+- When everything passes again it posts **✅ banbe recovered**, with how long the failure had been open.
+- That memory lives in the Actions cache (`health-state-*`) and is branch-scoped: scheduled runs on the default branch
+  share it; a manual run on another branch starts from an empty state (so it may alert again there).
 
 ## Checking it
 
@@ -80,8 +97,9 @@ The script reads `~/.hermes/cron/jobs.json` read-only, gets the ids of enabled j
 - GitHub's scheduled runs can start a few minutes late; hourly means "about hourly".
 - A scheduled workflow is disabled after **60 days without repository activity** — GitHub emails the owner, and any
   push re-enables it.
-- `health` posts only when a check fails. It has no "recovered" state, so a quiet channel means healthy (or that the
-  secret is missing — check *Actions* if suspicious).
+- `health` needs the Actions-cache state to know it already alerted. If a cache save fails, the next hour may repeat
+  an alert or miss a recovery message; the checks themselves still run. A quiet channel means healthy — check
+  *Actions* if a failure was expected.
 - The cloud jobs cannot see uncommitted local files or the second brain compiler; those stay with Hermes on the Mac.
 - If Cloudflare ever bot-challenges the runner, the App check reports `HTTP 403`; point the `APP_URL` variable at the
   Vercel deployment hostname instead.
