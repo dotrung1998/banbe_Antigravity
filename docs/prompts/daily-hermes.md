@@ -23,6 +23,7 @@
 - **Không in** secret, token, email, tên khách, số booking. Nếu thấy secret trong source: ghi `path:line` và mô tả, không chép giá trị.
 - **Không bịa.** Thiếu bằng chứng → `UNKNOWN` hoặc `blocked: <lý do>`, không phải PASS.
 - Mỗi kết luận phải có **`path:line`, route, hoặc đường dẫn ảnh**. Nhận định chung chung không tính là phát hiện.
+- **Được gửi đúng một prompt apply** (mục K; có thể 2–3 tin nếu dài) qua `scripts/cloud-notify.mjs apply`; không gửi gì khác, không tạo issue, không commit.
 
 ## 1. Trước khi làm (ghi vào header của report)
 
@@ -140,6 +141,19 @@ Nếu `docs/second-brain/raw/inbox/` tồn tại và có `*.md` mới hơn diges
 - **Nightly `git bundle`**: cần file chưa commit trên Mac → `skipped: Mac-only`.
 - **Apple Notes export**: cần quyền Automation macOS → `skipped: Mac-only`.
 
+### K. Bàn giao prompt apply (sau khi audit xong)
+
+Mục tiêu: session mới chỉ cần dán prompt, không cần đọc lại workspace cũ.
+
+1. Đọc `docs/prompts/apply-hermes.md` để lấy khuôn.
+2. Viết `docs/audits/<date>/APPLY.md` — **tự chứa**, tối đa **4.500 ký tự**: P0/P1 + P2 đáng làm, mỗi mục có `path:line`, hành vi sai, fix nhỏ nhất, nghiệm thu, test; kèm branch `fix/audit-<date>`, PR vào `main`, checklist Preview, cấm deploy/migration. Bỏ hết placeholder.
+3. Gửi lên Discord:
+   ```bash
+   if [ -f .env ]; then node --env-file=.env scripts/cloud-notify.mjs apply --file docs/audits/<date>/APPLY.md; else node scripts/cloud-notify.mjs apply --file docs/audits/<date>/APPLY.md; fi
+   ```
+   Cần `DISCORD_WEBHOOK_WEEKLY` trong `.env` (gitignored) hoặc shell. Gửi được → `apply: sent`. Thiếu webhook/lỗi mạng → in **nguyên prompt** trong khối `APPLY PROMPT` để người dùng dán, ghi `apply: not sent — <lý do>`.
+4. Không có gì đáng sửa → `APPLY: none`, không gửi tin nào.
+
 ## 3. Xuất
 
 `docs/audits/<YYYY-MM-DD>/AUDIT.md`:
@@ -166,6 +180,10 @@ repo: ... · chuẩn: ... · bài viết: ... · video: ...
 ## Thay đổi ngoài audit dir
 (path + lý do; "không có" nếu sạch)
 
+## Apply mission
+APPLY.md: docs/audits/<date>/APPLY.md
+Sent: discord | printed (<lý do>) | none
+
 ## Blocked / Unknown
 ...
 ```
@@ -184,5 +202,6 @@ FILES: docs/audits/<date>/AUDIT.md, docs/second-brain/audits/index.md (+ file ng
 FINDINGS: P0=0 P1=2 P2=6 P3=4
 SCORES: logic 4.2 · dễ 4.1 · đẹp 4.4 · calm 3.5 · moat 4.0 · an toàn 3.6 · nhanh 3.9
 SOURCES: repo=9 standards=2 articles=1 videos=0
+APPLY: sent | printed | none
 BLOCKED: visual (playwright install failed), graphify (not installed)
 ```

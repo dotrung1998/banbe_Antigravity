@@ -18,6 +18,7 @@ channel webhooks. No Mac, no Freebuff session and no deploy is involved.
 | banbe Friday wind-down | `weekly` job | Fri 17:00 |
 | banbe weekly dependency audit | `deps` job | Sun 18:00 |
 | banbe daily audit / code graph / second-brain compile | `prompt` job | 05:00 daily: posts a ready-to-paste Freebuff Mission. The vault and graph notes now live in the repo; `graphify` itself is still a local install |
+| audit → apply hand-off | `apply` mode | after an audit: posts the synthesized apply prompt, so a new session can open the fix PR |
 | nightly verified `git bundle` | **stays on the Mac** — it backs up uncommitted local work | — |
 | Apple Notes export | **stays on the Mac** — macOS Automation permission | — |
 
@@ -112,6 +113,20 @@ Preview it without sending:
 node scripts/cloud-notify.mjs prompt --dry-run
 ```
 
+## The apply prompt after an audit
+
+An audit that found something to fix ends by writing `docs/audits/<date>/APPLY.md` — a **self-contained** mission (≤ 4,500 characters) for a new Freebuff session: exact findings, `path:line`, acceptance, tests, branch and PR rules. It then posts that file:
+
+```bash
+node --env-file=.env scripts/cloud-notify.mjs apply --file docs/audits/<date>/APPLY.md
+```
+
+The script splits on line boundaries at 1,800 characters and closes/reopens ``` fences, so a long prompt arrives as 2–3 readable messages instead of being cut. Nothing is committed and no issue is opened: the prompt never passes through the public repo.
+
+This needs `DISCORD_WEBHOOK_WEEKLY` in the audit machine's `.env` (gitignored) or shell — the same URL as the Actions secret, which Actions cannot hand to the audit session. Without it the script prints the full prompt and exits non-zero, so the audit can paste it into chat as `apply: not sent — <reason>` instead of losing it.
+
+The apply mission (`docs/prompts/apply-hermes.md`) tells the new session to re-check every finding against HEAD, fix P0/P1 plus selected P2, run build/unit/targeted Playwright, open a PR (never merge) with a preview checklist, and stop if nothing is still true.
+
 ## Limits worth knowing
 
 - GitHub's scheduled runs can start a few minutes late; hourly means "about hourly".
@@ -123,6 +138,8 @@ node scripts/cloud-notify.mjs prompt --dry-run
 - The cloud jobs cannot see uncommitted local files or the second brain compiler; those stay with Hermes on the Mac.
 - The `prompt` job only sends text. Nothing in this repo can start or drive a Freebuff session; pasting the mission
   is the step that gives Freebuff its instructions.
+- The `apply` job is the same: it only posts the prompt the audit already wrote. The audit has to be able to reach
+  Discord with `DISCORD_WEBHOOK_WEEKLY`, and the fix PR is still opened by the session the owner pastes it into.
 - If Cloudflare ever bot-challenges the runner, the App check reports `HTTP 403`; point the `APP_URL` variable at the
   Vercel deployment hostname instead.
 - The Supabase check reads `/rest/v1/events?select=id&limit=1`, **not** `/rest/v1/`: Supabase answers the OpenAPI root

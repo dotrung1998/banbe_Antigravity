@@ -12,10 +12,12 @@
  *   node scripts/cloud-notify.mjs weekly      # Fri 17:00 ICT — the week's commits + hotspots
  *   node scripts/cloud-notify.mjs deps        # Sun 18:00 ICT — outdated packages + npm audit
  *   node scripts/cloud-notify.mjs prompt      # 05:00 daily ICT — copy-paste Mission for a Freebuff session
+ *   node scripts/cloud-notify.mjs apply --file docs/audits/<date>/APPLY.md  # audit hand-off, posted as text
  *   node scripts/cloud-notify.mjs test        # one message, to prove the webhook wiring
  *
  * Flags: --dry-run  print the payload and send nothing
  *        --always   health: post even when every check passes
+ *        --file     apply: read the prompt from this file instead of APPLY_PROMPT/env
  *
  * Webhooks (repo secrets, one URL per channel):
  *   DISCORD_WEBHOOK_STANDUP, DISCORD_WEBHOOK_ALERTS, DISCORD_WEBHOOK_WEEKLY
@@ -57,6 +59,7 @@ const CHANNEL_OF = {
   weekly: 'weekly',
   deps: 'weekly',
   prompt: 'weekly',
+  apply: 'weekly',
   test: 'alerts',
 };
 
@@ -227,6 +230,77 @@ async function postText(channel, content) {
   return { sent: true };
 }
 
+// Split a long prompt on line boundaries, closing and reopening ``` fences so every
+// Discord message stays under the 2000-character cap without breaking the text the
+// owner is about to paste.
+function chunkText(text, limit = 1800) {
+  const lines = String(text).replace(/\r\n/g, '\n').split('\n');
+  const chunks = [];
+  let buf = [];
+  let size = 0;
+  let fence = null; // language of the open fence ('' = plain ```)
+  const flush = () => {
+    if (!buf.length) return;
+    // Close with a bare ``` fence; reopen with the language so the next message keeps colouring.
+    chunks.push([...buf, ...(fence !== null ? ['```'] : [])].join('\n'));
+    buf = fence !== null ? [`\`\`\`${fence}`] : [];
+    size = buf.length ? buf[0].length : 0;
+  };
+  const add = (line) => {
+    if (size + line.length + (buf.length ? 1 : 0) > limit && buf.length) flush();
+    buf.push(line);
+    size += line.length + (buf.length > 1 ? 1 : 0);
+    const marker = /^```(\S*)\s*$/.exec(line.trim());
+    if (marker) fence = fence !== null ? null : (marker[1] || '');
+  };
+  for (const line of lines) {
+    if (line.length <= limit) {
+      add(line);
+      continue;
+    }
+    // A single paragraph can be longer than one message; hard-split it rather than
+    // letting Discord reject the payload.
+    for (let i = 0; i < line.length; i += limit) add(line.slice(i, i + limit));
+  }
+  if (buf.length) chunks.push(buf.join('\n'));
+  return chunks;
+}
+
+// The apply prompt is written by the audit, then posted here so the owner can paste
+// it into a new session from Discord. No issue, no commit, no repo write.
+async function postApply() {
+  const at = process.argv.indexOf('--file');
+  const file = at > -1 ? process.argv[at + 1] : null;
+  let body = '';
+  if (file) {
+    try {
+      body = fs.readFileSync(path.resolve(file), 'utf8');
+    } catch (error) {
+      console.error(`apply: cannot read --file ${file}: ${error.message}`);
+      process.exit(2);
+    }
+  } else {
+    body = process.env.APPLY_PROMPT || process.env.ISSUE_BODY || '';
+  }
+  body = body.trim();
+  if (!body) {
+    console.error('apply: nothing to send — pass --file <path> or set APPLY_PROMPT');
+    process.exit(2);
+  }
+  const chunks = chunkText(body);
+  let delivered = 0;
+  for (let i = 0; i < chunks.length; i++) {
+    const prefix = chunks.length > 1 ? `**Apply mission ${i + 1}/${chunks.length}**\n` : '';
+    const result = await postText('weekly', `${prefix}${chunks[i]}`);
+    if (result.sent || result.dryRun) delivered++;
+  }
+  console.log(`apply: ${delivered}/${chunks.length} message(s) delivered`);
+  if (delivered !== chunks.length) {
+    console.error('apply: webhook missing or Discord refused; the prompt was printed above — add DISCORD_WEBHOOK_WEEKLY to send it');
+    process.exitCode = 1;
+  }
+}
+
 /* ------------------------------------------------------------------ jobs */
 
 async function standup() {
@@ -378,6 +452,7 @@ function dailyPrompt() {
     extra,
     `Ghi docs/audits/${date}/AUDIT.md và một dòng vào docs/second-brain/audits/index.md.`,
     'Chỉ báo cáo: KHÔNG sửa source, KHÔNG commit/push/deploy/migration. Mọi kết luận cần path:line, route hoặc ảnh; thiếu bằng chứng thì ghi blocked, không bịa.',
+    'Cuối mission: tổng hợp prompt apply (mục K) và gửi vào kênh này.',
     'Bỏ qua backup git bundle và Apple Notes (chỉ chạy trên Mac).',
     '```',
   ].join('\n');
@@ -549,11 +624,15 @@ function testMessage() {
 async function main() {
   const job = JOB || 'test';
   if (!CHANNEL_OF[job]) {
-    console.error(`unknown job "${job}" — use standup | health | weekly | deps | prompt | test`);
+    console.error(`unknown job "${job}" — use standup | health | weekly | deps | prompt | apply | test`);
     process.exit(2);
   }
   if (job === 'prompt') {
     await postText('weekly', dailyPrompt());
+    return;
+  }
+  if (job === 'apply') {
+    await postApply();
     return;
   }
 
