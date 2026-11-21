@@ -81,6 +81,26 @@ async function reachHome(page) {
   await page.waitForSelector('[data-screen-label="Home"]', { timeout: 10_000 });
 }
 
+// The brand face is a webfont with `font-display: swap`, so a screenshot taken too
+// early silently records the fallback. Load every weight the app asks for, then fail
+// loudly instead of committing a golden set in the wrong typeface.
+async function waitForBrandFont(page) {
+  const info = await page.evaluate(async () => {
+    const family = 'Be Vietnam Pro';
+    const weights = ['300', '400', '500', '600', '700', '800'];
+    const specs = weights.map((w) => `${w} 16px "${family}"`).concat(`italic 400 16px "${family}"`);
+    await Promise.all(specs.map((s) => document.fonts.load(s).catch(() => [])));
+    await document.fonts.ready;
+    const faces = [...document.fonts].filter((f) => f.family.replace(/["']/g, '') === family);
+    const missing = weights.filter((w) => !faces.some((f) => f.status === 'loaded' && f.style === 'normal' && f.weight === w));
+    if (!faces.some((f) => f.status === 'loaded' && f.style === 'italic')) missing.push('italic');
+    return { faces: faces.length, loaded: faces.filter((f) => f.status === 'loaded').length, missing };
+  });
+  if (info.missing.length) {
+    throw new Error(`Be Vietnam Pro is not fully loaded (faces=${info.faces}, loaded=${info.loaded}, missing=${info.missing.join(',')}) — check the Google Fonts request; refusing to write golden shots in a fallback font`);
+  }
+}
+
 async function capture(page, screen, file) {
   if (screen.state) {
     const has = await page.evaluate(() => typeof window.__banbeDevSet === 'function');
@@ -92,8 +112,8 @@ async function capture(page, screen, file) {
     await apply(); // a late fetch must not overwrite the fixture
     await page.waitForSelector(`[data-screen-label="${screen.label}"]`, { timeout: 5_000 });
   }
-  await page.evaluate(() => (document.fonts?.ready ? document.fonts.ready : null)).catch(() => {});
-  await page.waitForTimeout(400);
+  await waitForBrandFont(page);
+  await page.waitForTimeout(300);
   await page.screenshot({ path: file });
   const label = await page.locator(`[data-screen-label="${screen.label}"]`).getAttribute('data-screen-label');
   if (label !== screen.label) throw new Error(`${screen.key}: expected "${screen.label}", got "${label}"`);

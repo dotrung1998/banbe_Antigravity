@@ -13,7 +13,11 @@ Ba trong năm màn **không mở được bằng một URL trần**. `src/lib/ro
 | Vé | `/ticket` | `confirmed` luôn có `parent: '/'`, nên mở link lạnh là về Home |
 | Tài khoản | `/profile` | cần session; khách bị đưa về Welcome/Login |
 
-Vì vậy ảnh golden của Reserve, Vé và Account được dựng bằng **state fixture trong dev server**, không phải bằng cách mở URL. Script dùng `window.__banbeDevSet` — setter chỉ tồn tại khi `import.meta.env.DEV` — rồi **assert `data-screen-label`** trước khi ghi ảnh. Không đăng nhập, không ghi DB, không gọi production.
+Vì vậy ảnh golden của Reserve, Vé và Account được dựng bằng **state fixture trong dev server**, không phải bằng cách mở URL. Script dùng `window.__banbeDevSet` — setter chỉ tồn tại khi `import.meta.env.DEV` — rồi **assert `data-screen-label`** trước khi ghi ảnh.
+
+Script **không đăng nhập** và **không ghi DB**. Nó cũng **không chặn mạng**: dev app vẫn đọc Supabase production như mọi lần `npm run dev` (feed, event, ảnh), chỉ có state của ba màn kia là fixture cục bộ.
+
+Hệ quả: Home và Event có thể đổi số vé, số event hay thứ tự carousel giữa hai lần chụp dù layout y nguyên. Khi so, **bỏ qua khác biệt dữ liệu**; chỉ báo lệch khi bố cục, typography, màu hoặc trạng thái UI đổi.
 
 ## Chạy
 
@@ -46,7 +50,8 @@ node scripts/golden-shots.mjs --only ticket   # một màn, cả hai width
 - Ảnh trong `shots/` là **chuẩn đã commit**. Chỉ thay khi UI cố ý đổi, và thay trong cùng commit với thay đổi đó.
 - Mỗi lần audit chạy `--out docs/audits/<ngày>/golden` rồi so cạnh; **không** ghi đè `shots/`. Lệch ngoài ý muốn là P1/P2.
 - Ảnh của lần audit nằm ở `docs/audits/<ngày>/shots/`, **không** ghi đè golden.
-- Fixture không phải dữ liệu production: golden kiểm **layout**, không kiểm logic booking, giá hay RLS. Hành vi vẫn cần một lượt tài khoản thật.
+- Fixture không phải dữ liệu production, dù trang vẫn đọc dữ liệu production: golden kiểm **layout**, không kiểm logic booking, giá hay RLS. Hành vi vẫn cần một lượt tài khoản thật.
+- Mọi ảnh chỉ được ghi sau khi **Be Vietnam Pro** tải đủ 300–800 + italic; thiếu một weight là script exit 1, không bao giờ commit ảnh bằng font fallback.
 - Tối đa 10 ảnh; thêm màn thứ sáu thì bỏ một màn.
 
 ## Trạng thái
