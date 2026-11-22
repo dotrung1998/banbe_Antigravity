@@ -267,7 +267,7 @@ export function renderPaymentDocument(doc, options = {}) {
 <div class="bb-sheet" style="max-width:720px;margin:0 auto;padding:32px 28px 40px;background:${PAPER};">
 
   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap;">
-    <img src="${origin}/banbe-wordmark.png" alt="banbe" width="104" style="display:block;width:104px;height:auto;" />
+    <img src="${escapeHtml(origin)}/banbe-wordmark.png" alt="banbe" width="104" style="display:block;width:104px;height:auto;" />
     <div style="text-align:right;">
       <div style="font-family:${SERIF};font-size:23px;font-weight:700;letter-spacing:0.02em;color:${INK};">${escapeHtml(title)}</div>
       <div style="font-size:11.5px;color:${MUTED};margin-top:3px;">${escapeHtml(titleEn)}</div>

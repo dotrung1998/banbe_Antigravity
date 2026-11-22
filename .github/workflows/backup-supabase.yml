@@ -1,0 +1,60 @@
+name: Supabase backup to R2
+
+# Database + Storage backup of the production Supabase project into a private
+# R2 bucket. Manual run: Actions -> Supabase backup to R2 -> Run workflow.
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+#   SUPABASE_DB_URL            Postgres connection string (percent-encoded)
+#   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
+#   R2_PUBLIC_BUCKET, R2_STAGING_BUCKET
+#   R2_BACKUP_BUCKET           optional; without it the job warns and falls back
+#                              to the private staging bucket, which may expire
+#                              objects. Use a dedicated "banbe-backups" bucket.
+#
+# The script never prints a credential. The archive contains auth.users
+# password hashes and private Storage files, so the bucket must stay private.
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: 'Number of backups to keep'
+        required: false
+        default: '30'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - run: npm ci
+      - name: Dump Supabase + copy Storage to R2
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_PUBLIC_BUCKET: ${{ secrets.R2_PUBLIC_BUCKET }}
+          R2_STAGING_BUCKET: ${{ secrets.R2_STAGING_BUCKET }}
+          R2_BACKUP_BUCKET: ${{ secrets.R2_BACKUP_BUCKET }}
+        run: node scripts/backup-supabase-to-r2.mjs --keep "${{ github.event.inputs.keep || '30' }}"

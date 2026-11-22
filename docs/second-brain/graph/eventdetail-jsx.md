@@ -3,34 +3,34 @@ tags: [code-graph]
 ---
 # EventDetail.jsx
 
-`code-graph` · area `8` · **214 symbols** across **34 files** · 1.2% of the graph.
+`code-graph` · area `8` · **208 symbols** across **30 files** · 1.1% of the graph.
 
 **Start with:** `src/screens/EventDetail.jsx:124` — `EventDetail()`
 
-**Key symbols:** `EventDetail()` · `GlassMenu()` · `OrganizerProfileV23()` · `EventDetailV23View()` · `EventPlanButtons()` · `HomeShellV5()` · `GlassMenuItem()` · `criteriaIsEveryone()` · `eventTotal()` · `normalizeCriteria()` · `maxQty()` · `TicketStub()` · `currencyUnavailable()` · `ReservationCriteriaPicker()`
+**Key symbols:** `EventDetail()` · `GlassMenu()` · `OrganizerProfileV23()` · `HomeShellV5()` · `EventDetailV23View()` · `EventPlanButtons()` · `GlassMenuItem()` · `eventTotal()` · `maxQty()` · `TicketStub()` · `currencyUnavailable()` · `TicketStubV23()` · `eventPrice()` · `WhoCanReserve()`
 
 ## Files
 
 | File | Symbols |
 | --- | ---: |
 | `src/screens/EventDetail.jsx` | 31 |
-| `src/lib/eventDetailPresentation.js` | 23 |
+| `src/lib/eventDetailPresentation.js` | 26 |
 | `src/components/profile/OrganizerProfileV23.jsx` | 15 |
 | `src/lib/reserveBar.js` | 14 |
 | `src/screens/EventPlanActions.jsx` | 14 |
 | `src/components/event/EventDetailV23View.jsx` | 13 |
+| `.claude/notes/81-web-v23-home-detail.md` | 10 |
 | `src/components/event/TicketStubV23.jsx` | 9 |
-| `src/lib/eventDetailV23.js` | 9 |
-| _+26 more files_ | |
+| _+22 more files_ | |
 
 ## Connected areas
 
-- [[graph/web-app-shell-theme|Web App Shell & Theme]] — 88 edges
-- [[graph/ios-create-event-form|iOS Create Event Form]] — 48 edges
-- [[graph/confirmed-jsx|Confirmed.jsx]] — 41 edges
-- [[graph/ios-shared-ui-navigation|iOS Shared UI & Navigation]] — 34 edges
-- [[graph/mapexplore-jsx|MapExplore.jsx]] — 31 edges
-- [[graph/projectui-jsx|ProjectUI.jsx]] — 16 edges
+- [[graph/web-app-shell-theme|Web App Shell & Theme]] — 67 edges
+- [[graph/banbecontext-jsx|BanBeContext.jsx]] — 41 edges
+- [[graph/home-jsx|Home.jsx]] — 31 edges
+- [[graph/ios-shared-ui-navigation|iOS Shared UI & Navigation]] — 29 edges
+- [[graph/mapexplore-jsx|MapExplore.jsx]] — 12 edges
+- [[graph/eventonboarding-jsx|EventOnboarding.jsx]] — 10 edges
 
 ---
 [[graph/Code map|Code map]] · [[Home]]

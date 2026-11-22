@@ -42,8 +42,8 @@ Nguồn: phân tích repo chỉ đọc. Đường dẫn tính từ gốc repo. B
 
 ### 2.2 Nhà cung cấp thanh toán
 - `package.json:12-25`: không có SDK thanh toán nào. `.env.example`: không có biến thanh toán.
-- Không tìm thấy: Stripe, PayPal, MoMo API, VNPay, ZaloPay, SePay. Chỉ có nhãn UI (`HostIntro.jsx:14`) và ảnh QR host tự upload (VietQR/MoMo/Zelle/Venmo/Cash App, `src/screens/sheets/PaymentQrManager.jsx:199`, migration 122).
-- **Có webhook đối soát**: `api/payment-webhook.js:56-88` chuẩn hóa Casso/PayOS/generic; xác thực `:104-117` (Casso `secure-token`, PayOS HMAC-SHA256, generic `x-webhook-secret`); gọi RPC `record_bank_transaction` (`:140`, định nghĩa `026:1011`); chỉ xử lý tiền vào (`:135`). Biến `CASSO_WEBHOOK_SECRET`, `PAYOS_CHECKSUM_KEY`, `BANK_WEBHOOK_SECRET` chỉ có trong code, **chưa có trong `.env.example`**. Chưa thấy bằng chứng host nào đã kết nối.
+- Không tìm thấy: Stripe, PayPal, MoMo API, VNPay, ZaloPay. Chỉ có nhãn UI (`HostIntro.jsx:14`) và ảnh QR host tự upload (VietQR/MoMo/Zelle/Venmo/Cash App, `src/screens/sheets/PaymentQrManager.jsx:199`, migration 122).
+- **Có webhook đối soát**: `api/payment-webhook.js` chuẩn hóa Casso/PayOS/SePay/generic (SePay thêm 2026-11-21: `?provider=sepay`, API Key `Authorization: Apikey ...` hoặc HMAC-SHA256); xác thực `:104-117` (Casso `secure-token`, PayOS HMAC-SHA256, generic `x-webhook-secret`); gọi RPC `record_bank_transaction` (`:140`, định nghĩa `026:1011`); chỉ xử lý tiền vào (`:135`). Biến `CASSO_WEBHOOK_SECRET`, `PAYOS_CHECKSUM_KEY`, `BANK_WEBHOOK_SECRET` chỉ có trong code, **chưa có trong `.env.example`**. Chưa thấy bằng chứng host nào đã kết nối.
 
 ### 2.3 Bảng lưu trạng thái
 - `bookings`: `payment_state` (holding, pending_verification, confirmed, expired, disputed, cancelled), `total_vnd`, `payment_ref`, `paid_marked_at`, `verified_via`, `proof_path`… (`002`, `026:73-96`, `024:51-54`).

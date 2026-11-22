@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { requestOrigin } from './origin.js';
 
 // Shared by every auth endpoint that needs to answer "does this email
 // already have an account?" (send-email-code, signup-password,
@@ -97,11 +98,33 @@ export async function resolveAuthUserId(admin, email) {
   return { userId: null, resolved: false, sources };
 }
 
+// Keep a configured/header-derived origin on http(s), require https outside
+// local development, and strip credentials and a trailing slash. This does not
+// by itself prove that a forwarded Host is trustworthy — set AUTH_REDIRECT_URL
+// in production — but it stops a non-http scheme or a plain-http external host
+// from becoming an email redirect target.
+function normaliseRedirect(value) {
+  if (!value) return null;
+  try {
+    const url = new URL(String(value));
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+    if (url.username || url.password) return null;
+    const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    if (url.protocol === 'http:' && !local) return null;
+    return `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
+  } catch {
+    return null;
+  }
+}
+
 export function getRedirectUrl(req) {
   const configured = process.env.AUTH_REDIRECT_URL || process.env.VITE_AUTH_REDIRECT_URL || process.env.VITE_SITE_URL;
-  if (configured) return configured.replace(/\/+$/, '');
+  const configuredUrl = normaliseRedirect(configured);
+  if (configuredUrl) return configuredUrl;
 
-  const protocol = req.headers['x-forwarded-proto']?.trim() || 'http';
-  const host = req.headers['x-forwarded-host']?.trim() || req.headers.host?.trim();
-  return host ? `${protocol}://${host}` : 'http://localhost:5173';
+  // A forwarded Host is not proof of origin: an unknown host must never become
+  // a password-reset redirect target (Supabase would hand the session tokens
+  // to whatever site that Host names). requestOrigin() allowlists it and falls
+  // back to the canonical site.
+  return normaliseRedirect(requestOrigin(req)) || 'http://localhost:5173';
 }

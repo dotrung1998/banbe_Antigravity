@@ -163,12 +163,13 @@ async function handleCheckIn(req, res, admin, userData, body) {
       ),
     ];
     if (guestProfile?.referral_code) {
-      const referralLink = `${getRedirectUrl(req)}/?ref=${guestProfile.referral_code}`;
+      const referralLink = `${getRedirectUrl(req)}/?ref=${encodeURIComponent(guestProfile.referral_code)}`;
+      const referralLinkSafe = escapeHtml(referralLink);
       const referralLinkLabel = escapeHtml(referralLink.replace(/^https?:\/\//, ''));
       paragraphs.push(t(
         locale,
-        `Muốn rủ thêm bạn bè cho buổi sau? Chia sẻ banbe qua liên kết riêng của bạn: <a href="${referralLink}">${referralLinkLabel}</a>`,
-        `Want to bring friends next time? Share banbe with your own link: <a href="${referralLink}">${referralLinkLabel}</a>`
+        `Muốn rủ thêm bạn bè cho buổi sau? Chia sẻ banbe qua liên kết riêng của bạn: <a href="${referralLinkSafe}">${referralLinkLabel}</a>`,
+        `Want to bring friends next time? Share banbe with your own link: <a href="${referralLinkSafe}">${referralLinkLabel}</a>`
       ));
     }
 
@@ -548,7 +549,7 @@ async function handleWelcome(req, res, admin, userData) {
 
     const locale = profile.locale === 'en' ? 'en' : 'vi';
     const name = (profile.display_name || '').trim();
-    const referralLink = `${getRedirectUrl(req)}/?ref=${profile.referral_code}`;
+    const referralLink = `${getRedirectUrl(req)}/?ref=${encodeURIComponent(profile.referral_code)}`;
 
     const subject = t(locale, 'Chào mừng bạn đến với banbe', 'Welcome to banbe');
     const heading = t(

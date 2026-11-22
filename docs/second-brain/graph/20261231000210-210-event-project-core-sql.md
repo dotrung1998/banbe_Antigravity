@@ -17,9 +17,9 @@ tags: [code-graph]
 
 ## Connected areas
 
-- [[graph/public-profiles|public.profiles]] — 14 edges
-- [[graph/organizers|organizers]] — 6 edges
-- [[graph/bookings|bookings]] — 3 edges
+- [[graph/public-profiles|public.profiles]] — 13 edges
+- [[graph/organizers|organizers]] — 9 edges
+- [[graph/20261212000165-165-rewards-badges-streaks-sql|20261212000165_165_rewards_badges_streaks.sql]] — 1 edges
 
 ---
 [[graph/Code map|Code map]] · [[Home]]

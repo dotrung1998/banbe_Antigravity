@@ -11,12 +11,12 @@ The job reads `docs/second-brain/START-HERE.md` and the code map first, then `do
 
 ## Current state
 
-Last audit: 2026-11-21 · e556e5a9 · P0=0 P1=3 · docs/audits/2026-11-21/AUDIT.md
-Last run: 2026-11-21 08:34 ICT · P0=0 P1=3 · Dynamic Island toasts + organizers columns + R2 behind OFF switches; build exit 0, unit green
+Last audit: 2026-11-22 · a0ed5486 · P0=0 P1=4 · docs/audits/2026-11-22/AUDIT.md
+Last run: 2026-11-22 05:05 ICT · P0=0 P1=4 · Code map fresh + iOS not compiled + verify_payment 213 unapplied; build exit 0, unit 1072/1072, npm audit 0
 
 ## Runs
 
 <!-- One line per run: date · commit · P0/P1 · headline · path -->
-- 2026-11-21 08:34 ICT · e556e5a9 · P0=0 · P1=3 · Dynamic Island toasts + organizers columns + R2 behind OFF switches; build exit 0, unit green
+- 2026-11-22 05:05 ICT · a0ed5486 · P0=0 · P1=4 · Code map fresh + iOS not compiled + verify_payment 213 unapplied; build exit 0, unit 1072/1072, npm audit 0
 - 2026-11-19 · 3eb810eb · P0=0 · P1=2 · Cancelled search demo-twin + almost-full social proof; resolved next run
 - 2026-11-19-cc · 3eb810eb · P0=0 · P1=0 · Follow-up to the 11-19 run (same commits)

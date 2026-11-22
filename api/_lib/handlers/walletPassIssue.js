@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { requestOrigin } from '../origin.js';
 import {
   readWalletConfig, getWalletAdmin, buildPass, stateHash, isLive, isLiveGift, TICKET_SELECT,
 } from '../walletPass.js';
@@ -54,7 +55,7 @@ async function giftPass(req, res) {
     if (error) throw error;
     if (!booking) return res.status(404).json({ error: 'TICKET_NOT_FOUND' });
     if (!isLiveGift(booking)) return res.status(409).json({ error: 'TICKET_NOT_READY' });
-    const origin = `https://${req.headers.host || 'www.banbe.app'}`;
+    const origin = requestOrigin(req);
     const pass = await buildPass({
       booking, cfg, origin, webService: false, gift: true,
       design: { background: '#1C1C1E', foreground: '#FFFFFF', label: '#FFFFFF', banner: null },
@@ -139,7 +140,7 @@ export default async function handler(req, res) {
       if (upErr) console.warn('wallet_passes upsert failed (migration 140 applied?):', upErr.message);
     }
 
-    const origin = `https://${req.headers.host || 'www.banbe.app'}`;
+    const origin = requestOrigin(req);
     const pass = await buildPass({
       booking, cfg, origin, webService,
       design: { background, foreground, label, banner },

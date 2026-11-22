@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { renderPaymentDocument } from '../src/lib/paymentDocument.js';
+import { requestOrigin } from './_lib/origin.js';
 
 // Renders one invoice or receipt as a standalone HTML page.
 //
@@ -68,10 +69,13 @@ export default async function handler(req, res) {
     // here would confirm the id of somebody else's receipt.
     if (!doc) return res.status(404).json({ error: 'DOCUMENT_NOT_FOUND' });
 
-    const origin = `https://${req.headers.host || 'www.banbe.app'}`;
+    const origin = requestOrigin(req);
     const html = renderPaymentDocument(doc, { lang, origin });
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    // The access token may arrive in ?token=; never leak it through a referrer.
+    res.setHeader('Referrer-Policy', 'no-referrer');
     // It carries someone's name, address and tax code — never let a shared
     // cache hold on to it.
     res.setHeader('Cache-Control', 'private, no-store');

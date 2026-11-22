@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { getRedirectUrl } from './_lib/authLookup.js';
+import { requestOrigin } from './_lib/origin.js';
 import { escapeHtml } from './_lib/emailTemplate.js';
 import { rowTimeZone, VN_TIME_ZONE } from '../src/lib/eventMarket.js';
 
@@ -139,7 +139,7 @@ async function optimizedImage(origin, imageUrl, ua) {
 }
 
 export default async function handler(req, res) {
-  const origin = getRedirectUrl(req);
+  const origin = requestOrigin(req);
   const pid = getText(req.query?.pid);
   const eid = getText(req.query?.eid);
   const ua = String(req.headers?.['user-agent'] || '');
@@ -184,6 +184,8 @@ export default async function handler(req, res) {
   // cached copy of a previous one would be served under the same path
   // shape for a different query.
   res.setHeader('content-type', 'text/html; charset=utf-8');
+  res.setHeader('x-content-type-options', 'nosniff');
+  res.setHeader('referrer-policy', 'no-referrer');
   res.setHeader('cache-control', 'public, max-age=0, must-revalidate');
 
   return res.status(200).send(`<!doctype html>
@@ -206,7 +208,7 @@ export default async function handler(req, res) {
     <meta name="twitter:description" content="${escapeHtml(description)}" />
     <meta name="twitter:image" content="${escapeHtml(imageUrl)}" />
     <link rel="canonical" href="${escapeHtml(shareUrl)}" />
-    <script>window.location.replace(${JSON.stringify(appUrl)});</script>
+    <script>window.location.replace(${JSON.stringify(appUrl).replace(/</g, '\\u003c')});</script>
   </head>
   <body style="margin:0;padding:40px 24px;background:#F7F4EC;font-family:system-ui,sans-serif;color:#1B1916;">
     <p style="font-size:15px;line-height:1.6;">

@@ -3,34 +3,34 @@ tags: [code-graph]
 ---
 # Components.swift
 
-`code-graph` · area `191` · **108 symbols** across **11 files** · 0.6% of the graph.
+`code-graph` · area `38` · **92 symbols** across **12 files** · 0.5% of the graph.
 
 **Start with:** `apps/ios/BanbeApp/Views/Components.swift:556` — `BanbeField`
 
-**Key symbols:** `BanbeField` · `View` · `BanbeLogo` · `FieldState` · `RemoteImage` · `ScaffoldScrollProbe` · `BanbeLiquidToggleStyle` · `BanbeLoadingVisual` · `QRCodeImage` · `.rewardShortcuts()` · `.headerTopRow` · `DoneMark` · `Inner` · `PopoverMenuList`
+**Key symbols:** `BanbeField` · `View` · `FieldState` · `RemoteImage` · `ScaffoldScrollProbe` · `BanbeLiquidToggleStyle` · `QRCodeImage` · `PopoverMenuList` · `SecondaryButton` · `DoneMark` · `Inner` · `RootPullIndicatorHost` · `ScaffoldScrollRequest` · `.iconStyle()`
 
 ## Files
 
 | File | Symbols |
 | --- | ---: |
-| `apps/ios/BanbeApp/Views/Components.swift` | 80 |
-| `apps/ios/BanbeApp/Views/HomeView.swift` | 6 |
-| `apps/ios/BanbeApp/Lib/Motion.swift` | 4 |
-| `apps/ios/BanbeApp/Views/DockCreateButtonView.swift` | 4 |
-| `apps/ios/BanbeApp/Views/FaceIDLockView.swift` | 4 |
-| `apps/ios/BanbeApp/Views/HomeDiscoveryViews.swift` | 3 |
-| `docs/second-brain/graph/inkbutton.md` | 3 |
-| `apps/ios/BanbeApp/Views/EventDetailView.swift` | 1 |
-| _+3 more files_ | |
+| `apps/ios/BanbeApp/Views/Components.swift` | 73 |
+| `apps/ios/BanbeApp/State/AppState.swift` | 4 |
+| `docs/second-brain/graph/components-swift.md` | 3 |
+| `apps/ios/BanbeApp/Views/EventDetailView.swift` | 2 |
+| `apps/ios/BanbeApp/Views/HomeDiscoveryViews.swift` | 2 |
+| `apps/ios/BanbeApp/Views/HomeShellV5Views.swift` | 2 |
+| `apps/ios/BanbeApp/State/AppState+Data.swift` | 1 |
+| `apps/ios/BanbeApp/Views/DockCreateButtonView.swift` | 1 |
+| _+4 more files_ | |
 
 ## Connected areas
 
-- [[graph/appstate|AppState]] — 23 edges
+- [[graph/appstate|AppState]] — 33 edges
 - [[graph/createeventview|CreateEventView]] — 16 edges
-- [[graph/mapexploreview|MapExploreView]] — 10 edges
-- [[graph/eventdetailview|EventDetailView]] — 4 edges
-- [[graph/pressablebuttonstyle|PressableButtonStyle]] — 4 edges
-- [[graph/rewardspayload|RewardsPayload]] — 3 edges
+- [[graph/homeview|HomeView]] — 9 edges
+- [[graph/pressablebuttonstyle|PressableButtonStyle]] — 6 edges
+- [[graph/eventdetailview|EventDetailView]] — 5 edges
+- [[graph/screen|Screen]] — 4 edges
 
 ---
 [[graph/Code map|Code map]] · [[Home]]

@@ -77,7 +77,7 @@ export const HOST_GUIDE = {
         ['"Escalate to banbe": nhờ quản trị viên quyết định. Chat tranh chấp vẫn mở cho đến khi banbe quyết định.', '"Escalate to banbe": asks admins to decide. The dispute chat stays open until banbe decides.'],
         ['Sự kiện cần duyệt khách: "Accept" hoặc "Reject" yêu cầu. "Cancel booking" trả chỗ về và thông báo cho khách.', 'Approval-required events: "Accept" or "Reject" requests. "Cancel booking" frees the seat and notifies the guest.'],
       ]],
-      ['tip', 'Bạn nên phản hồi trong khoảng 1 giờ. banbe chỉ tự xác nhận khi bạn đã kết nối ngân hàng (Casso hoặc PayOS) và khoản chuyển khớp mã tham chiếu và số tiền. Còn lại, ghế của khách bị khóa cho tới khi bạn hành động.', 'Aim to respond within about 1 hour. banbe confirms automatically only when you have connected your bank (Casso or PayOS) and the transfer matches the reference and amount. Otherwise the guest\'s seat stays locked until you act.'],
+      ['tip', 'Bạn nên phản hồi trong khoảng 1 giờ. banbe chỉ tự xác nhận khi bạn đã kết nối ngân hàng (Casso, PayOS hoặc SePay) và khoản chuyển khớp mã tham chiếu và số tiền. Còn lại, ghế của khách bị khóa cho tới khi bạn hành động.', 'Aim to respond within about 1 hour. banbe confirms automatically only when you have connected your bank (Casso, PayOS or SePay) and the transfer matches the reference and amount. Otherwise the guest\'s seat stays locked until you act.'],
     ]},
     { id: 'checkin', vi: 'Soát vé & danh sách khách', en: 'Check-in & the guest list', blocks: [
       ['p', 'Sự kiện bắt đầu trong 24 giờ tới hoặc đang diễn ra được đưa lên đầu Dashboard với viền vàng, nhãn "Sắp diễn ra" / "Đang diễn ra" và nút "Điểm danh". Thẻ Host trong Tài khoản cũng hiện nút "Điểm danh" khi sự kiện đến gần.', 'Events starting within 24 hours or happening now move to the top of the Dashboard with a gold border, a "Starting soon" / "Happening now" tag and a "Check-in" button. The Host card in Account also shows "Check-in" when an event is near.'],
@@ -222,7 +222,7 @@ export const HOST_GUIDE = {
       ['ul', [
         ['Không thể xóa tài khoản khi còn sự kiện đang mở.', 'You cannot delete your account while you own an open event.'],
         ['Thời gian giữ chỗ 30 phút không tùy chỉnh được.', 'The 30-minute hold cannot be customised.'],
-        ['Hãy xác nhận thanh toán nhanh. banbe chỉ tự xác nhận khi bạn đã kết nối ngân hàng (Casso hoặc PayOS).', 'Confirm payments promptly. banbe confirms automatically only when you have connected your bank (Casso or PayOS).'],
+        ['Hãy xác nhận thanh toán nhanh. banbe chỉ tự xác nhận khi bạn đã kết nối ngân hàng (Casso, PayOS hoặc SePay).', 'Confirm payments promptly. banbe confirms automatically only when you have connected your bank (Casso, PayOS or SePay).'],
         ['Không chuyển tiền hộ qua banbe. Mọi giao dịch diễn ra giữa bạn và khách.', 'banbe does not move money. All payments are between you and your guests.'],
         ['Sở thích của khách là riêng tư. Bạn chỉ đặt điều kiện, không thấy câu trả lời của từng người.', 'Guest preferences are private. You set criteria but never see anyone\'s answers.'],
       ]],

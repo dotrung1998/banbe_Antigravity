@@ -19,6 +19,12 @@ cd apps/ios && xcodegen generate     # after pulling; the .xcodeproj is generate
 
 Unit tests can run on Linux; an Xcode build must be run on a Mac. "Built green for the simulator" ≠ "device-checked".
 
+## Git — commits and push
+
+- Subject form: `area: imperative summary`, with the migration number in parentheses when one is involved (`security: guard server-owned columns and message writes (233)`). Body explains why, in plain sentences.
+- **No AI attribution.** Do not add a `Co-Authored-By:` trailer, a "Generated with …" footer, or a bot author. Some older commits in this repo have Codebuff attribution; that history is not a precedent (decision 2026-11-22).
+- Push only the work that was asked for. Never force-push `main`, and never commit `.env*`, `.dev.vars*`, `.r2-secrets.local` or a database dump (all gitignored).
+
 ## Database
 
 - New migration in `supabase/migrations/NNN_description.sql`, plus a rollback when the change is destructive.
@@ -37,3 +43,4 @@ Unit tests can run on Linux; an Xcode build must be run on a Mac. "Built green f
 - A web visual change you did not look at is unverified — say so.
 - Playwright specs that already failed on the base commit stay listed as pre-existing, not "fixed".
 - Payments, refunds and admin roles: read the note before touching the code. `02`, `16`, `54`, `76` are the landmines.
+- A commit message is part of the record: no co-author/bot footer, and the body must say which parts are implemented vs. applied vs. deployed.

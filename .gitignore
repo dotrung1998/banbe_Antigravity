@@ -24,6 +24,10 @@ dist-ssr
 *.sln
 *.sw?
 .env
+.env.*
+!.env.example
+.dev.vars*
+.wrangler/
 
 # Playwright
 /test-results/
@@ -102,6 +106,10 @@ dist-ssr
 # Local-only credentials for the R2 migration scripts (never committed).
 .r2-secrets.local
 
+# Local backup working directories: database dumps include auth.users password
+# hashes and Storage copies. Never commit them; the job uploads to private R2.
+/tmp/
+
 # Second brain (docs/second-brain): captures and job output are generated, so a
 # nightly capture can never dirty the tree or be committed by accident. Only the
 # hand-written wiki/, Templates/ and indexes are tracked. See
@@ -140,9 +148,13 @@ dist-ssr
 /.agents/skills/code-review/
 /.agents/skills/prototype/
 /.agents/skills/using-git-worktrees/
+/.agents/skills/security-audit/
+/.continue/
+/.hermes/skills/security-audit/
 /.claude/skills/code-review
 /.claude/skills/prototype
 /.claude/skills/using-git-worktrees
+/.claude/skills/security-audit
 
 # Isolated per-branch workspaces created by the using-git-worktrees skill.
 # No trailing slash: the skill probes `git check-ignore .worktrees` before the

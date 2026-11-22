@@ -3,34 +3,34 @@ tags: [code-graph]
 ---
 # PressableButtonStyle
 
-`code-graph` · area `66` · **202 symbols** across **28 files** · 1.1% of the graph.
+`code-graph` · area `66` · **254 symbols** across **34 files** · 1.4% of the graph.
 
 **Start with:** `apps/ios/BanbeApp/Views/Components.swift:422` — `PressableButtonStyle`
 
-**Key symbols:** `PressableButtonStyle` · `BanbeTheme` · `.projectCan()` · `CardSheet` · `.projectPersonName()` · `FlowLayout` · `ProjectPostSheet` · `ProjectComposeSheet` · `.content()` · `.form()` · `ProjectNewLaneSheet` · `ProjectRoleMatrixView` · `ProjectTextField` · `.content()`
+**Key symbols:** `PressableButtonStyle` · `Params` · `.success()` · `BanbeTheme` · `.projectCan()` · `.projectWrite()` · `CardSheet` · `.projectPersonName()` · `.projectErrorText()` · `FlowLayout` · `ProjectPostSheet` · `ProjectComposeSheet` · `.content()` · `ProjectTextField`
 
 ## Files
 
 | File | Symbols |
 | --- | ---: |
-| `apps/ios/BanbeApp/Views/Project/ProjectSheets.swift` | 37 |
-| `apps/ios/BanbeApp/Views/Project/ProjectComponents.swift` | 30 |
+| `apps/ios/BanbeApp/State/AppState+Project.swift` | 29 |
 | `apps/ios/BanbeApp/Views/Project/ProjectPostSheets.swift` | 27 |
-| `apps/ios/BanbeApp/Views/Project/ProjectTeamTab.swift` | 26 |
-| `apps/ios/BanbeApp/Views/Project/ProjectTasksTab.swift` | 15 |
-| `apps/ios/BanbeApp/Views/Project/ProjectTeamSheets.swift` | 7 |
-| `apps/ios/BanbeApp/Views/Project/ProjectTopicsTab.swift` | 6 |
-| `apps/ios/BanbeApp/Views/BanbeTheme.swift` | 5 |
-| _+20 more files_ | |
+| `apps/ios/BanbeApp/Views/Project/ProjectComponents.swift` | 23 |
+| `apps/ios/BanbeApp/Views/Project/ProjectMoneyTab.swift` | 22 |
+| `apps/ios/BanbeApp/Views/Project/ProjectDayOfTab.swift` | 16 |
+| `apps/ios/BanbeApp/State/AppState+ProjectTopics.swift` | 15 |
+| `apps/ios/BanbeApp/Views/Project/ProjectSheets.swift` | 15 |
+| `apps/ios/BanbeApp/Views/Project/ProjectTeamTab.swift` | 14 |
+| _+26 more files_ | |
 
 ## Connected areas
 
-- [[graph/appstate|AppState]] — 53 edges
-- [[graph/mapexploreview|MapExploreView]] — 7 edges
-- [[graph/createeventview|CreateEventView]] — 6 edges
-- [[graph/supabaseservice|SupabaseService]] — 5 edges
-- [[graph/components-swift|Components.swift]] — 4 edges
-- [[graph/vien|ViEn]] — 4 edges
+- [[graph/appstate|AppState]] — 134 edges
+- [[graph/supabaseservice|SupabaseService]] — 44 edges
+- [[graph/createeventview|CreateEventView]] — 8 edges
+- [[graph/screen|Screen]] — 8 edges
+- [[graph/catalogevent|CatalogEvent]] — 7 edges
+- [[graph/components-swift|Components.swift]] — 6 edges
 
 ---
 [[graph/Code map|Code map]] · [[Home]]

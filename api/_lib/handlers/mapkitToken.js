@@ -7,6 +7,7 @@
 // Env (Vercel): MAPKIT_TEAM_ID (Apple Developer Team ID), MAPKIT_KEY_ID (Maps key id),
 // MAPKIT_PRIVATE_KEY (the .p8 file's contents; literal "\n" sequences are accepted).
 import { createSign } from 'node:crypto';
+import { requestOrigin } from '../origin.js';
 
 const TTL_SECONDS = 60 * 60;
 const b64u = (v) => Buffer.from(typeof v === 'string' ? v : JSON.stringify(v)).toString('base64url');
@@ -19,13 +20,9 @@ export function signMapKitToken({ teamId, keyId, privateKey, origin, now = Math.
   return `${input}.${signature.toString('base64url')}`;
 }
 
-/** Origin the page is served from (Apple checks the token's `origin` claim against it). */
-export function requestOrigin(req) {
-  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
-  if (!host) return undefined;
-  const local = /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host);
-  return `${local ? 'http' : 'https'}://${host}`;
-}
+// The origin is pinned in ../origin.js. Re-exported so the handler's public
+// shape stays the same for existing callers/tests.
+export { requestOrigin };
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') { res.setHeader('Allow', 'GET'); return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' }); }

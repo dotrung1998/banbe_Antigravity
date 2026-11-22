@@ -1,6 +1,7 @@
 import {
   readWalletConfig, getWalletAdmin, buildPass, designFromRow, tokenMatches, TICKET_SELECT, stateHash,
 } from '../walletPass.js';
+import { requestOrigin } from '../origin.js';
 import { refreshWalletPass } from '../walletRefresh.js';
 
 // Apple's PassKit web service, which Wallet calls itself (no Supabase login:
@@ -105,7 +106,7 @@ export default async function handler(req, res) {
       const { data: booking } = await admin.from('bookings').select(TICKET_SELECT).eq('id', serial).maybeSingle();
       if (!booking) return res.status(404).end();
 
-      const origin = `https://${req.headers.host || 'www.banbe.app'}`;
+      const origin = requestOrigin(req);
       const pass = await buildPass({ booking, cfg, origin, design: designFromRow(row) });
       res.setHeader('Content-Type', 'application/vnd.apple.pkpass');
       res.setHeader('Last-Modified', modified.toUTCString());

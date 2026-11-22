@@ -70,7 +70,7 @@ Original Supabase copies of migrated photos are kept, so old app builds keep wor
 |---|---|---|
 | Database, auth, realtime, private file storage | Supabase | `supabase/`, `src/lib/supabase.js`, iOS `SupabaseService` |
 | Web app + serverless API (12 functions) + 4 cron jobs | Vercel (`vercel.json`) | `api/`, `vercel.json` |
-| Public photo storage and delivery (chosen; built, not yet configured) | Cloudflare R2 | `api/media.js`, note 28 |
+| Public photo storage and delivery (chosen; configured, existing public media live since 2026-11-21) | Cloudflare R2 | `api/media.js`, note 28 |
 | Transactional email | Gmail SMTP via nodemailer | `api/_lib/email.js` |
 | Phone OTP | Supabase Auth SMS provider (Twilio configured in `config.toml`) | `supabase/config.toml` |
 | Push | Apple APNs | `api/_lib/apns.js` |

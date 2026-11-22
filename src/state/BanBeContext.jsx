@@ -61,6 +61,21 @@ async function tryMediaApiUpload(args) {
   return uploadViaMediaApi({ ...args, accessToken });
 }
 
+/** get_organizer_profile predates R2 and does not return avatar_r2_ref. Merge
+ * the public column (granted to anon, migration 185) so every organizer-profile
+ * entry path — in-app, ?org=, /org/<id> — renders the R2 avatar, never the
+ * legacy Supabase URL. Read-only; no RPC/RLS change. */
+async function withOrganizerAvatarR2Ref(profile) {
+  if (!profile || profile.success === false) return profile;
+  if (profile.avatar_r2_ref) return profile;
+  const { data: org } = await withR2Columns(withR2 => supabase
+    .from('organizers')
+    .select(withR2 ? 'avatar_r2_ref' : 'id')
+    .eq('id', profile.id)
+    .maybeSingle());
+  return org?.avatar_r2_ref ? { ...profile, avatar_r2_ref: org.avatar_r2_ref } : profile;
+}
+
 const BanBeCtx = createContext(null);
 
 /**
@@ -1871,7 +1886,9 @@ export function BanBeProvider({ children }) {
       const { data, error } = await supabase.rpc('get_organizer_profile', { p_organizer_id: orgId });
       if (!active) return;
       if (error || data?.success === false) { fail(); return; }
-      setStateRaw(prev => ({ ...prev, organizerProfile: data, organizerProfileLoading: false }));
+      const merged = await withOrganizerAvatarR2Ref(data);
+      if (!active) return;
+      setStateRaw(prev => ({ ...prev, organizerProfile: merged, organizerProfileLoading: false }));
     })();
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1884,13 +1901,15 @@ export function BanBeProvider({ children }) {
   useEffect(() => {
     if (!sharedOrganizerId) return;
     let active = true;
-    supabase.rpc('get_organizer_profile', { p_organizer_id: sharedOrganizerId }).then(({ data, error }) => {
+    supabase.rpc('get_organizer_profile', { p_organizer_id: sharedOrganizerId }).then(async ({ data, error }) => {
       if (!active) return;
       if (error || data?.success === false) {
         setStateRaw(prev => ({ ...prev, organizerProfileLoading: false, organizerProfileError: T('Không tìm thấy tổ chức này.', "This organizer couldn't be found.") }));
         return;
       }
-      setStateRaw(prev => ({ ...prev, organizerProfile: data, organizerProfileLoading: false }));
+      const merged = await withOrganizerAvatarR2Ref(data);
+      if (!active) return;
+      setStateRaw(prev => ({ ...prev, organizerProfile: merged, organizerProfileLoading: false }));
     });
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2771,12 +2790,12 @@ export function BanBeProvider({ children }) {
     const [photoUrlsById, orgsRes] = await Promise.all([
       photoUrlsByEvent(eventIds),
       organizerIds.length
-        // avatar_path is a public column for anon too (migration 185); it feeds the v2.3 host deck (note 81).
-        ? supabase.from('organizers').select('id, name, avatar_path').in('id', organizerIds)
+        // avatar_path + avatar_r2_ref are public columns for anon too (migration 185); they feed Home's host deck (note 81).
+        ? withR2Columns(withR2 => supabase.from('organizers').select(withR2 ? 'id, name, avatar_path, avatar_r2_ref' : 'id, name, avatar_path').in('id', organizerIds))
         : Promise.resolve({ data: [] }),
     ]);
     const orgNameById = Object.fromEntries((orgsRes.data || []).map(o => [o.id, o.name]));
-    const orgAvatarById = Object.fromEntries((orgsRes.data || []).filter(o => o.avatar_path).map(o => [o.id, organizerAvatarPublicUrl(o.avatar_path, null, 'thumb')]));
+    const orgAvatarById = Object.fromEntries((orgsRes.data || []).filter(o => o.avatar_path || o.avatar_r2_ref).map(o => [o.id, organizerAvatarPublicUrl(o.avatar_path, o.avatar_r2_ref, 'thumb')]));
     const shaped = events.map(e => shapeRealEvent(e, {
       photoUrl: photoUrlsById[e.id]?.[0],
       photoUrls: photoUrlsById[e.id],
@@ -7468,7 +7487,8 @@ export function BanBeProvider({ children }) {
     }
     // The RPC's `following` is server-fresh (e.g. changed on another device): fold it into the
     // canonical list so every Following marker agrees with this screen.
-    set({ organizerProfile: data, organizerProfileLoading: false });
+    const merged = await withOrganizerAvatarR2Ref(data);
+    set({ organizerProfile: merged, organizerProfileLoading: false });
     if (followSyncRef.current.reconcile(organizerId, !!data?.following)) followSyncRef.current.load({ silent: true });
   }, [set, T]);
   const backFromOrganizerProfile = useCallback(() => set(prev => {
@@ -7493,7 +7513,20 @@ export function BanBeProvider({ children }) {
     let stats = null;
     if (organizerId) {
       const { data } = await supabase.rpc('get_organizer_profile', { p_organizer_id: organizerId });
-      if (data && data.success !== false) stats = { count: Number(data.event_count) || 0, sinceYear: data.hosting_since_year || null, avatarPath: data.avatar_path || null, avatarR2Ref: data.avatar_r2_ref || null };
+      // get_organizer_profile predates R2 and does not return avatar_r2_ref; the
+      // public column is granted to anon (migration 185), so read it directly.
+      // Without this the event page kept loading the organizer avatar from Supabase
+      // even though every organizer photo has been migrated to R2.
+      let avatarR2Ref = data?.avatar_r2_ref || null;
+      if (data && data.success !== false && !avatarR2Ref) {
+        const { data: org } = await withR2Columns(withR2 => supabase
+          .from('organizers')
+          .select(withR2 ? 'avatar_r2_ref' : 'id')
+          .eq('id', organizerId)
+          .maybeSingle());
+        avatarR2Ref = org?.avatar_r2_ref || null;
+      }
+      if (data && data.success !== false) stats = { count: Number(data.event_count) || 0, sinceYear: data.hosting_since_year || null, avatarPath: data.avatar_path || null, avatarR2Ref };
     }
     set(prev => ({ eventOrgStats: { ...prev.eventOrgStats, [key]: stats } }));
   }, [set, s.eventOrgStats, s.realEventsById]);

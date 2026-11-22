@@ -7,6 +7,7 @@ Add a row when: a choice is expensive to reverse, two reasonable people disagree
 
 | Date | Decision | Why | Source |
 | --- | --- | --- | --- |
+| 2026-11-22 | Commits pushed to `main` carry **no AI co-author or bot attribution** — no `Co-Authored-By:` trailer, no "Generated with …" footer | The owner wants human-authored history; 21 older commits still contain Codebuff attribution and are **not** a precedent | `docs/second-brain/wiki/Conventions.md` |
 | 2026-11-17 | Web Baseline floor is **Safari 16.2 / iOS 16.2**, not "Baseline Widely available" alone | `color-mix()` is already required; anything newer needs a fallback or waits | `CLAUDE.md`, `.claude/notes/90-modern-web-guidance-pass.md` |
 | 2026-11-04 | `verify_payment` may only be called by the payment's organizer; automatic Telegram confirmation removed | Any signed-in user could confirm any payment; hole closed in migration 213 | `.claude/notes/02-confirm-qr.md` |
 | 2026-11-04 | Project-hub money/door keeps the `owner_id`-or-`user_id` check, never `project_is_host` | Delegation must not become a second, weaker permission path | `.claude/notes/76-event-project-hub.md` |

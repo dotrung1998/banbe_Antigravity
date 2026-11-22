@@ -39,11 +39,21 @@ export function getMissingEmailVariables() {
   ].filter(Boolean);
 }
 
+// A subject is a header, not body text: a CR/LF from an event or display name
+// must never be able to start another header.
+export function headerSafe(value) {
+  return String(value ?? '').replace(/[\r\n]+/g, ' ').trim();
+}
+
 export function sendEmail(message) {
   const from = useResend()
     ? process.env.EMAIL_FROM || DEFAULT_FROM
     : process.env.GMAIL_USER;
-  return getTransporter().sendMail({ from, ...message });
+  return getTransporter().sendMail({
+    ...message,
+    from,
+    subject: headerSafe(message.subject),
+  });
 }
 
 // Kept so existing call sites don't need to change.

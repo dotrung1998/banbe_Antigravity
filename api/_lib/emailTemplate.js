@@ -40,7 +40,7 @@ export function renderEmail({ preheader, eyebrow, heading, paragraphs, cta, code
 
   const ctaHtml = cta ? `
     <div style="margin:24px 0 4px;">
-      <a href="${cta.href}" style="display:inline-block;background:${INK};color:${PAPER};text-decoration:none;font-size:15px;font-weight:600;padding:14px 26px;border-radius:999px;">${escapeHtml(cta.label)}</a>
+      <a href="${escapeHtml(cta.href)}" style="display:inline-block;background:${INK};color:${PAPER};text-decoration:none;font-size:15px;font-weight:600;padding:14px 26px;border-radius:999px;">${escapeHtml(cta.label)}</a>
     </div>` : '';
 
   const footNoteHtml = footNote ? `<p style="margin:20px 0 0;font-size:12.5px;line-height:1.55;color:${MUTED};">${footNote}</p>` : '';

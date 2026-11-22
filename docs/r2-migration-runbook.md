@@ -6,16 +6,31 @@ mọi bước đều quay lại được.
 
 Thiết kế gốc: [.claude/notes/28-r2-hybrid-media.md](../.claude/notes/28-r2-hybrid-media.md).
 
-## Trạng thái đã kiểm tra (2026-11-20)
+## Trạng thái đã kiểm tra (2026-11-21)
 
 | Hạng mục | Thực tế |
 |---|---|
-| Migration `153_r2_public_media` | **Đã áp dụng** trên production: `media_assets` tồn tại (0 dòng), 3 cột `*_r2_ref` tồn tại, chưa có ref nào → hệ thống đang trơ, rollback vô hại |
+| Migration `153_r2_public_media` | **Đã áp dụng** trên production; `media_assets` có **141 asset published** (125 event photo + 16 organizer avatar), 3 cột `*_r2_ref` đã dùng; thêm **2 user avatar** copy riêng qua `migrate-user-avatars-to-r2.mjs` |
 | `POST /api/media` | **Đã deploy**, trả `401 AUTH_REQUIRED` khi không có token |
 | DNS `banbe.app` | Nameserver Cloudflare (`hazel/andy.ns.cloudflare.com`) → gắn được custom domain R2 |
-| `media.banbe.app` | **Đang trả HTTP 525** — có record DNS cũ trỏ sai; phải xoá trước khi gắn domain R2 |
-| Đối tượng đủ điều kiện | **143** object: 126 ảnh của event public + 17 avatar organizer |
-| Cờ hiện tại | R2_* chưa set; `MEDIA_R2_UPLOADS` coi như `off` |
+| `media.banbe.app` | **Active**: preflight 15/15, object thật trả `HTTP 200 image/png, immutable` |
+| Đối tượng đủ điều kiện | **126** ảnh event public + **16** avatar organizer; **4** ảnh invite-only (`banrieng`) cố ý ở lại |
+| Cờ hiện tại | R2_* đã set local; web production `VITE_MEDIA_R2_READS=1`; iOS plist R2 bật; `MEDIA_R2_UPLOADS=off` |
+
+### Kết quả cuối 2026-11-21
+
+- **141 media_assets published**: 125 event photo + 16 organizer avatar; thêm **2 user avatar**
+  copy riêng sang `v1/user-avatars/...` và đổi `profiles.avatar_url` (bản gốc Supabase giữ nguyên).
+- **126/126** ảnh event public, **35/35** cover, **16/16** avatar organizer có `r2_ref`; **2/2** user
+  avatar trên R2; 0 thiếu.
+- `npm run r2:verify`: audit đủ 13 bucket, **11/11** URL thật trả `200 image/jpeg immutable`;
+  **11/11** bản gốc Supabase khớp sha256; 0 public event/organizer + 0 user avatar còn Supabase.
+- Origin local `http://127.0.0.1:5173`: sweep 9 route (Home/feed, browse, search, map, event,
+  organizer, 2 public profile, profile guest) có **0** request `supabase.co/storage`.
+- Production (bundle cũ, chưa redeploy) còn **5 request avatar Supabase** (3 browse, 1 event,
+  1 organizer); code local đã fix cả `openOrganizerProfile`, `loadEventOrgStats` và Home discovery.
+- Còn lại: 4 ảnh invite-only, 3 object gốc avatar trong bucket `avatars` (2 giữ rollback + 1 mồ côi),
+  object mồ côi không hàng nào tham chiếu. Không phải ảnh public event/organizer.
 
 ## Nguyên tắc: không có key nào đi qua chat
 
@@ -127,13 +142,29 @@ Bất biến của script:
 
 - **Không** xoá, không ghi đè object Supabase; **không** sửa `storage_path`/`cover_image`/`avatar_path`.
 - Chỉ copy event `status ∈ (live, ended, cancelled)` **và** `visibility = 'public'`, cùng avatar organizer.
-- Không bao giờ copy draft/review/invite-only, stories, chat, dispute, payment/refund, QR, avatar user.
+- Không bao giờ copy draft/review/invite-only, stories, chat, dispute, payment/refund, QR, avatar user
+  (user avatar có script copy riêng, mục 3b).
 - Ghi `r2_ref` bằng compare-and-set trên `storage_path` cũ: row đổi giữa chừng thì bỏ qua.
+
+### Bước 3b — Copy user avatar (bucket `avatars`)
+
+```bash
+node scripts/migrate-user-avatars-to-r2.mjs             # dry-run
+node scripts/migrate-user-avatars-to-r2.mjs --apply     # copy + đổi profiles.avatar_url
+export APP_ORIGIN=http://127.0.0.1:5173
+node scripts/sweep-app-media.mjs                         # 0 request supabase.co/storage
+```
+
+Script chỉ đụng `profiles.avatar_url` (data-only), giữ nguyên object Supabase; key R2 chứa sha256 nên
+chạy lại idempotent. Rollback: `node scripts/migrate-user-avatars-to-r2.mjs --rollback --apply`.
+Không thêm cột/migration, không đổi iOS.
 
 Sau khi chạy, kiểm tra lại:
 
 ```bash
 npm run r2:preflight        # mục "already published on R2" phải bằng số vừa copy
+npm run r2:verify           # coverage 126/126 + 35/35 + 16/16 + 2/2 user avatar
+npm run r2:sweep            # sweep 9 route, 0 Supabase Storage
 ```
 
 ## Bước 4 — Bật đọc trên web
@@ -148,7 +179,9 @@ Vercel → Project → Settings → Environment Variables (Production):
 `VITE_*` là **build-time** → phải **Redeploy**. Trong lúc chưa deploy lại, web vẫn đọc Supabase.
 
 Tắt lại (rollback đọc): đặt `VITE_MEDIA_R2_READS=0` rồi redeploy — client bỏ qua `r2_ref`
-ngay, ảnh quay về bản Supabase (vẫn còn nguyên).
+ngay, ảnh event/organizer quay về bản Supabase (vẫn còn nguyên). **User avatar là ngoại lệ**:
+`profiles.avatar_url` đã là URL R2 trực tiếp, nên flag đọc không đổi nó; muốn quay lại phải chạy
+`node scripts/migrate-user-avatars-to-r2.mjs --rollback --apply` (script giữ nguyên object R2).
 
 ## Bước 5 — Bật upload qua R2 (sau cùng, tuỳ chọn)
 
@@ -186,9 +219,10 @@ upload dở.
 
 | Mức | Cách | Kết quả |
 |---|---|---|
-| Đọc | `VITE_MEDIA_R2_READS=0` + redeploy | Web dùng lại Supabase ngay |
+| Đọc | `VITE_MEDIA_R2_READS=0` + redeploy | Web dùng lại Supabase cho event/organizer; user avatar cần script rollback riêng |
 | Upload | `MEDIA_R2_UPLOADS=off` + redeploy | Upload mới về Supabase |
 | Tham chiếu | `node scripts/migrate-media-to-r2.mjs --rollback --apply` | Null `*_r2_ref` cho asset đã migrate; object R2 vẫn nằm đó, Supabase không đổi |
+| User avatar | `node scripts/migrate-user-avatars-to-r2.mjs --rollback --apply` | Trả `profiles.avatar_url` về URL Supabase gốc; object R2 vẫn còn |
 
 Chỉ sau khi chắc chắn (vài tuần, egress Supabase giảm) mới cân nhắc xoá bản Supabase —
 việc đó **không** nằm trong runbook này.
@@ -219,9 +253,14 @@ Nhờ vậy mỗi event có asset và ref riêng, **không cần đổi schema**
 asset của event này không ảnh hưởng event kia. `legacy_path` chỉ dùng cho dedupe/audit của
 script — không chỗ nào trong `api/` đọc nó.
 
-Đã chuyển 43 ảnh clone ngày 2026-11-20. Những gì còn trong backlog **không phải clone**:
+Tính đến 2026-11-21: **141 media_assets published** (125 event photo + 16 organizer avatar),
+phủ **126/126** ảnh event public, **35/35** cover, **16/16** avatar organizer, cộng **2/2 user avatar**
+copy riêng. Những gì còn trong backlog **không phải clone**:
 
 - 4 ảnh của event `banrieng` (`visibility: invite`) — không public nên ngoài phạm vi chuyển.
-- 1 avatar organizer mồ côi (đã gỡ khỏi `organizers.avatar_path`).
+- 3 object gốc avatar trong bucket `avatars` (2 bản giữ rollback + 1 mồ côi) — object Supabase không bị xoá.
+- Object mồ côi trong bucket (54 event-photos, 27 organizer-photos, 1 avatar; cùng các bucket private)
+  — không hàng nào tham chiếu, không trang public nào phục vụ.
 
-Chạy lại `--apply --all` phải báo `migrated: 0`; còn `to copy: 4` là đúng, không phải lỗi.
+Chạy lại `--apply --all` phải báo `migrated: 0`; `to copy: 4` là đúng, không phải lỗi.
+Dùng `npm run r2:verify` để kiểm tra coverage + HTTP + sha256 bản gốc.
