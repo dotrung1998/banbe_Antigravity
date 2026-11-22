@@ -1,0 +1,53 @@
+{
+  "nodes": [
+    {
+      "id": "col-todo",
+      "type": "group",
+      "label": "TODO",
+      "x": 0,
+      "y": 0,
+      "width": 340,
+      "height": 720,
+      "color": "1"
+    },
+    {
+      "id": "col-doing",
+      "type": "group",
+      "label": "DOING",
+      "x": 360,
+      "y": 0,
+      "width": 340,
+      "height": 720,
+      "color": "3"
+    },
+    {
+      "id": "col-done",
+      "type": "group",
+      "label": "DONE",
+      "x": 720,
+      "y": 0,
+      "width": 340,
+      "height": 720,
+      "color": "4"
+    },
+    {
+      "id": "task-audit-2026-11-22",
+      "type": "text",
+      "text": "Audit tiếp: Reserve · Refund · Guest (3/6 còn lại)",
+      "x": 20,
+      "y": 72,
+      "width": 300,
+      "height": 88
+    },
+    {
+      "id": "task-audit-2026-11-21",
+      "type": "text",
+      "text": "AUDIT 2026-11-21 — Event/Confirmed/Home: 3 P1 gap, 12 ảnh",
+      "x": 740,
+      "y": 72,
+      "width": 300,
+      "height": 88
+    }
+  ],
+  "edges": []
+}

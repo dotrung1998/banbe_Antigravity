@@ -1,0 +1,44 @@
+{
+  "nodes": [
+    {
+      "id": "col-todo",
+      "type": "group",
+      "label": "TODO",
+      "x": 0,
+      "y": 0,
+      "width": 340,
+      "height": 720,
+      "color": "1"
+    },
+    {
+      "id": "col-doing",
+      "type": "group",
+      "label": "DOING",
+      "x": 360,
+      "y": 0,
+      "width": 340,
+      "height": 720,
+      "color": "3"
+    },
+    {
+      "id": "col-done",
+      "type": "group",
+      "label": "DONE",
+      "x": 720,
+      "y": 0,
+      "width": 340,
+      "height": 720,
+      "color": "4"
+    },
+    {
+      "id": "task-apply-2026-11-22",
+      "type": "text",
+      "text": "Chờ APPLY gap list: Event Detail · Confirmed · Home",
+      "x": 20,
+      "y": 72,
+      "width": 300,
+      "height": 88
+    }
+  ],
+  "edges": []
+}

@@ -11,10 +11,13 @@
  *   node scripts/cloud-notify.mjs health      # hourly — one alert per incident, a recovery message, repeats every 6h
  *   node scripts/cloud-notify.mjs weekly      # Fri 17:00 ICT — the week's commits + hotspots
  *   node scripts/cloud-notify.mjs deps        # Sun 18:00 ICT — outdated packages + npm audit
+ *   node scripts/cloud-notify.mjs prompt      # 05:00 daily ICT — copy-paste Mission for a Freebuff session
+ *   node scripts/cloud-notify.mjs apply --file docs/audits/<date>/APPLY.md  # audit hand-off, posted as text
  *   node scripts/cloud-notify.mjs test        # one message, to prove the webhook wiring
  *
  * Flags: --dry-run  print the payload and send nothing
  *        --always   health: post even when every check passes
+ *        --file     apply: read the prompt from this file instead of APPLY_PROMPT/env
  *
  * Webhooks (repo secrets, one URL per channel):
  *   DISCORD_WEBHOOK_STANDUP, DISCORD_WEBHOOK_ALERTS, DISCORD_WEBHOOK_WEEKLY
@@ -55,6 +58,8 @@ const CHANNEL_OF = {
   health: 'alerts',
   weekly: 'weekly',
   deps: 'weekly',
+  prompt: 'weekly',
+  apply: 'weekly',
   test: 'alerts',
 };
 
@@ -195,6 +200,107 @@ async function post(channel, embedPayload) {
   return { sent: true };
 }
 
+// Plain text (no embed) so the mission prompt is one drag-select away from the
+// clipboard. Discord caps `content` at 2000 characters; dailyPrompt() stays under.
+async function postText(channel, content) {
+  const payload = { username: 'banbe cloud', allowed_mentions: { parse: [] }, content };
+  if (DRY_RUN) {
+    console.log(`dry run — would post to ${channel}:`);
+    console.log(content);
+    return { sent: false, dryRun: true };
+  }
+  const url = process.env[`DISCORD_WEBHOOK_${channel.toUpperCase()}`] || process.env.DISCORD_WEBHOOK;
+  if (!url) {
+    console.warn(`no webhook configured for "${channel}" — set DISCORD_WEBHOOK_${channel.toUpperCase()} in repo secrets`);
+    console.log(content);
+    return { sent: false };
+  }
+  const target = `${url}${url.includes('?') ? '&' : '?'}wait=true`;
+  const response = await fetch(target, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(`Discord rejected the ${channel} message: HTTP ${response.status} ${clip(body, 300)}`);
+  }
+  console.log(`posted ${channel} (HTTP ${response.status})`);
+  return { sent: true };
+}
+
+// Split a long prompt on line boundaries, closing and reopening ``` fences so every
+// Discord message stays under the 2000-character cap without breaking the text the
+// owner is about to paste.
+function chunkText(text, limit = 1800) {
+  const lines = String(text).replace(/\r\n/g, '\n').split('\n');
+  const chunks = [];
+  let buf = [];
+  let size = 0;
+  let fence = null; // language of the open fence ('' = plain ```)
+  const flush = () => {
+    if (!buf.length) return;
+    // Close with a bare ``` fence; reopen with the language so the next message keeps colouring.
+    chunks.push([...buf, ...(fence !== null ? ['```'] : [])].join('\n'));
+    buf = fence !== null ? [`\`\`\`${fence}`] : [];
+    size = buf.length ? buf[0].length : 0;
+  };
+  const add = (line) => {
+    if (size + line.length + (buf.length ? 1 : 0) > limit && buf.length) flush();
+    buf.push(line);
+    size += line.length + (buf.length > 1 ? 1 : 0);
+    const marker = /^```(\S*)\s*$/.exec(line.trim());
+    if (marker) fence = fence !== null ? null : (marker[1] || '');
+  };
+  for (const line of lines) {
+    if (line.length <= limit) {
+      add(line);
+      continue;
+    }
+    // A single paragraph can be longer than one message; hard-split it rather than
+    // letting Discord reject the payload.
+    for (let i = 0; i < line.length; i += limit) add(line.slice(i, i + limit));
+  }
+  if (buf.length) chunks.push(buf.join('\n'));
+  return chunks;
+}
+
+// The apply prompt is written by the audit, then posted here so the owner can paste
+// it into a new session from Discord. No issue, no commit, no repo write.
+async function postApply() {
+  const at = process.argv.indexOf('--file');
+  const file = at > -1 ? process.argv[at + 1] : null;
+  let body = '';
+  if (file) {
+    try {
+      body = fs.readFileSync(path.resolve(file), 'utf8');
+    } catch (error) {
+      console.error(`apply: cannot read --file ${file}: ${error.message}`);
+      process.exit(2);
+    }
+  } else {
+    body = process.env.APPLY_PROMPT || '';
+  }
+  body = body.trim();
+  if (!body) {
+    console.error('apply: nothing to send — pass --file <path> or set APPLY_PROMPT');
+    process.exit(2);
+  }
+  const chunks = chunkText(body);
+  let delivered = 0;
+  for (let i = 0; i < chunks.length; i++) {
+    const prefix = chunks.length > 1 ? `**Apply mission ${i + 1}/${chunks.length}**\n` : '';
+    const result = await postText('weekly', `${prefix}${chunks[i]}`);
+    if (result.sent || result.dryRun) delivered++;
+  }
+  console.log(`apply: ${delivered}/${chunks.length} message(s) delivered`);
+  if (delivered !== chunks.length) {
+    console.error('apply: webhook missing or Discord refused; the prompt was printed above — add DISCORD_WEBHOOK_WEEKLY to send it');
+    process.exitCode = 1;
+  }
+}
+
 /* ------------------------------------------------------------------ jobs */
 
 async function standup() {
@@ -319,6 +425,38 @@ function deps() {
       { name: 'npm audit · prod deps', value: summary },
     ],
   });
+}
+
+// Hermes cannot move to the cloud (its scheduler is an in-process ticker on the
+// Mac) and Freebuff refuses automated runs, so the audit stays human-in-the-loop:
+// this posts the mission, a person pastes it into a Freebuff session.
+function dailyPrompt() {
+  const date = today();
+  const head = git(['rev-parse', '--short', 'HEAD']) || 'unknown';
+  const weekday = new Intl.DateTimeFormat('en-GB', { timeZone: TIME_ZONE, weekday: 'long' }).format(new Date());
+  const weekdayVi = {
+    Monday: 'Thứ Hai', Tuesday: 'Thứ Ba', Wednesday: 'Thứ Tư',
+    Thursday: 'Thứ Năm', Friday: 'Thứ Sáu', Saturday: 'Thứ Bảy', Sunday: 'Chủ Nhật',
+  }[weekday] || weekday;
+  const extra = weekday === 'Friday'
+    ? 'Thứ Sáu: thêm week review 7 ngày (commit, 6 file hotspot, branch, "Monday starts with").'
+    : weekday === 'Sunday'
+      ? 'Chủ nhật: thêm deps sâu + code graph (nếu có graphify).'
+      : 'Hôm nay không có việc riêng của thứ Sáu/Chủ nhật.';
+  const text = [
+    `**Mission hôm nay — ${date} (${weekdayVi})** · HEAD \`${head}\``,
+    'Dán khối dưới vào một phiên Freebuff mới (Mission):',
+    '```text',
+    'Mission: banbe daily — đọc docs/prompts/daily-hermes.md rồi làm đủ các mục.',
+    'Hôm nay: standup 24h · health app/Supabase/R2 · audit kỹ thuật P0–P3 · review UI/UX (6 chỗ + 7 chiều, có nguồn ngoài) · deps nhanh.',
+    extra,
+    `Ghi docs/audits/${date}/AUDIT.md và một dòng vào docs/second-brain/audits/index.md.`,
+    'Chỉ báo cáo: KHÔNG sửa source, KHÔNG commit/push/deploy/migration. Mọi kết luận cần path:line, route hoặc ảnh; thiếu bằng chứng thì ghi blocked, không bịa.',
+    'Cuối mission: tổng hợp prompt apply (mục K) và gửi vào kênh này.',
+    'Bỏ qua backup git bundle và Apple Notes (chỉ chạy trên Mac).',
+    '```',
+  ].join('\n');
+  return text.length <= 1900 ? text : `${text.slice(0, 1890)}…`;
 }
 
 function readHealthState() {
@@ -475,6 +613,7 @@ function testMessage() {
       '• health — hourly, silent while healthy',
       '• week in review — Fri 17:00',
       '• dependency audit — Sun 18:00',
+      '• Freebuff mission prompt — 05:00 daily',
     ].join('\n'),
     color: BRAND.clay,
   });
@@ -485,9 +624,18 @@ function testMessage() {
 async function main() {
   const job = JOB || 'test';
   if (!CHANNEL_OF[job]) {
-    console.error(`unknown job "${job}" — use standup | health | weekly | deps | test`);
+    console.error(`unknown job "${job}" — use standup | health | weekly | deps | prompt | apply | test`);
     process.exit(2);
   }
+  if (job === 'prompt') {
+    await postText('weekly', dailyPrompt());
+    return;
+  }
+  if (job === 'apply') {
+    await postApply();
+    return;
+  }
+
   if (job === 'health') {
     const outcome = await health();
     if (outcome.embed) {
