@@ -12,7 +12,7 @@
  *   node scripts/cloud-notify.mjs weekly      # Fri 17:00 ICT — the week's commits + hotspots
  *   node scripts/cloud-notify.mjs deps        # Sun 18:00 ICT — outdated packages + npm audit
  *   node scripts/cloud-notify.mjs prompt      # 05:00 daily ICT — copy-paste Mission for a Freebuff session
- *   node scripts/cloud-notify.mjs apply --file docs/audits/<date>/APPLY.md  # audit hand-off, posted as text
+ *   node scripts/cloud-notify.mjs apply --file docs/audits/<date>/APPLY.discord.md  # one copyable mission message
  *   node scripts/cloud-notify.mjs test        # one message, to prove the webhook wiring
  *
  * Flags: --dry-run  print the payload and send nothing
@@ -230,40 +230,52 @@ async function postText(channel, content) {
   return { sent: true };
 }
 
-// Split a long prompt on line boundaries, closing and reopening ``` fences so every
-// Discord message stays under the 2000-character cap without breaking the text the
-// owner is about to paste.
-function chunkText(text, limit = 1800) {
-  const lines = String(text).replace(/\r\n/g, '\n').split('\n');
-  const chunks = [];
-  let buf = [];
-  let size = 0;
-  let fence = null; // language of the open fence ('' = plain ```)
-  const flush = () => {
-    if (!buf.length) return;
-    // Close with a bare ``` fence; reopen with the language so the next message keeps colouring.
-    chunks.push([...buf, ...(fence !== null ? ['```'] : [])].join('\n'));
-    buf = fence !== null ? [`\`\`\`${fence}`] : [];
-    size = buf.length ? buf[0].length : 0;
-  };
-  const add = (line) => {
-    if (size + line.length + (buf.length ? 1 : 0) > limit && buf.length) flush();
-    buf.push(line);
-    size += line.length + (buf.length > 1 ? 1 : 0);
-    const marker = /^```(\S*)\s*$/.exec(line.trim());
-    if (marker) fence = fence !== null ? null : (marker[1] || '');
-  };
-  for (const line of lines) {
-    if (line.length <= limit) {
-      add(line);
-      continue;
-    }
-    // A single paragraph can be longer than one message; hard-split it rather than
-    // letting Discord reject the payload.
-    for (let i = 0; i < line.length; i += limit) add(line.slice(i, i + limit));
+// The apply hand-off is always one copyable Discord message: a bold header, the
+// paste instruction, and one fenced text block. Raw APPLY prompts are wrapped;
+// already-formatted files are validated. Anything over 1,800 characters is refused
+// rather than split into messages the owner cannot paste as one mission.
+const APPLY_LIMIT = 1800;
+const APPLY_CANONICAL = /^\*\*Mission APPLY — (\d{4}-\d{2}-\d{2}) \(.+?\) · HEAD `([^`]+)`\*\*\nDán khối dưới vào một phiên Freebuff mới \(Mission\):\n```text\n([\s\S]*?)\n```$/;
+
+function weekdayNameVi(date) {
+  const weekday = new Intl.DateTimeFormat('en-GB', { timeZone: TIME_ZONE, weekday: 'long' }).format(date);
+  return {
+    Monday: 'Thứ Hai', Tuesday: 'Thứ Ba', Wednesday: 'Thứ Tư',
+    Thursday: 'Thứ Năm', Friday: 'Thứ Sáu', Saturday: 'Thứ Bảy', Sunday: 'Chủ Nhật',
+  }[weekday] || weekday;
+}
+
+function applyDate(file) {
+  const match = /(?:^|[/\\])(\d{4}-\d{2}-\d{2})(?:[/\\]|$)/.exec(file || '');
+  return match ? match[1] : today();
+}
+
+function applyWeekday(date) {
+  const parsed = new Date(`${date}T12:00:00+07:00`);
+  return Number.isNaN(parsed.getTime()) ? weekdayNameVi(new Date()) : weekdayNameVi(parsed);
+}
+
+function formatApplyMessage(raw, file) {
+  const text = String(raw).replace(/\r\n/g, '\n').trim();
+  if (!text) throw new Error('empty prompt');
+  const canonical = APPLY_CANONICAL.exec(text);
+  const body = canonical ? canonical[3].trim() : text;
+  if (!body) throw new Error('empty prompt body');
+  if (/^```/m.test(body)) {
+    throw new Error('prompt contains its own ``` fence; remove it so the script can wrap it in one code block');
   }
-  if (buf.length) chunks.push(buf.join('\n'));
-  return chunks;
+  if (!canonical && /^\*\*Mission APPLY\b/.test(text)) {
+    throw new Error('file starts with a Mission APPLY header but is not in the canonical header + fenced text block format');
+  }
+  const date = canonical ? canonical[1] : applyDate(file);
+  const head = canonical ? canonical[2] : git(['rev-parse', '--short', 'HEAD']) || 'unknown';
+  const message = canonical
+    ? text
+    : `**Mission APPLY — ${date} (${applyWeekday(date)}) · HEAD \`${head}\`**\nDán khối dưới vào một phiên Freebuff mới (Mission):\n\`\`\`text\n${body}\n\`\`\``;
+  if (message.length > APPLY_LIMIT) {
+    throw new Error(`formatted message is ${message.length} characters (limit ${APPLY_LIMIT}); shorten the prompt so it stays one copyable code block`);
+  }
+  return message;
 }
 
 // The apply prompt is written by the audit, then posted here so the owner can paste
@@ -287,15 +299,17 @@ async function postApply() {
     console.error('apply: nothing to send — pass --file <path> or set APPLY_PROMPT');
     process.exit(2);
   }
-  const chunks = chunkText(body);
-  let delivered = 0;
-  for (let i = 0; i < chunks.length; i++) {
-    const prefix = chunks.length > 1 ? `**Apply mission ${i + 1}/${chunks.length}**\n` : '';
-    const result = await postText('weekly', `${prefix}${chunks[i]}`);
-    if (result.sent || result.dryRun) delivered++;
+  let message;
+  try {
+    message = formatApplyMessage(body, file);
+  } catch (error) {
+    console.error(`apply: ${error.message}`);
+    process.exit(2);
   }
-  console.log(`apply: ${delivered}/${chunks.length} message(s) delivered`);
-  if (delivered !== chunks.length) {
+  const result = await postText('weekly', message);
+  const delivered = result.sent || result.dryRun ? 1 : 0;
+  console.log(`apply: ${delivered}/1 message(s) delivered`);
+  if (!delivered) {
     console.error('apply: webhook missing or Discord refused; the prompt was printed above — add DISCORD_WEBHOOK_WEEKLY to send it');
     process.exitCode = 1;
   }

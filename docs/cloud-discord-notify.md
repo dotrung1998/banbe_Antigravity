@@ -121,7 +121,7 @@ An audit that found something to fix ends by writing two files: `APPLY.md` — t
 node --env-file=.env scripts/cloud-notify.mjs apply --file docs/audits/<date>/APPLY.discord.md
 ```
 
-Keep `APPLY.discord.md` under 1,800 characters so it arrives as one message. The script still splits longer text on line boundaries and closes/reopens ``` fences if needed, but a split message is harder to copy. Nothing is committed and no issue is opened: the prompt never passes through the public repo.
+The script wraps a raw prompt into this shape and refuses anything over 1,800 characters, so an APPLY hand-off is always one copyable message and is never split. Keep `APPLY.discord.md` under 1,800 characters to pass the check. Nothing is committed and no issue is opened: the prompt never passes through the public repo.
 
 This needs `DISCORD_WEBHOOK_WEEKLY` in the audit machine's `.env` (gitignored) or shell — the same URL as the Actions secret, which Actions cannot hand to the audit session. Without it the script prints the full prompt and exits non-zero, so the audit can paste it into chat as `apply: not sent — <reason>` instead of losing it.
 

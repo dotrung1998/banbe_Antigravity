@@ -24,7 +24,7 @@
 - **Không in / không ghi** secret, token, webhook URL, service-role key, JWT, mật khẩu, connection string, email, số điện thoại, tên khách, địa chỉ nhà, số booking/payment. Nếu thấy secret trong source: ghi `path:line` + loại, không chép giá trị. APPLY.md và tin Discord cũng phải sạch: che `<redacted>` trước khi ghi; ảnh phải che PII trước khi lưu.
 - **Không bịa.** Thiếu bằng chứng → `UNKNOWN` hoặc `blocked: <lý do>`, không phải PASS.
 - Mỗi kết luận phải có **`path:line`, route, hoặc đường dẫn ảnh**. Nhận định chung chung không tính là phát hiện.
-- **Được gửi đúng một prompt apply** (mục K; có thể 2–3 tin nếu dài) qua `scripts/cloud-notify.mjs apply`; không gửi gì khác, không tạo issue, không commit.
+- **Được gửi đúng một prompt apply** (mục K; một tin, header + một code block dưới 1.800 ký tự) qua `scripts/cloud-notify.mjs apply`; không gửi gì khác, không tạo issue, không commit.
 
 ## 1. Trước khi làm (ghi vào header của report)
 
@@ -164,7 +164,7 @@ Mục tiêu: session mới chỉ cần dán prompt, không cần đọc lại wo
    <prompt tự chứa, cùng nội dung APPLY.md nhưng gọn>
    ```
    ````
-   Không dùng embed; header + một code block kín để copy nguyên khối. `APPLY.md` là bản chi tiết để tra, `APPLY.discord.md` là bản gửi. Giữ dưới 1.800 ký tự để script gửi đúng **1 tin**; dài hơn sẽ bị cắt thành `Apply mission 1/n`.
+   Không dùng embed; header + một code block kín để copy nguyên khối. `APPLY.md` là bản chi tiết để tra, `APPLY.discord.md` là bản gửi. Giữ dưới 1.800 ký tự để script gửi đúng **1 tin**; dài hơn sẽ bị script từ chối, không cắt. Script cũng tự wrap prompt raw vào format này và từ chối raw quá dài.
 4. Gửi lên Discord:
    ```bash
    if [ -f .env ]; then node --env-file=.env scripts/cloud-notify.mjs apply --file docs/audits/<date>/APPLY.discord.md; else node scripts/cloud-notify.mjs apply --file docs/audits/<date>/APPLY.discord.md; fi
