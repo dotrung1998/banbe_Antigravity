@@ -111,6 +111,8 @@ required before shipping; the 597 × 417 run is the CSS-viewport proxy for 200 %
 
 ![Exact viewport evidence: 320, 390, 597, 834, 1194 and 1280](evidence/prototype-v24-responsive.png)
 
+![Home state at the same viewports, including the five-slot dock](evidence/prototype-v24-home-responsive.png)
+
 ---
 
 ## 3. Applying it to the web app
@@ -273,7 +275,8 @@ Files:
 - `docs/prototypes/homescreen-event-detail-motion-v2-4.html` — the updated prototype (band, tabs, view menu, dock,
   stub, compact/full bar, 320 rules, split, zoom).
 - `docs/impl/prototype-v24-web-ipad.md` — this note.
-- `docs/impl/evidence/prototype-v24-responsive.png` — the six exact-viewport screenshots and their measurements.
+- `docs/impl/evidence/prototype-v24-responsive.png` — the six detail screenshots and their measurements.
+- `docs/impl/evidence/prototype-v24-home-responsive.png` — the same six viewports in the Home state, with the five-slot dock.
 - No app source files. The rotate-overlay fix in §4 is recorded for the app-side port, not included here, so the diff
   stays exactly prototype + documentation.
 
