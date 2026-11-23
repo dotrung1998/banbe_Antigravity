@@ -575,9 +575,15 @@ input::placeholder, textarea::placeholder {
    of rendering the real layout sideways/stretched. `pointer: coarse`
    scopes this to touch devices specifically, so a normal desktop browser
    window's landscape aspect ratio (completely unrelated to this concern)
-   never triggers it. */
+   never triggers it.
+
+   iPad (2026-11-23): the query used to be every landscape coarse-pointer screen, which hid the
+   whole web app on an iPad in landscape — the one layout where it can show a list and an event
+   side by side. The overlay is for a PHONE held sideways: a short (<= 520 px) and narrow
+   (<= 1000 px) window. An iPad in landscape is at least 1024 x 768, and a short Split View
+   window is still wider than a phone, so neither gets the overlay. */
 #bb-rotate-overlay { display: none; }
-@media (orientation: landscape) and (pointer: coarse) {
+@media (orientation: landscape) and (pointer: coarse) and (max-height: 520px) and (max-width: 1000px) {
   #root { display: none; }
   #bb-rotate-overlay {
     display: flex;

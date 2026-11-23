@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#14110D">
-<title>banbe — v2.4 · Home &amp; Event Detail</title>
+<meta name="color-scheme" content="light dark">
+<title>banbe — v2.4.2 · Home &amp; Event Detail</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -14,7 +15,9 @@
    type screens); this pass is visual system + stage + progress. */
 :root{
   /* v2 — warm gallery palette, lifted a touch off the v1 paper */
-  --bg:#F3EEE3; --fg:#181410; --fg2:rgba(24,20,16,.72); --fg3:rgba(24,20,16,.5);
+  /* v2.4.2: fg3 is 3.6:1 at .5, below the 4.5:1 floor for the 11–12 pt labels that use it.
+     .62 lands at 5.2:1 on paper and still reads as the quiet tier. */
+  --bg:#F3EEE3; --fg:#181410; --fg2:rgba(24,20,16,.74); --fg3:rgba(24,20,16,.62);
   --rule:rgba(24,20,16,.14); --divider:rgba(24,20,16,.08);
   --block:#E9E2D3; --inset:#FBF7EE; --sel:#FFFFFF;
   --alert:#9A3E2D; --onalert:#fff; --clay:#A2543A; --moss:#4C5F3A; --honey:#8A6418; --plum:#6B4E7C;
@@ -40,7 +43,7 @@
   --ease-soft:cubic-bezier(.32,.72,0,1);
 }
 :root[data-theme="dark"]{
-  --bg:#0F0D09; --fg:#F4EDDF; --fg2:rgba(244,237,223,.74); --fg3:rgba(244,237,223,.52);
+  --bg:#0F0D09; --fg:#F4EDDF; --fg2:rgba(244,237,223,.76); --fg3:rgba(244,237,223,.62);
   --rule:rgba(244,237,223,.16); --divider:rgba(244,237,223,.08);
   --block:#1E1A13; --inset:#171410; --sel:#221E17;
   --alert:#E8715B; --onalert:#0F0D09; --clay:#D8926C; --moss:#A9C487; --honey:#F2C46D;
@@ -56,6 +59,10 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
+/* v2.4.2 — the page must stay readable when the browser or the OS enlarges it. Nothing sets a
+   fixed text scale; the layout gives way instead (see the end of this stylesheet). */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+:focus-visible{outline:2px solid var(--clay);outline-offset:2px;border-radius:4px}
 body{
   font-family:'Be Vietnam Pro',system-ui,-apple-system,sans-serif;
   background:
@@ -211,7 +218,7 @@ svg.i{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke
 .device.wide .hc.sel{box-shadow:0 0 0 2.5px #FBF7EE,0 20px 44px rgba(0,0,0,.4)}
 /* Lists are narrow here: the rail drops to a size that shows two events and a third peeking, so
    the column reads as a list of events, not one poster. */
-.device.wide .hc{flex-basis:188px;height:252px;border-radius:22px}
+.device.wide .hc{flex-basis:170px;height:252px;border-radius:22px}
 .device.wide .hc .t{font-size:21px}
 .device.wide .hc .info{left:14px;right:14px;bottom:14px}
 .device.wide .rail{padding-left:20px;scroll-padding-left:20px;gap:10px}
@@ -233,23 +240,26 @@ svg.i{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke
    chips, the running total and the host's 1-hour line. Back at the top it compacts again. The
    height morphs (280 ms spring) and the contents fade in, so it reads as one bar changing shape. */
 .dbar{transition:transform 460ms var(--ease-spring),border-radius 280ms var(--ease-out)}
-.dbar.compact{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:10px;
+.dbar.compact{display:grid;grid-template-columns:164px minmax(0,1fr);align-items:center;gap:10px;
   padding:10px;border-radius:999px;left:12px;right:12px;bottom:12px}
 .dbar.compact::before{top:-30px;height:30px}
-.dbar.compact .chips{margin:0;width:auto;padding:3px;gap:2px}
-.dbar.compact .chip{flex:0 0 42px}
+.dbar.compact .chips{margin:0;width:100%;min-width:0;max-width:none;flex-wrap:nowrap;padding:3px;gap:2px}
+.dbar.compact .chip{flex:0 0 36px}
 .dbar.compact .reserve .lbl{white-space:nowrap;letter-spacing:-.01em}
 .dbar.compact .chips .ink{top:3px;bottom:3px}
 .dbar.compact .chip{height:40px;font-size:11.5px}
-.dbar.compact .barRow{gap:0}
+.dbar.compact .barRow{flex:1 1 auto;min-width:0;gap:10px}
 .dbar.compact .barPrice,.dbar.compact .barTrust{display:none}
-.dbar.compact .reserve{height:46px;font-size:13.5px}
+.dbar.compact .reserve{height:46px;font-size:12.3px;padding:0 12px}
 .chipBtn .n[hidden]{display:none}
 /* big panes (iPad, the right side of a split): the reading column stays a reading width */
 .device.roomy .dBody{max-width:640px;margin:0 auto}
 .device.roomy .dStub{max-width:640px;margin-left:auto;margin-right:auto}
 .device.roomy .dHero .ttl{max-width:680px;margin:0 auto}
 .device.roomy .dbar{margin:0 auto;max-width:660px}
+/* a roomy single column keeps the dock a dock: five slots at a comfortable width, centred,
+   not five targets spread across 820 pt of glass */
+.device.roomy .dock{left:0;right:0;margin:0 auto;width:min(560px,calc(100% - 28px))}
 
 .stagePhone{flex:none;display:flex;flex-direction:column;align-items:center;gap:18px}
 .phoneSlot{position:relative;flex:none;
@@ -271,8 +281,11 @@ svg.i{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke
 .homeScroll{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;padding-bottom:126px;overscroll-behavior:contain}
 .homeScroll::-webkit-scrollbar{display:none}
 
-/* hero block: photo, tabs, one featured pick */
-.hh{position:relative;color:#fff;background:var(--night);padding:calc(var(--st) + 116px) 0 10px}
+/* hero block: photo, the date kicker, one featured pick. The band is in flow above it now, so
+   the hero no longer reserves a fake status bar or a header wash inside its own top padding. */
+.hh{position:relative;color:#fff;background:var(--night);padding:0 0 10px}
+.heroDate{position:relative;z-index:2;padding:18px 24px 0;
+  font-size:11.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.66)}
 .hhbg{position:absolute;inset:0;overflow:hidden;animation:heroIn 1400ms var(--ease-out) both}
 @keyframes heroIn{from{opacity:0;transform:scale(1.07)}to{opacity:1;transform:none}}
 .hhbg .hhArt{width:100%;height:100%;background-size:cover;background-position:center;transform:scale(1.06);opacity:.9;
@@ -281,67 +294,75 @@ svg.i{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke
   linear-gradient(180deg,rgba(10,9,7,.72) 0%,rgba(10,9,7,.34) 30%,rgba(10,9,7,.55) 62%,rgba(22,20,15,.97) 100%)}
 .hh::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:rgba(255,255,255,.06)}
 
-/* pinned header (sits above the scroll, wash fades in) */
-.hhead{position:absolute;top:0;left:0;right:0;z-index:40;padding:calc(var(--st) + 2px) 0 8px;color:#fff}
-/* v2.3.2 — the header, scrolled. It used to stay full height over a see-through wash, so the tabs
-   showed through behind the search field and its hard bottom edge sliced the top corners off the
-   cards. Past 60 pt it now settles: the wash goes solid, the search field folds into a search
-   button beside the map, and the bottom edge is a 26 pt feather, so cards dissolve into it. */
-.hhead::after{content:"";position:absolute;left:0;right:0;top:100%;height:26px;pointer-events:none;
-  background:linear-gradient(180deg,#14110C,rgba(20,17,12,0));opacity:0;transition:opacity var(--t-quick) linear}
-.hhead.stuck::after{opacity:1}
-.hhead.stuck .hwash{opacity:1 !important}
-.hhead .hsearch{max-height:44px;overflow:hidden;
-  transition:transform var(--t-quick) var(--ease-out),background var(--t-quick) var(--ease-out),
-    max-height var(--t-base) var(--ease-soft),margin var(--t-base) var(--ease-soft),opacity var(--t-quick) var(--ease-out),border-width var(--t-base)}
-.hhead.stuck .hsearch{max-height:0;margin-top:0;opacity:0;border-width:0;pointer-events:none}
-.gbtn.sBtn{width:0;margin-left:-8px;opacity:0;overflow:hidden;border-width:0;pointer-events:none;
-  transition:width var(--t-base) var(--ease-soft),margin var(--t-base) var(--ease-soft),opacity var(--t-quick)}
-.hhead.stuck .gbtn.sBtn{width:44px;margin-left:0;opacity:1;border-width:1px;pointer-events:auto}
-.hwash{position:absolute;inset:0;background:rgba(18,16,12,.92);opacity:0;
-  backdrop-filter:blur(18px) saturate(1.2);-webkit-backdrop-filter:blur(18px) saturate(1.2);
-  transition:opacity var(--t-quick) linear}
-:root[data-theme="dark"] .hhead{color:var(--fg)}
-:root[data-theme="dark"] .hwash{background:rgba(10,9,7,.94)}
-.hrow{position:relative;display:flex;align-items:center;gap:8px;height:46px;padding:0 18px 0 20px}
-.brand{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
-.wordmark{font-size:30px;font-weight:300;letter-spacing:-.04em;line-height:1}
-.hdate{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;opacity:.66;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.gbtn{width:44px;height:44px;display:grid;place-items:center;border-radius:50%;
-  background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.2);
+/* ------------------------------------------------------------------------------------------------
+   The band, v2.4.2 — matched to the shipped web/iOS header (notes 94 + 95). ONE paper app bar,
+   sticky and in flow, two rows: wordmark | area chip (middle) | search, Map, account; then the
+   hero tabs. Past 72 pt the tabs fold into the bar and the middle becomes a two-line view pill
+   with a menu, so the open view and the area are always named. No night wash, no morphing bar.
+   ------------------------------------------------------------------------------------------------ */
+.hhead{position:sticky;top:0;left:0;right:0;z-index:40;background:var(--bg);color:var(--fg);
+  padding-top:var(--st);box-shadow:0 1px 0 var(--divider);
+  transition:box-shadow var(--t-quick) var(--ease-out)}
+.hhead.stuck{box-shadow:0 1px 0 var(--divider),0 8px 22px rgba(24,20,16,.07)}
+.hrow{position:relative;display:flex;align-items:center;gap:8px;min-height:58px;padding:0 16px;box-sizing:border-box}
+.brand{flex:none;display:flex;align-items:center;min-width:0}
+.wordmark{font-family:var(--serif);font-size:30px;font-weight:400;letter-spacing:-.045em;line-height:1}
+/* The middle cell: the area chip and the folded view pill share one grid cell, so the bar never
+   reflows when they cross-fade. */
+.hmid{flex:1 1 auto;min-width:0;display:grid;justify-items:center;align-items:center}
+.hmid > *{grid-area:1/1;min-width:0;max-width:100%}
+.harea{display:inline-flex;align-items:center;gap:5px;height:34px;max-width:100%;padding:0 10px;
+  border-radius:999px;background:color-mix(in srgb,var(--fg) 5%,var(--bg));border:1px solid var(--divider);
+  font-size:12.5px;font-weight:600;color:var(--fg2);white-space:nowrap;
+  transition:opacity .18s var(--ease-out),background var(--t-quick) var(--ease-out)}
+.harea svg{width:13px;height:13px;flex:none;opacity:.8}
+.harea .lbl{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.harea .chev{flex:none;font-size:10px;opacity:.55}
+.harea:active{background:var(--block)}
+.hview{display:flex;flex-direction:column;align-items:center;gap:1px;max-width:100%;min-height:40px;
+  justify-content:center;padding:2px 10px;border-radius:12px;background:none;border:0;
+  opacity:0;pointer-events:none;transition:opacity .18s var(--ease-out)}
+.hhead.compact .hview{opacity:1;pointer-events:auto}
+.hhead.compact .harea{opacity:0;pointer-events:none}
+.hview b{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:600}
+.hview small{display:flex;align-items:center;gap:3px;max-width:100%;font-size:11.5px;color:var(--fg3)}
+.hview small svg{width:10px;height:10px;flex:none}
+.hview small span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hquick{flex:none;display:flex;align-items:center;gap:8px}
+.gbtn{width:44px;height:44px;display:grid;place-items:center;border-radius:50%;flex:none;
+  background:color-mix(in srgb,var(--fg) 5%,var(--bg));border:1px solid var(--divider);color:var(--fg);
   transition:transform var(--t-press) var(--ease-out),background var(--t-quick) var(--ease-out)}
-.gbtn:active{transform:scale(.92);background:rgba(255,255,255,.2)}
+.gbtn:active{transform:scale(.92);background:var(--block)}
 .gbtn svg{width:19px;height:19px}
-.avatar{width:40px;height:40px;border-radius:50%;background:var(--clay);color:#fff;font-size:13px;font-weight:700;
-  display:grid;place-items:center;border:1.5px solid rgba(255,255,255,.85);
+.gbtn.clay{color:var(--clay)}
+.avatar{width:36px;height:36px;border-radius:50%;background:var(--clay);color:#fff;font-size:12.5px;font-weight:700;
+  display:grid;place-items:center;border:1.5px solid color-mix(in srgb,var(--bg) 78%,transparent);flex:none;
   transition:transform var(--t-press) var(--ease-out)}
 .avatar:active{transform:scale(.92)}
-/* v2.2 header, repaired. Home is the wordmark, the map, the avatar, and one search field with
-   the area inside it. The field used to overflow because its label could not shrink; it can
-   now, and the label sits centred between the magnifier and the area, so the pill balances
-   end to end instead of running off the right edge. */
-.hsearch{position:relative;display:flex;align-items:center;gap:9px;margin:10px 18px 0 20px;width:calc(100% - 38px);height:44px;
-  padding:0 6px 0 15px;
-  border-radius:999px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.2);
-  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-  transition:transform var(--t-quick) var(--ease-out),background var(--t-quick) var(--ease-out)}
-.hsearch:active{transform:scale(.985);background:rgba(255,255,255,.2)}
-.hsearch svg{width:18px;height:18px;flex:none;opacity:.9}
-.hsearch .sp{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  text-align:center;font-size:14px;color:rgba(255,255,255,.8)}
-.hsearch .area{flex:none;display:flex;align-items:center;gap:5px;height:32px;padding:0 11px;
-  border-radius:999px;background:rgba(255,255,255,.16);font-size:12px;font-weight:600;white-space:nowrap}
-
-/* hero tabs, sliding ink */
-.htabsWrap{padding:22px 0 0;position:relative}
-.htabs{position:relative;display:flex;gap:22px;padding:0 24px;overflow-x:auto;scrollbar-width:none}
+/* Row 2: the tabs are the hero's context. They fold up past 72 pt (24 pt back at the top). */
+.htabsWrap{position:relative;height:44px;overflow:hidden;
+  transition:height var(--t-base) var(--ease-soft),opacity var(--t-quick) var(--ease-out)}
+.hhead.compact .htabsWrap{height:0;opacity:0;pointer-events:none}
+.htabs{position:relative;display:flex;align-items:stretch;gap:18px;height:44px;padding:0 16px;
+  overflow-x:auto;scrollbar-width:none;color:var(--fg)}
 .htabs::-webkit-scrollbar{display:none}
-.htabs button{position:relative;flex:none;font-size:16px;font-weight:300;color:rgba(255,255,255,.55);
-  padding:6px 0 9px;transition:color var(--t-base) var(--ease-out)}
-.htabs button.on{color:#fff;font-weight:600}
-.tabink{position:absolute;bottom:0;height:2px;border-radius:2px;background:#fff;
-  transition:left var(--t-slow) var(--ease-spring),width var(--t-slow) var(--ease-spring)}
+.htabs button{position:relative;flex:none;font-size:15.5px;font-weight:500;color:var(--fg3);
+  padding:0 0 2px;border-bottom:2px solid transparent;background:none;
+  transition:color var(--t-base) var(--ease-out)}
+.htabs button.on{color:var(--fg);font-weight:600;border-bottom-color:var(--fg)}
+.tabink{display:none}
+/* The folded band's view menu: a paper pop-over under the pill. 44 pt rows, one check. */
+.vmenu{position:absolute;top:calc(var(--st) + 54px);left:50%;z-index:42;min-width:248px;max-width:calc(100% - 32px);
+  padding:6px;border-radius:18px;background:var(--sel);border:1px solid var(--divider);box-shadow:var(--shadow-2);
+  opacity:0;pointer-events:none;transform:translateX(-50%) translateY(-4px);
+  transition:opacity var(--t-quick) var(--ease-out),transform var(--t-quick) var(--ease-out)}
+.vmenu.open{opacity:1;pointer-events:auto;transform:translateX(-50%)}
+.vmenu button{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:0 12px;border-radius:12px;
+  text-align:left;font-size:14.5px;font-weight:500;color:var(--fg)}
+.vmenu button:active,.vmenu button.on{background:var(--block)}
+.vmenu button .ck{width:16px;flex:none;color:var(--clay);font-weight:700}
+.vmenu .sep{height:1px;margin:5px 8px;background:var(--divider)}
+.vmenu .areaRow small{color:var(--fg3);font-size:11.5px;margin-left:auto}
 
 /* v2.2 snap rail, back. The swipe is the list: it carries every event in the tab, with depth
    on the neighbours and dots under it, so Home never repeats the same events in rows below. */
@@ -349,7 +370,10 @@ svg.i{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke
   scrollbar-width:none;scroll-padding-left:24px}
 .rail::-webkit-scrollbar{display:none}
 .hc{position:relative;flex:0 0 268px;height:352px;border-radius:18px;overflow:hidden;scroll-snap-align:start;
-  text-align:left;color:#fff;background:#2A2620;transform-origin:center bottom;
+  text-align:left;color:#fff;transform-origin:center bottom;
+  /* A designed plate behind the photo: on a slow network, a missing file or an offline preview,
+     the card still reads as art rather than an empty rectangle. */
+  background:radial-gradient(120% 90% at 22% 8%,#4A3A2A 0%,#2A2620 48%,#16130F 100%);
   transform:scale(var(--dz,1));
   transition:transform var(--t-base) var(--ease-out),box-shadow var(--t-base) var(--ease-out);
   box-shadow:0 18px 40px rgba(0,0,0,.34)}
@@ -506,19 +530,27 @@ body.reduced .pulse .pulseOne,body.reduced .pulse .pulseNav{display:flex}
 /* rewinding to the start position must not animate */
 .fanReset .fanTile,.fanReset .fanChip{transition:none !important;animation:none !important}
 
-/* v2.3.1 — Browse by type is back at the end of Home: one chip per type, real counts. */
-.typeStrip{padding:26px 20px 8px}
-.typeStrip .sh{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px}
-.typeStrip h3{font-family:var(--serif);font-size:22px;font-weight:400;letter-spacing:-.02em;margin:0}
-.typeStrip .sh button{font-size:12.5px;font-weight:600;color:var(--fg2);padding:6px 0}
-.types{display:flex;gap:9px;overflow-x:auto;scrollbar-width:none;margin:0 -20px;padding:0 20px 4px}
-.types::-webkit-scrollbar{display:none}
+/* v2.4.2 — Browse by type is the same three-column tile grid the shipped Home uses (note 94):
+   glyph, name and a real count, plus Find a type. Not a horizontal chip strip any more. */
+.typeStrip{padding:26px 16px 8px}
+.typeStrip .sh{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;padding:0 4px}
+.typeStrip h3{font-family:inherit;font-size:19px;font-weight:400;letter-spacing:-.01em;margin:0}
+.typeStrip .sh button{min-height:44px;font-size:12.5px;font-weight:600;color:var(--fg2);padding:6px 4px}
+.types{display:flex;gap:9px}
+.types.tgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin:0;padding:0}
 .ty{flex:none;display:flex;align-items:center;gap:7px;height:40px;padding:0 14px;border-radius:999px;
   border:1px solid var(--glass-line);background:var(--glass);box-shadow:var(--rim);font-size:13px;font-weight:500;
   transition:transform var(--t-press) var(--ease-out),background var(--t-quick)}
 .ty:active{transform:scale(.95);background:var(--block)}
 .ty i{width:6px;height:6px;border-radius:99px;background:var(--clay)}
 .ty b{font-weight:600;font-size:11px;color:var(--fg3);font-variant-numeric:tabular-nums}
+.types.tgrid .ty{height:auto;min-height:112px;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  padding:14px 6px 12px;border-radius:16px;border-color:transparent;background:none;box-shadow:none;text-align:center;font-size:13px}
+.types.tgrid .ty .g{width:52px;height:52px;display:grid;place-items:center;color:var(--fg);opacity:.9;margin-bottom:4px}
+.types.tgrid .ty .g svg{width:28px;height:28px}
+.types.tgrid .ty .n{min-width:0;line-height:1.25;overflow-wrap:anywhere}
+.types.tgrid .ty b{font-size:12px}
+.types.tgrid .ty:active{background:var(--block)}
 
 /* the filtered Shortlist can come up empty: say so, and offer the way back */
 .listEmpty{padding:26px 20px 8px;text-align:center;font-size:13px;color:var(--fg2);line-height:1.55}
@@ -620,30 +652,33 @@ body.reduced .pagerPage.on .endCard,body.reduced .pagerPage.on .endMark i{animat
 .pagerNav .pageOf{flex:0 0 100%;margin-top:-4px}
 .typeList{padding:0}
 
-/* bottom dock */
+/* bottom dock — the shipped Simple Shell pill (note 66): one 64 pt glass bar, five equal slots,
+   the active tab on an inset ink capsule, the centre "+" in clay. Icon-only; labels are aria. */
 .dock{position:absolute;left:14px;right:14px;bottom:16px;height:64px;border-radius:999px;z-index:35;
-  display:flex;align-items:center;justify-content:space-between;padding:0 8px;
-  background:color-mix(in srgb,var(--bg) 82%,transparent);
+  display:flex;align-items:center;padding:0 6px;box-sizing:border-box;
+  background:color-mix(in srgb,var(--bg) 86%,transparent);
   border:1px solid var(--rule);box-shadow:var(--shadow-dock);
   backdrop-filter:blur(22px) saturate(1.4);-webkit-backdrop-filter:blur(22px) saturate(1.4);
   transform-origin:center bottom;
   transition:transform var(--t-base) var(--ease-spring),opacity var(--t-quick)}
 .dock.mini{transform:scale(.93) translateY(6px)}
-.dk{width:56px;height:48px;border-radius:999px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
-  color:var(--fg3);font-size:9.5px;font-weight:600;letter-spacing:.01em;
+.dk{position:relative;isolation:isolate;flex:1 1 0;min-width:44px;height:48px;border-radius:999px;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--fg3);
   transition:color var(--t-quick),transform var(--t-press) var(--ease-out)}
 .dk:active{transform:scale(.9)}
-.dk svg{width:21px;height:21px}
-.dk.on{color:var(--fg)}
-.dk.on svg{stroke-width:1.9}
-.dk.on i{opacity:1;transform:scale(1)}
-.dk i{width:4px;height:4px;border-radius:99px;background:var(--fg);opacity:0;transform:scale(.4);
-  transition:opacity var(--t-quick),transform var(--t-quick) var(--ease-spring)}
-.dk.plusDk{width:52px}
-.plusBtn{width:46px;height:46px;border-radius:50%;background:var(--fg);color:var(--bg);display:grid;place-items:center;
-  box-shadow:0 6px 18px rgba(27,25,22,.24);
+.dk svg{width:24px;height:24px}
+.dk.on{color:var(--bg)}
+.dk.on::before{content:"";position:absolute;z-index:-1;width:52px;height:44px;border-radius:999px;background:var(--fg)}
+.dk .badge{position:absolute;top:2px;right:calc(50% - 19px);min-width:17px;height:17px;padding:0 4px;border-radius:99px;
+  display:grid;place-items:center;font-size:10.5px;font-weight:700;line-height:1;color:#fff;
+  background:var(--clay);box-shadow:0 0 0 2px var(--bg)}
+.dk .badge.alert{background:var(--alert)}
+.dk.plusDk{flex:0 0 52px}
+.plusBtn{width:48px;height:48px;border-radius:50%;background:var(--clay);color:#fff;display:grid;place-items:center;
+  box-shadow:0 8px 20px rgba(162,84,58,.32),inset 0 1px 0 rgba(255,255,255,.18);
   transition:transform var(--t-base) var(--ease-spring),border-radius var(--t-base) var(--ease-spring)}
-.plusBtn svg{width:19px;height:19px;stroke-width:2}
+.plusBtn svg{width:20px;height:20px;stroke-width:2}
 .plusBtn.turn{transform:rotate(45deg)}
 .plusBtn:active{transform:scale(.9)}
 
@@ -1137,23 +1172,17 @@ body.reduced .pagerPage.on .endCard,body.reduced .pagerPage.on .endMark i{animat
    ============================================================================ */
 
 /* Home chrome reads as one piece of glass, not a blurry strip. */
-.hwash{background:#14110C;backdrop-filter:blur(28px) saturate(1.7);-webkit-backdrop-filter:blur(28px) saturate(1.7)}
-.hhead{color:#fff}
-.hsearch{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.24);box-shadow:inset 0 1px 0 rgba(255,255,255,.28)}
-.hsearch .area{box-shadow:inset 0 1px 0 rgba(255,255,255,.22)}
-.htabs button{font-weight:400}
-.htabs button.on{font-weight:600}
 .hc{border-radius:26px;box-shadow:0 26px 60px rgba(0,0,0,.38)}
 .hc .t{font-family:var(--serif);font-weight:400;font-size:28px;letter-spacing:-.02em}
 .hc .pill.lbl{background:rgba(251,247,238,.82);backdrop-filter:blur(14px) saturate(1.5)}
-.feedHead h2{font-family:var(--serif);font-weight:400;font-size:26px;letter-spacing:-.02em}
+.feedHead h2{font-family:inherit;font-weight:400;font-size:19px;letter-spacing:-.01em}
 .ev{border-radius:18px}
 .ev .ph{border-radius:18px;box-shadow:0 10px 24px rgba(24,20,16,.12)}
 .ev .t{font-size:16.5px}
-.dock{left:14px;right:14px;bottom:14px;height:66px;background:var(--glass-strong);
+.dock{left:14px;right:14px;bottom:16px;height:64px;background:var(--glass-strong);
   border:1px solid var(--glass-line);box-shadow:var(--glass-shadow),var(--rim);
   backdrop-filter:blur(30px) saturate(1.8);-webkit-backdrop-filter:blur(30px) saturate(1.8)}
-.plusBtn{background:var(--fg);box-shadow:0 10px 26px rgba(24,20,16,.3),inset 0 1px 0 rgba(255,255,255,.16)}
+.plusBtn{box-shadow:0 10px 26px rgba(162,84,58,.32),inset 0 1px 0 rgba(255,255,255,.2)}
 
 /* Detail: a bigger cinematic hero, serif display, and a heavier ticket. */
 .dHero{height:392px}
@@ -1281,6 +1310,97 @@ body.appOnly{margin:0;overscroll-behavior:none;touch-action:manipulation;backgro
 .panelClose{display:none}
 body.fill .panelClose{display:flex;position:sticky;top:0;margin:-6px -8px 6px auto;width:36px;height:36px;border-radius:50%;
   align-items:center;justify-content:center;background:var(--block);z-index:2}
+
+/* ================================================================================================
+   v2.4.2 — the same design on every screen, at every text size and every zoom level.
+   Rules here are deliberately in CSS, not in a fixed device size: in Fill they follow the real
+   viewport, and in the framed stage they never make a phone layout depend on the desktop window.
+   ================================================================================================ */
+
+/* Text must be allowed to grow, wrap and be read. No fixed-height label may clip its own words. */
+.hc .t,.ev .t,.dHero h1,.dnavTitle,.endTitle,.hpName,.typeHead h1,.allTx b{overflow-wrap:anywhere}
+.dPill,.seatPill{height:auto;min-height:26px;padding-top:2px;padding-bottom:2px}
+.saveChip{height:auto;min-height:34px;padding-top:4px;padding-bottom:4px}
+.chip{height:auto;min-height:38px}
+.more,.hostMsg,.saveChip,.typeStrip .sh button{min-height:44px}
+.nbtn,.gbtn,.xbtn,.pagerBtn,.qBtn{min-width:44px;min-height:44px}
+
+/* iPad portrait / any roomy single column: keep prose and rows at a reading width instead of
+   stretching 820 pt of text edge to edge. The hero and its photo stay full-bleed. */
+.device.roomy .feedHead,
+.device.roomy .feed,
+.device.roomy .pagerNav,
+.device.roomy .typeStrip,
+.device.roomy .pulse{max-width:720px;margin-left:auto;margin-right:auto;box-sizing:border-box;width:100%}
+.device.roomy .hrow,
+.device.roomy .htabsWrap{padding-left:max(16px, calc((100% - 720px) / 2));padding-right:max(16px, calc((100% - 720px) / 2))}
+.device.roomy .feed{padding-left:12px;padding-right:12px}
+.device.roomy .typeStrip{padding-left:16px;padding-right:16px}
+
+/* Glass becomes material when the reader asks for less transparency. */
+@media (prefers-reduced-transparency: reduce){
+  .dock,.dbar,.dnav,.typeNav{background:var(--bg) !important;backdrop-filter:none !important;-webkit-backdrop-filter:none !important}
+  .hhead{background:var(--bg)}
+}
+
+/* One step below the 390 pt phone: the four quantity slots tighten so the button can still
+   carry the full total, the way the shipped compact bar does. */
+@media (max-width:389px){
+  .dbar.compact{grid-template-columns:154px minmax(0,1fr)}
+  .dbar.compact .chip{flex-basis:33px}
+}
+
+/* Small phones, and any large-text setting that takes the usable width below ~370 pt: the band
+   keeps one row by giving up the area label (the pin and full aria-label stay), the hero title
+   steps down, the ticket stub and the compact bar tighten, and the save row wraps. */
+@media (max-width:369px){
+  .hrow{gap:6px;padding:0 12px}
+  .wordmark{font-size:26px}
+  .harea{padding:0 10px;gap:4px}
+  .harea .lbl{display:none}
+  .hquick{gap:4px}
+  .gbtn{width:40px;height:40px}
+  .avatar{width:34px;height:34px}
+  .htabs{gap:14px;padding:0 12px}
+  .htabs button{font-size:14.5px}
+  .dHero{height:320px}
+  .dHero .ttl{left:16px;right:16px;bottom:22px}
+  .dHero h1{font-size:32px}
+  .dStub{margin-left:10px;margin-right:10px}
+  .stubTop{padding:14px;gap:12px}
+  .dateBlk{width:62px}
+  .stubSave{flex-wrap:wrap;gap:8px;padding:10px 14px}
+  .stubSaveBtns{justify-content:flex-start}
+  .dBody{padding:22px 16px 0}
+  .photos{margin:0 -16px;padding:0 16px}
+  .knowList{grid-template-columns:84px 1fr;gap:12px 14px}
+  .dbar.compact{left:8px;right:8px;bottom:8px;gap:8px;padding:8px}
+  .dbar.compact .chip{flex-basis:38px;font-size:11px;min-height:36px}
+  .dbar.compact .reserve{font-size:12px;padding:0 10px}
+  .dbar.compact .qStep .qNum b{font-size:15px}
+  .typeStrip{padding:22px 12px 8px}
+  .types.tgrid .ty{font-size:12px}
+  .dock{left:10px;right:10px}
+}
+
+/* Short landscape windows (a phone on its side, a split-screen desktop): the photo is the first
+   thing that can give way; the ticket and the bar keep their full height. */
+@media (max-height:620px){
+  .dHero{height:296px}
+  .hc{height:300px}
+  .hh{padding-bottom:4px}
+}
+
+/* WCAG reflow floor: at 320 CSS px nothing overflows sideways. The band's middle cell is the
+   one thing that must shrink, and it already truncates rather than pushing the controls out. */
+@media (max-width:330px){
+  .hview small{display:none}
+  .hview b{font-size:13.5px}
+  .dbar.compact{grid-template-columns:112px minmax(0,1fr)}
+  .dbar.compact .qSlot{display:none}
+  .dbar.compact .chip{flex-basis:33px;min-width:33px}
+  .dbar.compact .reserve .lbl{font-size:12px}
+}
 </style>
 </head>
 <body class="fill appOnly">
@@ -1288,9 +1408,9 @@ body.fill .panelClose{display:flex;position:sticky;top:0;margin:-6px -8px 6px au
 <div class="stage">
   <aside class="panel">
     <button class="panelClose" id="panelClose" aria-label="Close stage controls"><svg class="i" viewBox="0 0 24 24" width="15" height="15"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
-    <div class="eyebrow">banbe · prototype v2.4</div>
-    <h1>Two screens, one quiet system</h1>
-    <p class="lede">A Liquid Glass-era pass on the two screens people spend the most time in: warmer paper, editorial type, chrome that reads as material rather than blur, and iPhone Duo and iPad stages: the same app on every screen, as list + detail when there is room for both.</p>
+    <div class="eyebrow">banbe · prototype v2.4.2</div>
+    <h1>Home &amp; Event Detail, matched to the app</h1>
+    <p class="lede">The two screens people spend the most time in, brought up to the shipped design: the one paper band that folds to a view pill, the five-slot Simple Shell dock, the v2.3 ticket stub. The same design then reflows for iPhone, iPad portrait, iPad landscape/Duo and the web, with readable type at any browser or OS text size and no layout that blocks zoom.</p>
 
     <div class="ctl">
       <label>Jump to</label>
@@ -1354,15 +1474,17 @@ body.fill .panelClose{display:flex;position:sticky;top:0;margin:-6px -8px 6px au
         <li class="done"><span class="qNode">✓</span><div><b>Duo stage</b><small>iPhone Duo: cover screen, and list + detail on the inner screen</small></div><em>v2.1</em></li>
         <li class="done"><span class="qNode">✓</span><div><b>Motion lab</b><small>Scroll-linked depth, haptic scripts, reduced-motion parity</small></div><em>v2.2</em></li>
         <li class="done"><span class="qNode">✓</span><div><b>Swipe rail + Shortlist</b><small>Four frames, a See all card with the Welcome entrance, a paged list, Browse by type</small></div><em>v2.3</em></li>
-        <li class="current"><span class="qNode">6</span><div><b>Ship to iOS</b><small>Lift the materials and beats into BanbeTheme.swift</small></div><em>v3.0</em></li>
+        <li class="current"><span class="qNode">6</span><div><b>Same design on every screen</b><small>Band, dock and stub matched to the app; reflow and zoom verified</small></div><em>v2.4.2</em></li>
       </ol>
-      <div class="questNext"><span>Next up</span><b>Ship to iOS: map the glass tokens, depth offsets and haptic beats onto the Swift theme</b></div>
+      <div class="questNext"><span>Next up</span><b>Apply the layout contract to the web build, then the native iPad split view</b></div>
     </div>
 
     <details class="notes">
       <summary>Design notes &amp; motion</summary>
       <h2>What changes</h2>
       <ul>
+        <li><b>Matched to the app (v2.4.2).</b> Home's band is the shipped one: one paper app bar, wordmark · area chip · search/Map/account, the tabs as its second row, folding past 72&nbsp;pt into a two-line view pill with a menu. The dock is the Simple Shell pill (Home, Schedule, +, Activity, Account; icon-only, centre &ldquo;+&rdquo; in clay). Event Detail keeps the v2.3 stub, with its calendar tiles at the end of the date row and the Included section named as the app names it. The date moved out of the band to the hero kicker.</li>
+        <li><b>Readable at any size (v2.4.2).</b> The page no longer blocks pinch zoom (<code>maximum-scale</code> is gone), and a pinch magnifies instead of triggering a reflow. Smallest labels moved from 50&nbsp;% to 62&nbsp;% ink (5.2:1), controls keep 44&nbsp;pt targets, text-bearing chips grow instead of clipping their words, and three narrow-width rules keep the band, stub and bar whole at 320&nbsp;pt. Roomier single columns hold prose to 720&nbsp;pt; split panes keep the event at a 640&nbsp;pt reading width. The framed stage scales the whole device, never the app's type.</li>
         <li><b>Motion lab (v2.2).</b> The rail's neighbours sit back as you swipe, the hero title sinks and fades as it leaves, the compact nav draws a reading-progress line, and primary controls carry haptic beats — 8&nbsp;ms light, 12&nbsp;ms open, a double beat on hold. Reduced flattens the depth and keeps the progress.</li>
         <li><b>Material, not blur.</b> Glass is now a recipe: high-saturation backdrop, a 1px specular rim and a soft ambient shadow. The nav, the floating ticket bar and the dock use the same three tokens, so chrome reads as one system.</li>
         <li><b>iPhone Duo and iPad (v2.3.2).</b> Duo is Apple's book-style foldable: one continuous screen. <b>Cover screen</b> (5.4", 466 × 678 pt) runs the app as on a phone. <b>Inner display</b> (7.6", 890 × 626 pt) and <b>iPad landscape</b> (iPad Air 11", 1180 × 820 pt) use the iPad split view: lists on the left (Home, See all, Browse by type), the event on the right. The right side is never empty — it shows the selected event, a tap on another one swaps it in place and marks it in the list, and there is no Back on that side because nothing was pushed. The left column uses a smaller rail (two events and a third peeking) so it reads as a list. <b>iPad portrait</b> (820 × 1180 pt) is one column like the phone, with the reading column held to 640 pt. Folding, unfolding and rotating keep what you were looking at; switching device starts clean on Home.</li>
@@ -1448,18 +1570,57 @@ body.fill .panelClose{display:flex;position:sticky;top:0;margin:-6px -8px 6px au
       <!-- ============ HOME ============ -->
       <section class="view home" id="homeView">
         <div class="homeScroll" id="homeScroll">
+          <!-- v2.4.2 — the shipped band (notes 94 + 95): one paper app bar, in flow so nothing can
+               ever be clipped by it. Row 1: wordmark · area chip · search/Map/account. Row 2: the
+               hero tabs. Past 72 pt the tabs fold and the middle becomes the view pill. -->
+          <header class="hhead" id="hhead">
+            <div class="hrow">
+              <div class="brand"><div class="wordmark">banbe</div></div>
+              <div class="hmid">
+                <button class="harea" id="areaBtn" type="button" data-toast="Area · Bình Thạnh" aria-label="Area: Bình Thạnh. Change area">
+                  <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-6.2 7-11.5A7 7 0 1 0 5 9.5C5 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></svg>
+                  <span class="lbl">Bình Thạnh</span>
+                  <span class="chev" aria-hidden="true">▾</span>
+                </button>
+                <button class="hview" id="viewPill" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="View: For You. Area: Bình Thạnh. Change">
+                  <b id="viewName">For You</b>
+                  <small><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-6.2 7-11.5A7 7 0 1 0 5 9.5C5 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></svg><span id="viewArea">Bình Thạnh</span></small>
+                </button>
+              </div>
+              <div class="hquick">
+                <button class="gbtn clay" id="hSearch" type="button" data-toast="Search events, hosts, places" aria-label="Search events">
+                  <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 4.5 4.5"/></svg>
+                </button>
+                <button class="gbtn" id="hMap" type="button" data-toast="Map" aria-label="Map">
+                  <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4Z"/><path d="M9 4v13M15 6.5v13"/></svg>
+                </button>
+                <button class="avatar" id="homeAvatar" type="button" aria-label="Account and quick settings">M</button>
+              </div>
+            </div>
+            <div class="htabsWrap" id="tabsWrap">
+              <div class="htabs" id="homeTabs" role="tablist" aria-label="Home views">
+                <button class="on" data-tab="foryou" role="tab" aria-selected="true">For You</button>
+                <button data-tab="tonight" role="tab" aria-selected="false">Tonight</button>
+                <button data-tab="weekend" role="tab" aria-selected="false">Weekend</button>
+                <button data-tab="all" role="tab" aria-selected="false">All events</button>
+                <span class="tabink" id="tabink"></span>
+              </div>
+            </div>
+            <div class="vmenu" id="viewMenu" role="menu" aria-label="View and area">
+              <button type="button" role="menuitemradio" data-tab="foryou" class="on"><span class="ck">✓</span>For You</button>
+              <button type="button" role="menuitemradio" data-tab="tonight"><span class="ck"></span>Tonight</button>
+              <button type="button" role="menuitemradio" data-tab="weekend"><span class="ck"></span>Weekend</button>
+              <button type="button" role="menuitemradio" data-tab="all"><span class="ck"></span>All events</button>
+              <div class="sep" role="separator"></div>
+              <button type="button" class="areaRow" data-toast="Area · Bình Thạnh"><span class="ck">⌖</span>Area · Bình Thạnh <small>change</small></button>
+            </div>
+          </header>
+
           <div class="hh">
             <div class="hhbg"><div class="hhArt" id="hhImg"></div></div>
             <div class="hhshade"></div>
 
-            <div class="htabsWrap">
-              <div class="htabs" id="homeTabs">
-                <button class="on" data-tab="foryou">For You</button>
-                <button data-tab="tonight">Tonight</button>
-                <button data-tab="weekend">Weekend</button>
-                <span class="tabink" id="tabink"></span>
-              </div>
-            </div>
+            <div class="heroDate" id="hdate">Thursday, 9 July</div>
 
             <div class="rail" id="rail"></div>
             <div class="dots" id="dots"></div>
@@ -1485,8 +1646,8 @@ body.fill .panelClose{display:flex;position:sticky;top:0;margin:-6px -8px 6px au
 
           <div class="feedHead">
             <div>
-              <h2>Shortlist</h2>
-              <div class="sub" id="listSub">8 events · picked for you</div>
+              <h2>Near you</h2>
+              <div class="sub" id="listSub">8 events · soonest first</div>
             </div>
             <button class="chipBtn" id="openFilters">
               <svg class="i" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/></svg>
@@ -1500,39 +1661,22 @@ body.fill .panelClose{display:flex;position:sticky;top:0;margin:-6px -8px 6px au
 
           <div class="typeStrip">
             <div class="sh"><h3>Browse by type</h3><button id="seeAllTypes">See all <b id="allTypesCount"></b></button></div>
-            <div class="types">
-              <button class="ty" data-type="supper"><i></i>Supper club <b></b></button>
-              <button class="ty" data-type="music"><i></i>Music <b></b></button>
-              <button class="ty" data-type="fashion"><i></i>Fashion <b></b></button>
-              <button class="ty" data-type="gallery"><i></i>Gallery <b></b></button>
+            <div class="types tgrid">
+              <button class="ty" data-type="supper"><span class="g"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h16a8 8 0 0 1-16 0Z"/><path d="M9 9c0-1.5 1.5-2 1.5-3.5M14 9c0-1.5 1.5-2 1.5-3.5"/></svg></span><span class="n">Supper club</span><b></b></button>
+              <button class="ty" data-type="music"><span class="g"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg></span><span class="n">Music</span><b></b></button>
+              <button class="ty" data-type="fashion"><span class="g"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7a2.5 2.5 0 1 1 2.5 2.5c-.8 0-1.5.4-1.5 1.2V11"/><path d="m11 11-8 6h18l-8-6"/></svg></span><span class="n">Fashion</span><b></b></button>
+              <button class="ty" data-type="gallery"><span class="g"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="m6 16 4-4 3 3 2-2 3 3"/></svg></span><span class="n">Gallery</span><b></b></button>
+              <button class="ty" id="findType" type="button"><span class="g"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 4.5 4.5"/></svg></span><span class="n">Find a type</span><b id="typeTotal"></b></button>
             </div>
           </div>
         </div>
 
-        <header class="hhead" id="hhead">
-          <div class="hwash" id="hwash"></div>
-          <div class="hrow">
-            <div class="brand">
-              <div class="wordmark">banbe</div>
-              <div class="hdate" id="hdate">Thursday, 9 July</div>
-            </div>
-            <button class="gbtn sBtn" data-toast="Search events, hosts, places" aria-label="Search" tabindex="-1"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16 16 4.5 4.5"/></svg></button>
-            <button class="gbtn" data-toast="Map" aria-label="Map"><svg class="i" viewBox="0 0 24 24"><path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4Z"/><path d="M9 4v13M15 6.5v13"/></svg></button>
-            <button class="avatar" id="homeAvatar" aria-label="You · appearance">M</button>
-          </div>
-          <button class="hsearch" data-toast="Search events, hosts, places">
-            <svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16 16 4.5 4.5"/></svg>
-            <span class="sp">Search events, places</span>
-            <span class="area"><svg class="i" viewBox="0 0 24 24"><path d="M12 21s7-5.4 7-11a7 7 0 1 0-14 0c0 5.6 7 11 7 11Z"/><circle cx="12" cy="10" r="2.4"/></svg>Bình Thạnh</span>
-          </button>
-        </header>
-
         <nav class="dock" id="dock" aria-label="Main">
-          <button class="dk on" data-toast="Home"><svg class="i" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9Z"/><path d="M9 21v-7h6v7"/></svg><span>Home</span><i></i></button>
-          <button class="dk" data-toast="Map"><svg class="i" viewBox="0 0 24 24"><path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4Z"/><path d="M9 4v13M15 6.5v13"/></svg><span>Map</span><i></i></button>
-          <button class="dk plusDk" id="plusBtn" aria-label="Create"><span class="plusBtn" id="plusInner"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span></button>
-          <button class="dk" data-toast="Inbox"><svg class="i" viewBox="0 0 24 24"><path d="M4 6h16v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z"/><path d="M4 7l8 6 8-6"/></svg><span>Inbox</span><i></i></button>
-          <button class="dk" id="dockYou" aria-label="You · appearance"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg><span>You</span><i></i></button>
+          <button class="dk on" id="dockHome" aria-label="Home" aria-current="page"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.4 12 4l8 6.4V20h-5.5v-5.2h-5V20H4z"/></svg></button>
+          <button class="dk" id="dockSchedule" data-toast="Schedule · your saved events" aria-label="Schedule"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5.5" width="16" height="14.5" rx="3"/><path d="M4.9 10h14.2M8.5 3.5v3.6M15.5 3.5v3.6"/></svg><span class="badge">2</span></button>
+          <button class="dk plusDk" id="plusBtn" aria-label="Create"><span class="plusBtn" id="plusInner"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></button>
+          <button class="dk" id="dockInbox" data-toast="Activity" aria-label="Activity"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="6" width="17" height="12.5" rx="3"/><path d="M4.6 7.6 12 13l7.4-5.4"/></svg><span class="badge alert">1</span></button>
+          <button class="dk" id="dockYou" aria-label="Account"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.5" r="3.6"/><path d="M5 19.6c1.2-3.6 4-5.4 7-5.4s5.8 1.8 7 5.4"/></svg></button>
         </nav>
       </section>
 
@@ -1594,9 +1738,9 @@ body.fill .panelClose{display:flex;position:sticky;top:0;margin:-6px -8px 6px au
                 <button class="saveChip" id="addBanbe" aria-pressed="false" aria-label="Save to your banbe schedule">
                   <span id="banbeAction"><svg class="i" viewBox="0 0 24 24"><path d="M18 15H6l1.5-2.5V9a4.5 4.5 0 0 1 9 0v3.5L18 15Z"/><path d="M10.5 18a2 2 0 0 0 3 0"/></svg><span>banbe</span></span>
                 </button>
-                <button class="saveChip" id="addApple" aria-label="Add to Apple Calendar">
+                <button class="saveChip" id="addApple" aria-label="Add to your phone calendar">
                   <svg class="i" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17"/><path d="M8 14h2M14 14h2M8 17h2M14 17h2"/></svg>
-                  <span>Apple Calendar</span>
+                  <span>Phone calendar</span>
                 </button>
               </div>
             </div>
@@ -1656,10 +1800,11 @@ body.fill .panelClose{display:flex;position:sticky;top:0;margin:-6px -8px 6px au
             <div class="dnavTitle" id="dnavTitle">Bếp Nhỏ №12</div>
             <button class="nbtn" id="navSave" data-save="" aria-label="Save"><svg class="i" viewBox="0 0 24 24"><path d="M6 4h12v17l-6-4.2L6 21V4Z"/></svg></button>
             <button class="nbtn" data-toast="Share"><svg class="i" viewBox="0 0 24 24"><path d="M12 16V4M12 4 8 8M12 4l4 4"/><path d="M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"/></svg></button>
+            <button class="nbtn" data-toast="More options" aria-label="More options"><svg class="i" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg></button>
           </div>
           <div class="dTabs" id="dTabs">
             <button class="on" data-sec="sec-overview">Overview</button>
-            <button data-sec="sec-menu">Menu</button>
+            <button data-sec="sec-menu">Included</button>
             <button data-sec="sec-host">Host</button>
             <button data-sec="sec-photos">Photos</button>
             <button data-sec="sec-protect">Protection</button>
@@ -2045,18 +2190,24 @@ const PAGE_SIZE = 4;
 const TABS = {
   foryou: {
     label: 'For You', blurb: 'Picked from what you said you like, soonest first.',
-    sub: 'picked for you',
+    sub: 'soonest first',
     ids: ['bepnho', 'jazzgac', 'phokhuya', 'chieucham', 'vungtrang', 'aeie', 'bangcoi', 'khongnguoi']
   },
   tonight: {
     label: 'Tonight', blurb: 'Everything starting this evening.',
-    sub: 'Thursday 09.07',
+    sub: 'soonest first',
     ids: ['jazzgac', 'comnha', 'fanci']
   },
   weekend: {
     label: 'Weekend', blurb: 'What is on Saturday and Sunday.',
-    sub: 'Sat 11 – Sun 12',
+    sub: 'soonest first',
     ids: ['vungtrang', 'bepnho', 'phokhuya', 'aeie', 'khongnguoi', 'chieucham', 'vuonsau', 'phong302', 'compound', 'modular', 'pianomuon']
+  },
+  /* v2.4.2 — the shipped band carries All events as the fourth view (visibleTabs, note 94). */
+  all: {
+    label: 'All events', blurb: 'Every open event, soonest first.',
+    sub: 'every open event',
+    ids: Object.keys(EVENTS)
   }
 };
 let currentTab = 'foryou';
@@ -2208,7 +2359,10 @@ const reserveLabel = () => {
   const e = currentEvent();
   if (!e) return 'Reserve';
   const per = priceOf(e);
-  return 'Reserve';
+  /* The primary control carries the number that will be held (the compact bar has no room for a
+     separate total). One source for both bar sizes, so switching shape never changes the promise. */
+  if (!per) return 'Reserve · Free';
+  return `Reserve · ${group(per * qty)}₫`;
 };
 
 /* Live activity under the rail. Newest first; the same list feeds the ticker, the
@@ -2680,12 +2834,14 @@ document.addEventListener('click', e => {
 });
 
 /* Browse by type, at the end of Home: always the whole catalogue. */
-$$('.types .ty').forEach(b => {
+$$('.types .ty[data-type]').forEach(b => {
   b.querySelector('b').textContent = String(eventsOfType(b.dataset.type).length);
   b.addEventListener('click', () => openType(b.dataset.type, 'all'));
 });
 $('#allTypesCount').textContent = String(Object.keys(EVENTS).length);
+if ($('#typeTotal')) $('#typeTotal').textContent = String(Object.keys(EVENTS).length);
 $('#seeAllTypes').addEventListener('click', () => openType('all', 'all'));
+$('#findType')?.addEventListener('click', () => openType('all', 'all'));
 
 /* Home filters. Applied to the Shortlist; the sheet edits a draft and shows the live count. */
 const NO_FILTERS = { when: 'any', price: 'any', type: 'all', seats: 'any' };
@@ -2734,26 +2890,44 @@ function observeSections() {
 observeSections();
 
 /* ------------------------------------------------------------------------------------------------
-   Home: scrolling header wash, dock collapse, rail depth
+   Home: the band folds (note 95), dock collapse, rail depth
    ------------------------------------------------------------------------------------------------ */
-const hwash = $('#hwash');
+const hhead = $('#hhead');
 const dock = $('#dock');
 const hhImg = $('#hhImg');
+const viewMenu = $('#viewMenu');
+const viewPill = $('#viewPill');
 let lastHomeY = 0;
 let homeRaf = 0;
+
+function closeViewMenu() {
+  viewMenu.classList.remove('open');
+  viewPill.setAttribute('aria-expanded', 'false');
+}
+viewPill.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const open = !viewMenu.classList.contains('open');
+  viewMenu.classList.toggle('open', open);
+  viewPill.setAttribute('aria-expanded', String(open));
+});
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#viewMenu') && !e.target.closest('#viewPill')) closeViewMenu();
+});
 
 homeScroll.addEventListener('scroll', () => {
   if (homeRaf) return;
   homeRaf = requestAnimationFrame(() => {
     homeRaf = 0;
     const y = homeScroll.scrollTop;
-    const wash = Math.min(1, Math.max(0, y / 70));
-    hwash.style.opacity = String(wash);
-    const stuck = y > 60;
-    if (stuck !== $('#hhead').classList.contains('stuck')) {
-      $('#hhead').classList.toggle('stuck', stuck);
-      $('#hhead .sBtn').tabIndex = stuck ? 0 : -1;
+    /* Hysteresis, exactly as the app has it: fold past 72 pt, unfold only at the top (24 pt). */
+    const compact = hhead.classList.contains('compact') ? y > 24 : y > 72;
+    if (compact !== hhead.classList.contains('compact')) {
+      hhead.classList.toggle('compact', compact);
+      $('#tabsWrap').setAttribute('aria-hidden', String(compact));
+      $$('#homeTabs button[data-tab]').forEach(b => { b.tabIndex = compact ? -1 : 0; });
+      if (compact) closeViewMenu();
     }
+    hhead.classList.toggle('stuck', y > 4);
     hhImg.style.transform = `scale(${1.06 + Math.min(y, 400) / 4000}) translateY(${Math.min(y, 400) * 0.08}px)`;
 
     const goingDown = y > lastHomeY + 3;
@@ -2805,14 +2979,36 @@ function moveTabInk(btn) {
   tabink.style.left = (btn.offsetLeft) + 'px';
   tabink.style.width = (btn.offsetWidth) + 'px';
 }
-homeTabs.addEventListener('click', e => {
-  const btn = e.target.closest('button[data-tab]');
-  if (!btn) return;
-  $$('#homeTabs button[data-tab]').forEach(b => b.classList.toggle('on', b === btn));
+function activateTab(tab) {
+  const btn = $(`#homeTabs button[data-tab="${tab}"]`);
+  if (!btn || !TABS[tab]) return;
+  $$('#homeTabs button[data-tab]').forEach(b => {
+    const on = b === btn;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-selected', String(on));
+  });
   moveTabInk(btn);
-  renderTab(btn.dataset.tab);
+  $$('#viewMenu button[data-tab]').forEach(b => {
+    const on = b.dataset.tab === tab;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-checked', String(on));
+    const ck = b.querySelector('.ck');
+    if (ck) ck.textContent = on ? '✓' : '';
+  });
+  $('#viewName').textContent = TABS[tab].label;
+  renderTab(tab);
   /* A new tab is a new rail: bring it back into view if the last one was scrolled away. */
   if (homeScroll.scrollTop > 8) homeScroll.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' });
+}
+homeTabs.addEventListener('click', e => {
+  const btn = e.target.closest('button[data-tab]');
+  if (btn) activateTab(btn.dataset.tab);
+});
+viewMenu.addEventListener('click', e => {
+  const btn = e.target.closest('button[data-tab]');
+  if (!btn) return;
+  activateTab(btn.dataset.tab);
+  closeViewMenu();
 });
 requestAnimationFrame(() => moveTabInk($('#homeTabs button.on')));
 window.addEventListener('resize', () => moveTabInk($('#homeTabs button.on')));
@@ -3948,6 +4144,7 @@ $('#plusInner').addEventListener('click', () => {
   const on = $('#plusInner').classList.toggle('turn');
   toast(on ? 'Create — what are you hosting?' : 'Closed');
 });
+$('#dockHome')?.addEventListener('click', () => homeScroll.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' }));
 
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-toast]');
@@ -4059,6 +4256,11 @@ let stageMode = 'solo';
 let fitMode = 'fill';
 function viewportSize() {
   const vv = window.visualViewport;
+  /* v2.4.2 — a pinch must magnify, not reflow. While visualViewport.scale > 1 the app keeps the
+     layout viewport it already had; only the address bar collapsing (scale 1) changes its height.
+     Before this, filling the screen re-sized the app to the zoomed visual viewport, which cancelled
+     the zoom: the UI got smaller instead of bigger. */
+  if (vv && vv.scale > 1.01) return { w: Math.round(window.innerWidth), h: Math.round(window.innerHeight) };
   return { w: Math.round(vv ? vv.width : window.innerWidth), h: Math.round(vv ? vv.height : window.innerHeight) };
 }
 /* 'a' = inner display / landscape, 'b' = cover screen / portrait */
