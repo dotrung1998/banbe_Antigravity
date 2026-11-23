@@ -4,23 +4,80 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+
+permissions:
+  contents: read
+
 jobs:
+  # The suite is 344 tests x 3 browsers, one worker and two retries; it needs
+  # close to the 60-minute job limit. A docs/prototype-only (or workflow-only)
+  # diff cannot change the app under test, so classify it first and let the
+  # required `test` check pass without spending an hour on the browser run.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      app_code: ${{ steps.classify.outputs.app_code }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Classify the diff
+      id: classify
+      shell: bash
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        PR_BASE_REF: ${{ github.base_ref }}
+        PUSH_BEFORE_SHA: ${{ github.event.before }}
+      run: |
+        set -euo pipefail
+        if [ "$EVENT_NAME" = "pull_request" ]; then
+          base="origin/$PR_BASE_REF"
+          if ! git rev-parse --verify --quiet "$base" >/dev/null; then
+            echo "app_code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed=$(git diff --name-only "$base"...HEAD)
+        else
+          base="$PUSH_BEFORE_SHA"
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "app_code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed=$(git diff --name-only "$base"...HEAD)
+        fi
+
+        printf '%s\n' "$changed"
+        if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -vE '^(docs/|\.github/|.*\.md$)' >/dev/null; then
+          echo "app_code=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "app_code=true" >> "$GITHUB_OUTPUT"
+        fi
+
   test:
+    needs: changes
     timeout-minutes: 60
     runs-on: ubuntu-latest
     steps:
+    - name: Docs/CI-only diff, app suite not required
+      if: needs.changes.outputs.app_code != 'true'
+      run: echo "No app-code changes in this diff; skipping the browser suite."
     - uses: actions/checkout@v4
+      if: needs.changes.outputs.app_code == 'true'
     - uses: actions/setup-node@v4
+      if: needs.changes.outputs.app_code == 'true'
       with:
         node-version: lts/*
     - name: Install dependencies
+      if: needs.changes.outputs.app_code == 'true'
       run: npm ci
     - name: Install Playwright Browsers
+      if: needs.changes.outputs.app_code == 'true'
       run: npx playwright install --with-deps
     - name: Run Playwright tests
+      if: needs.changes.outputs.app_code == 'true'
       run: npx playwright test
     - uses: actions/upload-artifact@v4
-      if: ${{ !cancelled() }}
+      if: needs.changes.outputs.app_code == 'true' && !cancelled()
       with:
         name: playwright-report
         path: playwright-report/
