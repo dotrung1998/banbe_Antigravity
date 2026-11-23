@@ -22,7 +22,7 @@ The prototype was checked against the screens the web app actually ships today:
 | Home content | `HomeShellV5.jsx`, notes 81/94/95/100 | Date kicker, featured rail with save control, Pulse ticker, "Near you" list and a Filters entry, type grid, pager. |
 | Dock | `src/components/BottomTabBar.jsx`, `src/lib/dockLayout.js`, note 67 | 64 pt glass pill, five slots, icon-only, centre clay "+", clay/alert badges, no labels (aria only). |
 | Event Detail | `EventDetailV23View.jsx`, `TicketStubV23.jsx`, notes 77/78/81 | Full-bleed hero, category + minimum-age pills, serif title, v2.3 ticket stub with the two calendar tiles (banbe Schedule / phone calendar), compact reserve bar that grows into the full card, "Good to know", section tabs with reading progress. |
-| Reserve bar | `src/lib/reserveBarV23.js`, note 81 | Opens compact with 1 · 2 · 3 · 4+ and one Reserve button that **carries the running total**. Past 40 px it grows into the full card (chips, total, per-ticket line, host's 1-hour trust line); back at the top it compacts again. |
+| Reserve bar | `src/components/event/ReserveBarV23.jsx`, `src/lib/reserveBarV23.js`, note 81 | Opens compact with 1 · 2 · 3 · 4+ and a **plain Reserve button** so the stub is readable; the exact total appears once the bar grows into the full card (chips, total, per-ticket line, host's 1-hour trust line). Back at the top it compacts again. |
 | Detail at 320 pt | note 90, modern-web pass | No horizontal overflow; the 4+ slot steps aside, the other three chips and the Reserve label stay whole. |
 
 Still intentionally different from production: the prototype uses sample events, English demo copy, a text wordmark
@@ -96,7 +96,7 @@ Checked in the browser at 390 × 844 and 320 × 700, and measured in the prototy
 | --- | --- |
 | Document width at 320 | 320; Home, detail and bar have no horizontal overflow |
 | Compact bar at 320 | 302 px wide; three quantity chips 112 px; Reserve 166 px; 4+ slot hidden by rule |
-| Compact bar at 390 | chips 164 px, Reserve 170 px, no overlap; label "Reserve · 900.000₫" whole |
+| Compact bar at 390 | chips 164 px, Reserve 170 px, no overlap; plain Reserve label whole |
 | Full bar at 390 | 170 px tall; price, 1·2·3·4+, Reserve and trust line all whole |
 | Home band | 116 px expanded, 72 px folded; tabs row height 0 when folded; view pill names view + area |
 | iPad portrait 820 | detail body 640 px centred; dock 560 px cap (521 px rendered in the framed stage) |
@@ -166,9 +166,11 @@ const detailKey = route.name === 'event' ? route.key : null;
 
 ### Phase 3 — the reserve bar and zoom
 
-- The compact bar's button carries the total at every width. The current `reserveLabel()` already does this; the 320
-  rule hides the 4+ slot rather than clipping it. Keep both behaviours when it moves to `EventDetailV23View`.
-- The full bar and the compact bar must not change the total independently. One `price × qty` source, one label.
+- The compact bar is deliberately a **plain Reserve**; the total lives once, in the full card. Do not put a price in
+  the compact CTA to fill the space. The 320 rule hides the 4+ slot rather than clipping it; keep that when the bar
+  moves to `EventDetailV23View`.
+- The full bar is the one place that computes and shows `price × qty`. The compact and full states must not have two
+  totals that can disagree.
 - Test at 200 % browser zoom on a 1180 px iPad: the effective CSS width is ~590 px, so the app must fall back to the
   single-column layout, not squeeze the split. Because the breakpoint is in CSS px, this works automatically; this is
   why the split must never be a hard-coded two-column grid at all widths.
@@ -219,7 +221,7 @@ Run this on real hardware where possible. "Prototype" means the single HTML file
 
 | Device / state | Size (CSS px) | What to check |
 | --- | --- | --- |
-| iPhone SE (1st gen) | 320 × 568 | No horizontal scroll; band keeps one row; compact bar shows 1·2·3 + Reserve total; title wraps; tap targets 44. |
+| iPhone SE (1st gen) | 320 × 568 | No horizontal scroll; band keeps one row; compact bar shows 1·2·3 + Reserve, none clipped; title wraps; tap targets 44. |
 | iPhone 13 mini | 375 × 812 | Same, with the 4+ slot visible and the Reserve label whole. |
 | iPhone 14 / 15 | 390 × 844 | Full band 116 → folded 72; view menu; compact → full bar at 40 px; tabs readable. |
 | iPhone Pro Max | 430 × 932 | Rail card proportion; no oversized gutters; detail title on one line. |
@@ -239,8 +241,8 @@ Acceptance criteria for the port:
 
 1. At every width from 320 to 1440, `document.documentElement.scrollWidth === innerWidth` on Home and Event Detail.
 2. The band never clips a tab or the area label; at 320 it folds the label, not the controls.
-3. The compact bar always shows the quantity and a Reserve control whose label contains the exact total; no chip or
-   label is clipped at 320/360/375/390.
+3. The compact bar always shows the quantity and an unclipped Reserve control; none of the chips or the label is
+   clipped at 320/360/375/390, and the exact total is readable in the full bar.
 4. iPad landscape shows the list and the detail together; the dock stays in the list pane; the detail pane has its own
    scroll and bar.
 5. iPad portrait is one column and does not show the phone frame or the rotate overlay.

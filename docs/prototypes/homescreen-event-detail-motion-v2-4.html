@@ -1488,7 +1488,7 @@ body.fill .panelClose{display:flex;position:sticky;top:0;margin:-6px -8px 6px au
         <li><b>Motion lab (v2.2).</b> The rail's neighbours sit back as you swipe, the hero title sinks and fades as it leaves, the compact nav draws a reading-progress line, and primary controls carry haptic beats — 8&nbsp;ms light, 12&nbsp;ms open, a double beat on hold. Reduced flattens the depth and keeps the progress.</li>
         <li><b>Material, not blur.</b> Glass is now a recipe: high-saturation backdrop, a 1px specular rim and a soft ambient shadow. The nav, the floating ticket bar and the dock use the same three tokens, so chrome reads as one system.</li>
         <li><b>iPhone Duo and iPad (v2.3.2).</b> Duo is Apple's book-style foldable: one continuous screen. <b>Cover screen</b> (5.4", 466 × 678 pt) runs the app as on a phone. <b>Inner display</b> (7.6", 890 × 626 pt) and <b>iPad landscape</b> (iPad Air 11", 1180 × 820 pt) use the iPad split view: lists on the left (Home, See all, Browse by type), the event on the right. The right side is never empty — it shows the selected event, a tap on another one swaps it in place and marks it in the list, and there is no Back on that side because nothing was pushed. The left column uses a smaller rail (two events and a third peeking) so it reads as a list. <b>iPad portrait</b> (820 × 1180 pt) is one column like the phone, with the reading column held to 640 pt. Folding, unfolding and rotating keep what you were looking at; switching device starts clean on Home.</li>
-        <li><b>A bar that makes room (v2.3.2).</b> The event opens with a compact one-row reserve bar — quantity and one Reserve button that carries the running total, so the exact number is never hidden — and the whole ticket stub stays readable on arrival. Scroll past 40&nbsp;pt and it grows back into the full card (chips, total, the host's 1-hour line); back at the top it compacts again.</li>
+        <li><b>A bar that makes room (v2.3.2).</b> The event opens with a compact one-row reserve bar — quantity and a plain Reserve button, so the whole ticket stub stays readable on arrival. Scroll past 40&nbsp;pt and it grows back into the full card (chips, the exact total, the host's 1-hour line); back at the top it compacts again. The total lives once, in the full card, never twice on the same screen.</li>
         <li><b>The header, scrolled (v2.3.2).</b> Past 60 pt the wash turns solid, the search field folds into a search button beside the map, and the header's bottom edge is a 26 pt feather — tabs no longer show through behind the field and cards no longer lose their top corners to a hard edge.</li>
         <li><b>Editorial type.</b> Serif for the event title, the calendar page, the price and the section numerals; sans for controls. The hierarchy is size and rhythm now, not extra rules.</li>
         <li><b>Four frames, then See all (v2.3.1).</b> The rail shows at most four events; when a tab has more, the fifth card is See all. Swipe to it and it plays the iOS guest Welcome entrance: the side photos slide in from their own edge and swing into a fan, the middle one rises, then the tab's chip (For You, Weekend) arrives from below and glows gold once. It replays each time the card comes back into view. A tap lists <b>that tab's</b> events — "See all 8" in For You shows those 8, with type chips counted inside the tab — not the whole catalogue.</li>
@@ -2355,15 +2355,9 @@ $('#addBanbe').addEventListener('click', () => {
 $('#addApple').addEventListener('click', () => {
   toast('Opening Apple Calendar…');
 });
-const reserveLabel = () => {
-  const e = currentEvent();
-  if (!e) return 'Reserve';
-  const per = priceOf(e);
-  /* The primary control carries the number that will be held (the compact bar has no room for a
-     separate total). One source for both bar sizes, so switching shape never changes the promise. */
-  if (!per) return 'Reserve · Free';
-  return `Reserve · ${group(per * qty)}₫`;
-};
+/* The compact bar is deliberately a plain Reserve (ReserveBarV23, note 81): the total belongs
+   once, in the full card, so the price is not repeated twice on the same screen. */
+const reserveLabel = () => 'Reserve';
 
 /* Live activity under the rail. Newest first; the same list feeds the ticker, the
    one-at-a-time reduced form and the Live now sheet, so all three say the same things. */
