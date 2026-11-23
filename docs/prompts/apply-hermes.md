@@ -2,6 +2,7 @@
 
 > Đây là khuôn để audit sinh `docs/audits/<date>/APPLY.md`. File APPLY phải **tự chứa**: session mới không thấy workspace cũ, nên mọi finding phải kèm `path:line`, hành vi sai và tiêu chí nghiệm thu ngay trong prompt.
 > Không gửi khuôn trống. Thay hết `<...>` bằng nội dung thật; bỏ mục không áp dụng.
+> Bản gửi Discord: `APPLY.discord.md` = header `**Mission APPLY — …**` + `Dán khối dưới…` + một code block `text` dưới 1.800 ký tự; xem `docs/prompts/daily-hermes.md` §K.
 
 ## 0. Vai trò
 

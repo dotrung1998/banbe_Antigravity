@@ -115,13 +115,13 @@ node scripts/cloud-notify.mjs prompt --dry-run
 
 ## The apply prompt after an audit
 
-An audit that found something to fix ends by writing `docs/audits/<date>/APPLY.md` — a **self-contained** mission (≤ 4,500 characters) for a new Freebuff session: exact findings, `path:line`, acceptance, tests, branch and PR rules. It then posts that file:
+An audit that found something to fix ends by writing two files: `APPLY.md` — the detailed **self-contained** mission (≤ 4,500 characters) with exact findings, `path:line`, acceptance, tests, branch and PR rules — and `APPLY.discord.md`, the short copyable Discord message: a bold `**Mission APPLY — …**` header, the line `Dán khối dưới vào một phiên Freebuff mới (Mission):`, and one fenced `text` block containing the prompt. It posts the Discord file:
 
 ```bash
-node --env-file=.env scripts/cloud-notify.mjs apply --file docs/audits/<date>/APPLY.md
+node --env-file=.env scripts/cloud-notify.mjs apply --file docs/audits/<date>/APPLY.discord.md
 ```
 
-The script splits on line boundaries at 1,800 characters and closes/reopens ``` fences, so a long prompt arrives as 2–3 readable messages instead of being cut. Nothing is committed and no issue is opened: the prompt never passes through the public repo.
+Keep `APPLY.discord.md` under 1,800 characters so it arrives as one message. The script still splits longer text on line boundaries and closes/reopens ``` fences if needed, but a split message is harder to copy. Nothing is committed and no issue is opened: the prompt never passes through the public repo.
 
 This needs `DISCORD_WEBHOOK_WEEKLY` in the audit machine's `.env` (gitignored) or shell — the same URL as the Actions secret, which Actions cannot hand to the audit session. Without it the script prints the full prompt and exits non-zero, so the audit can paste it into chat as `apply: not sent — <reason>` instead of losing it.
 

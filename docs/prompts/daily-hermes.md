@@ -156,12 +156,21 @@ Mục tiêu: session mới chỉ cần dán prompt, không cần đọc lại wo
 
 1. Đọc `docs/prompts/apply-hermes.md` để lấy khuôn.
 2. Viết `docs/audits/<date>/APPLY.md` — **tự chứa**, tối đa **4.500 ký tự**: P0/P1 + P2 đáng làm, mỗi mục có `path:line`, hành vi sai, fix nhỏ nhất, nghiệm thu, test; kèm branch `fix/audit-<date>`, PR vào `main`, checklist Preview, cấm deploy/migration. Bỏ hết placeholder.
-3. Gửi lên Discord:
+3. Viết thêm `docs/audits/<date>/APPLY.discord.md` theo đúng format gửi Discord (dưới 1.800 ký tự):
+   ````text
+   **Mission APPLY — <YYYY-MM-DD> (<Thứ …>) · HEAD `<sha>`**
+   Dán khối dưới vào một phiên Freebuff mới (Mission):
+   ```text
+   <prompt tự chứa, cùng nội dung APPLY.md nhưng gọn>
+   ```
+   ````
+   Không dùng embed; header + một code block kín để copy nguyên khối. `APPLY.md` là bản chi tiết để tra, `APPLY.discord.md` là bản gửi. Giữ dưới 1.800 ký tự để script gửi đúng **1 tin**; dài hơn sẽ bị cắt thành `Apply mission 1/n`.
+4. Gửi lên Discord:
    ```bash
-   if [ -f .env ]; then node --env-file=.env scripts/cloud-notify.mjs apply --file docs/audits/<date>/APPLY.md; else node scripts/cloud-notify.mjs apply --file docs/audits/<date>/APPLY.md; fi
+   if [ -f .env ]; then node --env-file=.env scripts/cloud-notify.mjs apply --file docs/audits/<date>/APPLY.discord.md; else node scripts/cloud-notify.mjs apply --file docs/audits/<date>/APPLY.discord.md; fi
    ```
    Cần `DISCORD_WEBHOOK_WEEKLY` trong `.env` (gitignored) hoặc shell. Gửi được → `apply: sent`. Thiếu webhook/lỗi mạng → in **nguyên prompt** trong khối `APPLY PROMPT` để người dùng dán, ghi `apply: not sent — <lý do>`.
-4. Không có gì đáng sửa → `APPLY: none`, không gửi tin nào.
+5. Không có gì đáng sửa → `APPLY: none`, không gửi tin nào.
 
 ## 3. Xuất
 
