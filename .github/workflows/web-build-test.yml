@@ -1,0 +1,29 @@
+name: Web build & unit tests
+
+# Audit 2026-11-23: the repo's only web CI job was Playwright, which needs the shared signed-in test account and runs
+# past its 60-minute cap (cancelled on every recent main run), so "build/unit exit 0" and the entry-chunk budget were
+# only ever checked by hand. This job keeps both on every pull request, against main.
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+
+jobs:
+  build-and-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Build
+        run: npm run build
+      - name: Bundle budget (entry under 2 MB, Map and admin routes split)
+        run: node scripts/check-bundle-budget.mjs
