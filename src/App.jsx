@@ -10,7 +10,7 @@ import OnboardingTour from './components/tour/OnboardingTour.jsx';
 import { CREATE_UNDO_MS } from './lib/createDraftUndo.js';
 import { dockOrder, dockCollapseStep, dockCollapseStore } from './lib/dockLayout.js';
 import { flagOn } from './lib/featureFlags.js';
-import BottomTabBar, { showsBottomBar, DOCK_MAX_WIDTH, DOCK_MARGIN, DOCK_GAP, CREATE_SIZE, BAR_BOTTOM_OFFSET, BAR_HEIGHT } from './screens/BottomTabBar.jsx';
+import BottomTabBar, { showsBottomBar, DOCK_MAX_WIDTH, DOCK_MARGIN, DOCK_GAP, CREATE_SIZE, BAR_BOTTOM_OFFSET, BAR_HEIGHT, SIMPLE_DOCK } from './screens/BottomTabBar.jsx';
 import { paper, ink, rule } from './theme.js';
 import { setThemeColor } from './lib/themeColor.js';
 import { useReducedMotion } from './lib/useReducedMotion.js';
@@ -19,25 +19,31 @@ import Splash from './screens/Splash.jsx';
 import LangPick from './screens/LangPick.jsx';
 import ThemePick from './screens/ThemePick.jsx';
 import Loading from './screens/Loading.jsx';
+// Eager: the screens a visit can land on without another tap (Home and the other root tabs) plus the overlays and
+// helpers the shell itself renders. Everything reached through a deliberate tap is split out below (audit 2026-11-23
+// #5: the entry chunk carried every screen, so the first visit downloaded the whole app).
 import Home, { BrowseScreen } from './screens/Home.jsx';
 import Account from './screens/Account.jsx';
-import AccountGroup from './screens/AccountGroup.jsx';
 import Inbox from './screens/Inbox.jsx';
-import EventDetail from './screens/EventDetail.jsx';
-import Reserve from './screens/Reserve.jsx';
-import Confirmed from './screens/Confirmed.jsx';
-import Refunded from './screens/Refunded.jsx';
 import Login from './screens/Login.jsx';
 import ResetPassword from './screens/ResetPassword.jsx';
 import Chat from './screens/Chat.jsx';
-import Dashboard from './screens/Dashboard.jsx';
-import HostIntro from './screens/HostIntro.jsx';
-import CreateEvent from './screens/CreateEvent.jsx';
-import Attendance from './screens/Attendance.jsx';
+// Split per screen: fetched the first time its route opens and kept by the browser's cache afterwards (the shared
+// Suspense boundary lives in the screens grid).
+const AccountGroup = lazy(() => import('./screens/AccountGroup.jsx'));
+const EventDetail = lazy(() => import('./screens/EventDetail.jsx'));
+const Reserve = lazy(() => import('./screens/Reserve.jsx'));
+const Confirmed = lazy(() => import('./screens/Confirmed.jsx'));
+const Refunded = lazy(() => import('./screens/Refunded.jsx'));
+const Dashboard = lazy(() => import('./screens/Dashboard.jsx'));
+const HostIntro = lazy(() => import('./screens/HostIntro.jsx'));
+const CreateEvent = lazy(() => import('./screens/CreateEvent.jsx'));
+const Attendance = lazy(() => import('./screens/Attendance.jsx'));
 import AreaSheet from './screens/sheets/AreaSheet.jsx';
 import AreaMenu from './screens/sheets/AreaMenu.jsx';
 import LocationSheet from './screens/sheets/LocationSheet.jsx';
-import QrScanSheet from './screens/sheets/QrScanSheet.jsx';
+// The camera scanner pulls in jsQR (~130 kB) — fetched the moment scanning opens, not on every visit.
+const QrScanSheet = lazy(() => import('./screens/sheets/QrScanSheet.jsx'));
 import ReasonSheet from './screens/sheets/ReasonSheet.jsx';
 import PhotoViewer from './screens/sheets/PhotoViewer.jsx';
 import ChatPhotoViewer from './screens/sheets/ChatPhotoViewer.jsx';
@@ -47,20 +53,22 @@ import SurveyResponseModal from './screens/sheets/SurveyResponseModal.jsx';
 import DeleteAccountSheet from './screens/sheets/DeleteAccountSheet.jsx';
 import DeleteAccountStaySheet from './screens/sheets/DeleteAccountStaySheet.jsx';
 import HostSetupSheet from './screens/sheets/HostSetupSheet.jsx';
-import Preferences from './screens/Preferences.jsx';
-import EditName from './screens/EditName.jsx';
+const Preferences = lazy(() => import('./screens/Preferences.jsx'));
+const EditName = lazy(() => import('./screens/EditName.jsx'));
+// Notifications and Search stay eager: the shell renders them as overlays over Home, outside the screens grid's own
+// Suspense boundary.
 import Notifications from './screens/Notifications.jsx';
-import EventList from './screens/EventList.jsx';
-import Security from './screens/Security.jsx';
-import PaymentDetails from './screens/PaymentDetails.jsx';
-import RefundAccounts from './screens/RefundAccounts.jsx';
-import MyRefunds from './screens/MyRefunds.jsx';
-import Billing from './screens/Billing.jsx';
-import Payout from './screens/Payout.jsx';
-import Documents from './screens/Documents.jsx';
-import DocumentView from './screens/DocumentView.jsx';
-import Verifications from './screens/Verifications.jsx';
-import Disputes from './screens/Disputes.jsx';
+const EventList = lazy(() => import('./screens/EventList.jsx'));
+const Security = lazy(() => import('./screens/Security.jsx'));
+const PaymentDetails = lazy(() => import('./screens/PaymentDetails.jsx'));
+const RefundAccounts = lazy(() => import('./screens/RefundAccounts.jsx'));
+const MyRefunds = lazy(() => import('./screens/MyRefunds.jsx'));
+const Billing = lazy(() => import('./screens/Billing.jsx'));
+const Payout = lazy(() => import('./screens/Payout.jsx'));
+const Documents = lazy(() => import('./screens/Documents.jsx'));
+const DocumentView = lazy(() => import('./screens/DocumentView.jsx'));
+const Verifications = lazy(() => import('./screens/Verifications.jsx'));
+const Disputes = lazy(() => import('./screens/Disputes.jsx'));
 // Audit 2026-11-19 row 16: admin, reports and the project hub are not on the way into the app, so they are split out
 // of the entry chunk and fetched when one of them opens (Suspense below).
 const AdminEvents = lazy(() => import('./screens/AdminEvents.jsx'));
@@ -68,8 +76,8 @@ const AdminTestAccounts = lazy(() => import('./screens/AdminTestAccounts.jsx'));
 const AdminFeatures = lazy(() => import('./screens/AdminFeatures.jsx'));
 const AdminRetention = lazy(() => import('./screens/AdminRetention.jsx'));
 const AdminIslandDemo = lazy(() => import('./screens/AdminIslandDemo.jsx'));
-import EventRecap from './screens/EventRecap.jsx';
-import HostRecap from './screens/HostRecap.jsx';
+const EventRecap = lazy(() => import('./screens/EventRecap.jsx'));
+const HostRecap = lazy(() => import('./screens/HostRecap.jsx'));
 const AdminManageEvents = lazy(() => import('./screens/AdminManageEvents.jsx'));
 const AdminDobCorrections = lazy(() => import('./screens/AdminDobCorrections.jsx'));
 import ToastStack from './screens/ToastStack.jsx';
@@ -77,16 +85,18 @@ import IslandHost from './components/island/IslandHost.jsx';
 import IslandToasts from './components/island/IslandToasts.jsx';
 import IslandSettings from './screens/IslandSettings.jsx';
 import { EVENTS } from './data/events.js';
-import Policy from './screens/Policy.jsx';
-import Guide from './screens/Guide.jsx';
-import Faq from './screens/Faq.jsx';
-import HowItWorks from './screens/HowItWorks.jsx';
-import MapExplore from './screens/MapExplore.jsx';
+import Policy from './screens/Policy.jsx'; // main.jsx reads the policy text itself (the public /policy route)
+const Guide = lazy(() => import('./screens/Guide.jsx'));
+const Faq = lazy(() => import('./screens/Faq.jsx'));
+const HowItWorks = lazy(() => import('./screens/HowItWorks.jsx'));
+// The Map is the app's heaviest screen (maplibre, the map style/worker, discovery maths). Audit 2026-11-23 #5: it now
+// loads on first open like the admin screens, so the entry chunk no longer carries it for every visitor.
+const MapExplore = lazy(() => import('./screens/MapExplore.jsx'));
 import DockCreateButton from './screens/DockCreateButton.jsx';
 import StoryCreateOverlay from './screens/StoryCreateOverlay.jsx';
-import EditProfile from './screens/EditProfile.jsx';
-import PublicProfile from './screens/PublicProfile.jsx';
-import OrganizerProfile from './screens/OrganizerProfile.jsx';
+const EditProfile = lazy(() => import('./screens/EditProfile.jsx'));
+const PublicProfile = lazy(() => import('./screens/PublicProfile.jsx'));
+const OrganizerProfile = lazy(() => import('./screens/OrganizerProfile.jsx'));
 const Reports = lazy(() => import('./screens/Reports.jsx'));
 import Schedule from './screens/Schedule.jsx';
 import Search from './screens/Search.jsx';
@@ -95,18 +105,20 @@ import Welcome from './screens/Welcome.jsx';
 import GuestPromptSheet from './screens/GuestPromptSheet.jsx';
 import { StartHostingSheet } from './components/StartHostingCard.jsx';
 const TeamPage = lazy(() => import('./screens/TeamPage.jsx'));
+// SurveyPublic stays eager: the survey response sheet (mounted over Home) imports it too, so Rollup keeps it in the
+// entry regardless — a lazy() wrapper there would buy nothing.
 import SurveyPublic from './screens/SurveyPublic.jsx';
-import SurveysHosting from './screens/SurveysHosting.jsx';
+const SurveysHosting = lazy(() => import('./screens/SurveysHosting.jsx'));
 import RootRefreshIndicator, { PULL_GAP_PX, PULL_TRIGGER_PX } from './screens/RootRefreshIndicator.jsx';
 import AccountGate from './screens/AccountGate.jsx'; // account gate (web parity)
-import EventPreferences from './screens/EventPreferences.jsx';
-import Following from './screens/Following.jsx';
-import Rewards from './screens/Rewards.jsx';
+const EventPreferences = lazy(() => import('./screens/EventPreferences.jsx'));
+const Following = lazy(() => import('./screens/Following.jsx'));
+const Rewards = lazy(() => import('./screens/Rewards.jsx'));
 import EventOnboarding, { useEventOnboardingActive } from './screens/EventOnboarding.jsx';
 // Event Project Hub (note 76).
-import EventProject from './screens/EventProject.jsx';
-import ProjectJoin from './screens/ProjectJoin.jsx';
-import MyProjects from './screens/MyProjects.jsx';
+const EventProject = lazy(() => import('./screens/EventProject.jsx'));
+const ProjectJoin = lazy(() => import('./screens/ProjectJoin.jsx'));
+const MyProjects = lazy(() => import('./screens/MyProjects.jsx'));
 import { noteScreenChange } from './lib/zoomOrigin.js';
 import { SAFE_TOP } from './lib/viewport.js';
 
@@ -278,8 +290,14 @@ function SaveToast({ toast, aboveDock }) {
 // (`SAFE_TOP`, the status-bar inset as a CSS length, lives in src/lib/viewport.js — shared with the Map, the Search
 // overlay and the persistent search bar, all of which measure from the top of the window.)
 // Audit 2026-11-19 row 29: 18 px of air was not enough under the last line on a short screen (the guest banner and the
-// footer sat against the dock's top edge at 320), so the scroll end keeps a full dock height plus 28.
-const DOCK_CLEARANCE = `calc(${BAR_HEIGHT + BAR_BOTTOM_OFFSET + 28}px + env(safe-area-inset-bottom, 0px))`;
+// footer sat against the dock's top edge at 320), so the scroll end keeps a full dock height plus air.
+// Audit 2026-11-23 #3 (dock "covering" Home's "Browse by type / See all" and Account's "Notification preferences"):
+// measured at the real scroll end (390 and 1280) the content already cleared the dock by 36 px — those screenshots sat
+// mid-scroll, where anything at the dock's height is naturally behind the floating pill. The air is widened from 28 to
+// 44 (a full row's gap) so the last interactive row always reads clear of the dock's glass edge, and the dock height is
+// taken from whichever dock renders (72 legacy, 64 Simple Shell) so a shorter dock can never reserve too little.
+const DOCK_AIR = 44;
+const DOCK_CLEARANCE = `calc(${Math.max(BAR_HEIGHT, SIMPLE_DOCK.height) + BAR_BOTTOM_OFFSET + DOCK_AIR}px + env(safe-area-inset-bottom, 0px))`;
 
 // `hidden` (Map v5, note 73): the Map hides the dock at peek and mid and shows it at tall. It slides down and fades
 // (kept mounted, so it slides back instead of replaying its entrance); hidden = not focusable or tappable.
@@ -972,7 +990,7 @@ function Shell() {
         {state.areaAsking && <AreaSheet />}
         {state.areaMenuOpen && <AreaMenu />}
         {state.askingLocation && <LocationSheet />}
-        {state.scanningQr && <QrScanSheet />}
+        {state.scanningQr && <Suspense fallback={null}><QrScanSheet /></Suspense>}
         {state.photoViewer && <PhotoViewer />}
         {state.chatPhotoViewer && <ChatPhotoViewer />}
         {state.storyViewer && <StoryViewer />}
