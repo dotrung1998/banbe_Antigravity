@@ -250,7 +250,7 @@ svg.i{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke
 .dbar.compact .chip{height:40px;font-size:11.5px}
 .dbar.compact .barRow{flex:1 1 auto;min-width:0;gap:10px}
 .dbar.compact .barPrice,.dbar.compact .barTrust{display:none}
-.dbar.compact .reserve{height:46px;font-size:12.3px;padding:0 12px}
+.dbar.compact .reserve{height:46px;font-size:12.3px;padding:0 12px;max-width:330px;margin-left:auto}
 .chipBtn .n[hidden]{display:none}
 /* big panes (iPad, the right side of a split): the reading column stays a reading width */
 .device.roomy .dBody{max-width:640px;margin:0 auto}
@@ -1065,9 +1065,10 @@ body.reduced .pagerPage.on .endCard,body.reduced .pagerPage.on .endMark i{animat
 .chips.stepper .ink{opacity:0;transition:left var(--t-base) var(--ease-spring),width var(--t-base) var(--ease-spring),opacity 160ms 120ms}
 .chip.qMore.off{opacity:.4}
 .qStep{position:absolute;inset:0;display:flex;align-items:center;justify-content:space-between;
+  width:0;overflow:hidden;
   padding:0 3px;color:var(--bg);opacity:0;transform:scale(.86);pointer-events:none;
   transition:opacity 200ms var(--ease-out),transform 380ms var(--ease-spring)}
-.chips.stepper .qStep{opacity:1;transform:none;pointer-events:auto}
+.chips.stepper .qStep{width:auto;overflow:visible;opacity:1;transform:none;pointer-events:auto}
 .chips.stepper .qMore{opacity:0;pointer-events:none}
 .qBtn{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;flex:none;
   background:color-mix(in srgb,var(--bg) 18%,transparent);color:var(--bg);transition:transform var(--t-press),opacity var(--t-quick)}
@@ -1346,8 +1347,9 @@ body.fill .panelClose{display:flex;position:sticky;top:0;margin:-6px -8px 6px au
 /* One step below the 390 pt phone: the four quantity slots tighten so the button can still
    carry the full total, the way the shipped compact bar does. */
 @media (max-width:389px){
-  .dbar.compact{grid-template-columns:154px minmax(0,1fr)}
+  .dbar.compact{grid-template-columns:156px minmax(0,1fr)}
   .dbar.compact .chip{flex-basis:33px}
+  .dbar.compact .reserve{font-size:12px;padding:0 10px}
 }
 
 /* Small phones, and any large-text setting that takes the usable width below ~370 pt: the band
@@ -1390,14 +1392,26 @@ body.fill .panelClose{display:flex;position:sticky;top:0;margin:-6px -8px 6px au
   .hc{height:300px}
   .hh{padding-bottom:4px}
 }
+/* 200% browser zoom on an iPad landscape lands at roughly 597 x 417 CSS px. At that size the
+   full-height hero would push the whole ticket under the fixed bar; let the hero flatten so the
+   date, price and seats are on the first screen and the Reserve button is still visible. */
+@media (max-height:520px){
+  .dHero{height:160px}
+  .dHero .ttl{bottom:12px;left:16px;right:16px}
+  .dHero h1{font-size:28px}
+  .dStub{margin-top:0}
+  .stubTop{padding:12px;gap:12px}
+  .dateBlk{width:60px}
+  .stubBot{padding:10px 14px}
+  .stubSave{padding:8px 12px}
+}
 
 /* WCAG reflow floor: at 320 CSS px nothing overflows sideways. The band's middle cell is the
    one thing that must shrink, and it already truncates rather than pushing the controls out. */
 @media (max-width:330px){
   .hview small{display:none}
   .hview b{font-size:13.5px}
-  .dbar.compact{grid-template-columns:112px minmax(0,1fr)}
-  .dbar.compact .qSlot{display:none}
+  .dbar.compact{grid-template-columns:156px minmax(0,1fr)}
   .dbar.compact .chip{flex-basis:33px;min-width:33px}
   .dbar.compact .reserve .lbl{font-size:12px}
 }
