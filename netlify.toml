@@ -1,0 +1,5 @@
+# Documentation/prototype and CI-only changes do not need a deploy preview.
+# Netlify skips the build when every changed path is docs, Markdown or
+# .github; app-code changes still build as before.
+[build]
+  ignore = 'git diff --quiet "$CACHED_COMMIT_REF" "$COMMIT_REF" -- . ":(exclude)docs" ":(exclude).github" ":(exclude)*.md"'
