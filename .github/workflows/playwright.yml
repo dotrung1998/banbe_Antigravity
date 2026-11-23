@@ -47,7 +47,7 @@ jobs:
         fi
 
         printf '%s\n' "$changed"
-        if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -vE '^(docs/|\.github/|.*\.md$)' >/dev/null; then
+        if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -vE '^(docs/|\.github/|.*\.md$|netlify\.toml$)' >/dev/null; then
           echo "app_code=false" >> "$GITHUB_OUTPUT"
         else
           echo "app_code=true" >> "$GITHUB_OUTPUT"
