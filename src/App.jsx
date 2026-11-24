@@ -10,6 +10,7 @@ import OnboardingTour from './components/tour/OnboardingTour.jsx';
 import { CREATE_UNDO_MS } from './lib/createDraftUndo.js';
 import { dockOrder, dockCollapseStep, dockCollapseStore } from './lib/dockLayout.js';
 import { flagOn } from './lib/featureFlags.js';
+import ChunkErrorBoundary from './components/ChunkErrorBoundary.jsx';
 import BottomTabBar, { showsBottomBar, DOCK_MAX_WIDTH, DOCK_MARGIN, DOCK_GAP, CREATE_SIZE, BAR_BOTTOM_OFFSET, BAR_HEIGHT, SIMPLE_DOCK } from './screens/BottomTabBar.jsx';
 import { paper, ink, rule } from './theme.js';
 import { setThemeColor } from './lib/themeColor.js';
@@ -978,7 +979,7 @@ function Shell() {
                 aria-hidden={isUnderlay || undefined}
                 ref={(el) => { if (el) { if (isUnderlay) el.setAttribute('inert', ''); else el.removeAttribute('inert'); } }}
               >
-                <Suspense fallback={null}><ScreenComp /></Suspense>
+                <ChunkErrorBoundary T={T}><Suspense fallback={null}><ScreenComp /></Suspense></ChunkErrorBoundary>
               </div>
             );
           })}
@@ -990,7 +991,7 @@ function Shell() {
         {state.areaAsking && <AreaSheet />}
         {state.areaMenuOpen && <AreaMenu />}
         {state.askingLocation && <LocationSheet />}
-        {state.scanningQr && <Suspense fallback={null}><QrScanSheet /></Suspense>}
+        {state.scanningQr && <ChunkErrorBoundary T={T}><Suspense fallback={null}><QrScanSheet /></Suspense></ChunkErrorBoundary>}
         {state.photoViewer && <PhotoViewer />}
         {state.chatPhotoViewer && <ChatPhotoViewer />}
         {state.storyViewer && <StoryViewer />}

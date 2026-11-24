@@ -19,6 +19,19 @@ const Root = publicPath === '/privacy' ? PublicPolicy
   : publicPath === '/data-deletion' ? PublicDataDeletion
   : App
 
+// After a new deploy, an open tab may ask for a lazy chunk an older build named; the catch-all rewrite answers
+// with index.html and the import fails. Reload once to pick up the new build (ChunkErrorBoundary in App.jsx is
+// the fallback). The sessionStorage stamp stops a reload loop if the fresh page fails the same way.
+window.addEventListener('vite:preloadError', (event) => {
+  const KEY = 'bb-preload-reload-at'
+  let last = 0
+  try { last = Number(sessionStorage.getItem(KEY)) || 0 } catch { /* storage unavailable */ }
+  if (Date.now() - last < 10000) return
+  try { sessionStorage.setItem(KEY, String(Date.now())) } catch { /* storage unavailable */ }
+  event.preventDefault()
+  window.location.reload()
+})
+
 applyGlassOpacity()
 applyMapSurface()
 applyFont()
