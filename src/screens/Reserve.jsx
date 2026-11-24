@@ -77,6 +77,9 @@ export default function Reserve() {
   };
   // Same total as Event Detail's bar, in the event's own currency (src/lib/reserveBar.js).
   const totalStr = eventTotal(ev, s.qty);
+  // One ticket is "1 ticket", never "1 tickets" (Vietnamese "vé"/"chỗ" do not inflect).
+  const ticketWord = s.qty === 1 ? T('vé', 'ticket') : T('vé', 'tickets');
+  const seatWord = s.qty === 1 ? T('chỗ', 'seat') : T('chỗ', 'seats');
   const qtyTotalLabel = s.qty > 1 ? (T('Tổng ', 'Total ') + trStatus(totalStr)) : trStatus(ev.price);
 
   // Matches events.hold_minutes' default (migration 031 reverted this back
@@ -108,7 +111,7 @@ export default function Reserve() {
         <div style={bg(ev.img, { flex: 'none', width: 52, height: 52 })} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
           <span style={{ ...display(15) }}>{ev.name}</span>
-          <span style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{ev.when} ▪︎ {s.qty} {T('chỗ', 'seats')} ▪︎ {trStatus(totalStr)}</span>
+          <span style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{ev.when} ▪︎ {s.qty} {seatWord} ▪︎ {trStatus(totalStr)}</span>
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, margin: '20px 22px 0' }}>
@@ -159,10 +162,11 @@ export default function Reserve() {
         <span style={{ fontSize: 'var(--bb-text-meta)', fontWeight: 600, color: ink }}>{T('Số vé', 'Tickets')}</span>
         <div style={{ ...fieldGlass({ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, padding: '12px 14px' }) }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ fontSize: 14, fontWeight: 600, color: ink }}>{s.qty} {T('vé', 'tickets')}</span>
+            {/* Audit 2026-11-23 #6: English read "1 tickets" at qty 1 (Vietnamese "vé" is invariant). */}
+            <span style={{ fontSize: 14, fontWeight: 600, color: ink }} data-testid="reserve-qty-copy">{s.qty} {ticketWord}</span>
             <span style={{ fontSize: 'var(--bb-text-meta)', color: ink }}>{qtyTotalLabel}</span>
           </div>
-          <CountStepper value={s.qty} min={1} max={addMax} unit={T('vé', 'tickets')} testId="reserve-qty"
+          <CountStepper value={s.qty} min={1} max={addMax} unit={ticketWord} testId="reserve-qty"
             onChange={(n) => (n > s.qty ? qtyPlus() : qtyMinus())} />
         </div>
       </div>
