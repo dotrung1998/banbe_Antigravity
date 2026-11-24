@@ -43,14 +43,15 @@ fixed device size.
 | `0–359 px` | One column, edge to edge | 12–16 px gutters, area label folds to pin + chevron, hero title 32 px, stub margin 10 px, compact bar keeps 1 · 2 · 3 · 4+ and a plain Reserve. |
 | `360–599 px` | One column, edge to edge | Standard phone. Full band + tabs; compact bar at 12 px side insets. |
 | `600–899 px` | One column, held to a reading width | iPad portrait, small tablets, split-screen windows. Feed/band max 720 px, detail prose/stub max 640 px, dock max 560 px and centred; hero stays full-bleed. No split. |
-| `≥ 760 px`, landscape, height ≥ 560 px | Two panes | List 400 px (`clamp(320px, 34vw, 400px)`), detail takes the rest. This is iPad landscape, Duo inner screen, and a desktop window. |
+| `≥ 760 px`, height ≥ 560 px, width > 0.9 × height | Two panes | List 44 % of the width below 1100 px, 400 px at 1100 px and wider; detail takes the rest. This is iPad landscape, Duo inner screen, and a desktop window. |
 | `≥ 900 px`, portrait | One column | Do not split just because the window is wide; portrait tablets keep one eye-path. |
 
 The split condition is **not width alone**. A phone on its side is 844 × 390: wide but too short, and it must stay one
-column. The prototype uses `w >= 760 && w > h * 0.9`; the web can express that as:
+column. The rule is min-width 760 px, min-height 560 px and a landscape-ish aspect (width > 0.9 × height). The
+prototype uses `w >= 760 && h >= 560 && w > h * 0.9`; the web expresses the same rule as:
 
 ```css
-@media (min-width: 760px) and (min-height: 560px) and (min-aspect-ratio: 1/1) { /* split */ }
+@media (min-width: 760px) and (min-height: 560px) and (min-aspect-ratio: 9/10) { /* split */ }
 ```
 
 `min-aspect-ratio` is supported well below the project's Safari 16.2 floor, so no JS listener is required. If the team
@@ -146,7 +147,7 @@ Suggested shape (names are illustrative, keep the existing component boundaries)
 
 ```jsx
 // App shell
-const wide = useMediaQuery('(min-width: 760px) and (min-height: 560px) and (min-aspect-ratio: 1/1)');
+const wide = useMediaQuery('(min-width: 760px) and (min-height: 560px) and (min-aspect-ratio: 9/10)');
 const detailKey = route.name === 'event' ? route.key : null;
 
 <div className="bb-app-shell" data-wide={wide ? '1' : undefined}>
@@ -159,7 +160,7 @@ const detailKey = route.name === 'event' ? route.key : null;
 </div>
 ```
 
-- `.bb-app-shell[data-wide]` is `display:grid; grid-template-columns: clamp(320px, 34vw, 400px) minmax(0, 1fr);`
+- `.bb-app-shell[data-wide]` is `display:grid; grid-template-columns: 44% minmax(0, 1fr);`, and `400px minmax(0, 1fr)` from 1100 px wide (the prototype's list rule)
   and the detail wrapper is `position:relative; min-width:0; overflow:hidden`.
 - The existing detail view positions itself `fixed`/`absolute` against the phone viewport. Add a `presentation="pane"`
   (or a `data-split` wrapper) that changes it to `position:relative`, `inset:auto`, `height:100%`. Do not fork the

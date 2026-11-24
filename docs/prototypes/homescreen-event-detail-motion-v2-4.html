@@ -4276,8 +4276,9 @@ let variant = 'a';
 const deviceKind = () => {
   if (fitMode === 'fill') {
     const { w, h } = viewportSize();
-    /* wide enough for two panes: the iPad split; the list column narrows on smaller tablets */
-    const split = w >= 760 && w > h * 0.9 ? (w >= 1100 ? '400px' : '44%') : null;
+    /* wide enough for two panes (min-width 760, min-height 560, landscape-ish w > 0.9 h, doc §2.1):
+       the iPad split; the list column narrows on smaller tablets */
+    const split = w >= 760 && h >= 560 && w > h * 0.9 ? (w >= 1100 ? '400px' : '44%') : null;
     DEVICES.fill = { w, h, r: 0, bz: 0, split };
     return 'fill';
   }
