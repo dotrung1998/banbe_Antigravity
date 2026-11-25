@@ -30,17 +30,22 @@ export default function MyRefunds() {
   // reply is due by host_response_due_at.
   const actorLine = (c) => {
     const due = (value) => (value ? formatShortDate(value, s.lang === 'en' ? 'en' : 'vi') : '');
+    // Without a chosen refund account the host cannot send (mark_refund_sent and create_and_confirm_refund_batch raise
+    // REFUND_DESTINATION_REQUIRED, note 16), so the goer is the one who must act; the row opens the payment screen.
+    if (c.status === 'owed' && !c.selected_destination_id) {
+      return T('Bạn cần chọn tài khoản nhận hoàn tiền', 'Choose where to receive your refund');
+    }
     if (c.status === 'owed') {
       const d = due(c.refund_due_at);
       return d
         ? T(`Host đang giữ tiền · hoàn trước ${d}`, `Held by the host · due by ${d}`)
-        : T('Host đang giữ tiền.', 'Held by the host.');
+        : T('Host đang giữ tiền', 'Held by the host');
     }
     if (c.status === 'disputed') {
       const d = due(c.host_response_due_at);
       return d
         ? T(`banbe đang xử lý tranh chấp · host trả lời trước ${d}`, `banbe is handling this dispute · host replies by ${d}`)
-        : T('banbe đang xử lý tranh chấp.', 'banbe is handling this dispute.');
+        : T('banbe đang xử lý tranh chấp', 'banbe is handling this dispute');
     }
     return '';
   };

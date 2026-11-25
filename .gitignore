@@ -46,6 +46,9 @@ dist-ssr
 /apps/ios/BanbeApp.xcodeproj/
 /apps/ios/.build/
 /apps/ios/DerivedData/
+# An accidental nested git checkout once committed as a gitlink (removed in PR #11);
+# keep it out so a later `git add -A` cannot re-add it.
+/apps/ios/banbe/
 # A developer's own Apple team ID for PersonalTeamDebug device builds — never
 # commit it. Config/PersonalTeamDebug.xcconfig includes this file optionally;
 # see .claude/notes/18-ios-personal-team-signing.md.

@@ -4432,7 +4432,7 @@ export function BanBeProvider({ children }) {
     if (!bookingIds.length) return set({ myRefunds: [], myRefundsLoading: false });
     const { data: claims, error } = await supabase
       .from('refund_claims')
-      .select('id, booking_id, reservation_id, amount_vnd, status, host_marked_at, disputed_at, host_response_due_at, refund_due_at, created_at')
+      .select('id, booking_id, reservation_id, amount_vnd, status, host_marked_at, disputed_at, host_response_due_at, refund_due_at, created_at, selected_destination_id')
       .or(bookingIds.map(id => `booking_id.eq.${id}`).join(','))
       .in('status', ['owed', 'host_marked_sent', 'disputed'])
       .order('created_at', { ascending: false });
