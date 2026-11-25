@@ -24,6 +24,9 @@ Two banbe skills are installed:
 
 - **`banbe-project`** — context, commands, guardrails. Load it before touching code.
 - **`banbe-second-brain`** — the capture/compile protocol for this vault.
+- **`pr-manager`** (`.claude/skills/pr-manager/SKILL.md`, Claude Code `/pr-manager`) — review, fix and merge every open
+  PR into main through agents, one owner approval per batch, report in `raw/inbox/YYYY-MM-DD-review-pr-manager.md`.
+  Owner prompts are logged to `raw/inbox/YYYY-MM-DD-chat.md` by the `scripts/vault-log-prompt.mjs` hook.
 
 ## Template
 

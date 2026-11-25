@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/vault-log-prompt.mjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
