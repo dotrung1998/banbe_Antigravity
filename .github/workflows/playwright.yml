@@ -9,10 +9,12 @@ permissions:
   contents: read
 
 jobs:
-  # The suite is 344 tests x 3 browsers, one worker and two retries; it needs
-  # close to the 60-minute job limit. A docs/prototype-only (or workflow-only)
-  # diff cannot change the app under test, so classify it first and let the
-  # required `test` check pass without spending an hour on the browser run.
+  # The suite is ~420 tests x 3 browsers. Run as one job (1 worker, 2 retries)
+  # it hit the 60-minute limit with only ~200 of 1260 tests done, so it is
+  # sharded below: one job per browser x 8 shards, 2 workers, 1 retry, and a
+  # merged HTML report. A docs/prototype-only (or workflow-only) diff cannot
+  # change the app under test, so classify it first and let the `test` check
+  # pass without starting the browser run.
   changes:
     runs-on: ubuntu-latest
     outputs:
@@ -53,32 +55,79 @@ jobs:
           echo "app_code=true" >> "$GITHUB_OUTPUT"
         fi
 
-  test:
+  e2e:
     needs: changes
-    timeout-minutes: 60
+    if: needs.changes.outputs.app_code == 'true'
+    name: e2e (${{ matrix.project }} ${{ matrix.shard }}/8)
+    # Slowest shard (firefox, map specs timing out) took ~29 min at 6 shards;
+    # at 8 it should be ~22. The cap stops a hung shard well before 60.
+    timeout-minutes: 40
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [chromium, firefox, webkit]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
-    - name: Docs/CI-only diff, app suite not required
-      if: needs.changes.outputs.app_code != 'true'
-      run: echo "No app-code changes in this diff; skipping the browser suite."
     - uses: actions/checkout@v4
-      if: needs.changes.outputs.app_code == 'true'
     - uses: actions/setup-node@v4
-      if: needs.changes.outputs.app_code == 'true'
       with:
         node-version: lts/*
+        cache: npm
     - name: Install dependencies
-      if: needs.changes.outputs.app_code == 'true'
       run: npm ci
-    - name: Install Playwright Browsers
-      if: needs.changes.outputs.app_code == 'true'
-      run: npx playwright install --with-deps
+    - name: Install Playwright browser
+      run: npx playwright install --with-deps ${{ matrix.project }}
     - name: Run Playwright tests
-      if: needs.changes.outputs.app_code == 'true'
-      run: npx playwright test
+      run: npx playwright test --project=${{ matrix.project }} --shard=${{ matrix.shard }}/8
     - uses: actions/upload-artifact@v4
-      if: needs.changes.outputs.app_code == 'true' && !cancelled()
+      if: ${{ !cancelled() }}
+      with:
+        name: blob-report-${{ matrix.project }}-${{ matrix.shard }}
+        path: blob-report/
+        retention-days: 1
+
+  merge-reports:
+    needs: e2e
+    if: ${{ !cancelled() && needs.e2e.result != 'skipped' }}
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: lts/*
+        cache: npm
+    - name: Install dependencies
+      run: npm ci
+    - uses: actions/download-artifact@v4
+      with:
+        path: all-blob-reports
+        pattern: blob-report-*
+        merge-multiple: true
+    - name: Merge into one HTML report
+      run: npx playwright merge-reports --reporter html ./all-blob-reports
+    - uses: actions/upload-artifact@v4
       with:
         name: playwright-report
         path: playwright-report/
         retention-days: 30
+
+  # The single check to look at: green when every shard passed, or when the
+  # diff is docs/CI-only and the browser suite was skipped.
+  test:
+    needs: [changes, e2e]
+    if: ${{ always() }}
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+    - name: Summarise the browser suite
+      env:
+        APP_CODE: ${{ needs.changes.outputs.app_code }}
+        CHANGES: ${{ needs.changes.result }}
+        E2E: ${{ needs.e2e.result }}
+      run: |
+        if [ "$CHANGES" != "success" ]; then echo "changes job: $CHANGES"; exit 1; fi
+        if [ "$APP_CODE" != "true" ]; then echo "No app-code changes in this diff; skipping the browser suite."; exit 0; fi
+        echo "e2e shards: $E2E"
+        [ "$E2E" = "success" ]

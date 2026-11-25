@@ -14,6 +14,10 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './tests',
+  /* tests/unit/*.test.mjs are node:test files (npm run test:unit). Playwright's
+     default testMatch picks up *.test.mjs too, so without this every worker
+     imported and ran the unit suite as a side effect of collecting specs. */
+  testIgnore: ['**/unit/**'],
   /* Signs in a persistent shared test account once and saves the session
      as storageState (tests/.auth/user.json) — Task 1 (mandatory login,
      2026-09-18) means every screen requires a session now, which most of
@@ -28,12 +32,14 @@ export default defineConfig({
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
-  /* Retry on CI only */
-  retries: process.env.CI ? 2 : 0,
-  /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
-  /* Reporter to use. See https://playwright.dev/docs/test-reporters */
-  reporter: 'html',
+  /* Retry once on CI. Two retries tripled the cost of every real failure and,
+     with one worker, pushed the run past the 60-minute job limit. */
+  retries: process.env.CI ? 1 : 0,
+  /* CI runners have 4 vCPUs; the Vite dev server shares them, so 2 workers. */
+  workers: process.env.CI ? 2 : undefined,
+  /* CI runs sharded (.github/workflows/playwright.yml): each shard writes a
+     blob report and a final job merges them into one HTML report. */
+  reporter: process.env.CI ? [['blob'], ['dot']] : 'html',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
