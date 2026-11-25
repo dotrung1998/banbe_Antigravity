@@ -41,6 +41,7 @@ import { normalizeThemeChoice, resolveTheme, systemPrefersDark } from '../lib/th
 import { homeViewAfterSync, readStoredHomeView, startHostingStep, storeHomeView } from '../lib/homeMode.js';
 import { clampQty, maxQty, MAX_QTY } from '../lib/reserveBar.js';
 import { groupPhotoRows, cardPhotoList, MAX_CARD_PHOTOS } from '../lib/eventPhotoUrls.js';
+import { passwordLoginErrorText } from '../lib/authLoginError.js';
 import { tourDoneKey } from '../data/onboardingTour.js';
 
 // The recap's "Skip, go to Home" (note 80): the tour never starts by itself afterwards.
@@ -9323,7 +9324,7 @@ export function BanBeProvider({ children }) {
     if (!s.loginPassword) return set({ reserveError: T('Nhập mật khẩu của bạn.', 'Enter your password.') });
     const { error } = await supabase.auth.signInWithPassword({ email: s.loginEmail.trim(), password: s.loginPassword });
     if (error) {
-      set({ reserveError: T('Sai email hoặc mật khẩu.', 'Wrong email or password.') });
+      set({ reserveError: passwordLoginErrorText(error, T) });
       return false;
     }
     set({ reserveError: '' });
