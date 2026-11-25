@@ -434,7 +434,7 @@ struct LoginView: View {
         case (.code, _):
             await auth.sendEmailCode(to: email, mode: mode, displayName: displayName)
         case (.password, .login):
-            await auth.signInWithPassword(email: email, password: password)
+            await auth.signInWithPassword(email: email, password: password, isEN: app.isEN)
         case (.password, .signup):
             guard password.count >= 8 else {
                 localError = app.T("Mật khẩu cần ít nhất 8 ký tự.", "Passwords need at least 8 characters.")

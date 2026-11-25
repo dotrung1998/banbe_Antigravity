@@ -162,16 +162,17 @@ final class AuthViewModel: ObservableObject {
     /// credential, not sending mail, so none of the rate limiting that
     /// pushed the code path onto our own API applies here.) The
     /// auth-state listener above takes it from there.
-    func signInWithPassword(email: String, password: String) async {
+    func signInWithPassword(email: String, password: String, isEN: Bool) async {
         isSendingCode = true
         errorMessage = nil
         defer { isSendingCode = false }
         do {
             _ = try await SupabaseService.client.auth.signIn(email: email, password: password)
         } catch {
-            // Deliberately the same message for a wrong password and an
-            // email with no account — a login form shouldn't say which.
-            errorMessage = "Wrong email or password."
+            // A wrong password and an email with no account still share one
+            // message; every other reason (CAPTCHA, unconfirmed email, rate
+            // limit, network) is named. See Lib/AuthLoginError.swift.
+            errorMessage = AuthLoginError.message(for: error, isEN: isEN)
         }
     }
 
