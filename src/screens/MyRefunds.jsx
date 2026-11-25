@@ -24,9 +24,35 @@ export default function MyRefunds() {
     return () => clearInterval(id);
   }, [loadMyRefunds]);
 
+  // Principle 004: a state never says only "being processed" without saying who has it. Both facts already come
+  // back on the claim (loadMyRefunds selects refund_due_at, host_response_due_at), so this adds no query. `owed`:
+  // the host holds the money and must send it by refund_due_at. `disputed`: banbe owns the dispute and the host's
+  // reply is due by host_response_due_at.
+  const actorLine = (c) => {
+    const due = (value) => (value ? formatShortDate(value, s.lang === 'en' ? 'en' : 'vi') : '');
+    // Without a chosen refund account the host cannot send (mark_refund_sent and create_and_confirm_refund_batch raise
+    // REFUND_DESTINATION_REQUIRED, note 16), so the goer is the one who must act; the row opens the payment screen.
+    if (c.status === 'owed' && !c.selected_destination_id) {
+      return T('Bạn cần chọn tài khoản nhận hoàn tiền', 'Choose where to receive your refund');
+    }
+    if (c.status === 'owed') {
+      const d = due(c.refund_due_at);
+      return d
+        ? T(`Host đang giữ tiền · hoàn trước ${d}`, `Held by the host · due by ${d}`)
+        : T('Host đang giữ tiền', 'Held by the host');
+    }
+    if (c.status === 'disputed') {
+      const d = due(c.host_response_due_at);
+      return d
+        ? T(`banbe đang xử lý tranh chấp · host trả lời trước ${d}`, `banbe is handling this dispute · host replies by ${d}`)
+        : T('banbe đang xử lý tranh chấp', 'banbe is handling this dispute');
+    }
+    return '';
+  };
+
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="MyRefunds">
-      <div onClick={backFromMyRefunds} style={{ padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="my-refunds-back">
+      <div onClick={backFromMyRefunds} style={{ display: 'flex', alignItems: 'center', minHeight: 44, boxSizing: 'border-box', padding: 'max(14px, calc(66px - var(--bb-status-trim, 0px))) 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="my-refunds-back">
         ‹ {T('Tài khoản', 'Account')}
       </div>
       <div style={{ padding: '14px 22px 0' }}>
@@ -65,9 +91,9 @@ export default function MyRefunds() {
                       {overdue ? T('Quá hạn hoàn tiền.', 'Refund overdue.') : T(...label)}
                     </span>
                   </div>
-                  {c.status === 'owed' && c.refund_due_at && (
-                    <p style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6, margin: '4px 0 0' }}>
-                      {T(`Trước ${formatShortDate(c.refund_due_at)}`, `Before ${formatShortDate(c.refund_due_at, 'en')}`)}
+                  {actorLine(c) && (
+                    <p data-testid="my-refunds-actor" style={{ fontSize: 'var(--bb-text-meta)', color: ink, opacity: 0.6, margin: '4px 0 0' }}>
+                      {actorLine(c)}
                     </p>
                   )}
                 </div>

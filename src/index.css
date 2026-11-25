@@ -1081,6 +1081,16 @@ input::placeholder, textarea::placeholder {
 .bb-home-head__round > svg { width: 18px; height: 18px; }
 /* The one warm accent in the band, as the magnifier was in the old field. */
 .bb-home-head__round--search > svg { color: var(--bb-clay, #9C5B3B); }
+/* Audit 2026-11-25 #3: these controls keep their drawn size but claim the app's 44 pt tap floor with a transparent
+   pseudo-element, so the band's rhythm does not move. Insets are measured from the padding box, so a 1 px border
+   costs one more px: the bordered 40 px circles use -3 (40 + 6 = 44), the borderless avatar -2, the bordered 32 px
+   area chip -7 vertically, and the borderless 36 px hero Save circle (its own class) -4. */
+.bb-home-head__round, .bb-home-head__area { position: relative; }
+.bb-home-head__round::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; }
+.bb-home-head__avatar::after { content: ""; position: absolute; inset: -2px; border-radius: 50%; }
+.bb-home-head__area::after { content: ""; position: absolute; inset: -7px 0; border-radius: 999px; }
+.bb-home-hero-save { position: relative; }
+.bb-home-hero-save::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; }
 
 .bb-home-head__avatar {
   position: relative; flex: none; width: 40px; height: 40px;

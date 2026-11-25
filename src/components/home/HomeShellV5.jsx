@@ -290,7 +290,7 @@ export default function HomeShellV5({
                       {onToggleSave && (
                         <button type="button" onClick={(ev) => { ev.stopPropagation(); onToggleSave(e.key); }}
                           aria-pressed={!!e.saved} aria-label={e.saved ? T('Bỏ lưu sự kiện', 'Remove from saved') : T('Lưu sự kiện', 'Save event')}
-                          data-testid={`home-hero-save-${e.key}`}
+                          data-testid={`home-hero-save-${e.key}`} className="bb-home-hero-save"
                           style={{ width: 36, height: 36, marginTop: -4, marginRight: -4, borderRadius: '50%', border: 'none', background: 'rgba(247,244,236,.92)', color: e.saved ? 'var(--bb-clay-ink)' : '#1B1916', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
                           <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill={e.saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20s-7-4.4-7-9.3A4.1 4.1 0 0 1 12 7a4.1 4.1 0 0 1 7 3.7C19 15.6 12 20 12 20Z" /></svg>
                         </button>
