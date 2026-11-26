@@ -8,6 +8,14 @@ an area, read its `file:line`, and only then grep. Refresh with `graphify update
 `node scripts/second-brain-code-graph.mjs`; Obsidian (`docs/second-brain` is the vault) renders the same notes as a
 live graph. Search when the map has no answer, then record the gap in `docs/second-brain/raw/inbox/`.
 
+## Commits
+
+Every commit lands on `main` and is pushed to `origin main`. No `Co-Authored-By` line and no bot trailer
+(`Generated with Claude Code` or similar) in commits or PR bodies. If the checkout is on another branch with uncommitted
+work, cherry-pick onto `origin/main` in a temporary detached worktree and `git push origin HEAD:main` instead of
+switching branches. Stage only the files you changed. Multi-part requests are split into subagents by file ownership;
+subagents never commit.
+
 ## Web platform Baseline
 
 This project's Baseline target is **Baseline Widely available**, with the app's own, stricter floor: **Safari 16.2 /
