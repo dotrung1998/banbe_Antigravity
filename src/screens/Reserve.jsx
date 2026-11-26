@@ -8,8 +8,8 @@ import { paper, ink, FACE, display, fieldGlass, alert } from '../theme.js';
 import { CountStepper, BookingJourneyProgress } from '../components/ui/FormControls.jsx';
 import AsyncSuccessButton from '../components/ui/AsyncSuccessButton.jsx';
 import { eventTotal, currencyUnavailable, CURRENCY_UNAVAILABLE_REASON } from '../lib/reserveBar.js';
+import { emailIsValid } from '../lib/emailRules.js';
 
-const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 export default function Reserve() {
   const {
@@ -50,7 +50,7 @@ export default function Reserve() {
   const attendeesOk = s.attendeeDrafts.length === s.qty
     && s.attendeeDrafts.every((a, i) => a.name.trim().length >= 2
       && ((i === 0 && a.useProfileDob && !adding) || (a.dob && a.dob <= todayIso))
-      && ((i === 0 && !adding) || !a.email?.trim() || EMAIL_RE.test(a.email.trim())));
+      && ((i === 0 && !adding) || !a.email?.trim() || emailIsValid(a.email)));
   // Host reservation criteria (migration 162): always pre-check on opening this screen,
   // block only when the server says ineligible; re-checks on every eventPrefsVersion change.
   const crit = useReservationCriteria(s.eventKey, { alwaysCheck: true });
@@ -68,7 +68,7 @@ export default function Reserve() {
       const a = drafts[i];
       if (a.name.trim().length < 2) return T(`Nhập họ tên cho vé ${i + 1}`, `Add the name for ticket ${i + 1}`);
       if (!((i === 0 && a.useProfileDob && !adding) || (a.dob && a.dob <= todayIso))) return T(`Chọn ngày sinh cho vé ${i + 1}`, `Add the date of birth for ticket ${i + 1}`);
-      if ((i > 0 || adding) && a.email?.trim() && !EMAIL_RE.test(a.email.trim())) return T(`Kiểm tra email của vé ${i + 1}`, `Check the email for ticket ${i + 1}`);
+      if ((i > 0 || adding) && a.email?.trim() && !emailIsValid(a.email)) return T(`Kiểm tra email của vé ${i + 1}`, `Check the email for ticket ${i + 1}`);
     }
     return null;
   })();

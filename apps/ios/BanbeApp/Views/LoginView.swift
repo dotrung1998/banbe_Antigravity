@@ -60,8 +60,7 @@ struct LoginView: View {
     private var nameBinding: Binding<String> { $app.authDraftName }
 
     private var emailFormatOk: Bool {
-        let trimmed = email.trimmingCharacters(in: .whitespaces)
-        return trimmed.range(of: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$", options: .regularExpression) != nil
+        EmailRules.isValid(email)
     }
 
     /// An empty field isn't an error yet — it's just unfinished — so it
@@ -232,12 +231,28 @@ struct LoginView: View {
                                 if old == "email" && new != "email" { emailChecked = true }
                             }
                         if showEmailFormatError {
-                            Text(app.T("Email chưa đúng định dạng (ví dụ: ban@email.com)",
-                                       "That doesn't look like an email address (e.g. ban@email.com)"))
-                                .font(.app(size: 12))
-                                .foregroundStyle(BanbeTheme.alert)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                            // A known provider typo (gmail.co, gmial.com) gets a one-tap fix instead of the generic line.
+                            if let suggestion = EmailRules.typoSuggestion(email) {
+                                HStack(spacing: 8) {
+                                    Text(app.T("Có phải bạn muốn nhập \(suggestion)?", "Did you mean \(suggestion)?"))
+                                        .font(.app(size: 12))
+                                        .foregroundStyle(BanbeTheme.alert)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    Button(app.T("Sửa", "Fix it")) { app.authDraftEmail = suggestion }
+                                        .font(.app(size: 12, weight: .semibold))
+                                        .frame(minHeight: 44)
+                                        .buttonStyle(.plain)
+                                        .accessibilityIdentifier("login.emailFix")
+                                }
                                 .accessibilityIdentifier("login.emailError")
+                            } else {
+                                Text(app.T("Email chưa đúng định dạng (ví dụ: ban@email.com)",
+                                           "That doesn't look like an email address (e.g. ban@email.com)"))
+                                    .font(.app(size: 12))
+                                    .foregroundStyle(BanbeTheme.alert)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .accessibilityIdentifier("login.emailError")
+                            }
                         }
                         if method == .password {
                             VStack(alignment: .leading, spacing: 0) {

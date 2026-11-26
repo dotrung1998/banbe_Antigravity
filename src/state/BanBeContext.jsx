@@ -42,6 +42,7 @@ import { homeViewAfterSync, readStoredHomeView, startHostingStep, storeHomeView 
 import { clampQty, maxQty, MAX_QTY } from '../lib/reserveBar.js';
 import { groupPhotoRows, cardPhotoList, MAX_CARD_PHOTOS } from '../lib/eventPhotoUrls.js';
 import { passwordLoginErrorText } from '../lib/authLoginError.js';
+import { emailIsValid } from '../lib/emailRules.js';
 import { passwordChangeBlocker, currentPasswordErrorText, passwordUpdateErrorText } from '../lib/passwordChange.js';
 import { passwordMeetsRules } from '../lib/passwordRules.js';
 import { tourDoneKey } from '../data/onboardingTour.js';
@@ -7709,7 +7710,6 @@ export function BanBeProvider({ children }) {
 
   // ---- Section 3: lightweight respondent email verification (outside
   // banbe, no password/profile/Hosting onboarding) ----
-  const SURVEY_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   /** Step 1 — request the code. Does NOT yet know (or claim) whether this
    * creates a new identity; the server resolves that and tells us via
    * `isNewAccount` so the NEXT screen (entering the code) can disclose it
@@ -7720,7 +7720,7 @@ export function BanBeProvider({ children }) {
    * the ordinary Login/signup screen's own checkbox. */
   const sendSurveyRespondCode = useCallback(async (email) => {
     const clean = String(email || '').trim().toLowerCase();
-    if (!SURVEY_EMAIL_RE.test(clean)) return set({ surveyRespondError: T('Nhập email hợp lệ.', 'Enter a valid email.') });
+    if (!emailIsValid(clean)) return set({ surveyRespondError: T('Nhập email hợp lệ.', 'Enter a valid email.') });
     if (!s.surveyRespondConsent) return set({ surveyRespondError: T('Vui lòng đồng ý trước khi tiếp tục.', 'Please agree before continuing.') });
     set({ surveyRespondSending: true, surveyRespondError: '' });
     try {
@@ -9228,7 +9228,7 @@ export function BanBeProvider({ children }) {
   // (/\S+@\S+\.\S+/) had no anchors, so "hello a@b.c world", "a@@b.c" and
   // " a@b.c " all passed here and were then rejected by the server — the
   // button lit up and the request bounced with a generic failure.
-  const emailValid = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v).trim());
+  const emailValid = (v) => emailIsValid(v);
   const passwordValid = (v) => v.length >= 8;
   // Switching between "code" and "password" (or Login/Signup) always clears
   // whatever partial attempt was in flight — a stale error or a code sent

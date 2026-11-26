@@ -6,6 +6,7 @@ import AsyncSuccessButton from '../components/ui/AsyncSuccessButton.jsx';
 import PasswordChecklist from '../components/PasswordChecklist.jsx';
 import { passwordMeetsRules } from '../lib/passwordRules.js';
 import { emailCheckedAfter, showEmailFormatError as emailErrorVisible } from '../lib/emailFieldCheck.js';
+import { emailTypoSuggestion } from '../lib/emailRules.js';
 
 export default function Login() {
   const {
@@ -91,6 +92,8 @@ export default function Login() {
   // address says so under the field once the field is left (emailFieldCheck.js).
   const emailFormatOk = emailValid(s.loginEmail);
   const showEmailFormatError = !awaitingCode && emailErrorVisible({ email: s.loginEmail, valid: emailFormatOk, checked: emailChecked });
+  // A known provider typo (gmail.co, gmial.com) gets a one-tap fix instead of the generic line.
+  const emailSuggestion = showEmailFormatError ? emailTypoSuggestion(s.loginEmail) : null;
   // Shown only once the confirm field has something in it, so an empty field is not called a mismatch.
   const confirmMismatch = s.loginPasswordConfirm.length > 0 && s.loginPassword !== s.loginPasswordConfirm;
   // Once a code has been sent the address is already settled and this
@@ -185,9 +188,16 @@ export default function Login() {
                 aria-describedby={showEmailFormatError ? 'login-email-error' : emailIssue ? 'login-email-issue' : undefined} />
               {/* Error = red border + message; warning = honey border + message + the way out (Kole Jain's states). */}
               {showEmailFormatError ? (
-                <FieldNote id="login-email-error" testId="login-email-error" tone="error">
-                  {T('Email chưa đúng định dạng (ví dụ: ban@email.com)', "That doesn't look like an email address (e.g. ban@email.com)")}
-                </FieldNote>
+                emailSuggestion ? (
+                  <FieldNote id="login-email-error" testId="login-email-error" tone="error"
+                    actionLabel={T('Sửa', 'Fix it')} onAction={() => onEmailChange({ target: { value: emailSuggestion } })}>
+                    {T(`Có phải bạn muốn nhập ${emailSuggestion}?`, `Did you mean ${emailSuggestion}?`)}
+                  </FieldNote>
+                ) : (
+                  <FieldNote id="login-email-error" testId="login-email-error" tone="error">
+                    {T('Email chưa đúng định dạng (ví dụ: ban@email.com)', "That doesn't look like an email address (e.g. ban@email.com)")}
+                  </FieldNote>
+                )
               ) : emailIssue === 'exists' ? (
                 <FieldNote id="login-email-issue" testId="login-email-exists" tone="warning"
                   actionLabel={T('Đăng nhập?', 'Log in instead?')} onAction={() => changeAuthMode('login')}>
