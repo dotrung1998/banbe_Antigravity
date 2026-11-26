@@ -1,0 +1,42 @@
+name: Failure alert
+
+on:
+  workflow_run:
+    workflows:
+      - Playwright Tests
+      - Web build & unit tests
+      - Discord notifications (cloud)
+      - Supabase backup to R2
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  discord:
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post to Discord
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_ALERTS }}
+          FALLBACK: ${{ secrets.DISCORD_WEBHOOK }}
+          REPO: ${{ github.repository }}
+          WORKFLOW: ${{ github.event.workflow_run.name }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          TITLE: ${{ github.event.workflow_run.display_title }}
+          URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+          hook="${WEBHOOK:-$FALLBACK}"
+          if [ -z "$hook" ]; then
+            echo "No Discord webhook secret set; nothing to send."
+            exit 0
+          fi
+          jq -n \
+            --arg content "🔴 **$REPO** · $WORKFLOW failed on \`$BRANCH\`
+          $TITLE (\`${SHA:0:7}\`)
+          $URL" \
+            '{content: $content, allowed_mentions: {parse: []}}' > payload.json
+          curl -fsS -H 'Content-Type: application/json' --data @payload.json "$hook"
