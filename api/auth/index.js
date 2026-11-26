@@ -7,6 +7,7 @@ import { signReauthProof, verifyReauthProof } from '../_lib/reauthProof.js';
 import { gatherOrganizerFacts, planOrganizerCleanup, applyOrganizerCleanup } from '../_lib/organizerCleanup.js';
 import { renderEmail, renderEmailText } from '../_lib/emailTemplate.js';
 import { passwordMeetsRules } from '../../src/lib/passwordRules.js';
+import { emailIsValid } from '../../src/lib/emailRules.js';
 
 // Consolidated dispatcher for the /api/auth/* trio, folded together to fit
 // the Hobby-plan 12-function cap (see api/notify.js for the same treatment
@@ -14,7 +15,8 @@ import { passwordMeetsRules } from '../../src/lib/passwordRules.js';
 // handler body, unchanged except for being a function instead of the
 // default export — dispatch is purely `body.type`.
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Shared with the apps (src/lib/emailRules.js): 2+ letter endings, no known provider typos.
+const EMAIL_PATTERN = { test: (v) => emailIsValid(v) };
 
 function getText(value) {
   return typeof value === 'string' ? value.trim() : '';
