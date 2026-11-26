@@ -6,7 +6,7 @@ import { track, installAppEventsSink, claimAppOpenedToday, eventOpenSource } fro
 import { GUEST_BROWSE_SCREENS, makePrompt, loginBackTarget } from '../lib/guestAccess.js';
 import { forYouTimeZone } from '../lib/forYou.js';
 import { EVENTS, findEvent, isCosmeticCatalogMatch, haversineKm } from '../data/events.js';
-import { supabase, getAuthRedirectUrl } from '../lib/supabase.js';
+import { supabase, getAuthRedirectUrl, createReauthClient } from '../lib/supabase.js';
 import { requestAuthEmail, requestPasswordSignup, requestPasswordReset } from '../lib/authEmail.js';
 import { renderPaymentDocument } from '../lib/paymentDocument.js';
 import { buildVietQrPayload } from '../lib/vietqr.js';
@@ -42,6 +42,8 @@ import { homeViewAfterSync, readStoredHomeView, startHostingStep, storeHomeView 
 import { clampQty, maxQty, MAX_QTY } from '../lib/reserveBar.js';
 import { groupPhotoRows, cardPhotoList, MAX_CARD_PHOTOS } from '../lib/eventPhotoUrls.js';
 import { passwordLoginErrorText } from '../lib/authLoginError.js';
+import { passwordChangeBlocker, currentPasswordErrorText, passwordUpdateErrorText } from '../lib/passwordChange.js';
+import { passwordMeetsRules } from '../lib/passwordRules.js';
 import { tourDoneKey } from '../data/onboardingTour.js';
 
 // The recap's "Skip, go to Home" (note 80): the tour never starts by itself afterwards.
@@ -1239,6 +1241,12 @@ const initialState = {
   // signed in (the Login screen's fields are a separate, signed-out flow).
   securityPassword: '',
   securityPasswordConfirm: '',
+  // Proof it is the owner before the change: the current password, or (mode
+  // 'code') the 6-digit reauthentication code Supabase emails.
+  securityCurrentPassword: '',
+  securityProofMode: 'password',
+  securityCode: '',
+  securityCodeSent: false,
   securityBusy: false,
   securityError: '',
   securitySaved: false,
@@ -5455,6 +5463,7 @@ export function BanBeProvider({ children }) {
 
   const openSecurity = useCallback(() => set({
     screen: 'security', securityPassword: '', securityPasswordConfirm: '',
+    securityCurrentPassword: '', securityProofMode: 'password', securityCode: '', securityCodeSent: false,
     securityError: '', securitySaved: false, securityResetSent: false,
   }), [set]);
 
@@ -9247,7 +9256,7 @@ export function BanBeProvider({ children }) {
       return T('Hãy nhập tên hiển thị của bạn.', 'Please enter a display name.');
     }
     if (code === 'VALID_PASSWORD_REQUIRED') {
-      return T('Mật khẩu phải có ít nhất 8 ký tự.', 'Password must be at least 8 characters.');
+      return T('Mật khẩu chưa đáp ứng đủ các yêu cầu bên dưới ô mật khẩu.', 'Your password does not meet every item in the checklist under the password field.');
     }
     if (code === 'AUTH_EMAIL_DELIVERY_FAILED') {
       return T('Không thể gửi email lúc này. Vui lòng thử lại sau.', 'We could not send the email right now. Please try again later.');
@@ -9302,7 +9311,8 @@ export function BanBeProvider({ children }) {
     const email = s.loginEmail.trim();
     const displayName = s.loginNickname.trim();
     if (!displayName) return set({ reserveError: authEmailErrorMessage({ code: 'VALID_NAME_REQUIRED' }, 'signup') });
-    if (!passwordValid(s.loginPassword)) return set({ reserveError: authEmailErrorMessage({ code: 'VALID_PASSWORD_REQUIRED' }, 'signup') });
+    // Sign-up uses the full checklist (the server enforces the same rules), not just the length.
+    if (!passwordMeetsRules(s.loginPassword)) return set({ reserveError: authEmailErrorMessage({ code: 'VALID_PASSWORD_REQUIRED' }, 'signup') });
     if (s.loginPassword !== s.loginPasswordConfirm) {
       return set({ reserveError: T('Mật khẩu xác nhận không khớp.', 'Passwords do not match.') });
     }
@@ -9593,49 +9603,90 @@ export function BanBeProvider({ children }) {
   // ---- Account > Security ----
   const securityPasswordType = useCallback((e) => set({ securityPassword: e.target.value, securityError: '', securitySaved: false }), [set]);
   const securityPasswordConfirmType = useCallback((e) => set({ securityPasswordConfirm: e.target.value, securityError: '', securitySaved: false }), [set]);
+  const securityCurrentPasswordType = useCallback((e) => set({ securityCurrentPassword: e.target.value, securityError: '', securitySaved: false }), [set]);
+  const securityCodeType = useCallback((e) => set({ securityCode: e.target.value.replace(/\D/g, '').slice(0, 6), securityError: '', securitySaved: false }), [set]);
+  const setSecurityProofMode = useCallback((mode) => set({
+    securityProofMode: mode === 'code' ? 'code' : 'password',
+    securityCurrentPassword: '', securityCode: '', securityCodeSent: false, securityError: '', securitySaved: false,
+  }), [set]);
 
-  // Deliberately one form for both cases this section has to serve: an
-  // account that has only ever used emailed sign-in codes setting its first
-  // password, and one replacing a password it already has. Supabase treats
-  // both as the same update on the signed-in user, and nothing the client
-  // can read reliably says which of the two an account is — so branching
-  // here would mean guessing at the label and getting it wrong half the time.
+  // "No password or forgot it": Supabase emails a 6-digit reauthentication
+  // code to the account's own address, which updateUser takes as `nonce`.
+  const sendSecurityReauthCode = useCallback(async () => {
+    set({ securityBusy: true, securityError: '', securitySaved: false });
+    const { error } = await supabase.auth.reauthenticate();
+    if (error) return set({ securityBusy: false, securityError: passwordUpdateErrorText(error, T) });
+    set({ securityBusy: false, securityCodeSent: true, securityCode: '' });
+  }, [set, T]);
+
+  // Changing the password needs proof it is the owner, not just a session
+  // left open on some device: the current password (checked on a throwaway
+  // client so the real session is untouched) or the emailed code. One form
+  // serves both a first password and a replacement, since the client cannot
+  // reliably tell which an account has.
   const saveSecurityPassword = useCallback(async () => {
-    if (!passwordValid(s.securityPassword)) {
-      return set({ securityError: T('Mật khẩu cần ít nhất 8 ký tự.', 'Passwords need at least 8 characters.'), securitySaved: false });
-    }
-    if (s.securityPassword !== s.securityPasswordConfirm) {
-      return set({ securityError: T('Mật khẩu xác nhận không khớp.', 'Passwords do not match.'), securitySaved: false });
+    const mode = s.securityProofMode;
+    const password = s.securityPassword;
+    const blocker = passwordChangeBlocker({
+      mode, current: s.securityCurrentPassword, code: s.securityCode, password, confirm: s.securityPasswordConfirm,
+    });
+    if (blocker || s.securityBusy) {
+      const text = {
+        same: T('Mật khẩu mới phải khác mật khẩu hiện tại.', 'Your new password must be different from the current one.'),
+        confirm: T('Mật khẩu xác nhận không khớp.', 'Passwords do not match.'),
+      }[blocker];
+      return text ? set({ securityError: text, securitySaved: false }) : undefined;
     }
     set({ securityBusy: true, securityError: '', securitySaved: false });
-    const { error } = await supabase.auth.updateUser({ password: s.securityPassword });
-    if (error) {
-      return set({ securityBusy: false, securityError: T('Không lưu được mật khẩu lúc này. Vui lòng thử lại.', "We couldn't save that password right now. Please try again.") });
-    }
-    set({ securityBusy: false, securityPassword: '', securityPasswordConfirm: '', securitySaved: true });
-  }, [set, s.securityPassword, s.securityPasswordConfirm, T]);
 
-  // "Forgot your current password?" — emails the recovery link to this
-  // account's own address. Shown as sent either way: the endpoint already
-  // refuses to reveal whether an address has an account, and surfacing a
-  // failure here would leak the same thing by omission.
+    if (mode !== 'code') {
+      const email = s.user?.email;
+      if (!email) {
+        return set({ securityBusy: false, securityError: T('Tài khoản này không có email để kiểm tra mật khẩu. Hãy xác nhận bằng mã.', 'This account has no email to check a password against. Confirm with a code instead.') });
+      }
+      const probe = createReauthClient();
+      const { error: probeError } = await probe.auth.signInWithPassword({ email, password: s.securityCurrentPassword });
+      // Only ever 'local': revokes the probe's own session, never the person's others.
+      if (!probeError) probe.auth.signOut({ scope: 'local' }).catch(() => {});
+      if (probeError) return set({ securityBusy: false, securityError: currentPasswordErrorText(probeError, T) });
+    }
+
+    const attrs = mode === 'code' ? { password, nonce: s.securityCode.trim() } : { password };
+    const { error } = await supabase.auth.updateUser(attrs);
+    if (error) {
+      const patch = { securityBusy: false, securityError: passwordUpdateErrorText(error, T) };
+      // The server wants the emailed code on this session: switch the form to it.
+      if (error.code === 'reauthentication_needed' && mode !== 'code') Object.assign(patch, { securityProofMode: 'code', securityCurrentPassword: '', securityCode: '', securityCodeSent: false });
+      return set(patch);
+    }
+    const { error: othersError } = await supabase.auth.signOut({ scope: 'others' }).catch((e) => ({ error: e }));
+    set({
+      securityBusy: false, securityPassword: '', securityPasswordConfirm: '', securityCurrentPassword: '',
+      securityCode: '', securityCodeSent: false, securityProofMode: 'password',
+      securitySaved: othersError ? 'only_here' : 'others',
+    });
+  }, [set, s.securityProofMode, s.securityPassword, s.securityPasswordConfirm, s.securityCurrentPassword, s.securityCode, s.securityBusy, s.user?.email, T]);
+
+  // Older "Forgot your current password?" reset-link action. The Security
+  // screen now uses the emailed code instead; kept for any other caller.
   const sendSecurityPasswordReset = useCallback(async () => {
     const email = s.user?.email;
     if (!email) return;
     set({ securityBusy: true, securityError: '' });
     try {
       await requestPasswordReset({ email });
-    } catch { /* same message either way — see above */ }
+    } catch { /* same message either way, the endpoint never says if an account exists */ }
     set({ securityBusy: false, securityResetSent: true });
   }, [set, s.user?.email]);
 
   // ---- reset-password screen (landed on via the emailed recovery link —
-  // see the PASSWORD_RECOVERY branch of onAuthStateChange above) ----
+  // see the PASSWORD_RECOVERY branch of onAuthStateChange above). The link
+  // itself is the proof, so no current password here. ----
   const newPasswordType = useCallback((e) => set({ newPassword: e.target.value, resetPasswordError: '' }), [set]);
   const newPasswordConfirmType = useCallback((e) => set({ newPasswordConfirm: e.target.value, resetPasswordError: '' }), [set]);
   const submitNewPassword = useCallback(async () => {
-    if (!passwordValid(s.newPassword)) {
-      return set({ resetPasswordError: T('Mật khẩu phải có ít nhất 8 ký tự.', 'Password must be at least 8 characters.') });
+    if (!passwordMeetsRules(s.newPassword)) {
+      return set({ resetPasswordError: T('Mật khẩu chưa đạt đủ các yêu cầu bên dưới.', 'The password does not meet every requirement below yet.') });
     }
     if (s.newPassword !== s.newPasswordConfirm) {
       return set({ resetPasswordError: T('Mật khẩu không khớp.', 'Passwords do not match.') });
@@ -9643,7 +9694,7 @@ export function BanBeProvider({ children }) {
     set({ resetPasswordBusy: true, resetPasswordError: '' });
     const { error } = await supabase.auth.updateUser({ password: s.newPassword });
     if (error) {
-      set({ resetPasswordBusy: false, resetPasswordError: T('Không thể đặt mật khẩu mới. Vui lòng thử lại.', 'Could not set the new password. Please try again.') });
+      set({ resetPasswordBusy: false, resetPasswordError: passwordUpdateErrorText(error, T) });
       return;
     }
     set({ resetPasswordBusy: false, newPassword: '', newPasswordConfirm: '', screen: 'home' });
@@ -11971,7 +12022,7 @@ export function BanBeProvider({ children }) {
     setHomeView, startHosting, closeStartHosting, openDockCreate, closeDockCreate, loadEventFill,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
     loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, setRewardTimezone, setOutingGoal, rewardsEnabled, rewardsV2Enabled, loadFeatureFlags, setFeatureFlag, setOnboardingVersion, toggleLang, resolvedTheme, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, reloadFavorites, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, markActivationCelebrated, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
-    securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
+    securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset, securityCurrentPasswordType, securityCodeType, setSecurityProofMode, sendSecurityReauthCode,
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, setQty, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, goReserveConfirmed, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
@@ -12011,7 +12062,7 @@ export function BanBeProvider({ children }) {
     setHomeView, startHosting, closeStartHosting, openDockCreate, closeDockCreate, loadEventFill,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
     loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, setRewardTimezone, setOutingGoal, rewardsEnabled, rewardsV2Enabled, loadFeatureFlags, setFeatureFlag, setOnboardingVersion, toggleLang, resolvedTheme, openArea, pickArea, goSchedule, backFromNotifications, openAuth, browseAsGuest, promptSignIn, dismissGuestPrompt, continueFromGuestPrompt, scheduleSnapshot, scheduleInfoFor, addToBanbeSchedule, removeFromBanbeSchedule, reloadFavorites, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, finishOnboardingFlow, dismissActivationChecklist, markActivationCelebrated, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
-    securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
+    securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset, securityCurrentPasswordType, securityCodeType, setSecurityProofMode, sendSecurityReauthCode,
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, setQty, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, goReserveConfirmed, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,

@@ -1,5 +1,7 @@
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, display, inkButton, alert } from '../theme.js';
+import { passwordMeetsRules } from '../lib/passwordRules.js';
+import PasswordChecklist from '../components/PasswordChecklist.jsx';
 
 // Landed on only via a real Supabase "recovery" session (the emailed
 // password-reset link) — see the PASSWORD_RECOVERY branch of
@@ -8,7 +10,7 @@ import { paper, ink, display, inkButton, alert } from '../theme.js';
 export default function ResetPassword() {
   const { state, T, newPasswordType, newPasswordConfirmType, submitNewPassword } = useBanBe();
   const s = state;
-  const valid = s.newPassword.length >= 8 && s.newPassword === s.newPasswordConfirm;
+  const valid = passwordMeetsRules(s.newPassword) && s.newPassword === s.newPasswordConfirm;
 
   const btnStyle = inkButton({
     marginTop: 14, padding: '15px 0', borderRadius: 18,
@@ -24,8 +26,14 @@ export default function ResetPassword() {
         {T('Chọn một mật khẩu mới cho tài khoản banbe của bạn.', 'Choose a new password for your banbe account.')}
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 18 }}>
-        <input value={s.newPassword} onChange={newPasswordType} type="password" autoComplete="new-password" placeholder={T('Mật khẩu mới', 'New password')} style={fieldStyle} />
-        <input value={s.newPasswordConfirm} onChange={newPasswordConfirmType} type="password" autoComplete="new-password" placeholder={T('Nhập lại mật khẩu mới', 'Confirm new password')} style={fieldStyle} />
+        <div>
+          <input value={s.newPassword} onChange={newPasswordType} type="password" autoComplete="new-password" aria-label={T('Mật khẩu mới', 'New password')} aria-describedby="reset-new-rules" placeholder={T('Mật khẩu mới', 'New password')} style={fieldStyle} />
+          <div id="reset-new-rules"><PasswordChecklist password={s.newPassword} T={T} /></div>
+        </div>
+        <input value={s.newPasswordConfirm} onChange={newPasswordConfirmType} type="password" autoComplete="new-password" aria-label={T('Nhập lại mật khẩu mới', 'Confirm new password')} placeholder={T('Nhập lại mật khẩu mới', 'Confirm new password')} style={fieldStyle} />
+        {s.newPasswordConfirm && s.newPassword !== s.newPasswordConfirm ? (
+          <p aria-live="polite" style={{ fontSize: 12, lineHeight: 1.5, color: ink, opacity: 0.7, margin: 0 }}>{T('Mật khẩu xác nhận không khớp.', 'Passwords do not match.')}</p>
+        ) : null}
       </div>
       <div onClick={valid && !s.resetPasswordBusy ? submitNewPassword : undefined} style={btnStyle}>
         {s.resetPasswordBusy ? T('Đang lưu…', 'Saving…') : T('Lưu mật khẩu mới', 'Save new password')}

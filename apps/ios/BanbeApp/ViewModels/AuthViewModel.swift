@@ -224,10 +224,30 @@ final class AuthViewModel: ObservableObject {
 
     /// Sets (or replaces) this account's password. Works for an account
     /// that has only ever signed in with an emailed code as well as one
-    /// that already has a password — Supabase treats both as the same
-    /// update on the signed-in user, so there's nothing to branch on.
-    func updatePassword(_ newPassword: String) async throws {
-        _ = try await SupabaseService.client.auth.update(user: UserAttributes(password: newPassword))
+    /// that already has a password. `nonce` is the emailed reauthentication
+    /// code when the person proved it that way (Security's code path).
+    func updatePassword(_ newPassword: String, nonce: String? = nil) async throws {
+        _ = try await SupabaseService.client.auth.update(user: UserAttributes(password: newPassword, nonce: nonce))
+    }
+
+    /// Checks the current password on a throwaway in-memory client, so the real session is never replaced.
+    /// Throws the sign-in error (e.g. invalid_credentials) when it is wrong.
+    func verifyCurrentPassword(_ password: String) async throws {
+        guard let email = session?.user.email, !email.isEmpty else { throw AuthError.sessionMissing }
+        let probe = PasswordChange.makeReauthClient()
+        _ = try await probe.auth.signIn(email: email, password: password)
+        // Only ever .local: revokes the probe's own session, never the person's others.
+        try? await probe.auth.signOut(scope: .local)
+    }
+
+    /// "No password or forgot it": Supabase emails a 6-digit code that `updatePassword(_:nonce:)` takes.
+    func sendReauthenticationCode() async throws {
+        try await SupabaseService.client.auth.reauthenticate()
+    }
+
+    /// After a password change: ends every session except this one. False when that call failed.
+    func signOutOtherSessions() async -> Bool {
+        do { try await SupabaseService.client.auth.signOut(scope: .others); return true } catch { return false }
     }
 
     /// "Forgot password" — emails the recovery link. Deliberately resolves

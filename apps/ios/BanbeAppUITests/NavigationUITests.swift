@@ -283,21 +283,26 @@ final class NavigationUITests: XCTestCase {
         XCTAssertFalse(app.buttons["login.submit"].exists)
         XCTAssertFalse(app.staticTexts["login.emailError"].exists)
 
-        // Rejected by the server's own pattern, so the button must not offer.
+        // Rejected by the server's own pattern, so the button must not offer. The complaint waits until the
+        // field is left (focus moves to the password field), never mid-typing.
         email.tap()
         for bad in ["not-an-email", "a@b"] {
+            email.tap()
             email.press(forDuration: 1.1)
             if app.menuItems["Select All"].waitForExistence(timeout: 2) {
                 app.menuItems["Select All"].tap()
             }
             email.typeText(bad)
+            XCTAssertFalse(app.staticTexts["login.emailError"].exists, "No complaint while typing \(bad)")
+            app.secureTextFields["login.password"].tap()
             XCTAssertTrue(app.staticTexts["login.emailError"].waitForExistence(timeout: 3),
-                          "Expected a format complaint for \(bad)")
+                          "Expected a format complaint for \(bad) after leaving the field")
             XCTAssertFalse(app.buttons["login.submit"].exists,
                            "Submit should stay hidden for \(bad)")
         }
 
         // A real address brings the button back and clears the complaint.
+        email.tap()
         email.press(forDuration: 1.1)
         if app.menuItems["Select All"].waitForExistence(timeout: 2) {
             app.menuItems["Select All"].tap()

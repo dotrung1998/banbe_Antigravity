@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import { signReauthProof, verifyReauthProof } from '../_lib/reauthProof.js';
 import { gatherOrganizerFacts, planOrganizerCleanup, applyOrganizerCleanup } from '../_lib/organizerCleanup.js';
 import { renderEmail, renderEmailText } from '../_lib/emailTemplate.js';
+import { passwordMeetsRules } from '../../src/lib/passwordRules.js';
 
 // Consolidated dispatcher for the /api/auth/* trio, folded together to fit
 // the Hobby-plan 12-function cap (see api/notify.js for the same treatment
@@ -211,7 +212,8 @@ async function handleSignupPassword(req, res, admin, body) {
 
   if (!EMAIL_PATTERN.test(email)) return res.status(400).json({ error: 'VALID_EMAIL_REQUIRED' });
   if (!displayName) return res.status(400).json({ error: 'VALID_NAME_REQUIRED' });
-  if (password.length < 8) return res.status(400).json({ error: 'VALID_PASSWORD_REQUIRED' });
+  // Same checklist the sign-up form shows (src/lib/passwordRules.js), so a client that skips it is still refused.
+  if (!passwordMeetsRules(password)) return res.status(400).json({ error: 'VALID_PASSWORD_REQUIRED' });
 
   const { userId: authUserId, resolved, sources } = await resolveAuthUserId(admin, email);
   if (!resolved) {

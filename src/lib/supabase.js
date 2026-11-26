@@ -14,6 +14,17 @@ export function getAuthRedirectUrl() {
   return window.location.origin;
 }
 
+// A throwaway auth client for re-checking the signed-in person's current
+// password (Account › Security) without touching their real session: no
+// persistence, no refresh, its own storage key. Callers must never call
+// signOut() on it with the default (global) scope, that would sign the
+// person out everywhere.
+export function createReauthClient() {
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'banbe-reauth-throwaway' },
+  });
+}
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,

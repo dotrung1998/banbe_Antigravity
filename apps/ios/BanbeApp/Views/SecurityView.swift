@@ -10,11 +10,15 @@ struct SecurityView: View {
 
     @State private var password = ""
     @State private var confirmPassword = ""
+    /// Proof it is the owner before the change: the current password, or the emailed 6-digit code.
+    @State private var currentPassword = ""
+    @State private var proofMode: PasswordChange.ProofMode = .password
+    @State private var reauthCode = ""
+    @State private var codeSent = false
     @State private var passwordBusy = false
     @State private var passwordError = ""
-    @State private var passwordSaved = false
-    @State private var resetBusy = false
-    @State private var resetSent = false
+    /// nil = nothing saved yet; true = saved and other devices signed out; false = saved, sign-out of others failed.
+    @State private var passwordSaved: Bool?
     @State private var faceIDError = ""
     @State private var promoConfirmOpen = false
 
@@ -22,9 +26,12 @@ struct SecurityView: View {
         BiometricAuthService.biometryType() == .touchID ? "Touch ID" : "Face ID"
     }
 
-    private var canSubmitPassword: Bool {
-        !passwordBusy && password.count >= 8 && password == confirmPassword
+    private var passwordBlocker: PasswordChange.Blocker? {
+        PasswordChange.blocker(mode: proofMode, current: currentPassword, code: reauthCode,
+                               password: password, confirm: confirmPassword)
     }
+
+    private var canSubmitPassword: Bool { !passwordBusy && passwordBlocker == nil }
 
     var body: some View {
         ScreenScaffold {
@@ -190,122 +197,190 @@ struct SecurityView: View {
     // MARK: - Password
 
     private var passwordSection: some View {
-        section(app.T("Mật khẩu", "Password")) {
-            // Deliberately one form for both cases the section has to serve:
-            // an account that has only ever used emailed sign-in codes is
-            // setting its first password, and one that already has a
-            // password is replacing it. Supabase treats both as the same
-            // update on the signed-in user, and nothing the client can read
-            // reliably says which of the two an account is — so branching
-            // here would mean guessing at the label and getting it wrong
-            // half the time.
+        section(app.T("Đổi mật khẩu", "Change password")) {
+            // One form for a first password and a replacement (the client cannot reliably tell which an account
+            // has), but always behind proof it is the owner, not just a session left open on some device.
             Text(app.T(
-                "Đặt mật khẩu để đăng nhập bằng email và mật khẩu, thay vì chờ mã gửi qua email mỗi lần.",
-                "Set a password so you can sign in with your email and password instead of waiting for a code every time."
+                "Để bảo vệ tài khoản, hãy xác nhận đó là bạn trước khi đặt mật khẩu mới.",
+                "To protect your account, confirm it is you before setting a new password."
             ))
             .font(.app(size: 12.5))
             .lineSpacing(3)
             .foregroundStyle(app.palette.ink.opacity(0.75))
 
-            BanbeField(label: nil, placeholder: app.T("Mật khẩu mới", "New password"),
-                       text: $password, secure: true)
+            if proofMode == .code {
+                codeProof
+            } else {
+                BanbeField(label: app.T("Mật khẩu hiện tại", "Current password"), placeholder: "",
+                           text: $currentPassword, secure: true, contentType: .password)
+                    .accessibilityIdentifier("security.currentPassword")
+                    .onChange(of: currentPassword) { _, _ in clearFeedback() }
+                proofLink(app.T("Chưa có hoặc quên mật khẩu? Xác nhận bằng mã qua email",
+                                "No password or forgot it? Confirm with an email code"), id: "security.useCode") {
+                    switchProof(to: .code)
+                }
+            }
+
+            BanbeField(label: app.T("Mật khẩu mới", "New password"), placeholder: "",
+                       text: $password, secure: true, contentType: .newPassword)
                 .accessibilityIdentifier("security.password")
-            BanbeField(label: nil, placeholder: app.T("Nhập lại mật khẩu", "Re-enter password"),
-                       text: $confirmPassword, secure: true)
+                .onChange(of: password) { _, _ in clearFeedback() }
+            PasswordChecklist(password: password, isEN: app.isEN)
+            BanbeField(label: app.T("Nhập lại mật khẩu mới", "Re-enter new password"), placeholder: "",
+                       text: $confirmPassword, secure: true, contentType: .newPassword)
                 .accessibilityIdentifier("security.passwordConfirm")
+                .onChange(of: confirmPassword) { _, _ in clearFeedback() }
 
             if !passwordError.isEmpty {
                 Text(passwordError)
                     .font(.app(size: 12))
                     .foregroundStyle(BanbeTheme.alert)
-            } else if passwordSaved {
-                Text(app.T("Đã lưu mật khẩu mới.", "New password saved."))
+                    .accessibilityIdentifier("security.passwordError")
+            } else if let saved = passwordSaved {
+                Text(saved
+                     ? app.T("Đã đổi mật khẩu. Các thiết bị khác đã được đăng xuất.",
+                             "Password changed. Other devices have been signed out.")
+                     : app.T("Đã đổi mật khẩu. Chưa đăng xuất được các thiết bị khác, hãy thử lại sau.",
+                             "Password changed. We could not sign out your other devices yet, try again later."))
                     .font(.app(size: 12))
-            } else if !password.isEmpty && password.count < 8 {
-                Text(app.T("Mật khẩu cần ít nhất 8 ký tự.", "Passwords need at least 8 characters."))
+                    .accessibilityIdentifier("security.passwordSaved")
+            } else if let hint = passwordHint {
+                Text(hint)
                     .font(.app(size: 12))
                     .foregroundStyle(app.palette.ink.opacity(0.7))
             }
 
-            InkButton(title: passwordBusy ? app.T("Đang lưu…", "Saving…") : app.T("Lưu mật khẩu", "Save password"),
+            InkButton(title: passwordBusy ? app.T("Đang lưu…", "Saving…") : app.T("Đổi mật khẩu", "Change password"),
                       enabled: canSubmitPassword) {
                 Task { await savePassword() }
             }
-
-            forgotPasswordLink
+            .accessibilityIdentifier("security.savePassword")
         }
     }
 
-    private var forgotPasswordLink: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if resetSent {
-                // Same message whether or not that address has an account —
-                // the endpoint won't say, on purpose.
-                Text(app.T(
-                    "Đã gửi email đặt lại mật khẩu. Mở link trong email để chọn mật khẩu mới, rồi quay lại đây.",
-                    "Password reset email sent. Open the link in it to choose a new password, then come back here."
-                ))
-                .font(.app(size: 12))
-                .lineSpacing(3)
-            } else {
-                Button {
-                    Task { await sendReset() }
-                } label: {
-                    Text(resetBusy
-                         ? app.T("Đang gửi…", "Sending…")
-                         : app.T("Quên mật khẩu hiện tại?", "Forgotten your current password?"))
-                        .font(.app(size: 12.5, weight: .semibold))
-                        .underline()
-                        .foregroundStyle(app.palette.ink)
-                }
-                .buttonStyle(.plain)
-                .disabled(resetBusy || app.userEmail == nil)
-                .accessibilityIdentifier("security.forgotPassword")
+    /// Quiet hints only once the person has typed into the field they concern.
+    private var passwordHint: String? {
+        switch passwordBlocker {
+        case .same where !password.isEmpty:
+            return app.T("Mật khẩu mới phải khác mật khẩu hiện tại.", "Your new password must be different from the current one.")
+        case .confirm where !confirmPassword.isEmpty:
+            return app.T("Mật khẩu xác nhận không khớp.", "Passwords do not match.")
+        default:
+            return nil
+        }
+    }
 
-                Text(app.T(
-                    "Chúng tôi sẽ gửi link đặt lại mật khẩu tới email của bạn.",
-                    "We'll email you a link to reset it."
-                ))
-                .font(.app(size: 11.5))
-                .foregroundStyle(app.palette.ink.opacity(0.65))
+    private var codeProof: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(codeSent
+                 ? app.T("Đã gửi mã 6 số tới \(app.userEmail ?? "email của bạn").",
+                         "We sent a 6-digit code to \(app.userEmail ?? "your email").")
+                 : app.T("Chúng tôi sẽ gửi mã 6 số tới email của tài khoản.",
+                         "We'll send a 6-digit code to this account's email."))
+                .font(.app(size: 12.5))
+                .lineSpacing(3)
+            if codeSent {
+                BanbeField(label: app.T("Mã xác nhận", "Confirmation code"), placeholder: "123456",
+                           text: $reauthCode, keyboard: .numberPad, contentType: .oneTimeCode)
+                    .accessibilityIdentifier("security.reauthCode")
+                    .onChange(of: reauthCode) { _, value in
+                        let digits = String(value.filter(\.isNumber).prefix(6))
+                        if digits != value { reauthCode = digits }
+                        clearFeedback()
+                    }
+            }
+            proofLink(codeSent ? app.T("Gửi lại mã", "Send a new code") : app.T("Gửi mã qua email", "Email me a code"),
+                      id: "security.sendCode") {
+                Task { await sendCode() }
+            }
+            .disabled(passwordBusy)
+            proofLink(app.T("Dùng mật khẩu hiện tại", "Use my current password"), id: "security.usePassword") {
+                switchProof(to: .password)
             }
         }
-        .padding(.top, 6)
     }
 
-    private func savePassword() async {
+    private func proofLink(_ title: String, id: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.app(size: 12.5, weight: .semibold))
+                .underline()
+                .foregroundStyle(app.palette.ink)
+                .multilineTextAlignment(.leading)
+                .frame(minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(id)
+    }
+
+    private func clearFeedback() {
         passwordError = ""
-        passwordSaved = false
-        guard password.count >= 8 else {
-            passwordError = app.T("Mật khẩu cần ít nhất 8 ký tự.", "Passwords need at least 8 characters.")
-            return
-        }
-        guard password == confirmPassword else {
-            passwordError = app.T("Hai mật khẩu chưa khớp nhau.", "Those two passwords don't match.")
-            return
-        }
+        passwordSaved = nil
+    }
+
+    private func switchProof(to mode: PasswordChange.ProofMode) {
+        proofMode = mode
+        currentPassword = ""
+        reauthCode = ""
+        codeSent = false
+        clearFeedback()
+    }
+
+    private func sendCode() async {
+        clearFeedback()
         passwordBusy = true
         defer { passwordBusy = false }
         do {
-            try await auth.updatePassword(password)
-            password = ""
-            confirmPassword = ""
-            passwordSaved = true
+            try await auth.sendReauthenticationCode()
+            reauthCode = ""
+            codeSent = true
         } catch {
-            passwordError = app.T("Không lưu được mật khẩu lúc này. Vui lòng thử lại.",
-                                  "We couldn't save that password right now. Please try again.")
+            passwordError = PasswordChange.updateMessage(for: error, isEN: app.isEN)
         }
     }
 
-    private func sendReset() async {
-        guard let email = app.userEmail else { return }
-        resetBusy = true
-        defer { resetBusy = false }
-        // Failures are shown as sent too — the endpoint already refuses to
-        // reveal whether an address has an account, and a visible error
-        // here would leak the same thing by omission.
-        try? await auth.sendPasswordReset(to: email)
-        resetSent = true
+    private func savePassword() async {
+        clearFeedback()
+        if let blocker = passwordBlocker {
+            if blocker == .same { passwordError = passwordHint ?? "" }
+            if blocker == .confirm { passwordError = app.T("Mật khẩu xác nhận không khớp.", "Passwords do not match.") }
+            return
+        }
+        guard !passwordBusy else { return }
+        passwordBusy = true
+        defer { passwordBusy = false }
+
+        if proofMode == .password {
+            do {
+                try await auth.verifyCurrentPassword(currentPassword)
+            } catch {
+                passwordError = PasswordChange.currentPasswordMessage(for: error, isEN: app.isEN)
+                return
+            }
+        }
+        do {
+            let nonce = proofMode == .code ? reauthCode.trimmingCharacters(in: .whitespaces) : nil
+            try await auth.updatePassword(password, nonce: nonce)
+        } catch {
+            passwordError = PasswordChange.updateMessage(for: error, isEN: app.isEN)
+            // The server wants the emailed code on this session: switch the form to it.
+            if PasswordChange.isReauthenticationNeeded(error) && proofMode == .password {
+                proofMode = .code
+                currentPassword = ""
+                reauthCode = ""
+                codeSent = false
+            }
+            return
+        }
+        let othersSignedOut = await auth.signOutOtherSessions()
+        password = ""
+        confirmPassword = ""
+        currentPassword = ""
+        reauthCode = ""
+        codeSent = false
+        proofMode = .password
+        passwordSaved = othersSignedOut
     }
 
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {

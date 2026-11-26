@@ -21,6 +21,10 @@ struct LoginView: View {
     @State private var passwordConfirm = ""
     @State private var resetRequested = false
     @State private var localError = ""
+    /// The email format error waits until the field is left or the form is submitted, and typing in the field
+    /// again hides it until the next leave (web twin: src/lib/emailFieldCheck.js).
+    @State private var emailChecked = false
+    @FocusState private var focusedField: String?
 
     /// The same pattern every /api/auth/* endpoint enforces, checked
     /// against the trimmed value those endpoints actually receive — so the
@@ -64,8 +68,10 @@ struct LoginView: View {
     /// hides the button without complaining. Something typed that isn't an
     /// address does say so.
     private var showEmailFormatError: Bool {
-        !auth.codeSent && !email.trimmingCharacters(in: .whitespaces).isEmpty && !emailFormatOk
+        !auth.codeSent && emailChecked && !email.trimmingCharacters(in: .whitespaces).isEmpty && !emailFormatOk
     }
+    /// Only once the confirm field has something in it, so an empty field is not called a mismatch.
+    private var confirmMismatch: Bool { !passwordConfirm.isEmpty && password != passwordConfirm }
 
     /// Once a code has been sent the address is already settled and the
     /// button verifies the code instead, so the email check doesn't apply.
@@ -83,7 +89,7 @@ struct LoginView: View {
             // Signing up needs a password worth keeping and a matching
             // confirmation; logging in just needs something typed.
             return mode == .login ? !password.isEmpty
-                                  : (password.count >= 8 && password == passwordConfirm)
+                                  : (PasswordRules.meetsRules(password) && password == passwordConfirm)
         }
         return true
     }
@@ -211,13 +217,20 @@ struct LoginView: View {
                         // honey border + message + the one-tap way out (the typed email is kept across tabs).
                         BanbeField(label: nil, placeholder: "ban@email.com", text: emailBinding, keyboard: .emailAddress,
                                    state: emailFieldState,
+                                   focus: $focusedField, focusID: "email",
                                    noteActionTitle: emailIssue == "exists" ? app.T("Đăng nhập?", "Log in instead?")
                                        : emailIssue == "notFound" ? app.T("Đăng ký?", "Sign up instead?") : nil,
                                    noteAction: emailIssue == nil ? nil : { switchModeForEmailIssue() },
                                    noteIdentifier: "login.emailIssue",
                                    contentType: .username)
                             .accessibilityIdentifier("login.email")
-                            .onChange(of: email) { old, new in autofillArrived(old: old, new: new) }
+                            .onChange(of: email) { old, new in
+                                if focusedField == "email" { emailChecked = false }
+                                autofillArrived(old: old, new: new)
+                            }
+                            .onChange(of: focusedField) { old, new in
+                                if old == "email" && new != "email" { emailChecked = true }
+                            }
                         if showEmailFormatError {
                             Text(app.T("Email chưa đúng định dạng (ví dụ: ban@email.com)",
                                        "That doesn't look like an email address (e.g. ban@email.com)"))
@@ -227,15 +240,32 @@ struct LoginView: View {
                                 .accessibilityIdentifier("login.emailError")
                         }
                         if method == .password {
-                            BanbeField(label: nil, placeholder: app.T("Mật khẩu", "Password"),
-                                       text: $password, secure: true,
-                                       contentType: mode == .signup ? .newPassword : .password)
-                                .accessibilityIdentifier("login.password")
-                                .onChange(of: password) { old, new in autofillArrived(old: old, new: new) }
+                            VStack(alignment: .leading, spacing: 0) {
+                                BanbeField(label: nil, placeholder: app.T("Mật khẩu", "Password"),
+                                           text: $password, secure: true,
+                                           contentType: mode == .signup ? .newPassword : .password)
+                                    .accessibilityIdentifier("login.password")
+                                    .onChange(of: password) { old, new in autofillArrived(old: old, new: new) }
+                                // Sign up only: logging in never checks the rules, older accounts may have weaker passwords.
+                                if mode == .signup {
+                                    PasswordChecklist(password: password, isEN: app.isEN)
+                                }
+                            }
                             if mode == .signup {
-                                BanbeField(label: nil, placeholder: app.T("Nhập lại mật khẩu", "Re-enter password"),
-                                           text: $passwordConfirm, secure: true, contentType: .newPassword)
-                                    .accessibilityIdentifier("login.passwordConfirm")
+                                VStack(alignment: .leading, spacing: 0) {
+                                    BanbeField(label: nil, placeholder: app.T("Nhập lại mật khẩu", "Re-enter password"),
+                                               text: $passwordConfirm, secure: true,
+                                               state: confirmMismatch ? .error("") : .normal, contentType: .newPassword)
+                                        .accessibilityIdentifier("login.passwordConfirm")
+                                    if confirmMismatch {
+                                        Text(app.T("Mật khẩu xác nhận không khớp", "The passwords do not match"))
+                                            .font(.app(size: 12))
+                                            .foregroundStyle(BanbeTheme.alert)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.top, 6)
+                                            .accessibilityIdentifier("login.confirmMismatch")
+                                    }
+                                }
                             }
                         }
                     }
@@ -422,6 +452,7 @@ struct LoginView: View {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         localError = ""
         resetRequested = false
+        emailChecked = true
 
         // The emailed code finishes every flow that has one, including a
         // password sign-up — the account exists by then but is unconfirmed.
@@ -436,8 +467,9 @@ struct LoginView: View {
         case (.password, .login):
             await auth.signInWithPassword(email: email, password: password, isEN: app.isEN)
         case (.password, .signup):
-            guard password.count >= 8 else {
-                localError = app.T("Mật khẩu cần ít nhất 8 ký tự.", "Passwords need at least 8 characters.")
+            guard PasswordRules.meetsRules(password) else {
+                localError = app.T("Mật khẩu chưa đáp ứng đủ các yêu cầu bên dưới ô mật khẩu.",
+                                   "Your password does not meet every item in the checklist under the password field.")
                 return
             }
             guard password == passwordConfirm else {
