@@ -55,11 +55,19 @@ test.describe('Login & Signup Notification Messages', () => {
 
     // These all used to slip past the client check and get bounced by the
     // server, which enforces exactly the pattern the client now does.
+    // While the field is being typed in there is no complaint; it comes once the field is left.
     for (const bad of ['not-an-email', 'a@b', 'hello a@b.c world', 'a@@b.c']) {
       await email.fill(bad);
+      await expect(error).toHaveCount(0);
+      await expect(submit).toHaveCount(0);
+      await email.blur();
       await expect(error).toBeVisible();
       await expect(submit).toHaveCount(0);
     }
+
+    // Back in the field and typing again: the complaint waits for the next leave.
+    await email.fill('ban@email');
+    await expect(error).toHaveCount(0);
 
     // A real address brings the button back and clears the complaint.
     await email.fill('ban@email.com');
@@ -405,7 +413,7 @@ test.describe('Login & Signup Notification Messages', () => {
 
       await page.locator('input[placeholder="Tên hiển thị của bạn"]').fill('Nguyễn An');
       await page.locator('input[placeholder="ban@email.com"]').fill('newperson@example.com');
-      await page.locator('input[placeholder="Password"], input[placeholder="Mật khẩu"]').first().fill('correcthorse1');
+      await page.locator('input[placeholder="Password"], input[placeholder="Mật khẩu"]').first().fill('Correcthorse1');
       await page.locator('input[placeholder="Confirm password"], input[placeholder="Nhập lại mật khẩu"]').fill('differentpassword');
       await page.locator('[data-screen-label="Login"]').getByText('Tạo tài khoản', { exact: true }).click();
 
@@ -428,11 +436,11 @@ test.describe('Login & Signup Notification Messages', () => {
 
       await page.locator('input[placeholder="Tên hiển thị của bạn"]').fill('Nguyễn An');
       await page.locator('input[placeholder="ban@email.com"]').fill('newperson@example.com');
-      await page.locator('input[placeholder="Password"], input[placeholder="Mật khẩu"]').first().fill('correcthorse1');
-      await page.locator('input[placeholder="Confirm password"], input[placeholder="Nhập lại mật khẩu"]').fill('correcthorse1');
+      await page.locator('input[placeholder="Password"], input[placeholder="Mật khẩu"]').first().fill('Correcthorse1');
+      await page.locator('input[placeholder="Confirm password"], input[placeholder="Nhập lại mật khẩu"]').fill('Correcthorse1');
       await page.locator('[data-screen-label="Login"]').getByText('Tạo tài khoản', { exact: true }).click();
 
-      expect(sentBody).toEqual({ type: 'signup_password', email: 'newperson@example.com', password: 'correcthorse1', displayName: 'Nguyễn An', locale: 'vi' });
+      expect(sentBody).toEqual({ type: 'signup_password', email: 'newperson@example.com', password: 'Correcthorse1', displayName: 'Nguyễn An', locale: 'vi' });
       await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Đã gửi mã tới email của bạn/);
     });
 

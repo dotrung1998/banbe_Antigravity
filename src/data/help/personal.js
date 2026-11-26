@@ -15,7 +15,7 @@ export const PERSONAL_GUIDE = {
       ]],
       ['h', 'Các cách đăng ký / đăng nhập', 'Ways to sign up / log in'],
       ['ul', [
-        ['Email + mật khẩu (tối thiểu 8 ký tự): chọn "Đăng ký" rồi nhập tên hiển thị, email, mật khẩu.', 'Email + password (at least 8 characters): choose "Sign up", then enter a display name, email and password.'],
+        ['Email + mật khẩu (ít nhất 8 ký tự, có chữ thường, chữ hoa và chữ số): chọn "Đăng ký" rồi nhập tên hiển thị, email, mật khẩu.', 'Email + password (at least 8 characters with a lowercase letter, an uppercase letter and a number): choose "Sign up", then enter a display name, email and password.'],
         ['Mã gửi qua email: chọn "Send sign-in code" và nhập mã 8 chữ số.', 'Emailed code: choose "Send sign-in code" and enter the 8-digit code.'],
         ['"Tiếp tục với Google". Đăng nhập Facebook đang được phát triển nên nút này tạm mờ.', '"Continue with Google". Facebook login is under development, so that button is greyed out for now.'],
         ['Quên mật khẩu: nhấn "Forgot password?" để nhận email đặt lại.', 'Forgot your password: tap "Forgot password?" to get a reset email.'],

@@ -3,13 +3,16 @@ import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display, fieldGlass, inkButton, alert } from '../theme.js';
 import { FieldNote } from '../components/ui/FormControls.jsx';
 import AsyncSuccessButton from '../components/ui/AsyncSuccessButton.jsx';
+import PasswordChecklist from '../components/PasswordChecklist.jsx';
+import { passwordMeetsRules } from '../lib/passwordRules.js';
+import { emailCheckedAfter, showEmailFormatError as emailErrorVisible } from '../lib/emailFieldCheck.js';
 
 export default function Login() {
   const {
     state, T, set,
     loginEmailType, loginNicknameType, loginEmailCodeType,
     loginPasswordType, loginPasswordConfirmType, toggleLang, pickTheme, loginGoogle,
-    emailValid, passwordValid, setAuthMethod, requestPasswordResetSubmit, submitCurrentForm,
+    emailValid, setAuthMethod, requestPasswordResetSubmit, submitCurrentForm,
     togglePolicyConsent, openPolicy,
     beginSignInHandoff, cancelSignInHandoff, awaitSignInReady, completeSignInHandoff,
     resolvedTheme,
@@ -34,6 +37,13 @@ export default function Login() {
   // IME-safe (Modern Web Guidance, note 90): Safari resets isComposing before the confirming Enter keydown, so
   // keyCode 229 is the check that actually catches a composition in progress.
   const onEnter = (e) => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) submitBtnRef.current?.querySelector('button')?.click(); };
+  // The format error waits until the email field is left or submitted (Enter), and typing again hides it until then.
+  const [emailChecked, setEmailChecked] = useState(false);
+  const onEmailChange = (e) => { loginEmailType(e); setEmailChecked(emailCheckedAfter('type')); };
+  const onEmailKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) setEmailChecked(emailCheckedAfter('submit'));
+    onEnter(e);
+  };
   const [oauthBusy, setOauthBusy] = useState(false);
   const onGoogle = async () => {
     if (oauthBusy) return;
@@ -71,17 +81,18 @@ export default function Login() {
     ? s.loginEmailCode.trim().length > 0
     : isPassword
       ? consentOk && emailValid(s.loginEmail) && nicknameValid && (isSignup
-        ? passwordValid(s.loginPassword) && s.loginPassword === s.loginPasswordConfirm
+        ? passwordMeetsRules(s.loginPassword) && s.loginPassword === s.loginPasswordConfirm
         : s.loginPassword.length > 0)
       : consentOk && emailValid(s.loginEmail) && nicknameValid;
 
   // The submit button only exists once the address could actually be sent
   // to. An empty field isn't an error yet — it's just unfinished — so it
   // hides the button without complaining; something typed that isn't an
-  // address does say so, right under the field it's about.
-  const emailEntered = s.loginEmail.trim().length > 0;
+  // address says so under the field once the field is left (emailFieldCheck.js).
   const emailFormatOk = emailValid(s.loginEmail);
-  const showEmailFormatError = !awaitingCode && emailEntered && !emailFormatOk;
+  const showEmailFormatError = !awaitingCode && emailErrorVisible({ email: s.loginEmail, valid: emailFormatOk, checked: emailChecked });
+  // Shown only once the confirm field has something in it, so an empty field is not called a mismatch.
+  const confirmMismatch = s.loginPasswordConfirm.length > 0 && s.loginPassword !== s.loginPasswordConfirm;
   // Once a code has been sent the address is already settled and this
   // button verifies the code instead, so the email check doesn't apply.
   const showSubmit = awaitingCode || emailFormatOk;
@@ -167,7 +178,7 @@ export default function Login() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14 }}>
             {isSignup && <input value={s.loginNickname} onChange={loginNicknameType} placeholder={T('Tên hiển thị của bạn', 'Your display name')} style={fieldStyle()} />}
             <div>
-              <input value={s.loginEmail} onChange={loginEmailType} onKeyDown={onEnter} placeholder="ban@email.com" data-testid="login-email" style={fieldStyle()}
+              <input value={s.loginEmail} onChange={onEmailChange} onKeyDown={onEmailKeyDown} onBlur={() => setEmailChecked(emailCheckedAfter('blur'))} placeholder="ban@email.com" data-testid="login-email" style={fieldStyle()}
                 type="email" autoComplete={isPassword ? 'username' : 'email'} inputMode="email"
                 aria-invalid={showEmailFormatError ? true : undefined}
                 data-state={!showEmailFormatError && emailIssue ? 'warning' : undefined}
@@ -189,10 +200,26 @@ export default function Login() {
                 </FieldNote>
               ) : null}
             </div>
-            {isPassword && <input value={s.loginPassword} onChange={onPasswordChange} onKeyDown={onEnter} type="password" placeholder={T('Mật khẩu', 'Password')} data-testid="login-password"
-              autoComplete={isSignup ? 'new-password' : 'current-password'} style={fieldStyle()} />}
-            {isPassword && isSignup && <input value={s.loginPasswordConfirm} onChange={loginPasswordConfirmType} onKeyDown={onEnter} type="password" placeholder={T('Nhập lại mật khẩu', 'Confirm password')}
-              autoComplete="new-password" style={fieldStyle()} />}
+            {isPassword && (
+              <div>
+                <input value={s.loginPassword} onChange={onPasswordChange} onKeyDown={onEnter} type="password" placeholder={T('Mật khẩu', 'Password')} data-testid="login-password"
+                  autoComplete={isSignup ? 'new-password' : 'current-password'} aria-describedby={isSignup ? 'login-password-rules' : undefined} style={fieldStyle()} />
+                {/* Sign up only: logging in never checks the rules, older accounts may have weaker passwords. */}
+                {isSignup && <div id="login-password-rules"><PasswordChecklist password={s.loginPassword} T={T} /></div>}
+              </div>
+            )}
+            {isPassword && isSignup && (
+              <div>
+                <input value={s.loginPasswordConfirm} onChange={loginPasswordConfirmType} onKeyDown={onEnter} type="password" placeholder={T('Nhập lại mật khẩu', 'Confirm password')}
+                  data-testid="login-password-confirm" autoComplete="new-password" style={fieldStyle()}
+                  aria-invalid={confirmMismatch ? true : undefined} aria-describedby={confirmMismatch ? 'login-confirm-error' : undefined} />
+                {confirmMismatch && (
+                  <FieldNote id="login-confirm-error" testId="login-confirm-mismatch" tone="error">
+                    {T('Mật khẩu xác nhận không khớp', 'The passwords do not match')}
+                  </FieldNote>
+                )}
+              </div>
+            )}
           </div>
           {isPassword && !isSignup && (
             <div onClick={requestPasswordResetSubmit} style={{ fontSize: 12, color: ink, opacity: 0.75, textAlign: 'right', marginTop: 8, cursor: 'pointer' }}>{T('Quên mật khẩu?', 'Forgot password?')}</div>

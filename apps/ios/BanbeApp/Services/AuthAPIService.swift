@@ -28,7 +28,7 @@ struct AuthAPIError: LocalizedError {
         case "VALID_NAME_REQUIRED":
             return "Please enter a display name."
         case "VALID_PASSWORD_REQUIRED":
-            return "Passwords need at least 8 characters."
+            return "Your password does not meet every item in the checklist under the password field."
         case "VALID_EMAIL_REQUIRED":
             return "Enter a valid email address."
         case "AUTH_EMAIL_DELIVERY_FAILED":
