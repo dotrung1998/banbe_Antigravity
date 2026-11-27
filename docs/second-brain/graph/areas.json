@@ -1,0 +1,209 @@
+{
+  "version": 2,
+  "areas": [
+    {
+      "title": "AppState",
+      "anchors": [
+        "apps/ios/BanbeApp/State/AppState.swift",
+        "apps/ios/BanbeApp/State/AppState+AdminTeam.swift",
+        "apps/ios/BanbeApp/State/AppState+Pulse.swift"
+      ]
+    },
+    {
+      "title": "Web App Shell & Theme",
+      "anchors": [
+        "src/App.jsx",
+        "src/theme.js",
+        "src/screens/BottomTabBar.jsx"
+      ]
+    },
+    {
+      "title": "App data (iOS)",
+      "anchors": [
+        "apps/ios/BanbeApp/State/AppState+Data.swift"
+      ],
+      "label": "App data (iOS)"
+    },
+    {
+      "title": "MapExploreView",
+      "anchors": [
+        "apps/ios/BanbeApp/Views/MapExploreView.swift",
+        "apps/ios/BanbeApp/Models/Event.swift",
+        "apps/ios/BanbeApp/Views/Map/MapAreaViews.swift"
+      ]
+    },
+    {
+      "title": "Create event (web)",
+      "anchors": [
+        "src/lib/eventTypes.js",
+        "src/screens/CreateEvent.jsx",
+        "src/lib/eventMarket.js"
+      ],
+      "label": "Create event (web)"
+    },
+    {
+      "title": "AppState+Payments.swift",
+      "anchors": [
+        "apps/ios/BanbeApp/State/AppState+Payments.swift"
+      ]
+    },
+    {
+      "title": "Schema & migrations (SQL)",
+      "anchors": [
+        "supabase/migrations/20261210000162_162_event_preferences_and_reservation_criteria.sql",
+        "supabase/migrations/20261025000113_113_strict_invite_only_events.sql",
+        "supabase/migrations/20261226000189_189_admin_event_removal.sql"
+      ],
+      "label": "Schema & migrations (SQL)"
+    },
+    {
+      "title": "Components.swift",
+      "anchors": [
+        "apps/ios/BanbeApp/Views/Components.swift",
+        "apps/ios/BanbeApp/Views/PaymentViews.swift",
+        "apps/ios/BanbeApp/Views/DeleteAccountStayView.swift"
+      ]
+    },
+    {
+      "title": "HomeShellV5Views.swift",
+      "anchors": [
+        "apps/ios/BanbeApp/Views/HomeView.swift",
+        "apps/ios/BanbeApp/Views/HomeShellV5Views.swift",
+        "apps/ios/BanbeApp/Views/HomeV23Sections.swift"
+      ]
+    },
+    {
+      "title": "EventDetail.jsx",
+      "anchors": [
+        "src/screens/EventDetail.jsx",
+        "src/lib/eventDetailPresentation.js",
+        "src/components/profile/OrganizerProfileV23.jsx"
+      ]
+    },
+    {
+      "title": "CreateEventView",
+      "anchors": [
+        "apps/ios/BanbeApp/Views/OnboardingViews.swift",
+        "apps/ios/BanbeApp/Views/RecipeSheet.swift",
+        "apps/ios/BanbeApp/Lib/Motion.swift"
+      ]
+    },
+    {
+      "title": "Rewards schema (SQL)",
+      "anchors": [
+        "supabase/migrations/20261212000165_165_rewards_badges_streaks.sql",
+        "supabase/migrations/20261218000177_177_user_reward_timezone.sql",
+        "supabase/drafts/DRAFT_NOT_IN_CHAIN_sponsors_offers_redemptions.sql"
+      ],
+      "label": "Rewards schema (SQL)"
+    },
+    {
+      "title": "Home.jsx",
+      "anchors": [
+        "src/lib/homeDiscovery.js",
+        "src/lib/unifiedDiscovery.js",
+        "src/components/home/HomeDiscoveryParts.jsx"
+      ]
+    },
+    {
+      "title": "EventDetailView",
+      "anchors": [
+        "apps/ios/BanbeApp/Views/EventDetailView.swift"
+      ]
+    },
+    {
+      "title": "Secondary screens (iOS)",
+      "anchors": [
+        "apps/ios/BanbeApp/Views/Project/ProjectHubView.swift",
+        "apps/ios/BanbeApp/Views/RewardsView.swift",
+        "apps/ios/BanbeApp/Views/VerificationsView.swift"
+      ],
+      "label": "Secondary screens (iOS)"
+    },
+    {
+      "title": "MapExplore.jsx",
+      "anchors": [
+        "src/lib/mapDiscovery.js",
+        "src/lib/mapTimeWindow.js",
+        "src/screens/MapExplore.jsx"
+      ]
+    },
+    {
+      "title": "AccountView",
+      "anchors": [
+        "apps/ios/BanbeApp/Views/AccountView.swift",
+        "apps/ios/BanbeApp/Views/AccountGroupView.swift",
+        "apps/ios/BanbeApp/Views/QuickSheetView.swift"
+      ]
+    },
+    {
+      "title": "OnboardingFlowState",
+      "anchors": [
+        "apps/ios/BanbeApp/Lib/OnboardingFlow.swift"
+      ]
+    },
+    {
+      "title": "AppState+Rewards.swift",
+      "anchors": [
+        "apps/ios/BanbeApp/State/AppState+Rewards.swift"
+      ]
+    },
+    {
+      "title": "Project Tasks & Day-of (iOS)",
+      "anchors": [
+        "apps/ios/BanbeApp/Models/EventProject.swift"
+      ]
+    },
+    {
+      "title": "Inbox & notifications (iOS)",
+      "anchors": [
+        "apps/ios/BanbeApp/Views/MessagingViews.swift",
+        "apps/ios/BanbeApp/Views/ActivityViews.swift",
+        "apps/ios/BanbeApp/Lib/NotificationPresentation.swift"
+      ],
+      "label": "Inbox & notifications (iOS)"
+    },
+    {
+      "title": "Tour, calendar & sharing (web)",
+      "anchors": [
+        "src/screens/sheets/ProfileShareSheet.jsx",
+        "src/lib/analytics.js",
+        "src/screens/EventPlanActions.jsx"
+      ],
+      "label": "Tour, calendar & sharing (web)"
+    },
+    {
+      "title": "BanBeContext.jsx",
+      "anchors": [
+        "src/state/BanBeContext.jsx",
+        "src/lib/mediaUrls.js",
+        "src/lib/homeMode.js"
+      ]
+    },
+    {
+      "title": "Browse rules (iOS)",
+      "anchors": [
+        "apps/ios/BanbeApp/Lib/V23Rules.swift",
+        "apps/ios/BanbeApp/Views/BrowseView.swift"
+      ],
+      "label": "Browse rules (iOS)"
+    },
+    {
+      "title": "IslandSettings.jsx",
+      "anchors": [
+        "src/lib/islandPrefs.js",
+        "src/lib/fontPref.js",
+        "src/lib/glassOpacity.js"
+      ]
+    },
+    {
+      "title": "Event data & notifications (web)",
+      "anchors": [
+        "src/data/events.js",
+        "src/screens/Notifications.jsx",
+        "src/lib/notifications.js"
+      ],
+      "label": "Event data & notifications (web)"
+    }
+  ]
+}

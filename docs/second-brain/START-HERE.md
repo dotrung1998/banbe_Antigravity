@@ -3,9 +3,15 @@
 **Agent: read this line first.** To answer anything about banbe, open **[[graph/Code map|Code map]]** and follow the
 three hops below *before* you search the repository. Grep is the fallback, not the first move.
 
-The code map is generated from the Graphify graph of this repo — roughly **18k symbols in 24 areas** (the exact
+The code map is generated from the Graphify graph of this repo — roughly **17k symbols in 26 areas** (the exact
 counts and the commit it was built from are at the top of [[graph/Code map|Code map]]). Obsidian renders the same notes
 as a live graph. Neither list is hand-maintained, so it cannot quietly rot.
+
+**One file, one area.** A file is listed under exactly one area — the community holding most of its symbols — so a
+`file:line` has a single home. The script enforces the rule and exits non-zero rather than write a map where a file
+sits in two areas. `graph/areas.json` remembers up to three files per area (so a re-partition cannot make an old area
+vanish), and its optional `label` is the hand-fixed name a refresh must not undo: fix a wrong name there, never in the
+note.
 
 ## The three hops
 
@@ -33,8 +39,19 @@ graphify update .                          # re-index code, no API cost
 node scripts/second-brain-code-graph.mjs   # rewrite docs/second-brain/graph/*.md
 ```
 
+The script takes the 12 biggest areas and then keeps the known set from the previous run by **any
+of the up to three files each area owned** (`docs/second-brain/graph/areas.json`, rewritten on every run). That
+list exists because graphify re-partitions the graph on each update, so "the biggest
+communities" used to reshuffle on a one-file change — on 2026-11-27 the iOS Home area came
+out of the new graph labelled `.selection` and was dropped as noise, and EventDetailView fell
+below the size cut, so `HomeView.swift` vanished from the map entirely. If you ever *want* a
+fresh re-rank, delete `areas.json` and run the script again — but that also drops the hand-fixed
+`label` names, so copy them back into the fresh file.
+
 `scripts/banbe-code-graph.sh` runs both from cron, so the notes track the code without anyone remembering. Running
 this script twice on the same graph produces identical files — a refresh only shows up in git when the code changed.
+The refresh also checks the ownership rule first: a file found in two areas aborts the run, so a bad map is never
+written.
 
 **Staleness check:** the top of [[graph/Code map|Code map]] says which commit the graph was built from. Compare it to
 `git rev-parse --short HEAD`. If they differ, files added since then are missing — run the two commands above.

@@ -52,6 +52,16 @@ rewrite what you believe.
   (IMPLEMENTED LOCALLY / committed / pushed / applied / verified).
 - **No secrets.** API keys, tokens and passwords never enter this vault, including `raw/`.
 
+## Code graph rules (`graph/`)
+
+- **One file belongs to one area.** Ownership is by symbols: the community holding most of a file's symbols owns it,
+  and everything else in that file is read from that one note. Never hand-add a file to a second area, and never
+  accept a refresh where the same `file:line` appears in two areas — the script exits non-zero instead of writing it.
+- **The notes are generated; the names are curated.** To fix a wrong area name, edit `label` on that area's entry in
+  `graph/areas.json` (the script keeps it across refreshes). Do not edit the generated note; a refresh overwrites it.
+- **Start with must be openable.** It points at a real symbol in the area's biggest file — never a test stub,
+  `CodingKeys`, or a markdown note.
+
 ## House style
 
 - One idea per note, a title that says the conclusion, links to sources at the top.

@@ -3,34 +3,34 @@ tags: [code-graph]
 ---
 # Web App Shell & Theme
 
-`code-graph` · area `1` · **403 symbols** across **109 files** · 2.2% of the graph.
+`code-graph` · area `1` · **486 symbols** across **95 files** · 2.9% of the graph.
 
-**Start with:** `src/state/BanBeContext.jsx:12031` — `useBanBe()`
+**Start with:** `src/App.jsx:381` — `Shell()`
 
-**Key symbols:** `useBanBe()` · `display()` · `fieldGlass()` · `inkButton()` · `Shell()` · `cardGlass()` · `bg()` · `Dashboard()` · `HostHome()` · `liveEventOverrides()` · `Attendance()` · `formatVnd()` · `DisputeChatPanel()` · `PaymentDetails()`
+**Key symbols:** `display()` · `fieldGlass()` · `inkButton()` · `flagOn()` · `NativeSheet()` · `Shell()` · `cardGlass()` · `Search()` · `useReducedMotion()` · `HostHome()` · `OrganizerProfile()` · `PhoneEnrollment()` · `Chat()` · `PendingEventSheet()`
 
 ## Files
 
 | File | Symbols |
 | --- | ---: |
-| `src/theme.js` | 30 |
-| `src/lib/paymentDocument.js` | 16 |
+| `src/App.jsx` | 57 |
+| `src/theme.js` | 46 |
 | `src/screens/BottomTabBar.jsx` | 15 |
-| `src/lib/countdown.js` | 14 |
+| `src/lib/dockLayout.js` | 13 |
 | `src/components/home/HostHome.jsx` | 12 |
-| `src/App.jsx` | 11 |
-| `src/screens/sheets/PulseViewer.jsx` | 9 |
-| `src/screens/sheets/QrScanSheet.jsx` | 7 |
-| _+101 more files_ | |
+| `src/components/ui/FormControls.jsx` | 12 |
+| `src/screens/AccountGate.jsx` | 10 |
+| `src/screens/SurveysHosting.jsx` | 10 |
+| _+87 more files_ | |
 
 ## Connected areas
 
-- [[graph/banbecontext-jsx|BanBeContext.jsx]] — 196 edges
-- [[graph/home-jsx|Home.jsx]] — 160 edges
-- [[graph/flagon|flagOn]] — 119 edges
-- [[graph/mapexplore-jsx|MapExplore.jsx]] — 112 edges
-- [[graph/ref-node-assert|ref_node_assert]] — 104 edges
-- [[graph/publicprofile-jsx|PublicProfile.jsx]] — 92 edges
+- [[graph/banbecontext-jsx|BanBeContext.jsx]] — 269 edges
+- [[graph/home-jsx|Home.jsx]] — 140 edges
+- [[graph/eventdetail-jsx|EventDetail.jsx]] — 122 edges
+- [[graph/create-event-web|Create event (web)]] — 104 edges
+- [[graph/islandsettings-jsx|IslandSettings.jsx]] — 79 edges
+- [[graph/mapexplore-jsx|MapExplore.jsx]] — 65 edges
 
 ---
 [[graph/Code map|Code map]] · [[Home]]

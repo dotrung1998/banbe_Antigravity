@@ -3,34 +3,30 @@ tags: [code-graph]
 ---
 # MapExploreView
 
-`code-graph` · area `267` · **135 symbols** across **11 files** · 0.7% of the graph.
+`code-graph` · area `98` · **278 symbols** across **5 files** · 1.6% of the graph.
 
 **Start with:** `apps/ios/BanbeApp/Views/MapExploreView.swift:58` — `MapExploreView`
 
-**Key symbols:** `MapExploreView` · `MapEventRow` · `.symbol()` · `.mapLargeCard()` · `.udCard()` · `.compactRow()` · `.udPreviewCard()` · `.computeResults()` · `.pin()` · `.effectiveCatKey()` · `haversineKm()` · `.largeCard()` · `MapResultsCache` · `.formatMoneyShort()`
+**Key symbols:** `MapExploreView` · `MapEventRow` · `FlowLayout` · `.mapLargeCard()` · `.moveCamera()` · `.udCard()` · `.compactRow()` · `.groupMarker()` · `.udPreviewCard()` · `.computeResults()` · `.pin()` · `.effectiveCatKey()` · `.frameFirstOpen()` · `.goToCity()`
 
 ## Files
 
 | File | Symbols |
 | --- | ---: |
-| `apps/ios/BanbeApp/Views/MapExploreView.swift` | 115 |
-| `apps/ios/BanbeApp/Models/Event.swift` | 7 |
-| `apps/ios/BanbeApp/Models/CatalogEvent.swift` | 3 |
-| `apps/ios/BanbeApp/Views/ConfirmedView.swift` | 3 |
-| `.claude/notes/99-unified-discovery-saved-schedule.md` | 1 |
-| `apps/ios/BanbeApp/Lib/EventMarket.swift` | 1 |
-| `apps/ios/BanbeApp/Services/LocationService.swift` | 1 |
-| `apps/ios/BanbeApp/Views/HomeDiscoveryViews.swift` | 1 |
-| _+3 more files_ | |
+| `apps/ios/BanbeApp/Views/MapExploreView.swift` | 196 |
+| `apps/ios/BanbeApp/Models/Event.swift` | 46 |
+| `apps/ios/BanbeApp/Views/Map/MapAreaViews.swift` | 24 |
+| `apps/ios/BanbeApp/Views/Map/MapUnifiedViews.swift` | 9 |
+| `apps/ios/BanbeApp/Views/Map/MapListOverlaySpike.swift` | 3 |
 
 ## Connected areas
 
-- [[graph/reportmetricpresentation-group|ReportMetricPresentation group]] — 70 edges
-- [[graph/appstate|AppState]] — 22 edges
-- [[graph/pressablebuttonstyle|PressableButtonStyle]] — 4 edges
-- [[graph/vien|ViEn]] — 4 edges
-- [[graph/createeventview|CreateEventView]] — 1 edges
-- [[graph/mapexplore-jsx|MapExplore.jsx]] — 1 edges
+- [[graph/appstate|AppState]] — 91 edges
+- [[graph/homeshellv5views-swift|HomeShellV5Views.swift]] — 8 edges
+- [[graph/app-data-ios|App data (iOS)]] — 6 edges
+- [[graph/components-swift|Components.swift]] — 6 edges
+- [[graph/secondary-screens-ios|Secondary screens (iOS)]] — 6 edges
+- [[graph/browse-rules-ios|Browse rules (iOS)]] — 1 edges
 
 ---
 [[graph/Code map|Code map]] · [[Home]]
