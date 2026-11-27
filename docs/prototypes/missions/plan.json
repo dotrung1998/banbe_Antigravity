@@ -1,0 +1,615 @@
+{
+  "version": 2,
+  "start": "2026-11-27",
+  "clusters": [
+    {
+      "id": "onboarding",
+      "question": "onb-base",
+      "title": "Onboarding & first-run",
+      "screens": "Welcome · consent · 3 câu hỏi · For You reveal · Login",
+      "read": [
+        "src/screens/App.jsx",
+        "src/screens/Login.jsx",
+        "src/screens/EventOnboarding.jsx"
+      ],
+      "notes": "63, 64, 80",
+      "ref": [
+        "archive/banbe-onboarding-v5-standalone.html"
+      ],
+      "must": "màn đầu KHÔNG phải tờ khai; consent + đăng nhập sau giá trị; skip được, vẫn xem Home/Map/Event"
+    },
+    {
+      "id": "discover",
+      "question": "dis-base",
+      "title": "Home + Browse/Search + Map",
+      "screens": "Home (For You / Tonight / Weekend) · Browse by type · Search · Map",
+      "read": [
+        "src/screens/Home.jsx",
+        "src/screens/Browse.jsx",
+        "src/screens/MapExplore.jsx",
+        "src/components/home/HomeShellV5.jsx"
+      ],
+      "notes": "72, 74, 79, 88, 94, 95, 96, 97, 98",
+      "ref": [
+        "archive/banbe-home-v3.2-standalone.html",
+        "archive/map-options-v5.html"
+      ],
+      "must": "bubble = số dòng list; giờ theo tz địa điểm; không có “Search here” giả; For You/Tonight/Weekend đúng nghĩa"
+    },
+    {
+      "id": "event",
+      "question": "evt-base",
+      "title": "Event Detail + Reserve/Hold + Ticket",
+      "screens": "Event Detail · Reserve/Hold · Confirmed ticket + QR",
+      "read": [
+        "src/screens/EventDetail.jsx",
+        "src/screens/Reserve.jsx",
+        "src/screens/Confirmed.jsx"
+      ],
+      "notes": "70, 75, 77, 78, 82",
+      "ref": [
+        "archive/homescreen-event-detail-motion-v2-3.html",
+        "archive/banbe_ticket_A_whatsnext_v2.html"
+      ],
+      "must": "một sự kiện THẬT (ghi id + ngày chụp), giữ 30 phút giữ ghế, QR mẫu phải ghi rõ là mẫu"
+    },
+    {
+      "id": "me",
+      "question": "me-base",
+      "title": "Schedule + Inbox/Chat + Account",
+      "screens": "Schedule · Inbox + một thread · Account/Settings",
+      "read": [
+        "src/screens/Schedule.jsx",
+        "src/screens/Inbox.jsx",
+        "src/screens/Chat.jsx",
+        "src/screens/Account.jsx"
+      ],
+      "notes": "44, 45, 69, 99",
+      "ref": [
+        "schedule-stages_v5.html",
+        "archive/schedule-options-v1.html"
+      ],
+      "must": "ba màn dùng chung một ngữ pháp; Back luôn trả đúng chỗ vừa rời"
+    },
+    {
+      "id": "host",
+      "question": "host-base",
+      "title": "Host: Create + Project Hub + Admin",
+      "screens": "Create event · Event Project Hub · Money & door · Admin",
+      "read": [
+        "src/screens/CreateEvent.jsx",
+        "src/screens/EventProject.jsx",
+        "src/screens/AdminManageEvents.jsx",
+        "src/data/eventTypeProfiles.json"
+      ],
+      "notes": "54, 65, 66, 76",
+      "ref": [],
+      "must": "đếm số bấm trước/sau; tiền đúng đơn vị (VND/USD, price_vnd minor units); hành động phá huỷ không được vẽ như nút nhẹ"
+    }
+  ],
+  "days": [
+    {
+      "day": 1,
+      "slug": "baseline",
+      "title": "Nền: bản lớn đầu tiên cho cả 5 cụm",
+      "lens": "Bản lớn đầu tiên: mở được một mình, bấm qua lại, khác biệt thật giữa 390, iPad và browser.",
+      "rule": "Có bản cũ thì nâng cấp, giữ frames. Mỗi màn cần một điểm thị giác có chủ đích; không copy pixel.",
+      "clusters": {
+        "onboarding": {
+          "focus": "Đây là cửa vào; nếu nó chỉ là một cột điện thoại giữa tờ giấy thì cả thang mất căn cứ.",
+          "tasks": [
+            "Copy vỏ theo STANDARD; giữ stage, rail 4 khung, Làm lại, nav cụm.",
+            "Dựng 5 màn bằng chữ Việt thật + 7 sự kiện production (id + ngày): Welcome → 3 câu → reveal → 2 consent → Login.",
+            "390 một cột; 834 hai cột (bước + bằng chứng); 1194 ba vùng; 1440 max 1280. Dùng @container, không @media.",
+            "Welcome không phải tờ khai; consent + Login sau reveal; bỏ qua vẫn vào Home/Map/Event."
+          ],
+          "check": [
+            "4 khung không tràn ngang",
+            "Làm lại về bước 1 và xoá lựa chọn",
+            "3 link cụm khác sống"
+          ]
+        },
+        "discover": {
+          "focus": "Home, Browse và Map phải là ba cách nhìn cùng một tập sự kiện, không phải ba sản phẩm khác nhau.",
+          "tasks": [
+            "Copy vỏ theo STANDARD; dựng Home 3 tab (For You/Tonight/Weekend) + Browse + Map.",
+            "834: feed + panel; 1194: rail + feed + panel; 1440: max 1280, không kéo giãn card.",
+            "Map toàn màn, list là overlay; số bubble = số dòng list; giờ theo tz địa điểm.",
+            "Dùng 7 sự kiện thật + 3 khu vực thật; ghi id/ngày."
+          ],
+          "check": [
+            "bubble = list",
+            "không có Search here giả",
+            "Tonight/Weekend đúng nghĩa"
+          ]
+        },
+        "event": {
+          "focus": "Event Detail là trang sản phẩm: một sự kiện thật, một giá, một CTA; vé là vật thể, không phải card.",
+          "tasks": [
+            "Copy vỏ theo STANDARD; dựng Event Detail + Reserve/Hold + Confirmed ticket.",
+            "834/1194: nội dung + cột reserve dính; 1440: max 1200; 390: bar dưới đáy.",
+            "Một sự kiện thật (id + ngày), giữ 30 phút giữ ghế; QR mẫu ghi rõ là mẫu.",
+            "Ảnh bìa lớn, giá và số chỗ cạnh CTA; không thêm màn không có trong app."
+          ],
+          "check": [
+            "giá đúng VND/USD",
+            "QR mẫu được ghi rõ",
+            "một sự kiện thật"
+          ]
+        },
+        "me": {
+          "focus": "Ba màn dùng chung một ngữ pháp; trên lớn phải là master–detail, không phải ba trang điện thoại xếp cạnh.",
+          "tasks": [
+            "Copy vỏ theo STANDARD; dựng Schedule (Saved + sự kiện), Inbox + một thread, Account.",
+            "834/1194: danh sách trái, nội dung phải; 390: mỗi màn một cột, Back đúng chỗ.",
+            "Dữ liệu thật: 2 sự kiện đã lưu, 2 thread, 1 tài khoản; ghi nguồn/ngày.",
+            "Không bịa badge chưa có trong app; chỗ chưa có dữ liệu thì nói rõ."
+          ],
+          "check": [
+            "Back trả đúng chỗ",
+            "không badge bịa",
+            "3 màn cùng ngữ pháp"
+          ]
+        },
+        "host": {
+          "focus": "Cụm công việc: mật độ cao, số bấm thấp, hành động phá huỷ không được giấu.",
+          "tasks": [
+            "Copy vỏ theo STANDARD; dựng Create 5 bước + Hub (Overview/Tasks/Team) + Money & door.",
+            "834: form + panel; 1194: rail + form + preview; 1440: bảng tiền rộng.",
+            "Đếm số bấm trước/sau mỗi hành động chính; ghi vào notes.md.",
+            "Dùng một draft thật và một event đã có; tiền đúng minor units."
+          ],
+          "check": [
+            "đếm số bấm",
+            "tiền đúng đơn vị",
+            "hành động phá huỷ khác nút nhẹ"
+          ]
+        }
+      }
+    },
+    {
+      "day": 2,
+      "slug": "shell",
+      "title": "Một vỏ cho cả 5 cụm",
+      "lens": "Một vỏ chung: rail/sidebar ở màn lớn, dock ở màn nhỏ, cùng header và cùng khoảng cách. Cụm nào không hợp thì nói rõ vì sao.",
+      "rule": "Vỏ phải làm việc: nếu bỏ vỏ mà màn y hệt thì vỏ đang thừa. Ghi vào notes.md chỗ vỏ giúp và chỗ vỏ cản.",
+      "clusters": {
+        "onboarding": {
+          "focus": "Onboarding là một tờ giấy, không phải tab; thử đặt nó trong rail như một trang mà vẫn tách khỏi app.",
+          "tasks": [
+            "Đặt cụm trong vỏ chung: rail ở ≥834, dock ở ≤833; onboarding là một trang trong rail, không phải tab.",
+            "390: không có dock trong suốt flow; 834/1440: nội dung vẫn là một tờ giấy, không bị rail bóp thành cột hẹp.",
+            "Đo bề rộng nội dung ở 834/1194/1440; ghi vào notes.md chỗ vỏ giúp/chỗ vỏ cản."
+          ],
+          "check": [
+            "không dock trong flow",
+            "rail không làm mất chất giấy",
+            "một trang, không phải tab"
+          ]
+        },
+        "discover": {
+          "focus": "Home/Browse/Map là cụm sống tự nhiên trong vỏ; đo xem rail + panel có làm feed thở được không.",
+          "tasks": [
+            "Dựng vỏ: rail trái ở ≥834, dock ở ≤833, header chung; Home/Browse dùng cùng header.",
+            "834: rail + feed; 1194: rail + feed + panel; 1440: rail + feed + panel rộng; Map full-bleed trong vỏ.",
+            "Đo số card nhìn thấy ở 834 và 1440; ghi vào notes.md."
+          ],
+          "check": [
+            "cùng header",
+            "dock chỉ ở ≤833",
+            "đo mật độ"
+          ]
+        },
+        "event": {
+          "focus": "Event Detail là màn immersive: thử giữ rail hay cố ý bỏ, miễn Back và CTA vẫn rõ.",
+          "tasks": [
+            "Đặt Event Detail trong vỏ; thử 2 phương án: giữ rail mỏng hoặc ẩn rail, chỉ giữ Back.",
+            "Reserve bar dính đáy trong khung; 1194/1440: cột nội dung + cột mua; 390: bar dưới.",
+            "Ghi lý do chọn phương án và chỗ vỏ cản việc đọc ảnh/giá."
+          ],
+          "check": [
+            "Back luôn thấy",
+            "bar không che nội dung",
+            "lý do trong notes"
+          ]
+        },
+        "me": {
+          "focus": "Ba màn này là nơi vỏ master–detail tự nhiên nhất; thử rail + danh sách + nội dung.",
+          "tasks": [
+            "Dựng Schedule/Inbox/Account trong vỏ; rail nhóm 3 mục, dock ở 390.",
+            "834/1194: danh sách trái + nội dung phải; 1440: thêm cột ngữ cảnh nếu có dữ liệu thật.",
+            "Back từ thread/event về đúng danh sách; ghi bảng đường đi."
+          ],
+          "check": [
+            "Back đúng",
+            "dock chỉ ở 390",
+            "không cột rỗng"
+          ]
+        },
+        "host": {
+          "focus": "Cụm công việc cần mật độ: rail + form + preview; thử xem vỏ có làm chậm thao tác không.",
+          "tasks": [
+            "Dựng Create/Hub/Money trong vỏ host: rail nhóm, header host, dock 390.",
+            "1194/1440: form + preview/bảng tiền; 834: form + panel gập; 390: từng bước.",
+            "Đo số bấm vào Create và Money; ghi trước/sau."
+          ],
+          "check": [
+            "không mất thao tác",
+            "bảng tiền đọc được",
+            "số bấm không tăng"
+          ]
+        }
+      }
+    },
+    {
+      "day": 3,
+      "slug": "states",
+      "title": "Dữ liệu thật, trạng thái thật",
+      "lens": "Dữ liệu thật và trạng thái xấu: trống, hết vé, huỷ, giữ chỗ hết hạn, khách chưa đăng nhập, host. Màn phải đứng được khi mọi thứ không như ý.",
+      "rule": "Không bịa trạng thái: lấy từ code/schema. Trạng thái app chưa từng có thì ghi “chưa có” thay vì vẽ.",
+      "clusters": {
+        "onboarding": {
+          "focus": "First-run là chuỗi trạng thái: chưa trả lời, trả lời một phần, bỏ qua tất cả, quay lại, từ chối consent.",
+          "tasks": [
+            "Dựng 4 trạng thái: mới, đã chọn 2 loại, bỏ qua cả 3 câu, quay lại sau khi đã xem reveal.",
+            "Consent bản tin/tổ chức: đồng ý, để sau, và trạng thái đã chọn; Login: lỗi trống/sai định dạng (không gửi thật).",
+            "Mỗi trạng thái có đường thoát: tiếp, bỏ qua, hoặc về Welcome; ghi vào notes.md."
+          ],
+          "check": [
+            "4 trạng thái mở được",
+            "không kẹt",
+            "lỗi Login không bịa phiên"
+          ]
+        },
+        "discover": {
+          "focus": "Home/Browse/Map phải đứng được khi không có sự kiện, hết vé, huỷ, hoặc khách chưa đăng nhập.",
+          "tasks": [
+            "Dựng: khu vực trống, Tonight trống, search 0 kết quả, Map không pin, event sold out/cancelled.",
+            "Guest: nhắc đăng nhập đúng chỗ, vẫn xem được; member: đã lưu; host: thấy event của mình.",
+            "Không bịa số: mọi trạng thái trỏ về một event/khu vực thật hoặc ghi “chưa có”."
+          ],
+          "check": [
+            "trống vẫn có lối ra",
+            "không bịa số",
+            "guest vẫn xem được"
+          ]
+        },
+        "event": {
+          "focus": "Một sự kiện có thể hết vé, bị huỷ, đã kết thúc, giữ chỗ hết hạn, hoặc chỉ mời.",
+          "tasks": [
+            "Dựng 5 trạng thái: còn vé, hết vé, huỷ, đã kết thúc, giữ chỗ hết hạn.",
+            "Invite-only: giải thích điều kiện; guest: CTA đăng nhập; host: quản lý; ticket: QR chỉ khi vé sống.",
+            "Ghi trạng thái nào app chưa từng có; không vẽ thêm màn không tồn tại."
+          ],
+          "check": [
+            "QR chỉ khi vé sống",
+            "huỷ/ended khác nhau",
+            "lối ra rõ"
+          ]
+        },
+        "me": {
+          "focus": "Schedule/Inbox/Account phải đứng được khi trống, chưa đăng nhập, hoặc thread đã xoá.",
+          "tasks": [
+            "Dựng: Schedule trống, chưa có thread, thread đã xoá, Account thiếu ảnh/tên.",
+            "Guest: màn chào + đăng nhập; member: dữ liệu thật; host: mục Hosting.",
+            "Không bịa badge; chỗ chưa có dữ liệu ghi “chưa có”."
+          ],
+          "check": [
+            "trống có lối ra",
+            "không badge bịa",
+            "guest rõ ràng"
+          ]
+        },
+        "host": {
+          "focus": "Host có nhiều trạng thái xấu: draft, chờ duyệt, bị từ chối, huỷ có hoàn tiền, bị remove.",
+          "tasks": [
+            "Dựng: draft, pending, rejected, cancelled có refund, removed.",
+            "Mỗi trạng thái nói rõ ai đang chờ ai và bước tiếp theo; không giấu hành động phá huỷ.",
+            "Team: Manager/Finance/Lane lead/Helper thấy gì; ghi bảng quyền."
+          ],
+          "check": [
+            "ai chờ ai rõ",
+            "huỷ/refund không giả",
+            "team thấy đúng"
+          ]
+        }
+      }
+    },
+    {
+      "day": 4,
+      "slug": "motion",
+      "title": "Chuyển động & nhịp",
+      "lens": "Nhịp: vào màn, chuyển bước, phản hồi bấm. Onboarding chốt timing bằng rig/ trước khi dựng CSS.",
+      "rule": "Mọi chuyển động có bản tĩnh dùng được với prefers-reduced-motion; không animation nào là điều kiện để hiểu màn.",
+      "clusters": {
+        "onboarding": {
+          "focus": "Nhịp first-run: vào Welcome, chuyển 3 câu, reveal, consent; đây là cụm dùng rig/ để chốt số.",
+          "tasks": [
+            "Chốt 3 nhịp: vào 0–400ms, phản hồi bấm <150ms, chuyển bước 300–500ms.",
+            "Dựng bằng CSS; onboarding dùng rig/ (Remotion, ảnh thật) để so nhịp trước khi chốt.",
+            "Reduce Motion: tắt hết vẫn dùng được; chụp trạng thái tĩnh."
+          ],
+          "check": [
+            "3 số có lý do",
+            "reduce motion dùng được",
+            "không animation chặn hiểu"
+          ]
+        },
+        "discover": {
+          "focus": "Nhịp của discovery: đổi tab, mở card, mở sheet, map pan/zoom; phải nhanh và không giật.",
+          "tasks": [
+            "Chốt nhịp tab/card/sheet; ghi số ms.",
+            "Map: pan/zoom mượt, pin không nhảy; sheet mở/đóng không che CTA.",
+            "Reduce Motion: bỏ parallax/slide, vẫn hiểu."
+          ],
+          "check": [
+            "tab <150ms",
+            "sheet không che CTA",
+            "reduce motion"
+          ]
+        },
+        "event": {
+          "focus": "Event Detail là màn cinematic nhất: hero, stub, reserve bar, QR; nhịp phải phục vụ việc mua.",
+          "tasks": [
+            "Chốt nhịp hero (parallax nhẹ), stub rise, reserve bar, QR reveal.",
+            "Không để animation làm chậm CTA; CTA có mặt trước khi hero chạy xong.",
+            "Reduce Motion: bản tĩnh vẫn đẹp và đủ."
+          ],
+          "check": [
+            "CTA trước animation",
+            "QR reveal không chặn",
+            "bản tĩnh đủ"
+          ]
+        },
+        "me": {
+          "focus": "Nhịp của Schedule/Inbox: mở thread, back, chuyển tab; ưu tiên cảm giác nhanh.",
+          "tasks": [
+            "Chốt nhịp mở thread, back, chuyển tab; ghi ms.",
+            "Schedule: vuốt/chuyển tuần không giật; Inbox: mở thread không nhảy scroll.",
+            "Reduce Motion: bỏ slide, vẫn đúng chỗ."
+          ],
+          "check": [
+            "back đúng",
+            "không nhảy scroll",
+            "reduce motion"
+          ]
+        },
+        "host": {
+          "focus": "Nhịp của form và bảng tiền: bước Create, tab Hub, mở Money; không được làm chậm việc thật.",
+          "tasks": [
+            "Chốt nhịp chuyển bước Create, mở tab Hub, mở Money.",
+            "Form dài: focus/scroll không nhảy; bảng tiền: mở chi tiết không che số.",
+            "Reduce Motion: bỏ slide, vẫn thấy bước."
+          ],
+          "check": [
+            "chuyển bước rõ",
+            "không nhảy focus",
+            "reduce motion"
+          ]
+        }
+      }
+    },
+    {
+      "day": 5,
+      "slug": "roles",
+      "title": "Vai: guest, member, host, team, admin",
+      "lens": "Cùng một màn, khác quyền: guest, member, host, team (Manager/Finance/Lane lead/Helper), admin. Khác quyền phải nhìn thấy được.",
+      "rule": "Khác quyền thể hiện bằng chữ/trạng thái, không chỉ màu; không nút nào dẫn tới hành động bị chặn mà không nói vì sao.",
+      "clusters": {
+        "onboarding": {
+          "focus": "Guest/member/host/admin đi qua first-run khác nhau; thử 3 vai tối thiểu.",
+          "tasks": [
+            "Dựng guest first-run, member đã có tài khoản, host được mời làm host.",
+            "Khác biệt: chữ chào, quyền bỏ qua, CTA cuối; không chỉ đổi màu.",
+            "Admin: chỉ thấy nếu có lý do; ghi bảng vai."
+          ],
+          "check": [
+            "3 vai nhìn thấy được",
+            "gate nói vì sao",
+            "không chỉ màu"
+          ]
+        },
+        "discover": {
+          "focus": "Home/Browse/Map là nơi guest bị chặn nhiều nhất; thử guest/member/host/admin.",
+          "tasks": [
+            "Dựng guest (xem được, nhắc đăng nhập), member (đã lưu), host (event của mình), admin (remove).",
+            "Gate: không nút nào dẫn tới hành động bị chặn mà không nói vì sao.",
+            "Bảng quyền: xem, lưu, mua, sửa, remove."
+          ],
+          "check": [
+            "guest vẫn xem",
+            "gate nói lý do",
+            "bảng quyền đủ"
+          ]
+        },
+        "event": {
+          "focus": "Event Detail đổi theo vai: guest, member, host, team check-in, admin.",
+          "tasks": [
+            "Dựng 4 vai; host thấy quản lý, team thấy check-in, admin thấy remove.",
+            "Không lộ dữ liệu owner cho guest; CTA đổi theo quyền.",
+            "Ghi bảng quyền + chỗ nào app chưa có."
+          ],
+          "check": [
+            "không lộ dữ liệu",
+            "CTA đúng vai",
+            "team check-in rõ"
+          ]
+        },
+        "me": {
+          "focus": "Schedule/Inbox/Account là nơi vai hiện rõ nhất; thử guest/member/host/team/admin.",
+          "tasks": [
+            "Dựng guest (màn chào), member, host mode, team, admin.",
+            "Khác biệt: mục Hosting, team channels, admin rows; không chỉ badge.",
+            "Bảng quyền + chỗ nào chỉ là ẩn UI."
+          ],
+          "check": [
+            "5 vai",
+            "khác biệt thấy được",
+            "không chỉ ẩn UI"
+          ]
+        },
+        "host": {
+          "focus": "Host/team/admin trên cùng một cụm; đây là chỗ dễ lộ quyền sai nhất.",
+          "tasks": [
+            "Dựng host, Manager, Finance, Lane lead, Helper, admin.",
+            "Mỗi vai thấy đúng tab/hành động; hành động tiền và check-in phải khác.",
+            "Ghi bảng quyền; chỗ nào app chưa có thì ghi rõ."
+          ],
+          "check": [
+            "6 vai",
+            "tiền/check-in đúng",
+            "không lộ quyền"
+          ]
+        }
+      }
+    },
+    {
+      "day": 6,
+      "slug": "devices",
+      "title": "Thiết bị: iPad dọc/ngang, browser, bàn phím",
+      "lens": "Cùng cụm ở 834×1194, 1194×834, 1440×900, split 50/50 và bàn phím. Không phóng to màn điện thoại.",
+      "rule": "Kiểm bằng bàn phím thật: Tab, Enter, Esc. Không hành động nào chỉ dùng được bằng hover.",
+      "clusters": {
+        "onboarding": {
+          "focus": "First-run ở iPad dọc/ngang, split 50/50 và bàn phím; đây là chỗ dễ vỡ nhất.",
+          "tasks": [
+            "Dựng 834×1194, 1194×834, split 50/50, 1440×900; 390 có bàn phím.",
+            "Bàn phím: Tab qua từng tile/ô, Enter chọn, Esc đóng Loại khác.",
+            "Không phóng to màn 390; nội dung max width, không kéo giãn tile."
+          ],
+          "check": [
+            "split không vỡ",
+            "Tab/Enter/Esc",
+            "không phóng to 390"
+          ]
+        },
+        "discover": {
+          "focus": "Map + list ở split và bàn phím; đây là cụm dễ mất ngữ cảnh nhất.",
+          "tasks": [
+            "Dựng 1194×834 split map + list; 834 dọc map + sheet; 1440 map + panel.",
+            "Bàn phím: Tab vào search/filter, Enter chọn, Esc đóng sheet.",
+            "Không hover-only; chạm 44pt; không che CTA."
+          ],
+          "check": [
+            "split giữ ngữ cảnh",
+            "bàn phím đủ",
+            "không hover-only"
+          ]
+        },
+        "event": {
+          "focus": "Event Detail ở 1194/1440 và bàn phím; cột mua phải luôn thấy.",
+          "tasks": [
+            "Dựng 1194×834 hai cột; 1440 max 1200; 834 dọc; 390 bar dưới.",
+            "Bàn phím: Tab tới Reserve/stepper/QR; Enter/Esc.",
+            "Không để cột mua trôi khỏi tầm mắt; kiểm ảnh lớn."
+          ],
+          "check": [
+            "cột mua luôn thấy",
+            "bàn phím tới CTA",
+            "ảnh không vỡ"
+          ]
+        },
+        "me": {
+          "focus": "Master–detail ở 1194, split 50/50, chat có bàn phím; đây là chỗ dễ mất chỗ đang đọc.",
+          "tasks": [
+            "Dựng 1194 master–detail; split 50/50; 1440 thêm cột ngữ cảnh.",
+            "Chat: bàn phím không che ô nhập; Tab/Esc đóng thread.",
+            "Back giữ đúng dòng đang đọc; ghi vào notes.md."
+          ],
+          "check": [
+            "split giữ chỗ đọc",
+            "bàn phím không che",
+            "Back đúng dòng"
+          ]
+        },
+        "host": {
+          "focus": "Form dài và bảng tiền ở 1194/1440; bàn phím là đường chính.",
+          "tasks": [
+            "Dựng 1194 form + preview; 1440 bảng tiền rộng; split 50/50.",
+            "Bàn phím: Tab qua trường, Enter submit, Esc đóng sheet; focus không nhảy.",
+            "Bảng tiền không cắt số; hàng dài cuộn được."
+          ],
+          "check": [
+            "bảng tiền không cắt",
+            "focus không nhảy",
+            "split dùng được"
+          ]
+        }
+      }
+    },
+    {
+      "day": 7,
+      "slug": "continuity",
+      "title": "Nối liền: 5 cụm, một app",
+      "lens": "Nối 5 cụm của 7 ngày: mọi nút chính dẫn sang cụm tương ứng, Back trả đúng chỗ, cùng một từ cho cùng một khái niệm.",
+      "rule": "Link chết là lỗi; cụm đích chưa có thì rơi về app thật kèm nhãn “app thật”.",
+      "clusters": {
+        "onboarding": {
+          "focus": "Đây là cửa vào của cả app: Welcome → Home guest → Event → Login; Back phải kín.",
+          "tasks": [
+            "Nối Welcome → Home guest → Event thật → Login; mỗi bước Back đúng.",
+            "Link sang 4 cụm khác; nếu chưa có thì app thật + nhãn.",
+            "Ghi bảng từ → đến; sửa chỗ hụt ngay."
+          ],
+          "check": [
+            "12 bước không cụt",
+            "Back kín",
+            "link cụm sống"
+          ]
+        },
+        "discover": {
+          "focus": "Home/Browse/Map/Event là chuỗi chính; thử 12 bước ngẫu nhiên.",
+          "tasks": [
+            "Nối Home → Event → Back; Map → Event → Back; Browse → Event; Search → Event.",
+            "Back trả đúng tab/scroll; link sang me/event/host.",
+            "Ghi bảng từ → đến."
+          ],
+          "check": [
+            "12 bước không cụt",
+            "Back đúng scroll",
+            "link cụm"
+          ]
+        },
+        "event": {
+          "focus": "Event → Reserve → Ticket → Schedule/Event; đây là chuỗi tiền, không được mất vé.",
+          "tasks": [
+            "Nối Event → Reserve → Confirmed → Schedule/Event; Back đúng.",
+            "Ticket → Event details → Back về đúng vé; host → Hub.",
+            "Ghi bảng từ → đến."
+          ],
+          "check": [
+            "không mất vé",
+            "Back đúng vé",
+            "link host"
+          ]
+        },
+        "me": {
+          "focus": "Schedule/Inbox/Account là bản đồ quay về; mọi màn phải có đường về.",
+          "tasks": [
+            "Nối Schedule → Event/Ticket; Inbox → Event; Account → Rewards/Settings.",
+            "Back về đúng mục; link sang discover/event/host.",
+            "Ghi bảng từ → đến."
+          ],
+          "check": [
+            "mọi màn có đường về",
+            "Back đúng",
+            "link cụm"
+          ]
+        },
+        "host": {
+          "focus": "Host Home → Create → Hub → Money & door → admin; chuỗi dài, phải không cụt.",
+          "tasks": [
+            "Nối Host Home → Create → Hub → Money; admin entry.",
+            "Back về đúng project/event; link sang me/event.",
+            "Ghi bảng từ → đến."
+          ],
+          "check": [
+            "chuỗi dài không cụt",
+            "Back đúng project",
+            "link cụm"
+          ]
+        }
+      }
+    }
+  ]
+}

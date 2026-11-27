@@ -12,12 +12,16 @@
  *   node scripts/cloud-notify.mjs weekly      # Fri 17:00 ICT — the week's commits + hotspots
  *   node scripts/cloud-notify.mjs deps        # Sun 18:00 ICT — outdated packages + npm audit
  *   node scripts/cloud-notify.mjs prompt      # 05:00 daily ICT — copy-paste Mission for a Freebuff session
+ *   node scripts/cloud-notify.mjs prototype   # 06:00 daily ICT — that day's prototype Mission (day 1..8)
  *   node scripts/cloud-notify.mjs apply --file docs/audits/<date>/APPLY.discord.md  # one copyable mission message
  *   node scripts/cloud-notify.mjs test        # one message, to prove the webhook wiring
  *
  * Flags: --dry-run  print the payload and send nothing
  *        --always   health: post even when every check passes
  *        --file     apply: read the prompt from this file instead of APPLY_PROMPT/env
+ *        --day N       prototype: post that day (1..8) instead of the computed one
+ *        --cluster ID  prototype: post only that cluster's full mission (onboarding|discover|event|me|host)
+ *                      (default: five messages, one per cluster, in ladder order)
  *
  * Webhooks (repo secrets, one URL per channel):
  *   DISCORD_WEBHOOK_STANDUP, DISCORD_WEBHOOK_ALERTS, DISCORD_WEBHOOK_WEEKLY
@@ -60,6 +64,7 @@ const CHANNEL_OF = {
   deps: 'weekly',
   prompt: 'weekly',
   apply: 'weekly',
+  prototype: 'weekly',
   test: 'alerts',
 };
 
@@ -473,6 +478,150 @@ function dailyPrompt() {
   return text.length <= 1900 ? text : `${text.slice(0, 1890)}…`;
 }
 
+// The prototype ladder is seven build days plus a review. A day is one lens over five
+// screen clusters, and every cluster is its own Mission — its own Freebuff session and
+// its own question on the Glance board. The matrix is data in
+// docs/prototypes/missions/plan.json (edit the plan, not this script); day 8 is the
+// single review mission in missions/day-08.md.
+const PROTOTYPE_DIR = 'docs/prototypes';
+const PROTOTYPE_PLAN = path.join(PROTOTYPE_DIR, 'missions', 'plan.json');
+const PROTOTYPE_REVIEW = path.join(PROTOTYPE_DIR, 'missions', 'day-08.md');
+const PROTOTYPE_LAST_DAY = 8;
+const PROTOTYPE_LIMIT = 1900;
+const PROTOTYPE_RULES =
+  'không sửa src/, ios/, migration; không deploy; ảnh thật, không màn hình bịa; ≥1 link sang cụm khác.';
+
+function prototypeDay() {
+  const fromArgs = process.argv.indexOf('--day');
+  const pinned = Number.parseInt(fromArgs > -1 ? process.argv[fromArgs + 1] : process.env.PROTOTYPE_DAY || '', 10);
+  if (Number.isFinite(pinned) && pinned >= 1) return Math.min(pinned, PROTOTYPE_LAST_DAY);
+  const startRaw = process.env.PROTOTYPE_START || '2026-11-27';
+  const start = new Date(`${startRaw}T00:00:00+07:00`);
+  if (Number.isNaN(start.getTime())) return 1;
+  const elapsed = Math.floor((Date.now() - start.getTime()) / 86_400_000);
+  return Math.min(PROTOTYPE_LAST_DAY, Math.max(1, elapsed + 1));
+}
+
+function pad2(value) {
+  return String(value).padStart(2, '0');
+}
+
+function readTextFile(file) {
+  let body = '';
+  try {
+    body = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n').trim();
+  } catch (error) {
+    throw new Error(`prototype: cannot read ${file}: ${error.message}`);
+  }
+  if (!body) throw new Error(`prototype: ${file} is empty`);
+  return body;
+}
+
+function prototypePlan() {
+  const raw = readTextFile(PROTOTYPE_PLAN);
+  let plan;
+  try {
+    plan = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`prototype: ${PROTOTYPE_PLAN} is not valid JSON: ${error.message}`);
+  }
+  const clusters = Array.isArray(plan.clusters) ? plan.clusters.filter((cluster) => cluster && cluster.id) : [];
+  const days = Array.isArray(plan.days) ? plan.days.filter((day) => day && day.day) : [];
+  if (!clusters.length || !days.length) {
+    throw new Error('prototype: plan.json needs a non-empty days[] and clusters[]');
+  }
+  return { clusters, days };
+}
+
+function clusterMissionText(day, lens, cluster, plan, index, total) {
+  const previous = plan.days.find((entry) => entry.day === day - 1);
+  const per = lens.clusters?.[cluster.id];
+  if (!per || !Array.isArray(per.tasks) || !per.tasks.length) {
+    throw new Error(`prototype: plan.json day ${day} is missing clusters.${cluster.id}.tasks`);
+  }
+  const lines = [
+    `NGÀY ${day}/${PROTOTYPE_LAST_DAY} · CỤM ${index}/${total} · ${cluster.title}`,
+    `Mục tiêu: ${lens.lens}`,
+    `Vì sao cụm này: ${per.focus}`,
+    `Màn: ${cluster.screens}`,
+    `Đọc: docs/prototypes/missions/STANDARD.md · docs/prototypes/decisions/day-${pad2(day)}.json (${cluster.question || cluster.id})`,
+  ];
+  lines.push(
+    previous
+      ? `  · bản trước: docs/prototypes/day-${pad2(previous.day)}-${previous.slug}/${cluster.id}/index.html`
+      : '  · bản trước: không có — đây là bản đầu tiên'
+  );
+  const refs = (cluster.ref || []).filter(Boolean);
+  if (refs.length) lines.push(`  · trong nhà (không copy pixel): ${refs.join(' · ')}`);
+  lines.push(`  · ngoài: RESEARCH-SOURCES.md › ${cluster.id} — 2 nguồn, ghi URL + ngày vào notes.md`);
+  lines.push(`  · code (chỉ đọc): ${(cluster.read || []).join(', ')}`);
+  lines.push('Việc:');
+  per.tasks.forEach((step, stepIndex) => lines.push(`${stepIndex + 1}. ${step}`));
+  lines.push(`Chung: ${lens.rule}`);
+  lines.push(
+    `Nộp: docs/prototypes/day-${pad2(day)}-${lens.slug}/${cluster.id}/{index.html,notes.md} + ` +
+      `frames/${cluster.id}-{bước}-{390,834,1194,1440}.png + overview + capture.md.`
+  );
+  const checks = (per.check || []).filter(Boolean);
+  if (checks.length) lines.push(`Kiểm: ${checks.join(' · ')}`);
+  lines.push(`Giữ: ${cluster.must}`);
+  lines.push('Hỏi: tối đa 2 câu, chỉ khi đổi bố cục; bỏ câu đã có trên Glance.');
+  lines.push(`Luật: ${PROTOTYPE_RULES}`);
+  return lines.join('\n');
+}
+
+function wrapPrototypeMessage(header, body) {
+  const message = [header, 'Dán khối dưới vào một phiên Freebuff mới (Mission):', '```text', body, '```'].join('\n');
+  if (message.length > PROTOTYPE_LIMIT) {
+    throw new Error(
+      `prototype: a mission message is ${message.length} characters (limit ${PROTOTYPE_LIMIT}) — shorten the mission text`
+    );
+  }
+  return message;
+}
+
+/**
+ * Five messages a day, one per cluster, in ladder order. `cluster` posts just that
+ * one (a deep-dive session); day 8 is the single review mission.
+ */
+function prototypeMissions(day, { cluster = '' } = {}) {
+  const header = (label) =>
+    `**Mission PROTOTYPE — ${today()} (${weekdayNameVi(new Date())}) · Ngày ${day}/${PROTOTYPE_LAST_DAY} · ${label}**`;
+
+  if (day >= PROTOTYPE_LAST_DAY) {
+    const body = readTextFile(PROTOTYPE_REVIEW);
+    if (/^```/m.test(body)) {
+      throw new Error(`prototype: ${PROTOTYPE_REVIEW} contains a \`\`\` fence; the script wraps the mission in one block`);
+    }
+    const title = header('Review + áp dụng');
+    return [{ id: 'review', message: wrapPrototypeMessage(title, body) }];
+  }
+
+  const plan = prototypePlan();
+  const lens = plan.days.find((entry) => entry.day === day);
+  if (!lens) throw new Error(`prototype: plan.json has no day ${day}`);
+
+  const fullMission = (entry) => {
+    const index = plan.clusters.indexOf(entry) + 1;
+    const title = header(`Cụm ${index}/${plan.clusters.length} — ${entry.title}`);
+    return {
+      id: entry.id,
+      message: wrapPrototypeMessage(title, clusterMissionText(day, lens, entry, plan, index, plan.clusters.length)),
+    };
+  };
+
+  if (cluster) {
+    const picked = plan.clusters.find((entry) => entry.id === cluster);
+    if (!picked) {
+      throw new Error(
+        `prototype: unknown cluster "${cluster}" — use ${plan.clusters.map((entry) => entry.id).join(' | ')}`
+      );
+    }
+    return [fullMission(picked)];
+  }
+  return plan.clusters.map(fullMission);
+}
+
 function readHealthState() {
   try {
     const parsed = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
@@ -638,7 +787,7 @@ function testMessage() {
 async function main() {
   const job = JOB || 'test';
   if (!CHANNEL_OF[job]) {
-    console.error(`unknown job "${job}" — use standup | health | weekly | deps | prompt | apply | test`);
+    console.error(`unknown job "${job}" — use standup | health | weekly | deps | prompt | prototype | apply | test`);
     process.exit(2);
   }
   if (job === 'prompt') {
@@ -647,6 +796,23 @@ async function main() {
   }
   if (job === 'apply') {
     await postApply();
+    return;
+  }
+  if (job === 'prototype') {
+    const day = prototypeDay();
+    const clusterFlag = process.argv.indexOf('--cluster');
+    const cluster = clusterFlag > -1 ? String(process.argv[clusterFlag + 1] || '') : '';
+    const missions = prototypeMissions(day, { cluster });
+    for (const [index, mission] of missions.entries()) {
+      const result = await postText('weekly', mission.message);
+      console.log(
+        `prototype: day ${day} · ${mission.id} → ${result.sent ? 'posted' : result.dryRun ? 'dry run' : 'not delivered'}`
+      );
+      // Discord allows ~5 webhook messages per 2s per channel; five clusters fit, spaced.
+      if (index < missions.length - 1 && !DRY_RUN) await new Promise((resolve) => setTimeout(resolve, 1200));
+      if (!result.sent && !result.dryRun) process.exitCode = 1;
+    }
+    console.log(`prototype: day ${day} → ${missions.length} message(s)`);
     return;
   }
 

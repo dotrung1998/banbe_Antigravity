@@ -1,0 +1,67 @@
+{
+  "day": 6,
+  "title": "Ngày 6 · Thiết bị — iPad, browser, bàn phím",
+  "helper": "Mỗi cụm một câu về khung hình. Bấm là ghi vào decisions/day-06.json và vault.",
+  "questions": [
+    {
+      "id": "onb-device",
+      "cluster": "onboarding",
+      "cluster_title": "Cụm 1 · Onboarding & first-run",
+      "q": "Onboarding trên iPad: bố cục nào?",
+      "helper": "Một bản chạy cả ba khung là rẻ nhất; hai bản thì phải bảo trì gấp đôi.",
+      "options": [
+        { "id": "same", "label": "Cùng bố cục, giãn ra", "detail": "Một bản, ít lỗi, hơi trống ở 1440" },
+        { "id": "wide", "label": "Bố cục ngang hai cột", "detail": "Tận dụng chỗ, thêm việc và thêm lỗi" },
+        { "id": "centered", "label": "Cột hẹp giữa màn", "detail": "Tập trung, lãng phí chỗ" }
+      ]
+    },
+    {
+      "id": "dis-device",
+      "cluster": "discover",
+      "cluster_title": "Cụm 2 · Home + Browse/Search + Map",
+      "q": "Split view trên iPad: giữ cột nào?",
+      "helper": "Split view hẹp còn ~320–500px; phải chọn cột sống sót.",
+      "options": [
+        { "id": "list", "label": "Danh sách + chi tiết", "detail": "Chuẩn iPad, dùng được một tay" },
+        { "id": "map", "label": "Map + danh sách", "detail": "Đúng chất khám phá, nặng hơn" },
+        { "id": "collapse", "label": "Thu về một cột", "detail": "An toàn, mất thế mạnh màn lớn" }
+      ]
+    },
+    {
+      "id": "evt-device",
+      "cluster": "event",
+      "cluster_title": "Cụm 3 · Event Detail + Reserve/Hold + Ticket",
+      "q": "Browser: URL mang gì?",
+      "helper": "Back/refresh trên browser là chuyện thật; mất bước chọn vé là mất đơn.",
+      "options": [
+        { "id": "url-state", "label": "URL mang trạng thái chọn vé", "detail": "Back/refresh không mất gì" },
+        { "id": "memory", "label": "Chỉ trong bộ nhớ", "detail": "Nhanh làm, dễ mất khi refresh" },
+        { "id": "url-min", "label": "URL chỉ có event id", "detail": "Sạch, phải chọn lại" }
+      ]
+    },
+    {
+      "id": "me-device",
+      "cluster": "me",
+      "cluster_title": "Cụm 4 · Schedule + Inbox/Account",
+      "q": "Schedule trên iPad ngang?",
+      "helper": "1194×834 là khung thật của iPad nằm ngang — đừng thiết kế cho nó sau cùng.",
+      "options": [
+        { "id": "month-side", "label": "Lịch tháng + danh sách bên cạnh", "detail": "Thấy cả tháng và chi tiết" },
+        { "id": "week", "label": "Tuần + danh sách", "detail": "Gần gũi hơn, ít toàn cảnh" },
+        { "id": "phone-layout", "label": "Như điện thoại, giãn ra", "detail": "Rẻ, nhưng trông như app phóng to" }
+      ]
+    },
+    {
+      "id": "host-device",
+      "cluster": "host",
+      "cluster_title": "Cụm 5 · Host: Create + Hub + Admin",
+      "q": "Preview khi tạo event ở đâu?",
+      "helper": "Preview là lý do chính để host dùng iPad thay vì điện thoại.",
+      "options": [
+        { "id": "side", "label": "Bên phải, cập nhật live", "detail": "Đúng thế mạnh màn lớn" },
+        { "id": "toggle", "label": "Nút xem trước", "detail": "Không chiếm chỗ, thêm một bước" },
+        { "id": "none", "label": "Không preview", "detail": "Nhanh, host phải publish rồi xem" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "day": 7,
+  "title": "Ngày 7 · Nối liền — đi từ đâu về đâu?",
+  "helper": "Mỗi cụm một câu về đường đi giữa các cụm. Bấm là ghi vào decisions/day-07.json và vault.",
+  "questions": [
+    {
+      "id": "onb-next",
+      "cluster": "onboarding",
+      "cluster_title": "Cụm 1 · Onboarding & first-run",
+      "q": "Xong onboarding thì rơi vào đâu?",
+      "helper": "Điểm rơi quyết định người dùng có tin là lựa chọn của mình có tác dụng.",
+      "options": [
+        { "id": "for-you", "label": "For You có gu vừa chọn", "detail": "Thấy lựa chọn có tác dụng ngay" },
+        { "id": "home", "label": "Home mặc định", "detail": "An toàn, không cá nhân" },
+        { "id": "last", "label": "Sự kiện đang xem dở", "detail": "Đúng ý người quay lại, lạ với người mới" }
+      ]
+    },
+    {
+      "id": "dis-next",
+      "cluster": "discover",
+      "cluster_title": "Cụm 2 · Home + Browse/Search + Map",
+      "q": "Từ Home sang Map: giữ bộ lọc?",
+      "helper": "Hai màn này là một ý tưởng; làm lại bộ lọc là phá ý tưởng đó.",
+      "options": [
+        { "id": "keep", "label": "Giữ lọc + vị trí", "detail": "Không phải làm lại từ đầu" },
+        { "id": "reset", "label": "Về mặc định", "detail": "Đơn giản, gây bực" },
+        { "id": "ask", "label": "Hỏi một lần", "detail": "Rõ ràng, thêm bước" }
+      ]
+    },
+    {
+      "id": "evt-back",
+      "cluster": "event",
+      "cluster_title": "Cụm 3 · Event Detail + Reserve/Hold + Ticket",
+      "q": "Từ Map/Home vào Event: Back về đâu?",
+      "helper": "Scroll restoration là chỗ app thật hay sai nhất.",
+      "options": [
+        { "id": "origin", "label": "Đúng chỗ vừa rời, kể cả scroll", "detail": "Không mất chỗ trong danh sách dài" },
+        { "id": "home", "label": "Về Home", "detail": "Dễ làm, mất ngữ cảnh" },
+        { "id": "list", "label": "Về đầu danh sách", "detail": "Rõ, phải cuộn lại" }
+      ]
+    },
+    {
+      "id": "me-ticket",
+      "cluster": "me",
+      "cluster_title": "Cụm 4 · Schedule + Inbox/Account",
+      "q": "Từ ticket sang Schedule?",
+      "helper": "Vé và lịch là cùng một vật; người dùng không nên phải tìm lại.",
+      "options": [
+        { "id": "same-object", "label": "Cùng một vé, mở đúng ngày", "detail": "Một bước, không tìm lại" },
+        { "id": "new-tab", "label": "Mở tab mới", "detail": "Giữ chỗ cũ, thêm tab" },
+        { "id": "none", "label": "Không link", "detail": "Sạch, nhưng hai cụm rời nhau" }
+      ]
+    },
+    {
+      "id": "host-handoff",
+      "cluster": "host",
+      "cluster_title": "Cụm 5 · Host: Create + Hub + Admin",
+      "q": "Từ Event của mình sang Project Hub?",
+      "helper": "Sau khi publish, việc thật là quản lý khách và tiền — phải tới được trong một bước.",
+      "options": [
+        { "id": "contextual", "label": "Mở đúng event trong Hub", "detail": "Một bước, đúng ngữ cảnh" },
+        { "id": "hub-list", "label": "Về danh sách Hub", "detail": "An toàn, thêm một bước" },
+        { "id": "tab", "label": "Tab riêng", "detail": "Giữ cả hai, dễ rối trên iPad" }
+      ]
+    }
+  ]
+}

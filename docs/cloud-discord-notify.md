@@ -19,6 +19,7 @@ channel webhooks. No Mac, no Freebuff session and no deploy is involved.
 | banbe weekly dependency audit | `deps` job | Sun 18:00 |
 | banbe daily audit / code graph / second-brain compile | `prompt` job | 05:00 daily: posts a ready-to-paste Freebuff Mission. The vault and graph notes now live in the repo; `graphify` itself is still a local install |
 | audit → apply hand-off | `apply` mode | after an audit: posts the synthesized apply prompt, so a new session can open the fix PR |
+| prototype ladder (7 lenses × 5 clusters) | `prototype` job | 06:00 daily: **5 messages**, one Mission per cluster, building on yesterday's folders |
 | nightly verified `git bundle` | **stays on the Mac** — it backs up uncommitted local work | — |
 | Apple Notes export | **stays on the Mac** — macOS Automation permission | — |
 
@@ -112,6 +113,30 @@ Preview it without sending:
 ```bash
 node scripts/cloud-notify.mjs prompt --dry-run
 ```
+
+## The prototype mission — five messages a day
+
+The 8-day prototype ladder (`docs/prototypes/`) is a matrix: 7 lenses × 5 screen clusters (`onboarding`,
+`discover`, `event`, `me`, `host`). The job posts **five messages a day, one per cluster**: the day's lens, that
+cluster's own focus, tasks, checks, deliverable and "must keep". The shared contract (4 device frames, reset,
+deep links, cross-cluster links, data rules, 20-minute budget) is `docs/prototypes/missions/STANDARD.md`; the
+scaffold is `docs/prototypes/shared/`. Edit the plan and the standard, not the script. Day 8 posts the single
+review mission (it reviews all five folders, so it is not split).
+
+```bash
+node scripts/cloud-notify.mjs prototype --dry-run                          # all five messages for today
+node scripts/cloud-notify.mjs prototype --day 3 --cluster event --dry-run   # only the event cluster
+```
+
+Day selection: `PROTOTYPE_START` (repository **variable**, default `2026-11-27`) is day 1; today's day is the calendar
+difference + 1, clamped to 1..8. `PROTOTYPE_DAY` (variable) or `--day N` pins one. Every message is wrapped like an
+apply prompt — a bold header, the paste line, one fenced `text` block — and is refused (exit non-zero) above 1,900
+characters, so it always stays one copyable message.
+
+The mission names the answer file (`decisions/day-NN.json`), the previous day's folder of the same clusters, what to
+capture (real screenshots — never a made-up screen), what to hand in, and a `grill-me` round per cluster (at most three
+hard questions, skipping what the owner already answered on the Glance board). Day 8 reads only `done/` and produces
+the APPLY prompt.
 
 ## The apply prompt after an audit
 

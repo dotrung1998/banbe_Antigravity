@@ -1,0 +1,44 @@
+{
+  "day": 8,
+  "title": "Ngày 8 · Chọn gì để review và áp dụng",
+  "helper": "Review đúng done/, không review bản nháp. Bấm là ghi vào decisions/day-08.json và vault.",
+  "questions": [
+    {
+      "id": "pick",
+      "cluster": "review",
+      "cluster_title": "Review",
+      "q": "Review cụm nào trước?",
+      "helper": "Một cụm, không ba. Thứ tự quan trọng hơn số lượng.",
+      "options": [
+        { "id": "onboarding", "label": "Onboarding", "detail": "Chạm mọi người mới, sửa được ngay" },
+        { "id": "discover", "label": "Home/Browse/Map", "detail": "Mở đường cho màn lớn" },
+        { "id": "event", "label": "Event + Ticket", "detail": "Giá trị cao nhất, rủi ro nhất" },
+        { "id": "host", "label": "Host", "detail": "Ít người dùng nhưng là chỗ kiếm tiền" }
+      ]
+    },
+    {
+      "id": "apply",
+      "cluster": "review",
+      "cluster_title": "Review",
+      "q": "Áp dụng vào code thế nào?",
+      "helper": "Repo có thói quen đặt sau switch khi đổi lớn (note 30).",
+      "options": [
+        { "id": "switch", "label": "Sau một switch", "detail": "An toàn, rollback được" },
+        { "id": "one-cluster", "label": "Một cụm mỗi PR", "detail": "Dễ review, chậm hơn" },
+        { "id": "direct", "label": "Sửa thẳng", "detail": "Nhanh, rủi ro hơn" }
+      ]
+    },
+    {
+      "id": "cadence",
+      "cluster": "review",
+      "cluster_title": "Review",
+      "q": "Sau ngày 8 thì sao?",
+      "helper": "Chu kỳ nên lặp lại hay dừng để dựng cho xong?",
+      "options": [
+        { "id": "week-each", "label": "Mỗi tuần một cụm", "detail": "Đều, chậm mà chắc" },
+        { "id": "batch", "label": "Gom 2 tuần rồi dựng", "detail": "Ít phiên, nhiều quyết định một lúc" },
+        { "id": "stop", "label": "Dừng prototype, dựng thật", "detail": "Prototype đã đủ" }
+      ]
+    }
+  ]
+}

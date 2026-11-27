@@ -1,0 +1,67 @@
+{
+  "day": 5,
+  "title": "Ngày 5 · Vai — ai thấy gì?",
+  "helper": "Mỗi cụm một câu về quyền. Bấm là ghi vào decisions/day-05.json và vault.",
+  "questions": [
+    {
+      "id": "onb-role",
+      "cluster": "onboarding",
+      "cluster_title": "Cụm 1 · Onboarding & first-run",
+      "q": "Khách thấy gì trước khi đăng nhập?",
+      "helper": "Đây là quyết định niềm tin lớn nhất trong cụm này.",
+      "options": [
+        { "id": "browse", "label": "Xem Home/Map/Event, chặn giữ chỗ", "detail": "Thấy giá trị trước khi cho số điện thoại" },
+        { "id": "onboarding-only", "label": "Chỉ onboarding", "detail": "Kiểm soát tốt, nhưng chặn ngay cửa" },
+        { "id": "nothing", "label": "Bắt đăng nhập ngay", "detail": "Nhanh cho app, mất phần lớn khách" }
+      ]
+    },
+    {
+      "id": "dis-role",
+      "cluster": "discover",
+      "cluster_title": "Cụm 2 · Home + Browse/Search + Map",
+      "q": "Host có Home riêng không?",
+      "helper": "Host cũng là người đi chơi; tách quá tay thì họ sống ở hai app.",
+      "options": [
+        { "id": "toggle", "label": "Cùng Home + chế độ Host", "detail": "Một nơi, ít ngữ cảnh lạ" },
+        { "id": "separate", "label": "Home host riêng (/host)", "detail": "Rõ vai, nhưng thành app trong app" },
+        { "id": "banner", "label": "Home chung + banner", "detail": "Rẻ, dễ bị bỏ qua" }
+      ]
+    },
+    {
+      "id": "evt-role",
+      "cluster": "event",
+      "cluster_title": "Cụm 3 · Event Detail + Reserve/Hold + Ticket",
+      "q": "Host xem Event của mình ở đâu?",
+      "helper": "Host cần thấy doanh thu và khách ngay chỗ khách thấy trang.",
+      "options": [
+        { "id": "owner-strip", "label": "Dải chủ sự kiện trên trang", "detail": "Đúng chỗ, không phải nhớ đường" },
+        { "id": "switch", "label": "Nút chuyển chế độ host", "detail": "Tách bạch, thêm một bước" },
+        { "id": "separate", "label": "Trang riêng trong Hub", "detail": "Sạch, nhưng xa ngữ cảnh" }
+      ]
+    },
+    {
+      "id": "me-role",
+      "cluster": "me",
+      "cluster_title": "Cụm 4 · Schedule + Inbox/Account",
+      "q": "Team member thấy gì trong Inbox/Schedule?",
+      "helper": "Role guard đã có trong code (note 171); đây là chuyện màn hình, không phải DB.",
+      "options": [
+        { "id": "scoped", "label": "Chỉ việc của mình + lane", "detail": "Ít nhiễu, đúng việc" },
+        { "id": "all-team", "label": "Cả team, gắn nhãn", "detail": "Thấy toàn cảnh, dễ nhiễu" },
+        { "id": "host-only", "label": "Chỉ host có Inbox", "detail": "Đơn giản, nhưng team mất kênh" }
+      ]
+    },
+    {
+      "id": "host-role",
+      "cluster": "host",
+      "cluster_title": "Cụm 5 · Host: Create + Hub + Admin",
+      "q": "Admin đặt ở đâu?",
+      "helper": "Admin là vai hiếm; đừng để nó nằm cạnh việc thường ngày của host.",
+      "options": [
+        { "id": "rail", "label": "Một mục Admin trong rail", "detail": "Tách khỏi việc host thường, chỉ hiện với admin" },
+        { "id": "settings", "label": "Trong Account/Settings", "detail": "Gọn, nhưng khó tìm" },
+        { "id": "hidden", "label": "Chỉ hiện với admin", "detail": "Sạch nhất cho người thường, khó phát hiện" }
+      ]
+    }
+  ]
+}

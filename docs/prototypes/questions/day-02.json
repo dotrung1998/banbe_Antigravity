@@ -1,0 +1,67 @@
+{
+  "day": 2,
+  "title": "Ngày 2 · Một vỏ — chỗ nào dùng chung?",
+  "helper": "Mỗi cụm một câu về vỏ/bố cục. Bấm là ghi vào decisions/day-02.json và vault.",
+  "questions": [
+    {
+      "id": "onb-shell",
+      "cluster": "onboarding",
+      "cluster_title": "Cụm 1 · Onboarding & first-run",
+      "q": "Onboarding nằm trong vỏ app hay đứng riêng?",
+      "helper": "Vỏ chung giúp định vị, nhưng onboarding cần toàn bộ sự chú ý.",
+      "options": [
+        { "id": "alone", "label": "Đứng riêng, toàn màn", "detail": "Không rail, không gì cạnh tranh sự chú ý" },
+        { "id": "in-shell", "label": "Chạy trong vỏ", "detail": "Thấy app thật ngay từ bước đầu" },
+        { "id": "both", "label": "Bước đầu riêng, sau vào vỏ", "detail": "Vừa tò mò vừa định vị được" }
+      ]
+    },
+    {
+      "id": "dis-shell",
+      "cluster": "discover",
+      "cluster_title": "Cụm 2 · Home + Browse/Search + Map",
+      "q": "Home trên màn lớn: mấy cột?",
+      "helper": "1440 có chỗ cho hai cột; 834 thì không. Chọn cái đúng cho cả hai.",
+      "options": [
+        { "id": "two", "label": "Hai cột + rail", "detail": "Danh sách cạnh chi tiết, rail giữ điều hướng" },
+        { "id": "one", "label": "Một cột rộng", "detail": "Đơn giản, nhưng lãng phí nửa màn 1440" },
+        { "id": "grid", "label": "Lưới 3 cột", "detail": "Nhiều ảnh, nhưng chậm và khó quét bằng mắt" }
+      ]
+    },
+    {
+      "id": "evt-shell",
+      "cluster": "event",
+      "cluster_title": "Cụm 3 · Event Detail + Reserve/Hold + Ticket",
+      "q": "Trang Event: chỗ giữ ghế đặt ở đâu?",
+      "helper": "Giá và nút giữ chỗ là thứ khách tìm — đừng để nó trôi khỏi tầm mắt.",
+      "options": [
+        { "id": "sticky", "label": "Panel dính bên phải", "detail": "Luôn thấy giá + giữ chỗ khi cuộn" },
+        { "id": "bottom", "label": "CTA cuối trang", "detail": "Đọc xong mới quyết, nhưng dễ bỏ lỡ" },
+        { "id": "bar", "label": "Thanh dưới cùng", "detail": "Rõ, nhưng che nội dung trên iPad" }
+      ]
+    },
+    {
+      "id": "me-shell",
+      "cluster": "me",
+      "cluster_title": "Cụm 4 · Schedule + Inbox/Account",
+      "q": "Schedule + Inbox: dùng chung một vỏ hai cột?",
+      "helper": "Ba màn này đang khác ngữ pháp; vỏ chung là cách rẻ nhất để chúng thuộc về nhau.",
+      "options": [
+        { "id": "split", "label": "Split: danh sách + nội dung", "detail": "Chuẩn mail/lịch, học một lần dùng cả ba" },
+        { "id": "single", "label": "Mỗi thứ một màn", "detail": "Đơn giản, nhưng chuyển màn nhiều" },
+        { "id": "tabs", "label": "Tab trong một cột", "detail": "Gọn trên 834, chật trên 1440" }
+      ]
+    },
+    {
+      "id": "host-shell",
+      "cluster": "host",
+      "cluster_title": "Cụm 5 · Host: Create + Hub + Admin",
+      "q": "Create event: một trang hay nhiều bước?",
+      "helper": "Đếm số bấm là thước đo chính; màn lớn cho phép thấy trước kết quả.",
+      "options": [
+        { "id": "split-steps", "label": "Cột bước + preview", "detail": "Đổi đâu thấy đó, đúng thế mạnh màn lớn" },
+        { "id": "wizard", "label": "Wizard từng bước", "detail": "Rõ ràng, nhưng chậm trên desktop" },
+        { "id": "one-page", "label": "Một trang dài", "detail": "Nhanh cho người quen, nặng cho người mới" }
+      ]
+    }
+  ]
+}

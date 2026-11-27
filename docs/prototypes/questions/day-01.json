@@ -1,0 +1,67 @@
+{
+  "day": 1,
+  "title": "Ngày 1 · Nền — mỗi cụm một bản lớn đầu tiên",
+  "helper": "Mỗi cụm một câu. Bấm là ghi vào decisions/day-01.json và vault.",
+  "questions": [
+    {
+      "id": "onb-base",
+      "cluster": "onboarding",
+      "cluster_title": "Cụm 1 · Onboarding & first-run",
+      "q": "Onboarding bản lớn dựng từ đâu?",
+      "helper": "Bản lớn phải mở được một mình, dựa trên thứ đã có chứ không vẽ lại từ đầu.",
+      "options": [
+        { "id": "archive-v5", "label": "Từ v5 trong archive/", "detail": "Giữ ngữ pháp đã chốt, chỉ sửa cho màn lớn" },
+        { "id": "code", "label": "Từ code đang chạy", "detail": "Đúng thứ app đang có, kể cả phần dở" },
+        { "id": "fresh", "label": "Dựng lại từ ảnh thật", "detail": "Sạch, nhưng mất ngữ pháp của v5" }
+      ]
+    },
+    {
+      "id": "dis-base",
+      "cluster": "discover",
+      "cluster_title": "Cụm 2 · Home + Browse/Search + Map",
+      "q": "Home/Browse/Map dựng từ đâu?",
+      "helper": "Home v3.2 và map v5 là hai bản đã chốt nhưng chưa từng nằm cạnh nhau trên màn lớn.",
+      "options": [
+        { "id": "archive-both", "label": "Home v3.2 + map v5", "detail": "Hai bản đã chốt, ghép lại thành một cụm" },
+        { "id": "code", "label": "Từ code hiện tại", "detail": "Sát app, nhưng nhiều màn chưa có bản lớn" },
+        { "id": "mixed", "label": "Trộn theo từng màn", "detail": "Home từ v3.2, Map từ code — chọn chỗ nào đã tốt" }
+      ]
+    },
+    {
+      "id": "evt-base",
+      "cluster": "event",
+      "cluster_title": "Cụm 3 · Event Detail + Reserve/Hold + Ticket",
+      "q": "Event Detail + Ticket dựng từ đâu?",
+      "helper": "v2.3 có chuyển động, ticket v2 có bản vé nhưng chỉ đúng cho điện thoại.",
+      "options": [
+        { "id": "archive", "label": "Từ v2.3 + ticket v2", "detail": "Đã có nhịp và bản vé, chỉ cần dựng cho màn lớn" },
+        { "id": "code", "label": "Từ EventDetail.jsx", "detail": "Đúng dữ liệu thật, chưa từng có bố cục lớn" },
+        { "id": "archive-code", "label": "Dáng v2.3, dữ liệu từ code", "detail": "Đẹp nhưng phải kiểm lại từng trường" }
+      ]
+    },
+    {
+      "id": "me-base",
+      "cluster": "me",
+      "cluster_title": "Cụm 4 · Schedule + Inbox/Account",
+      "q": "Schedule/Inbox/Account dựng từ đâu?",
+      "helper": "Cụm này chưa từng có bản màn lớn nào — schedule-stages v5 là gần nhất.",
+      "options": [
+        { "id": "archive", "label": "schedule-stages v5", "detail": "Giữ các giai đoạn đã chốt cho Schedule" },
+        { "id": "code", "label": "Từ code hiện tại", "detail": "Đúng app, nhưng ba màn đang khác ngữ pháp nhau" },
+        { "id": "both", "label": "Schedule từ v5, Inbox/Account từ code", "detail": "Mỗi màn lấy chỗ mạnh của nó" }
+      ]
+    },
+    {
+      "id": "host-base",
+      "cluster": "host",
+      "cluster_title": "Cụm 5 · Host: Create + Hub + Admin",
+      "q": "Host dựng từ đâu?",
+      "helper": "Create + Hub đã có trong app; notes 65/66/76 có ý tưởng nhưng chưa dựng.",
+      "options": [
+        { "id": "code", "label": "Từ code hiện tại", "detail": "Đúng luồng thật, chỉ thiếu bố cục màn lớn" },
+        { "id": "notes", "label": "Từ notes 65/66/76", "detail": "Ý tưởng đã ghi, chưa ai dựng — rủi ro lệch app" },
+        { "id": "new", "label": "Dựng mới cả cụm", "detail": "Nhiều việc nhất, dễ bịa chỗ app không có" }
+      ]
+    }
+  ]
+}

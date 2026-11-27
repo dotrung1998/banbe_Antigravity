@@ -1,0 +1,40 @@
+{
+  "day": 1,
+  "updated_at": "2026-11-27T22:26:47+07:00",
+  "answers": {
+    "onb-base": {
+      "choice": "fresh",
+      "choice_label": "Dựng lại từ ảnh thật",
+      "note": "",
+      "at": "2026-11-27T22:14:44+07:00"
+    },
+    "dis-base": {
+      "choice": "code",
+      "choice_label": "Từ code hiện tại",
+      "note": "",
+      "at": "2026-11-27T22:15:57+07:00"
+    },
+    "me-base": {
+      "choice": "both",
+      "choice_label": "Schedule từ v5, Inbox/Account từ code",
+      "note": "",
+      "at": "2026-11-27T22:18:32+07:00"
+    },
+    "host-base": {
+      "choice": "code",
+      "choice_label": "Từ code hiện tại",
+      "note": "",
+      "at": "2026-11-27T22:19:09+07:00"
+    },
+    "evt-base": {
+      "choice": "code",
+      "choice_label": "Từ EventDetail.jsx",
+      "note": "",
+      "at": "2026-11-27T22:21:02+07:00"
+    }
+  },
+  "note": {
+    "text": "1. /Users/thetrungdo/Downloads/banbe/docs/prototypes/payment-refund-v2-pay-now-refunds.html: Thêm phần này\n2. Có một dạng event là mời mới được kiểu partiful, làm cơ chế giống nhưng cho design và structure của app hiện tại",
+    "at": "2026-11-27T22:26:47+07:00"
+  }
+}

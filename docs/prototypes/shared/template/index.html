@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>banbe prototype · cụm mẫu</title>
+<link rel="stylesheet" href="../../shared/stage.css">
+<link rel="stylesheet" href="screen.css">
+<script src="../../shared/stage.js" defer></script>
+<script src="screen.js" defer></script>
+</head>
+<body class="bb-stage-body">
+
+<header class="bb-bar">
+  <div class="bb-bar-lead">
+    <span class="bb-dot" aria-hidden="true"></span>
+    <span class="bb-kicker">banbe · prototype</span>
+    <span class="bb-crumb">Ngày 1/8 · Cụm mẫu</span>
+  </div>
+  <nav class="bb-clusters" aria-label="Chuyển cụm">
+    <a href="../onboarding/index.html" data-cluster="onboarding" data-app="https://www.banbe.app/welcome">Onboarding</a>
+    <a href="../discover/index.html" data-cluster="discover" data-app="https://www.banbe.app/">Khám phá</a>
+    <a href="../event/index.html" data-cluster="event" data-app="https://www.banbe.app/">Sự kiện</a>
+    <a href="../me/index.html" data-cluster="me" data-app="https://www.banbe.app/schedule">Của tôi</a>
+    <a href="../host/index.html" data-cluster="host" data-app="https://www.banbe.app/projects">Host</a>
+  </nav>
+  <div class="bb-controls">
+    <div class="bb-sizes" role="group" aria-label="Khung xem">
+      <button type="button" data-size="390" aria-pressed="true" title="iPhone 390×844">390</button>
+      <button type="button" data-size="834" aria-pressed="false" title="iPad dọc 834×1194">834</button>
+      <button type="button" data-size="1194" aria-pressed="false" title="iPad ngang 1194×834">1194</button>
+      <button type="button" data-size="1440" aria-pressed="false" title="Browser 1440×900">1440</button>
+      <button type="button" data-size="all" aria-pressed="false" title="Xem cả 4 cạnh nhau">Cả 4</button>
+    </div>
+    <button type="button" class="bb-reset" data-reset>Làm lại</button>
+  </div>
+</header>
+
+<main class="bb-stage-main" data-stage data-cluster="template" data-steps="3">
+  <div class="bb-stage-caption">
+    <span class="bb-size-label" data-size-label>iPhone · 390×844</span>
+    <span class="bb-hint">Làm lại = về bước 1 · #b1 mở thẳng · ?embed=1 xem 1:1</span>
+  </div>
+
+  <div class="bb-fit" data-fit>
+    <div class="bb-device" data-device="390">
+      <div class="bb-screen" id="bb-screen">
+
+        <section class="tpl-step" data-step="1">
+          <div class="tpl-wrap">
+            <header class="tpl-head">
+              <p class="tpl-kicker">Cụm mẫu · thay bằng cụm thật</p>
+              <h1 class="tpl-title">Bước 1<br>một ý lớn</h1>
+              <p class="tpl-lede">Đây là chỗ thay bằng màn thật của cụm. Giữ nguyên stage, rail 4 khung, nút Làm lại và thanh chuyển cụm.</p>
+            </header>
+            <div class="tpl-grid">
+              <article class="tpl-card">
+                <p class="tpl-eyebrow">Dữ liệu thật</p>
+                <p class="tpl-body">Tên sự kiện, giá, giờ, host lấy từ production. Ghi id và ngày chụp vào notes.md.</p>
+              </article>
+              <article class="tpl-card tpl-card-quiet">
+                <p class="tpl-eyebrow">Chữ Việt thật</p>
+                <p class="tpl-body">Không Lorem. Không màn hình bịa. Chỗ app chưa có thì ghi “chưa có”.</p>
+              </article>
+            </div>
+            <footer class="tpl-actions">
+              <button type="button" class="tpl-primary" data-go="2">Tiếp</button>
+              <p class="tpl-step-count" data-progress>Bước 1/3</p>
+            </footer>
+          </div>
+        </section>
+
+        <section class="tpl-step" data-step="2" hidden>
+          <div class="tpl-wrap">
+            <header class="tpl-head">
+              <p class="tpl-kicker">Bước 2</p>
+              <h1 class="tpl-title">Bố cục<br>theo khung</h1>
+              <p class="tpl-lede">Một cột ở 390; hai cột ở 834; thêm vùng ở 1194; max-width ở 1440. Dùng @container, không @media theo viewport.</p>
+            </header>
+            <div class="tpl-grid">
+              <article class="tpl-card">
+                <p class="tpl-eyebrow">390</p>
+                <p class="tpl-body">Một cột, ngón tay cái, không hover.</p>
+              </article>
+              <article class="tpl-card">
+                <p class="tpl-eyebrow">834 / 1194 / 1440</p>
+                <p class="tpl-body">Cột nội dung + panel; không kéo giãn card điện thoại.</p>
+              </article>
+            </div>
+            <footer class="tpl-actions">
+              <button type="button" class="tpl-ghost" data-go="1">Quay lại</button>
+              <button type="button" class="tpl-primary" data-go="3">Tiếp</button>
+              <p class="tpl-step-count" data-progress>Bước 2/3</p>
+            </footer>
+          </div>
+        </section>
+
+        <section class="tpl-step" data-step="3" hidden>
+          <div class="tpl-wrap">
+            <header class="tpl-head">
+              <p class="tpl-kicker">Bước 3</p>
+              <h1 class="tpl-title">Nối<br>sang cụm khác</h1>
+              <p class="tpl-lede">Mỗi cụm để lại ít nhất một link sống. Cụm đích chưa có thì rơi về app thật, có nhãn “app thật”.</p>
+            </header>
+            <div class="tpl-links">
+              <a href="../discover/index.html" data-app="https://www.banbe.app/">Khám phá →</a>
+              <a href="../event/index.html" data-app="https://www.banbe.app/">Sự kiện →</a>
+              <a href="../me/index.html" data-app="https://www.banbe.app/schedule">Của tôi →</a>
+            </div>
+            <footer class="tpl-actions">
+              <button type="button" class="tpl-ghost" data-go="2">Quay lại</button>
+              <button type="button" class="tpl-primary" data-go="1">Về đầu</button>
+              <p class="tpl-step-count" data-progress>Bước 3/3</p>
+            </footer>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="bb-overview" data-overview hidden></div>
+</main>
+
+</body>
+</html>

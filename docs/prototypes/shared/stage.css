@@ -1,0 +1,304 @@
+/* banbe prototype stage — the shared frame around every cluster screen.
+   The design lives inside .bb-screen; this file only owns the stage, the
+   device rail, the 4-up overview and the reset control. */
+
+:root {
+  --bb-paper: #f7f4ec;
+  --bb-ink: #1b1916;
+  --bb-ink-deep: #0c0b09;
+  --bb-muted: rgba(27, 25, 22, 0.62);
+  --bb-rule: rgba(27, 25, 22, 0.16);
+  --bb-field: #eee8da;
+  --bb-surface: #fbf8f1;
+  --bb-alert: #9a3e2d;
+  --bb-honey: #7f560f;
+  --bb-clay: #9c5b3b;
+  --bb-clay-ink: #854a2c;
+  --bb-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+  --bb-sans: "Be Vietnam Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --bb-desk: #e7e0cf;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; min-height: 100%; }
+body.bb-stage-body {
+  background:
+    radial-gradient(1100px 600px at 12% -10%, rgba(255, 255, 255, 0.55), transparent 60%),
+    var(--bb-desk);
+  color: var(--bb-ink);
+  font-family: var(--bb-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- stage bar ---------- */
+.bb-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  background: rgba(247, 244, 236, 0.92);
+  border-bottom: 1px solid var(--bb-rule);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.bb-bar-lead { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.bb-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bb-clay); flex: none; }
+.bb-kicker {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--bb-muted);
+  white-space: nowrap;
+}
+.bb-crumb {
+  font-size: 12px;
+  color: var(--bb-muted);
+  padding-left: 9px;
+  border-left: 1px solid var(--bb-rule);
+  white-space: nowrap;
+}
+.bb-clusters { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }
+.bb-clusters a {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 9px;
+  color: var(--bb-muted);
+  font-size: 13px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.bb-clusters a:hover { background: rgba(27, 25, 22, 0.06); color: var(--bb-ink); }
+.bb-clusters a[aria-current="page"] {
+  color: var(--bb-ink);
+  background: var(--bb-field);
+  font-weight: 600;
+}
+.bb-fallback {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 4px;
+  border: 1px solid var(--bb-rule);
+  border-radius: 4px;
+  color: var(--bb-muted);
+}
+.bb-controls { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.bb-sizes {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  background: rgba(27, 25, 22, 0.06);
+  border: 1px solid var(--bb-rule);
+  border-radius: 10px;
+}
+.bb-sizes button,
+.bb-reset {
+  min-height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--bb-muted);
+  font: inherit;
+  font-size: 12px;
+  padding: 0 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.bb-sizes button:hover { color: var(--bb-ink); background: rgba(255, 255, 255, 0.55); }
+.bb-sizes button[aria-pressed="true"] {
+  color: var(--bb-ink);
+  background: var(--bb-paper);
+  box-shadow: 0 1px 2px rgba(27, 25, 22, 0.14);
+  font-weight: 600;
+}
+.bb-reset {
+  background: var(--bb-ink);
+  color: #fff;
+  padding: 0 14px;
+  font-weight: 600;
+}
+.bb-reset:hover { background: var(--bb-ink-deep); }
+.bb-reset[disabled] { opacity: 0.6; cursor: default; }
+
+/* ---------- stage body ---------- */
+.bb-stage-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 24px 34px;
+  min-height: calc(100vh - 57px);
+}
+.bb-stage-caption {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--bb-muted);
+}
+.bb-size-label { font-weight: 600; color: var(--bb-ink); letter-spacing: 0.02em; }
+.bb-hint { color: var(--bb-muted); }
+
+.bb-fit { position: relative; margin: auto; flex: none; }
+.bb-device {
+  position: absolute;
+  inset: 0;
+  width: var(--bb-w, 390px);
+  height: var(--bb-h, 844px);
+  transform: scale(var(--bb-scale, 1));
+  transform-origin: top left;
+  background: var(--bb-paper);
+  border-radius: 24px;
+  box-shadow:
+    0 0 0 1px rgba(27, 25, 22, 0.12),
+    0 26px 60px -22px rgba(27, 25, 22, 0.42),
+    0 6px 16px -8px rgba(27, 25, 22, 0.22);
+  overflow: hidden;
+  container-type: inline-size;
+  container-name: screen;
+}
+.bb-device[data-device="390"] { --bb-w: 390px; --bb-h: 844px; border-radius: 30px; }
+.bb-device[data-device="834"] { --bb-w: 834px; --bb-h: 1194px; border-radius: 22px; }
+.bb-device[data-device="1194"] { --bb-w: 1194px; --bb-h: 834px; border-radius: 22px; }
+.bb-device[data-device="1440"] { --bb-w: 1440px; --bb-h: 900px; border-radius: 12px; }
+
+.bb-screen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--bb-paper);
+  color: var(--bb-ink);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(27, 25, 22, 0.22) transparent;
+}
+.bb-screen::-webkit-scrollbar { width: 10px; height: 10px; }
+.bb-screen::-webkit-scrollbar-thumb {
+  background: rgba(27, 25, 22, 0.18);
+  border-radius: 99px;
+  border: 3px solid var(--bb-paper);
+}
+
+/* ---------- 4-up overview ---------- */
+.bb-overview {
+  width: 100%;
+  height: calc(100vh - 155px);
+  min-height: 420px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 14px;
+}
+.bb-thumb {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  min-height: 0;
+}
+.bb-thumb-label {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  color: var(--bb-muted);
+  white-space: nowrap;
+}
+.bb-thumb-frame {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bb-paper);
+  border-radius: 12px;
+  box-shadow: 0 0 0 1px rgba(27, 25, 22, 0.14), 0 12px 30px -18px rgba(27, 25, 22, 0.4);
+}
+.bb-thumb-frame iframe {
+  position: absolute;
+  inset: 0 auto auto 0;
+  border: 0;
+  transform-origin: top left;
+  background: var(--bb-paper);
+  pointer-events: none;
+}
+.bb-thumb-open {
+  position: absolute;
+  inset: 26px 0 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+  color: transparent;
+  font-size: 0;
+}
+.bb-thumb-open:hover + .bb-thumb-hint,
+.bb-thumb-open:focus-visible + .bb-thumb-hint { opacity: 1; }
+.bb-thumb-hint {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  background: rgba(12, 11, 9, 0.78);
+  color: #fff;
+  border-radius: 7px;
+  font-size: 11px;
+  padding: 4px 7px;
+  pointer-events: none;
+}
+
+/* ---------- embed + capture ---------- */
+html[data-embed] .bb-bar,
+html[data-embed] .bb-stage-caption { display: none; }
+html[data-embed] .bb-stage-main { padding: 0; min-height: 100vh; display: block; }
+html[data-embed] .bb-fit,
+html[data-embed] .bb-device {
+  position: static;
+  width: 100vw;
+  height: 100vh;
+  transform: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+html[data-embed] .bb-overview { display: none; }
+
+html[data-capture] *,
+html[data-capture] *::before,
+html[data-capture] *::after {
+  animation: none !important;
+  transition: none !important;
+  caret-color: transparent !important;
+  scroll-behavior: auto !important;
+}
+
+/* ---------- focus + motion ---------- */
+.bb-bar :focus-visible,
+.bb-overview :focus-visible {
+  outline: 2px solid var(--bb-clay-ink);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
+
+/* ---------- narrow stage ---------- */
+@media (max-width: 860px) {
+  .bb-bar { gap: 8px; padding: 8px 10px; }
+  .bb-crumb { display: none; }
+  .bb-clusters { order: 3; width: 100%; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 2px; }
+  .bb-clusters a { flex: none; }
+  .bb-controls { margin-left: 0; width: 100%; justify-content: space-between; }
+  .bb-stage-main { padding: 12px 10px 24px; }
+  .bb-overview { height: calc(100vh - 190px); gap: 8px; }
+}

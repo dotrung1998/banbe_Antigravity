@@ -1,0 +1,123 @@
+/* Cluster screen — replace this file's content with the real cluster.
+   Rules of thumb:
+   - the screen is a container; use @container, never @media (min-width).
+   - no position: fixed (the device is scaled); use absolute inside .bb-screen.
+   - height: 100%, not 100vh. The .bb-screen scrolls. */
+
+.bb-screen {
+  font-family: var(--bb-sans);
+  background: var(--bb-paper);
+  color: var(--bb-ink);
+}
+
+.tpl-step { min-height: 100%; }
+.tpl-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  min-height: 100%;
+  padding: 30px 22px 34px;
+}
+.tpl-head { display: flex; flex-direction: column; gap: 10px; }
+.tpl-kicker {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--bb-clay-ink);
+}
+.tpl-title {
+  margin: 0;
+  font-family: var(--bb-serif);
+  font-size: clamp(34px, 8cqi, 58px);
+  font-weight: 500;
+  line-height: 0.98;
+  letter-spacing: -0.025em;
+}
+.tpl-lede {
+  margin: 0;
+  max-width: 34ch;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--bb-muted);
+}
+.tpl-grid { display: grid; gap: 10px; }
+.tpl-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--bb-field);
+  border: 1px solid rgba(27, 25, 22, 0.08);
+}
+.tpl-card-quiet { background: transparent; border-style: dashed; }
+.tpl-eyebrow {
+  margin: 0;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--bb-muted);
+}
+.tpl-body { margin: 0; font-size: 14px; line-height: 1.45; }
+.tpl-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 8px;
+}
+.tpl-primary,
+.tpl-ghost {
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 0 18px;
+  cursor: pointer;
+}
+.tpl-primary { background: var(--bb-ink); color: #fff; }
+.tpl-primary:hover { background: var(--bb-ink-deep); }
+.tpl-ghost { background: transparent; border-color: var(--bb-rule); color: var(--bb-ink); }
+.tpl-step-count { margin: 0 0 0 auto; font-size: 12px; color: var(--bb-muted); }
+.tpl-links { display: flex; flex-direction: column; gap: 8px; }
+.tpl-links a {
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid var(--bb-rule);
+  color: var(--bb-ink);
+  text-decoration: none;
+  font-size: 14px;
+}
+.tpl-links a:hover { background: var(--bb-field); }
+
+/* 834: the first real large layout — content + a side card. */
+@container screen (min-width: 834px) {
+  .tpl-wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 46px 56px 50px;
+    gap: 28px;
+  }
+  .tpl-grid { grid-template-columns: 1.15fr 0.85fr; gap: 14px; }
+  .tpl-lede { font-size: 17px; }
+}
+
+/* 1194: more air and a wider content column. */
+@container screen (min-width: 1194px) {
+  .tpl-wrap { max-width: 1000px; padding: 64px 76px 64px; gap: 32px; }
+  .tpl-title { font-size: 68px; }
+  .tpl-grid { gap: 18px; }
+}
+
+/* 1440: the desktop reading column, not a stretched phone. */
+@container screen (min-width: 1440px) {
+  .tpl-wrap { max-width: 1180px; padding: 76px 96px 72px; }
+  .tpl-lede { font-size: 18px; }
+}

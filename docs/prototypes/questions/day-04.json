@@ -1,0 +1,67 @@
+{
+  "day": 4,
+  "title": "Ngày 4 · Chuyển động — nhịp nào?",
+  "helper": "Mỗi cụm một câu về nhịp. Bấm là ghi vào decisions/day-04.json và vault.",
+  "questions": [
+    {
+      "id": "onb-motion",
+      "cluster": "onboarding",
+      "cluster_title": "Cụm 1 · Onboarding & first-run",
+      "q": "Onboarding chuyển động ở mức nào?",
+      "helper": "Đây là chỗ duy nhất đáng chậm; phần còn lại của app thì không.",
+      "options": [
+        { "id": "cinematic", "label": "Cinematic 600–900ms", "detail": "Đẹp, phải chờ — chỉ ở bước đầu" },
+        { "id": "mid", "label": "Vừa 300–500ms", "detail": "Nhanh mà vẫn có nhịp" },
+        { "id": "min", "label": "Gần như tĩnh", "detail": "Nhanh nhất, kém cảm xúc" }
+      ]
+    },
+    {
+      "id": "dis-motion",
+      "cluster": "discover",
+      "cluster_title": "Cụm 2 · Home + Browse/Search + Map",
+      "q": "Home: card vào và đổi tab thế nào?",
+      "helper": "Card hiện so le tạo nhịp nhưng không được chặn bấm.",
+      "options": [
+        { "id": "stagger", "label": "So le 40ms", "detail": "Có nhịp, vẫn bấm được ngay" },
+        { "id": "fade", "label": "Mờ cả khối", "detail": "Rẻ, ít cảm giác chuyển" },
+        { "id": "none", "label": "Không animation", "detail": "Nhanh nhất, khô" }
+      ]
+    },
+    {
+      "id": "evt-motion",
+      "cluster": "event",
+      "cluster_title": "Cụm 3 · Event Detail + Reserve/Hold + Ticket",
+      "q": "Hero của Event có parallax?",
+      "helper": "v2.3 đã thử; bài học là parallax phải tắt khi Reduce Motion.",
+      "options": [
+        { "id": "subtle", "label": "Parallax nhẹ + tắt khi Reduce Motion", "detail": "Sâu mà an toàn" },
+        { "id": "none", "label": "Ảnh tĩnh", "detail": "Nhanh, ổn định, không rủi ro" },
+        { "id": "full", "label": "Parallax mạnh", "detail": "Ấn tượng, dễ gây mỏi và lỗi iOS" }
+      ]
+    },
+    {
+      "id": "me-motion",
+      "cluster": "me",
+      "cluster_title": "Cụm 4 · Schedule + Inbox/Account",
+      "q": "Chuyển tuần/tháng trong Schedule?",
+      "helper": "Hướng trượt chính là thứ dạy người dùng thời gian đang đi đâu.",
+      "options": [
+        { "id": "slide", "label": "Trượt ngang 300ms", "detail": "Đúng hướng thời gian" },
+        { "id": "crossfade", "label": "Mờ dần", "detail": "Không chỉ được hướng" },
+        { "id": "instant", "label": "Đổi ngay", "detail": "Nhanh, nhưng mất ngữ cảnh" }
+      ]
+    },
+    {
+      "id": "host-motion",
+      "cluster": "host",
+      "cluster_title": "Cụm 5 · Host: Create + Hub + Admin",
+      "q": "Chuyển bước trong Create?",
+      "helper": "Host phải luôn biết mình đang ở đâu và còn mấy bước.",
+      "options": [
+        { "id": "push", "label": "Đẩy ngang + giữ tiến độ", "detail": "Thấy mình đang ở đâu" },
+        { "id": "expand", "label": "Mở rộng tại chỗ", "detail": "Không mất ngữ cảnh, khó thấy tiến độ" },
+        { "id": "instant", "label": "Đổi ngay", "detail": "Nhanh, nhưng mất dấu bước" }
+      ]
+    }
+  ]
+}

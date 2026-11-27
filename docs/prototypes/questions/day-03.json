@@ -1,0 +1,67 @@
+{
+  "day": 3,
+  "title": "Ngày 3 · Dữ liệu thật — trạng thái xấu hiện thế nào?",
+  "helper": "Mỗi cụm một câu về trạng thái. Bấm là ghi vào decisions/day-03.json và vault.",
+  "questions": [
+    {
+      "id": "onb-state",
+      "cluster": "onboarding",
+      "cluster_title": "Cụm 1 · Onboarding & first-run",
+      "q": "Consent xuất hiện lúc nào?",
+      "helper": "Owner nêu rõ: hiện phải đồng ý hoặc skip trước khi bước nào chạy.",
+      "options": [
+        { "id": "at-need", "label": "Đúng lúc cần", "detail": "Hỏi khi giữ chỗ/mở chat; xem trước không bị chặn" },
+        { "id": "first-run-end", "label": "Cuối 3 bước giới thiệu", "detail": "Một lần, gọn, nhưng vẫn là hàng rào" },
+        { "id": "upfront", "label": "Ngay màn đầu", "detail": "Rõ pháp lý, nhưng mất niềm tin trước khi thấy app" }
+      ]
+    },
+    {
+      "id": "dis-state",
+      "cluster": "discover",
+      "cluster_title": "Cụm 2 · Home + Browse/Search + Map",
+      "q": "Trạng thái trống của Home/Map/Browse?",
+      "helper": "Trống là trạng thái thường gặp nhất ở thành phố mới — không được để nó giống lỗi.",
+      "options": [
+        { "id": "one-pattern", "label": "Một khuôn chung", "detail": "Cùng một câu, cùng một hành động ở cả ba màn" },
+        { "id": "per-screen", "label": "Mỗi màn một kiểu", "detail": "Đúng ngữ cảnh, nhưng khó nhớ" },
+        { "id": "inline", "label": "Một dòng trong danh sách", "detail": "Nhẹ nhất, dễ bị coi là không có dữ liệu" }
+      ]
+    },
+    {
+      "id": "evt-state",
+      "cluster": "event",
+      "cluster_title": "Cụm 3 · Event Detail + Reserve/Hold + Ticket",
+      "q": "Hết vé / huỷ / giữ chỗ hết hạn?",
+      "helper": "Ba trạng thái này từng trông giống nhau — đây là chỗ sinh ra tranh chấp.",
+      "options": [
+        { "id": "three-block", "label": "Ba khối riêng, cùng chỗ", "detail": "Không ai nhầm vé còn với vé hết" },
+        { "id": "banner", "label": "Băng cảnh báo trên cùng", "detail": "Thấy ngay, nhưng dễ trôi khi cuộn" },
+        { "id": "replace-cta", "label": "Thay nút giữ chỗ", "detail": "Gọn, nhưng mất lối thoát (gợi ý event khác)" }
+      ]
+    },
+    {
+      "id": "me-state",
+      "cluster": "me",
+      "cluster_title": "Cụm 4 · Schedule + Inbox/Account",
+      "q": "Inbox trống & chưa đăng nhập?",
+      "helper": "Người mới mở Inbox khi chưa có gì — màn đó quyết định họ có quay lại.",
+      "options": [
+        { "id": "one-line", "label": "Một dòng + một hành động", "detail": "Không vẽ hộp thư rỗng; nói việc kế tiếp" },
+        { "id": "illustration", "label": "Minh hoạ + gợi ý", "detail": "Ấm hơn, nhưng tốn chỗ và dễ sến" },
+        { "id": "hide", "label": "Ẩn hẳn mục", "detail": "Gọn, nhưng dễ tưởng app thiếu tính năng" }
+      ]
+    },
+    {
+      "id": "host-state",
+      "cluster": "host",
+      "cluster_title": "Cụm 5 · Host: Create + Hub + Admin",
+      "q": "Host chưa có event / chưa có team?",
+      "helper": "Host mới vào Hub lần đầu là lúc dễ bỏ nhất.",
+      "options": [
+        { "id": "checklist", "label": "Checklist 3 việc", "detail": "Nói rõ việc kế tiếp, đo được tiến độ" },
+        { "id": "empty", "label": "Trang trống + nút tạo", "detail": "Nhanh, nhưng không hướng dẫn" },
+        { "id": "demo", "label": "Cho xem event mẫu", "detail": "Dễ hiểu, nhưng phải ghi rõ là mẫu" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "name": "banbe-motion-rig",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio src/index.js",
+    "still": "remotion still src/index.js OnboardingWide out/frame.png --frame=40",
+    "render": "remotion render src/index.js OnboardingWide out/onboarding.mp4"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.547",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "remotion": "^4.0.547"
+  }
+}

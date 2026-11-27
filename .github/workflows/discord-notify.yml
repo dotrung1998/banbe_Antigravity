@@ -25,12 +25,13 @@ on:
     - cron: '0 10 * * 5' # 17:00 Fri ICT — week in review
     - cron: '0 11 * * 0' # 18:00 Sun ICT — dependency audit
     - cron: '0 22 * * *' # 05:00 daily ICT — Freebuff mission prompt
+    - cron: '0 23 * * *' # 06:00 daily ICT — prototype: 5 cluster Missions (day 8 review)
   workflow_dispatch:
     inputs:
       job:
         description: 'Which notification to send'
         type: choice
-        options: [standup, health, weekly, deps, prompt, test]
+        options: [standup, health, weekly, deps, prompt, prototype, test]
         default: test
 
 permissions:
@@ -63,6 +64,7 @@ jobs:
             "0 10 * * 5")  job=weekly  ;;
             "0 11 * * 0")  job=deps    ;;
             "0 22 * * *")  job=prompt  ;;
+            "0 23 * * *")  job=prototype ;;
             "")
               job="${DISPATCH_JOB:-test}"
               ;;
@@ -109,6 +111,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NOTIFY_STATE_DIR: ${{ runner.temp }}/notify-state
           HEALTH_REPEAT_HOURS: ${{ vars.HEALTH_REPEAT_HOURS || '6' }}
+          PROTOTYPE_START: ${{ vars.PROTOTYPE_START || '2026-11-27' }}
         run: node scripts/cloud-notify.mjs "${{ steps.pick.outputs.job }}"
 
       # Best effort: a lost state only means the next hour may repeat an alert.
