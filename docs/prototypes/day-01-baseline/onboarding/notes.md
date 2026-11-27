@@ -130,19 +130,24 @@ Cụm này là cửa vào. Nếu 834/1194/1440 chỉ là một cột 390 đặt 
 | Luồng | Music + weekends + low → reveal 7 buổi (1 khớp), card 3 dòng câu trả lời; bật digest/hosting; login mật khẩu; submit | Pass; note prototype hiện đúng |
 | Bàn phím + chạm | Cả 8 bước ở 390 1:1: 0 control hiện < 44 px; rail/card câu trả lời/method đặt min-height 44; Tab tới “Chọn” có outline 2 px clay; Enter ở email/mật khẩu; Esc | Pass (chưa test screen reader) |
 | Card câu trả lời | 390/834/1194/1440, cả trạng thái mặc định và đã chọn; đo bề rộng card, chiều cao action, `scrollWidth` | **Pass 8/8**: 3 dòng cùng bề rộng, action 44 px thẳng cột và giữa dòng; 1194/1440 không co (đã thêm `flex: none`) |
+| Nhãn control + cột action | 32 tổ hợp bước × khung, state đã trả lời; quét mọi `button`/`a[href]`/`[role="switch"]` hiện, đo tâm nhãn so với tâm control và top gap; đo left/right của action; riêng bước 8 thêm state trộn `digest: true`, `hosting: false` | **Pass 32/32**: 0 nhãn dính mép trên, 0 cột action lệch; summary 4/4 right spread 0, action 44 px; không tràn ngang |
 | Reduced motion | Chụp với `prefers-reduced-motion: reduce`; không animation vào | Pass, bản tĩnh vẫn đọc được |
 | Frame 6/7 mới | 8 ảnh consent ở 390/834/1194/1440: `scrollWidth`, ảnh vỡ, section, control <44 ở 390 1:1 | **Pass 8/8**; consent 390 có 0 control <44 |
 | Frame 3/4 mới | 8 ảnh bước 3/4 ở 390/834/1194/1440: `scrollWidth`, ảnh vỡ, section, control <44 ở 390 1:1 | **Pass 8/8**; nhóm 3 câu hỏi đủ 2/3/4 ×4; toàn bộ 32/32 |
 | Demo sự kiện | Mở card đầu tiên ở 5 bước có sự kiện × 4 khung (20 lần); đo `scrollWidth`, control <44, nhãn bước, Esc, đóng và focus | **Pass 20/20**; không tràn ngang, 0 control <44, nhãn đúng bước, Esc đóng, focus về card |
-| Ảnh | 32 ảnh bước (8 bước × 4 khung) + 1 overview contact sheet 8×4 = **33 PNG**; 8 bước 1–8; bước 5 chụp lại sau khi sửa card | Đã xem contact sheet + 3/4/consent + bước 5 mới; không soi từng pixel từng file |
+| Ảnh | 32 ảnh bước (8 bước × 4 khung) + 1 overview contact sheet 8×4 = **33 PNG**; 8 bước 1–8; bước 5 chụp ở trạng thái đã trả lời (Chưa chọn / Buổi tối, Ban ngày / Đến 600.000đ) bằng `capture-step5.mjs` | Đã xem contact sheet + 3/4/consent + cả 4 frame bước 5; không soi từng pixel từng file |
 
 Lệnh capture cuối (preview đang ở cổng 4174):
 
 ```bash
+# 28 frame còn lại; bước 5 chụp riêng bằng capture-step5.mjs
 node docs/prototypes/shared/capture-stage.mjs \
   --url http://127.0.0.1:4174/day-01-baseline/onboarding/index.html \
   --out docs/prototypes/day-01-baseline/frames \
-  --cluster onboarding --steps 1,2,3,4,5,6,7,8
+  --cluster onboarding --steps 1,2,3,4,6,7,8
+
+node docs/prototypes/day-01-baseline/onboarding/capture-step5.mjs \
+  --url http://127.0.0.1:4174/day-01-baseline/onboarding/index.html
 
 node docs/prototypes/day-01-baseline/onboarding/overview.mjs
 
@@ -157,7 +162,7 @@ node docs/prototypes/day-01-baseline/onboarding/check-frames.mjs \
 - **Đăng nhập chưa nối backend**: không gửi mã, không OAuth, không tạo phiên; chỉ là ghi chú prototype. Google/mã/mật khẩu không gọi mạng.
 - **Chưa có scaffold cục bộ cho bốn cụm khác**: nav đang trỏ app thật bằng fallback viết tay (đã kiểm 200); chưa có điều hướng local sang Khám phá/Sự kiện/Của tôi/Host.
 - **Dữ liệu là ảnh chụp 2026-11-27**: nếu production đổi/xoá 7 sự kiện test, card và link có thể khác; chưa kiểm lại sau ngày đó.
-- **Chưa kiểm trạng thái đã chọn trong ảnh**: frame reveal dùng trạng thái bỏ qua (7 buổi, 3 dòng “Chưa chọn”); trạng thái có 1 buổi khớp mới chỉ kiểm bằng script, không chụp.
+- **Chưa chụp trạng thái có buổi khớp**: frame reveal chụp trạng thái đã trả lời như ảnh user (Sở thích: Chưa chọn; Thời gian: Buổi tối, Ban ngày; Ngân sách: Đến 600.000đ), không phải trạng thái có 1 buổi khớp; trạng thái khớp vẫn chỉ kiểm bằng script.
 - **Màn demo sự kiện không có trong 32 frame**: đây là trạng thái mở từ card, đã kiểm bằng script ở cả 4 khung nhưng chưa chụp thành ảnh.
 - **834 là iPad dọc 1194 cao**: khoảng trống dưới form login (form trên, lối khách dưới) là chủ ý; consent 6/7 cũng đặt form trên, bằng chứng dưới nên còn thoáng. Chưa xem trên iPad thật để quyết định có giữ hay không.
 - **Ảnh sự kiện**: là cover thật từ `public/photos/`, nhưng chưa xác nhận quyền/credit với host; chỉ ghi nguồn tệp.
@@ -171,6 +176,7 @@ docs/prototypes/day-01-baseline/onboarding/
   screen.js           # data 7 sự kiện, state, render, reset, màn demo sự kiện
   overview.mjs        # dựng contact sheet 8×4 từ 32 frame
   check-frames.mjs    # audit 32 frame live + 33 PNG
+  capture-step5.mjs   # chụp riêng bước 5 ở trạng thái đã trả lời
   notes.md            # tệp này
   photos/             # 7 cover thật đã nén (DSCF7597, 6107, 4282, 4212, 2539, 2023, 4254)
 docs/prototypes/day-01-baseline/frames/
