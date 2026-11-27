@@ -346,6 +346,57 @@ function main() {
   pool.forEach(take);
   const areas = chosen.sort(bySize);
 
+  // Hot files: highest total coupling, computed before the map is written because a hot file
+  // whose own community is below the cut still needs one note to open.
+  const fileStats = new Map();
+  for (const n of nodes) {
+    const f = fileStats.get(n.source_file) ?? { file: n.source_file, symbols: 0, degree: 0, area: null };
+    f.symbols += 1;
+    f.degree += degree.get(n.id) ?? 0;
+    fileStats.set(n.source_file, f);
+  }
+  const hotFiles = [...fileStats.values()]
+    .sort((a, b) => b.degree - a.degree || a.file.localeCompare(b.file))
+    .slice(0, MAX_HOT_FILES);
+
+  // Home a hot file by its strongest links when its own community did not earn a slot, never
+  // by the area that merely holds a stray symbol of it (that is how AppState swallowed the
+  // app). Only the hot list is homed, so no area can grow without limit, and the file keeps a
+  // single owner: `ownFiles` is what each area owned before this step, used for the pins.
+  const ownFiles = new Map(areas.map((a) => [a.id, a.files.map(([file]) => file)]));
+  const areaOfNode = new Map();
+  for (const a of areas) for (const n of a.nodes) areaOfNode.set(n.id, a);
+  const fileOfNode = new Map(nodes.map((n) => [n.id, n.source_file]));
+  const fileLinks = new Map();
+  const bump = (file, area) => {
+    if (!fileLinks.has(file)) fileLinks.set(file, new Map());
+    const counts = fileLinks.get(file);
+    counts.set(area.id, (counts.get(area.id) ?? 0) + 1);
+  };
+  for (const l of links) {
+    const sourceArea = areaOfNode.get(l.source);
+    const targetArea = areaOfNode.get(l.target);
+    if (sourceArea) bump(fileOfNode.get(l.target), sourceArea);
+    if (targetArea) bump(fileOfNode.get(l.source), targetArea);
+  }
+  const homes = new Map();
+  for (const a of areas) for (const [file] of a.files) homes.set(file, a);
+  for (const f of hotFiles) {
+    const counts = fileLinks.get(f.file);
+    if (homes.has(f.file) || !counts) continue;
+    const home = areas
+      .filter((a) => counts.get(a.id))
+      .sort((a, b) => counts.get(b.id) - counts.get(a.id) || bySize(a, b))[0];
+    if (home) homes.set(f.file, home);
+  }
+  for (const a of areas) {
+    a.nodes = nodes.filter((n) => homes.get(n.source_file) === a);
+    const files = new Map();
+    for (const n of a.nodes) files.set(n.source_file, (files.get(n.source_file) ?? 0) + 1);
+    a.files = [...files.entries()].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0]));
+  }
+  areas.sort(bySize);
+
   // A wrong name stays fixed: `label` in areas.json is the hand-curated name of the area that
   // owns one of that entry's files, so a refresh cannot undo it. Ownership can move a file to
   // another area, so the previous title is the fallback — and a label that finds no owner is
@@ -408,7 +459,7 @@ function main() {
         version: 2,
         areas: [
           ...areas.map((a) => {
-            const anchors = [...new Set([a.top?.source_file, ...a.files.map(([file]) => file)])]
+            const anchors = [...new Set([a.top?.source_file, ...(ownFiles.get(a.id) ?? [])])]
               .filter((file) => file && !isTestFile(file))
               .slice(0, MAX_ANCHORS_PER_AREA);
             const entry = { title: a.title, anchors };
@@ -443,18 +494,7 @@ function main() {
   }
   for (const list of neighbours.values()) list.sort((x, y) => y.count - x.count || x.slug.localeCompare(y.slug));
 
-  // Hot files: highest total degree.
-  const fileStats = new Map();
-  for (const n of nodes) {
-    const f = fileStats.get(n.source_file) ?? { file: n.source_file, symbols: 0, degree: 0, area: areaOf.get(n.id) };
-    f.symbols += 1;
-    f.degree += degree.get(n.id) ?? 0;
-    if (!f.area) f.area = areaOf.get(n.id);
-    fileStats.set(n.source_file, f);
-  }
-  const hotFiles = [...fileStats.values()]
-    .sort((a, b) => b.degree - a.degree || a.file.localeCompare(b.file))
-    .slice(0, MAX_HOT_FILES);
+  for (const f of hotFiles) f.area = homes.get(f.file) ?? null;
 
   const builtAt = graph.built_at_commit ?? 'unknown';
   let head = 'unknown';
@@ -508,9 +548,10 @@ function main() {
   map.push('');
   map.push(
     '**One file, one area.** Every file is listed under exactly one area — the one holding most of its ' +
-      'symbols — so a `file:line` has a single home. The script checks this and refuses to write a map ' +
-      'where a file sits in two areas; `areas.json` pins up to three files per area, and its `label` ' +
-      'field is a hand-fixed name a refresh will not undo.'
+      'symbols — so a `file:line` has a single home. A hot file whose own community is below the cut is ' +
+      'homed to the area it links to most, so the most-coupled files always have a note. The script ' +
+      'checks this and refuses to write a map where a file sits in two areas; `areas.json` pins up to ' +
+      'three files per area, and its `label` field is a hand-fixed name a refresh will not undo.'
   );
   map.push('');
   map.push('## Areas');
@@ -528,8 +569,8 @@ function main() {
   }
   map.push('');
   map.push(
-    '`—` means the file\'s community is smaller than the map\'s cut, so no area note owns it: open the file directly. ' +
-      'It is not a second home for another area — a file is only ever listed under one.'
+    'Every hot file has exactly one home — its own community when that is big enough, otherwise the area ' +
+      'it links to most. `—` only appears for a file no area links to at all: open that one directly.'
   );
   map.push('');
   map.push('## Related notes');

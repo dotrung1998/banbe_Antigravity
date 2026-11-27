@@ -17,10 +17,11 @@ tags: [code-graph]
 
 ## Connected areas
 
-- [[graph/appstate|AppState]] — 100 edges
+- [[graph/appstate|AppState]] — 123 edges
 - [[graph/components-swift|Components.swift]] — 18 edges
 - [[graph/app-data-ios|App data (iOS)]] — 7 edges
 - [[graph/createeventview|CreateEventView]] — 7 edges
+- [[graph/mapexploreview|MapExploreView]] — 4 edges
 - [[graph/secondary-screens-ios|Secondary screens (iOS)]] — 1 edges
 
 ---

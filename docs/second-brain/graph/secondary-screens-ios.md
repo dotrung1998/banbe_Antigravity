@@ -25,7 +25,7 @@ tags: [code-graph]
 
 ## Connected areas
 
-- [[graph/appstate|AppState]] — 125 edges
+- [[graph/appstate|AppState]] — 137 edges
 - [[graph/appstate-rewards-swift|AppState+Rewards.swift]] — 37 edges
 - [[graph/components-swift|Components.swift]] — 35 edges
 - [[graph/project-tasks-day-of-ios|Project Tasks & Day-of (iOS)]] — 18 edges

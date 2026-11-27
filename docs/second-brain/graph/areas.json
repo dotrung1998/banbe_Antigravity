@@ -18,6 +18,14 @@
       ]
     },
     {
+      "title": "MapExploreView",
+      "anchors": [
+        "apps/ios/BanbeApp/Views/MapExploreView.swift",
+        "apps/ios/BanbeApp/Models/Event.swift",
+        "apps/ios/BanbeApp/Views/Map/MapAreaViews.swift"
+      ]
+    },
+    {
       "title": "App data (iOS)",
       "anchors": [
         "apps/ios/BanbeApp/State/AppState+Data.swift"
@@ -25,12 +33,21 @@
       "label": "App data (iOS)"
     },
     {
-      "title": "MapExploreView",
+      "title": "CreateEventView",
       "anchors": [
-        "apps/ios/BanbeApp/Views/MapExploreView.swift",
-        "apps/ios/BanbeApp/Models/Event.swift",
-        "apps/ios/BanbeApp/Views/Map/MapAreaViews.swift"
+        "apps/ios/BanbeApp/Views/OnboardingViews.swift",
+        "apps/ios/BanbeApp/Views/RecipeSheet.swift",
+        "apps/ios/BanbeApp/Lib/Motion.swift"
       ]
+    },
+    {
+      "title": "Rewards schema (SQL)",
+      "anchors": [
+        "supabase/migrations/20261212000165_165_rewards_badges_streaks.sql",
+        "supabase/migrations/20261218000177_177_user_reward_timezone.sql",
+        "supabase/drafts/DRAFT_NOT_IN_CHAIN_sponsors_offers_redemptions.sql"
+      ],
+      "label": "Rewards schema (SQL)"
     },
     {
       "title": "Create event (web)",
@@ -79,23 +96,6 @@
         "src/lib/eventDetailPresentation.js",
         "src/components/profile/OrganizerProfileV23.jsx"
       ]
-    },
-    {
-      "title": "CreateEventView",
-      "anchors": [
-        "apps/ios/BanbeApp/Views/OnboardingViews.swift",
-        "apps/ios/BanbeApp/Views/RecipeSheet.swift",
-        "apps/ios/BanbeApp/Lib/Motion.swift"
-      ]
-    },
-    {
-      "title": "Rewards schema (SQL)",
-      "anchors": [
-        "supabase/migrations/20261212000165_165_rewards_badges_streaks.sql",
-        "supabase/migrations/20261218000177_177_user_reward_timezone.sql",
-        "supabase/drafts/DRAFT_NOT_IN_CHAIN_sponsors_offers_redemptions.sql"
-      ],
-      "label": "Rewards schema (SQL)"
     },
     {
       "title": "Home.jsx",

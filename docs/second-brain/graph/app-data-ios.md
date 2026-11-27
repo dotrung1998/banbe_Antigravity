@@ -17,7 +17,7 @@ tags: [code-graph]
 
 ## Connected areas
 
-- [[graph/appstate|AppState]] — 269 edges
+- [[graph/appstate|AppState]] — 335 edges
 - [[graph/inbox-notifications-ios|Inbox & notifications (iOS)]] — 28 edges
 - [[graph/accountview|AccountView]] — 21 edges
 - [[graph/appstate-payments-swift|AppState+Payments.swift]] — 14 edges

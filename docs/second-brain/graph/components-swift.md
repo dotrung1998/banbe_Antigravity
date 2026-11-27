@@ -25,7 +25,7 @@ tags: [code-graph]
 
 ## Connected areas
 
-- [[graph/appstate|AppState]] — 153 edges
+- [[graph/appstate|AppState]] — 195 edges
 - [[graph/homeshellv5views-swift|HomeShellV5Views.swift]] — 47 edges
 - [[graph/secondary-screens-ios|Secondary screens (iOS)]] — 35 edges
 - [[graph/createeventview|CreateEventView]] — 34 edges

@@ -18,12 +18,12 @@ tags: [code-graph]
 
 ## Connected areas
 
-- [[graph/appstate|AppState]] — 36 edges
+- [[graph/appstate|AppState]] — 70 edges
 - [[graph/homeshellv5views-swift|HomeShellV5Views.swift]] — 34 edges
+- [[graph/mapexploreview|MapExploreView]] — 4 edges
 - [[graph/components-swift|Components.swift]] — 2 edges
 - [[graph/accountview|AccountView]] — 1 edges
 - [[graph/app-data-ios|App data (iOS)]] — 1 edges
-- [[graph/mapexploreview|MapExploreView]] — 1 edges
 
 ---
 [[graph/Code map|Code map]] · [[Home]]

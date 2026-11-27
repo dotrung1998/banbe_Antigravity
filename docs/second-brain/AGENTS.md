@@ -59,6 +59,9 @@ rewrite what you believe.
   accept a refresh where the same `file:line` appears in two areas — the script exits non-zero instead of writing it.
 - **The notes are generated; the names are curated.** To fix a wrong area name, edit `label` on that area's entry in
   `graph/areas.json` (the script keeps it across refreshes). Do not edit the generated note; a refresh overwrites it.
+- **A hot file is homed, never duplicated.** Every file in the Hot files table belongs to exactly one area: its own
+  community when that is big enough, otherwise the area it links to most. That is how the most-coupled files always
+  have a note to open — never by adding the file to a second area.
 - **Start with must be openable.** It points at a real symbol in the area's biggest file — never a test stub,
   `CodingKeys`, or a markdown note.
 

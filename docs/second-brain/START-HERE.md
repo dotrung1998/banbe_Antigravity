@@ -8,7 +8,8 @@ counts and the commit it was built from are at the top of [[graph/Code map|Code 
 as a live graph. Neither list is hand-maintained, so it cannot quietly rot.
 
 **One file, one area.** A file is listed under exactly one area — the community holding most of its symbols — so a
-`file:line` has a single home. The script enforces the rule and exits non-zero rather than write a map where a file
+`file:line` has a single home. A hot file whose own community falls below the cut is still homed, to the area it links
+to most, so the most-coupled files always have a note to open; it is never listed twice. The script enforces the rule and exits non-zero rather than write a map where a file
 sits in two areas. `graph/areas.json` remembers up to three files per area (so a re-partition cannot make an old area
 vanish), and its optional `label` is the hand-fixed name a refresh must not undo: fix a wrong name there, never in the
 note.

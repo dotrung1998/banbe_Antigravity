@@ -20,7 +20,7 @@ tags: [code-graph]
 
 ## Connected areas
 
-- [[graph/appstate|AppState]] — 169 edges
+- [[graph/appstate|AppState]] — 207 edges
 - [[graph/components-swift|Components.swift]] — 47 edges
 - [[graph/browse-rules-ios|Browse rules (iOS)]] — 34 edges
 - [[graph/accountview|AccountView]] — 14 edges

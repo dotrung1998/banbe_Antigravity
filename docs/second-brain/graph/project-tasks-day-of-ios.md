@@ -17,7 +17,7 @@ tags: [code-graph]
 
 ## Connected areas
 
-- [[graph/appstate|AppState]] — 22 edges
+- [[graph/appstate|AppState]] — 30 edges
 - [[graph/secondary-screens-ios|Secondary screens (iOS)]] — 18 edges
 - [[graph/components-swift|Components.swift]] — 2 edges
 

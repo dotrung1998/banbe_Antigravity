@@ -3,7 +3,7 @@ tags: [code-graph]
 ---
 # AppState
 
-`code-graph` · area `0` · **802 symbols** across **30 files** · 4.7% of the graph.
+`code-graph` · area `0` · **1479 symbols** across **39 files** · 8.7% of the graph.
 
 **Start with:** `apps/ios/BanbeApp/State/AppState.swift:275` — `AppState`
 
@@ -14,23 +14,23 @@ tags: [code-graph]
 | File | Symbols |
 | --- | ---: |
 | `apps/ios/BanbeApp/State/AppState.swift` | 276 |
-| `apps/ios/BanbeApp/State/AppState+AdminTeam.swift` | 52 |
-| `apps/ios/BanbeApp/State/AppState+Pulse.swift` | 41 |
-| `apps/ios/BanbeApp/State/AppState+Project.swift` | 39 |
-| `apps/ios/BanbeApp/State/AppState+Discovery.swift` | 35 |
-| `apps/ios/BanbeAppTests/SchedulePresentationTests.swift` | 31 |
-| `apps/ios/BanbeApp/State/AppState+EventPrefs.swift` | 28 |
-| `apps/ios/BanbeApp/State/AppState+Schedule.swift` | 24 |
-| _+22 more files_ | |
+| `apps/ios/BanbeApp/Models/CatalogEvent.swift` | 109 |
+| `apps/ios/BanbeApp/State/AppState+Surveys.swift` | 107 |
+| `apps/ios/BanbeApp/Views/OnboardingFlowViews.swift` | 100 |
+| `apps/ios/BanbeApp/Views/HowBanbeWorksView.swift` | 83 |
+| `apps/ios/BanbeApp/Views/ConfirmedView.swift` | 81 |
+| `apps/ios/BanbeApp/Lib/ReportsPresentation.swift` | 70 |
+| `apps/ios/BanbeApp/Views/Sheets.swift` | 60 |
+| _+31 more files_ | |
 
 ## Connected areas
 
-- [[graph/app-data-ios|App data (iOS)]] — 269 edges
-- [[graph/appstate-payments-swift|AppState+Payments.swift]] — 173 edges
-- [[graph/homeshellv5views-swift|HomeShellV5Views.swift]] — 169 edges
-- [[graph/components-swift|Components.swift]] — 153 edges
-- [[graph/accountview|AccountView]] — 145 edges
-- [[graph/createeventview|CreateEventView]] — 127 edges
+- [[graph/app-data-ios|App data (iOS)]] — 335 edges
+- [[graph/homeshellv5views-swift|HomeShellV5Views.swift]] — 207 edges
+- [[graph/components-swift|Components.swift]] — 195 edges
+- [[graph/appstate-payments-swift|AppState+Payments.swift]] — 192 edges
+- [[graph/createeventview|CreateEventView]] — 180 edges
+- [[graph/accountview|AccountView]] — 167 edges
 
 ---
 [[graph/Code map|Code map]] · [[Home]]

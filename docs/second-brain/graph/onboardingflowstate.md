@@ -18,8 +18,9 @@ tags: [code-graph]
 
 ## Connected areas
 
-- [[graph/appstate|AppState]] — 2 edges
+- [[graph/appstate|AppState]] — 44 edges
 - [[graph/app-data-ios|App data (iOS)]] — 1 edges
+- [[graph/mapexploreview|MapExploreView]] — 1 edges
 
 ---
 [[graph/Code map|Code map]] · [[Home]]

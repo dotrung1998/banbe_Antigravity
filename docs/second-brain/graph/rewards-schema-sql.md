@@ -3,7 +3,7 @@ tags: [code-graph]
 ---
 # Rewards schema (SQL)
 
-`code-graph` · area `40` · **196 symbols** across **19 files** · 1.2% of the graph.
+`code-graph` · area `40` · **290 symbols** across **20 files** · 1.7% of the graph.
 
 **Start with:** `supabase/migrations/20261212000165_165_rewards_badges_streaks.sql:61` — `public.reward_ledger`
 
@@ -13,6 +13,7 @@ tags: [code-graph]
 
 | File | Symbols |
 | --- | ---: |
+| `supabase/migrations/20261231000210_210_event_project_core.sql` | 94 |
 | `supabase/migrations/20261212000165_165_rewards_badges_streaks.sql` | 53 |
 | `supabase/migrations/20261218000177_177_user_reward_timezone.sql` | 16 |
 | `supabase/drafts/DRAFT_NOT_IN_CHAIN_sponsors_offers_redemptions.sql` | 13 |
@@ -20,12 +21,11 @@ tags: [code-graph]
 | `supabase/migrations/20261203000153_153_r2_public_media.sql` | 12 |
 | `supabase/migrations/20261211000164_164_profile_keychain.sql` | 11 |
 | `supabase/migrations/20261228000192_192_rewards_v2_weeks_tiers_goal.sql` | 11 |
-| `supabase/migrations/20261228000191_191_rewards_fixes.sql` | 9 |
-| _+11 more files_ | |
+| _+12 more files_ | |
 
 ## Connected areas
 
-- [[graph/schema-migrations-sql|Schema & migrations (SQL)]] — 9 edges
+- [[graph/schema-migrations-sql|Schema & migrations (SQL)]] — 19 edges
 
 ---
 [[graph/Code map|Code map]] · [[Home]]

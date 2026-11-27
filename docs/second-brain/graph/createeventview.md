@@ -3,7 +3,7 @@ tags: [code-graph]
 ---
 # CreateEventView
 
-`code-graph` · area `88` · **216 symbols** across **3 files** · 1.3% of the graph.
+`code-graph` · area `88` · **294 symbols** across **4 files** · 1.7% of the graph.
 
 **Start with:** `apps/ios/BanbeApp/Views/OnboardingViews.swift:323` — `CreateEventView`
 
@@ -14,12 +14,13 @@ tags: [code-graph]
 | File | Symbols |
 | --- | ---: |
 | `apps/ios/BanbeApp/Views/OnboardingViews.swift` | 191 |
+| `apps/ios/BanbeApp/Lib/EventRecipe.swift` | 78 |
 | `apps/ios/BanbeApp/Views/RecipeSheet.swift` | 20 |
 | `apps/ios/BanbeApp/Lib/Motion.swift` | 5 |
 
 ## Connected areas
 
-- [[graph/appstate|AppState]] — 127 edges
+- [[graph/appstate|AppState]] — 180 edges
 - [[graph/components-swift|Components.swift]] — 34 edges
 - [[graph/app-data-ios|App data (iOS)]] — 13 edges
 - [[graph/eventdetailview|EventDetailView]] — 7 edges

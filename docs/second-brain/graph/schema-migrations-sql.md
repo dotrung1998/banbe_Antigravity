@@ -25,7 +25,7 @@ tags: [code-graph]
 
 ## Connected areas
 
-- [[graph/rewards-schema-sql|Rewards schema (SQL)]] — 9 edges
+- [[graph/rewards-schema-sql|Rewards schema (SQL)]] — 19 edges
 
 ---
 [[graph/Code map|Code map]] · [[Home]]

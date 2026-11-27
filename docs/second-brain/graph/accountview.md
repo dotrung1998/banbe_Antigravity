@@ -23,7 +23,7 @@ tags: [code-graph]
 
 ## Connected areas
 
-- [[graph/appstate|AppState]] — 145 edges
+- [[graph/appstate|AppState]] — 167 edges
 - [[graph/appstate-payments-swift|AppState+Payments.swift]] — 41 edges
 - [[graph/components-swift|Components.swift]] — 22 edges
 - [[graph/app-data-ios|App data (iOS)]] — 21 edges
