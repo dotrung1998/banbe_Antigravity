@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>banbe prototype · onboarding</title>
+<link rel="stylesheet" href="../../shared/stage.css">
+<link rel="stylesheet" href="screen.css">
+<script src="../../shared/stage.js" defer></script>
+<script src="screen.js" defer></script>
+</head>
+<body class="bb-stage-body">
+
+<header class="bb-bar">
+  <div class="bb-bar-lead">
+    <span class="bb-dot" aria-hidden="true"></span>
+    <span class="bb-kicker">banbe · prototype</span>
+    <span class="bb-crumb">Ngày 1/8 · Cụm 1/5</span>
+  </div>
+  <nav class="bb-clusters" aria-label="Chuyển cụm">
+    <a href="../onboarding/index.html" data-cluster="onboarding" data-app="https://www.banbe.app/welcome">Onboarding</a>
+    <a href="https://www.banbe.app/" data-cluster="discover" target="_blank" rel="noreferrer">Khám phá <span class="bb-fallback">app thật</span></a>
+    <a href="https://www.banbe.app/" data-cluster="event" target="_blank" rel="noreferrer">Sự kiện <span class="bb-fallback">app thật</span></a>
+    <a href="https://www.banbe.app/schedule" data-cluster="me" target="_blank" rel="noreferrer">Của tôi <span class="bb-fallback">app thật</span></a>
+    <a href="https://www.banbe.app/projects" data-cluster="host" target="_blank" rel="noreferrer">Host <span class="bb-fallback">app thật</span></a>
+  </nav>
+  <div class="bb-controls">
+    <div class="bb-sizes" role="group" aria-label="Khung xem">
+      <button type="button" data-size="390" aria-pressed="true" title="iPhone 390×844">390</button>
+      <button type="button" data-size="834" aria-pressed="false" title="iPad dọc 834×1194">834</button>
+      <button type="button" data-size="1194" aria-pressed="false" title="iPad ngang 1194×834">1194</button>
+      <button type="button" data-size="1440" aria-pressed="false" title="Browser 1440×900">1440</button>
+      <button type="button" data-size="all" aria-pressed="false" title="Xem cả 4 cạnh nhau">Cả 4</button>
+    </div>
+    <button type="button" class="bb-reset" data-reset>Làm lại</button>
+  </div>
+</header>
+
+<main class="bb-stage-main" data-stage data-cluster="onboarding" data-steps="8">
+  <div class="bb-stage-caption">
+    <span class="bb-size-label" data-size-label>iPhone · 390×844</span>
+    <span class="bb-hint">8 bước · #b5 mở thẳng Dành cho bạn · Làm lại = về bước 1 · ?embed=1 xem 1:1</span>
+  </div>
+
+  <div class="bb-fit" data-fit>
+    <div class="bb-device" data-device="390">
+      <div class="bb-screen" id="bb-screen">
+        <p class="ob-sr" role="status" aria-live="polite" data-live>Bước 1/8, Chào</p>
+
+        <!-- 1 · WELCOME ─────────────────────────────────────────────── -->
+        <section class="ob ob-welcome" data-step="1" aria-labelledby="ob-h1-1">
+          <div class="ob-grid">
+            <aside class="ob-rail" data-rail aria-label="Các bước"></aside>
+            <div class="ob-main">
+              <header class="w-top">
+                <span class="w-mark">banbe</span>
+                <span class="w-meta">Sài Gòn · 27.11.2026</span>
+              </header>
+
+              <div class="w-collage" aria-hidden="true">
+                <figure class="w-ph w-ph-a"><img src="photos/DSCF7597.jpg" alt=""></figure>
+                <figure class="w-ph w-ph-b"><img src="photos/DSCF6107.jpg" alt=""></figure>
+                <figure class="w-ph w-ph-c"><img src="photos/DSCF4212.jpg" alt=""></figure>
+                <span class="w-seal"><span aria-hidden="true">★</span> Dành cho bạn</span>
+              </div>
+
+              <div class="w-copy">
+                <p class="eyebrow">Bảy buổi đang mở, 28.11 → 03.12</p>
+                <h1 class="w-title" id="ob-h1-1" data-focus tabindex="-1">Những buổi nhỏ,<br>đáng để ra ngoài.</h1>
+                <p class="w-lede">Supper club, nghe nhạc, triển lãm, pop-up. Mỗi buổi vài chỗ, do người thật tổ chức.</p>
+              </div>
+
+              <footer class="w-actions">
+                <button type="button" class="btn btn-primary" data-go="2" data-testid="welcome-start">
+                  Bắt đầu <span class="btn-meta">3 câu hỏi</span> <span aria-hidden="true">→</span>
+                </button>
+                <button type="button" class="btn btn-quiet" data-go="5" data-testid="welcome-preview">Xem trước Dành cho bạn</button>
+                <div class="guest-links"><span>Chỉ muốn xem?</span><a href="https://www.banbe.app/" target="_blank" rel="noreferrer" data-testid="guest-home" aria-label="Home trên app thật">Home <span aria-hidden="true">↗</span></a><a href="https://www.banbe.app/map" target="_blank" rel="noreferrer" data-testid="guest-map" aria-label="Map trên app thật">Map <span aria-hidden="true">↗</span></a><a href="https://www.banbe.app/" target="_blank" rel="noreferrer" data-testid="guest-event" aria-label="Sự kiện trên app thật">Sự kiện <span aria-hidden="true">↗</span></a></div>
+              </footer>
+            </div>
+
+            <aside class="ob-evidence w-index" aria-labelledby="ob-ev-1">
+              <p class="ev-kicker">Tuần này</p>
+              <h2 class="ev-title" id="ob-ev-1">7 buổi,<br>28.11 → 03.12</h2>
+              <ol class="w-list" data-welcome-list></ol>
+              <p class="ev-note">Sự kiện thật trên banbe. Giờ theo múi giờ Sài Gòn.</p>
+            </aside>
+          </div>
+        </section>
+
+        <!-- 2 · INTERESTS ───────────────────────────────────────────── -->
+        <section class="ob ob-question" data-step="2" aria-labelledby="ob-h1-2" hidden>
+          <div class="ob-grid">
+            <aside class="ob-rail" data-rail aria-label="Các bước"></aside>
+            <div class="ob-main">
+              <header class="q-head">
+                <button type="button" class="back" data-go="1" data-testid="back-2">‹ Chào</button>
+                <span class="q-step" data-step-label>2/8</span>
+              </header>
+              <div class="q-progress" data-progressdots aria-hidden="true"></div>
+              <p class="eyebrow">Câu 1/3 · Sở thích</p>
+              <h1 class="q-title" id="ob-h1-2" data-focus tabindex="-1">Bạn thấy gì vui?</h1>
+              <p class="q-sub">Chọn bao nhiêu cũng được. Đây là gợi ý Dành cho bạn trên Home.</p>
+
+              <div class="tiles" data-group="interests" role="group" aria-label="Loại sự kiện">
+                <button type="button" class="tile" data-value="supper" aria-pressed="false"><span class="tile-emoji" aria-hidden="true">🍲</span><span class="tile-name">Supper club</span><small class="tile-count" data-count="supper"></small></button>
+                <button type="button" class="tile" data-value="music" aria-pressed="false"><span class="tile-emoji" aria-hidden="true">🎷</span><span class="tile-name">Nhạc</span><small class="tile-count" data-count="music"></small></button>
+                <button type="button" class="tile" data-value="gallery" aria-pressed="false"><span class="tile-emoji" aria-hidden="true">🖼️</span><span class="tile-name">Phòng tranh</span><small class="tile-count" data-count="gallery"></small></button>
+                <button type="button" class="tile" data-value="fashion" aria-pressed="false"><span class="tile-emoji" aria-hidden="true">🧵</span><span class="tile-name">Thời trang</span><small class="tile-count" data-count="fashion"></small></button>
+                <button type="button" class="tile" data-value="popup" aria-pressed="false"><span class="tile-emoji" aria-hidden="true">🛍️</span><span class="tile-name">Pop-up</span><small class="tile-count" data-count="popup"></small></button>
+              </div>
+
+              <footer class="ob-foot">
+                <button type="button" class="btn btn-primary" data-go="3" data-testid="next-2">Tiếp <span aria-hidden="true">→</span></button>
+                <button type="button" class="link-quiet" data-go="5" data-testid="skip-2">Bỏ qua cả 3 câu</button>
+              </footer>
+            </div>
+
+            <aside class="ob-evidence" data-evidence="interests" aria-labelledby="ob-ev-2">
+              <p class="ev-kicker">Vì sao hỏi</p>
+              <h2 class="ev-title" id="ob-ev-2" data-ev-title>Bảy buổi, năm loại</h2>
+              <p class="ev-copy" data-ev-copy>Chọn loại bạn thích, danh sách bên dưới đổi theo. Không chọn gì thì vẫn xem được tất cả.</p>
+              <div class="ev-cards" data-ev-cards></div>
+              <p class="ev-note" data-ev-note>1 buổi Supper club, 2 buổi Nhạc, 2 buổi Phòng tranh, 1 buổi Thời trang, 1 Pop-up.</p>
+            </aside>
+          </div>
+        </section>
+
+        <!-- 3 · AVAILABILITY ────────────────────────────────────────── -->
+        <section class="ob ob-question" data-step="3" aria-labelledby="ob-h1-3" hidden>
+          <div class="ob-grid">
+            <aside class="ob-rail" data-rail aria-label="Các bước"></aside>
+            <div class="ob-main">
+              <header class="q-head">
+                <button type="button" class="back" data-go="2" data-testid="back-3">‹ Sở thích</button>
+                <span class="q-step" data-step-label>3/8</span>
+              </header>
+              <div class="q-progress" data-progressdots aria-hidden="true"></div>
+              <p class="eyebrow">Câu 2/3 · Thời gian</p>
+              <h1 class="q-title" id="ob-h1-3" data-focus tabindex="-1">Bạn thường rảnh khi nào?</h1>
+              <p class="q-sub">Chọn bao nhiêu cũng được. Giờ khác vẫn hiện, chỉ xếp sau.</p>
+
+              <div class="tiles tiles-4" data-group="availability" role="group" aria-label="Thời gian rảnh">
+                <button type="button" class="tile" data-value="weekdays" aria-pressed="false"><span class="tile-emoji" aria-hidden="true">📅</span><span class="tile-name">Ngày thường</span><small class="tile-count" data-count="weekdays"></small></button>
+                <button type="button" class="tile" data-value="weekends" aria-pressed="false"><span class="tile-emoji" aria-hidden="true">🎉</span><span class="tile-name">Cuối tuần</span><small class="tile-count" data-count="weekends"></small></button>
+                <button type="button" class="tile" data-value="daytime" aria-pressed="false"><span class="tile-emoji" aria-hidden="true">☀️</span><span class="tile-name">Ban ngày</span><small class="tile-count" data-count="daytime"></small></button>
+                <button type="button" class="tile" data-value="evening" aria-pressed="false"><span class="tile-emoji" aria-hidden="true">🌙</span><span class="tile-name">Buổi tối</span><small class="tile-count" data-count="evening"></small></button>
+              </div>
+
+              <footer class="ob-foot">
+                <button type="button" class="btn btn-primary" data-go="4" data-testid="next-3">Tiếp <span aria-hidden="true">→</span></button>
+                <button type="button" class="link-quiet" data-go="5" data-testid="skip-3">Bỏ qua cả 3 câu</button>
+              </footer>
+            </div>
+
+            <aside class="ob-evidence" data-evidence="availability" aria-labelledby="ob-ev-3">
+              <p class="ev-kicker">Vì sao hỏi</p>
+              <h2 class="ev-title" id="ob-ev-3" data-ev-title>3 buổi cuối tuần, 4 buổi tối</h2>
+              <p class="ev-copy" data-ev-copy>Đây là những buổi thật trong tuần này. Chọn giờ bạn hay rảnh, chúng tôi xếp chúng lên trước.</p>
+              <div class="ev-week" data-ev-week></div>
+              <div class="ev-cards" data-ev-cards></div>
+            </aside>
+          </div>
+        </section>
+
+        <!-- 4 · BUDGET ──────────────────────────────────────────────── -->
+        <section class="ob ob-question" data-step="4" aria-labelledby="ob-h1-4" hidden>
+          <div class="ob-grid">
+            <aside class="ob-rail" data-rail aria-label="Các bước"></aside>
+            <div class="ob-main">
+              <header class="q-head">
+                <button type="button" class="back" data-go="3" data-testid="back-4">‹ Thời gian</button>
+                <span class="q-step" data-step-label>4/8</span>
+              </header>
+              <div class="q-progress" data-progressdots aria-hidden="true"></div>
+              <p class="eyebrow">Câu 3/3 · Ngân sách</p>
+              <h1 class="q-title" id="ob-h1-4" data-focus tabindex="-1">Giá vé bao nhiêu thì thoải mái?</h1>
+              <p class="q-sub">Chọn một mức. Buổi đắt hơn sẽ không được gợi ý.</p>
+
+              <div class="budget" data-group="budget" role="group" aria-label="Ngân sách">
+                <button type="button" class="budget-row" data-value="free" aria-pressed="false"><span class="budget-name">Chỉ sự kiện miễn phí</span><small class="budget-count" data-count="free"></small></button>
+                <button type="button" class="budget-row" data-value="low" aria-pressed="false"><span class="budget-name">Thấp · đến 200.000₫</span><small class="budget-count" data-count="low"></small></button>
+                <button type="button" class="budget-row" data-value="medium" aria-pressed="false"><span class="budget-name">Trung bình · 200.000₫ – 600.000₫</span><small class="budget-count" data-count="medium"></small></button>
+                <button type="button" class="budget-row" data-value="flexible" aria-pressed="false"><span class="budget-name">Linh hoạt · không giới hạn</span><small class="budget-count" data-count="flexible"></small></button>
+              </div>
+
+              <div class="ruler" data-ruler aria-label="Bảy mức giá thật, từ miễn phí đến 650.000₫"></div>
+
+              <footer class="ob-foot">
+                <button type="button" class="btn btn-primary" data-go="5" data-testid="next-4">Xem Dành cho bạn <span aria-hidden="true">→</span></button>
+                <button type="button" class="link-quiet" data-go="5" data-testid="skip-4">Bỏ qua cả 3 câu</button>
+              </footer>
+            </div>
+
+            <aside class="ob-evidence" data-evidence="budget" aria-labelledby="ob-ev-4">
+              <p class="ev-kicker">Vì sao hỏi</p>
+              <h2 class="ev-title" id="ob-ev-4" data-ev-title>Từ miễn phí đến 650.000₫</h2>
+              <p class="ev-copy" data-ev-copy>Mức bạn chọn chỉ đổi Dành cho bạn. Mọi sự kiện vẫn tìm thấy ở Browse.</p>
+              <div class="ev-cards" data-ev-cards></div>
+            </aside>
+          </div>
+        </section>
+
+        <!-- 5 · REVEAL ──────────────────────────────────────────────── -->
+        <section class="ob ob-reveal" data-step="5" aria-labelledby="ob-h1-5" hidden>
+          <div class="ob-grid">
+            <aside class="ob-rail" data-rail aria-label="Các bước"></aside>
+            <div class="ob-main">
+              <header class="r-head">
+                <button type="button" class="back" data-go="4" data-testid="back-5">‹ Ngân sách</button>
+                <span class="q-step" data-step-label>5/8</span>
+              </header>
+              <div class="q-progress" data-progressdots aria-hidden="true"></div>
+
+              <div class="r-masthead">
+                <p class="eyebrow">Dành cho bạn · 27.11.2026</p>
+                <h1 class="r-title" id="ob-h1-5" data-focus tabindex="-1">Bảy buổi,<br>một phút.</h1>
+                <p class="r-sub" data-reveal-sub>Bạn bỏ qua ba câu, đây là bảy buổi gần nhất.</p>
+              </div>
+
+              <div class="r-answers" data-reveal-answers></div>
+              <div class="r-lead-slot" data-reveal-lead></div>
+              <ol class="r-list" data-reveal-list></ol>
+
+              <footer class="ob-foot r-foot">
+                <button type="button" class="btn btn-primary" data-go="6" data-testid="reveal-next">Tiếp tục <span aria-hidden="true">→</span></button>
+                <button type="button" class="btn btn-quiet" data-go="8" data-testid="reveal-login">Đăng nhập để giữ ghế</button>
+                <div class="guest-links"><span>Chưa muốn tài khoản?</span><a href="https://www.banbe.app/" target="_blank" rel="noreferrer" data-testid="reveal-guest-home" aria-label="Home trên app thật">Home <span aria-hidden="true">↗</span></a><a href="https://www.banbe.app/map" target="_blank" rel="noreferrer" data-testid="reveal-guest-map" aria-label="Map trên app thật">Map <span aria-hidden="true">↗</span></a><a href="https://www.banbe.app/" target="_blank" rel="noreferrer" data-testid="reveal-guest-event" aria-label="Sự kiện trên app thật">Sự kiện <span aria-hidden="true">↗</span></a></div>
+              </footer>
+            </div>
+
+            <aside class="ob-evidence r-aside" aria-labelledby="ob-ev-5">
+              <p class="ev-kicker">Tuần của bạn</p>
+              <h2 class="ev-title" id="ob-ev-5">Sáu ngày,<br>bảy buổi.</h2>
+              <div class="r-week" data-reveal-week></div>
+              <p class="ev-copy">Bảy buổi nằm rải từ thứ Bảy 28.11 đến thứ Năm 03.12. Ngày nào cũng có ít nhất một buổi.</p>
+              <div class="r-note">
+                <b>Chưa cần chọn ngay.</b>
+                <p>Mở một buổi để xem giá, chỗ còn lại và giờ kết thúc. Giữ ghế 30 phút chỉ khi bạn bấm giữ.</p>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <!-- 6 · CONSENT · DIGEST ────────────────────────────────────── -->
+        <section class="ob ob-consent" data-step="6" aria-labelledby="ob-h1-6" hidden>
+          <div class="ob-grid">
+            <aside class="ob-rail" data-rail aria-label="Các bước"></aside>
+            <div class="ob-main">
+              <header class="q-head">
+                <button type="button" class="back" data-go="5" data-testid="back-6">‹ Dành cho bạn</button>
+                <span class="q-step" data-step-label>6/8</span>
+              </header>
+              <div class="q-progress" data-progressdots aria-hidden="true"></div>
+              <p class="eyebrow">Trước khi vào Home</p>
+              <h1 class="q-title" id="ob-h1-6" data-focus tabindex="-1">Một email mỗi tuần,<br>nếu có gì đáng đi.</h1>
+              <p class="q-sub">Thứ Năm lúc 18:00, chỉ gửi khi tuần đó có sự kiện. Mặc định tắt. Tắt lại bất cứ lúc nào trong Tài khoản.</p>
+
+              <div class="consent-card">
+                <div class="consent-copy">
+                  <b>Bản tin thứ Năm</b>
+                  <p>Sài Gòn, sự kiện cuối tuần, host bạn theo dõi. Không gửi khi không có gì.</p>
+                </div>
+                <button type="button" class="switch" role="switch" aria-checked="false" data-toggle="digest" data-testid="consent-digest" aria-labelledby="digest-switch-label">
+                  <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+                  <span class="switch-text" id="digest-switch-label"><b data-toggle-label>Đang tắt</b><small>Nhận bản tin</small></span>
+                </button>
+              </div>
+
+              <footer class="ob-foot">
+                <button type="button" class="btn btn-primary" data-go="7" data-testid="digest-next">Tiếp <span aria-hidden="true">→</span></button>
+                <button type="button" class="link-quiet" data-go="7" data-testid="digest-later">Để sau</button>
+              </footer>
+            </div>
+
+            <aside class="ob-evidence" aria-labelledby="ob-ev-6">
+              <p class="ev-kicker">Nếu bật</p>
+              <h2 class="ev-title" id="ob-ev-6">Một email,<br>ba buổi.</h2>
+              <div class="digest">
+                <div class="digest-head"><span>Thứ Năm · 18:00</span><span>Sài Gòn</span></div>
+                <p class="digest-sub">Cuối tuần này</p>
+                <ol class="digest-list" data-digest-list></ol>
+                <p class="digest-foot">Chỉ gửi khi có sự kiện. Tắt trong Tài khoản → Thông báo.</p>
+              </div>
+              <p class="ev-note">Ví dụ dựng từ bảy sự kiện thật. Không phải ảnh chụp email.</p>
+            </aside>
+          </div>
+        </section>
+
+        <!-- 7 · CONSENT · HOSTING ───────────────────────────────────── -->
+        <section class="ob ob-consent" data-step="7" aria-labelledby="ob-h1-7" hidden>
+          <div class="ob-grid">
+            <aside class="ob-rail" data-rail aria-label="Các bước"></aside>
+            <div class="ob-main">
+              <header class="q-head">
+                <button type="button" class="back" data-go="6" data-testid="back-7">‹ Bản tin</button>
+                <span class="q-step" data-step-label>7/8</span>
+              </header>
+              <div class="q-progress" data-progressdots aria-hidden="true"></div>
+              <p class="eyebrow">Trước khi vào Home</p>
+              <h1 class="q-title" id="ob-h1-7" data-focus tabindex="-1">Bạn có muốn<br>tổ chức buổi của mình?</h1>
+              <p class="q-sub">Bật chế độ tổ chức để tạo sự kiện, mời khách và theo dõi tiền. Không bắt buộc, có thể tắt trong Tài khoản.</p>
+
+              <div class="consent-card consent-card-host">
+                <div class="consent-copy">
+                  <b>Chế độ tổ chức</b>
+                  <p>Mở Hosting trên Home và thêm mục Host trong Tài khoản. Không tạo sự kiện nào cho tới khi bạn bấm tạo.</p>
+                </div>
+                <button type="button" class="switch" role="switch" aria-checked="false" data-toggle="hosting" data-testid="consent-hosting" aria-labelledby="hosting-switch-label">
+                  <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+                  <span class="switch-text" id="hosting-switch-label"><b data-toggle-label>Đang tắt</b><small>Tổ chức sự kiện</small></span>
+                </button>
+              </div>
+
+              <footer class="ob-foot">
+                <button type="button" class="btn btn-primary" data-go="8" data-testid="hosting-next">Tiếp <span aria-hidden="true">→</span></button>
+                <button type="button" class="link-quiet" data-go="8" data-testid="hosting-later">Để sau</button>
+              </footer>
+            </div>
+
+            <aside class="ob-evidence" aria-labelledby="ob-ev-7">
+              <p class="ev-kicker">Nếu bật</p>
+              <h2 class="ev-title" id="ob-ev-7">Ba việc<br>đã có sẵn.</h2>
+              <ul class="host-list">
+                <li><span aria-hidden="true">01</span><div><b>Tạo sự kiện</b><p>Năm bước, xem trước đúng trang sự kiện trước khi gửi.</p></div></li>
+                <li><span aria-hidden="true">02</span><div><b>Project Hub</b><p>Việc, vai trong đội, kênh riêng và lịch ngày diễn ra.</p></div></li>
+                <li><span aria-hidden="true">03</span><div><b>Money &amp; door</b><p>Ai đã trả, ai đang giữ ghế, ai đã vào cửa.</p></div></li>
+              </ul>
+              <p class="ev-note">Không có sự kiện nào được tạo trong bản xem trước này.</p>
+            </aside>
+          </div>
+        </section>
+
+        <!-- 8 · LOGIN ───────────────────────────────────────────────── -->
+        <section class="ob ob-login" data-step="8" aria-labelledby="ob-h1-8" hidden>
+          <div class="ob-grid">
+            <aside class="ob-rail" data-rail aria-label="Các bước"></aside>
+            <div class="ob-main">
+              <header class="q-head">
+                <button type="button" class="back" data-go="7" data-testid="back-8">‹ Tổ chức</button>
+                <span class="q-step" data-step-label>8/8</span>
+              </header>
+              <div class="q-progress" data-progressdots aria-hidden="true"></div>
+              <p class="eyebrow">Bước cuối</p>
+              <h1 class="q-title" id="ob-h1-8" data-focus tabindex="-1">Giữ chỗ,<br>nhận vé.</h1>
+              <p class="q-sub">Một tài khoản cho vé, tin nhắn host và hoàn tiền. Không cần tài khoản để xem sự kiện.</p>
+
+              <div class="login-card">
+                <button type="button" class="oauth" data-testid="login-google">Tiếp tục với Google</button>
+                <div class="or"><span>hoặc</span></div>
+
+                <div class="method" role="group" aria-label="Cách đăng nhập">
+                  <button type="button" data-method="code" aria-pressed="true" data-testid="login-method-code">Mã qua email</button>
+                  <button type="button" data-method="password" aria-pressed="false" data-testid="login-method-password">Mật khẩu</button>
+                </div>
+
+                <label class="field">
+                  <span>Email</span>
+                  <input type="email" inputmode="email" autocomplete="username" placeholder="ban@email.com" data-login-email data-testid="login-email">
+                </label>
+                <p class="field-error" data-email-error hidden>Email chưa đúng định dạng (ví dụ: ban@email.com)</p>
+
+                <label class="field" data-password-field hidden>
+                  <span>Mật khẩu</span>
+                  <input type="password" autocomplete="current-password" placeholder="Mật khẩu của bạn" data-login-password data-testid="login-password">
+                </label>
+
+                <button type="button" class="btn btn-primary login-submit" data-login-submit data-testid="login-submit" disabled>
+                  <span data-login-label>Gửi mã 8 số</span> <span aria-hidden="true">→</span>
+                </button>
+                <p class="login-note" data-login-note hidden></p>
+                <p class="login-fine">Bản xem trước. Không gửi email, không tạo phiên đăng nhập.</p>
+              </div>
+
+              <footer class="ob-foot login-guest">
+                <div class="guest-links"><span>Vẫn xem tiếp với tư cách khách:</span><a href="https://www.banbe.app/" target="_blank" rel="noreferrer" data-testid="login-guest-home" aria-label="Home trên app thật">Home <span aria-hidden="true">↗</span></a><a href="https://www.banbe.app/map" target="_blank" rel="noreferrer" data-testid="login-guest-map" aria-label="Map trên app thật">Map <span aria-hidden="true">↗</span></a><a href="https://www.banbe.app/" target="_blank" rel="noreferrer" data-testid="login-guest-event" aria-label="Sự kiện trên app thật">Sự kiện <span aria-hidden="true">↗</span></a></div>
+              </footer>
+            </div>
+
+            <aside class="ob-evidence" aria-labelledby="ob-ev-8">
+              <p class="ev-kicker">Bạn giữ lại gì</p>
+              <h2 class="ev-title" id="ob-ev-8">Vé, ghế<br>và tin nhắn.</h2>
+              <ul class="keep-list">
+                <li><b>Giữ ghế 30 phút</b><span>Chỗ của bạn trong lúc bạn trả tiền.</span></li>
+                <li><b>Vé và mã QR</b><span>Một vé cho mỗi người, quét ở cửa.</span></li>
+                <li><b>Nhắn host</b><span>Hỏi đường, món ăn, chỗ ngồi.</span></li>
+                <li><b>Hoàn tiền</b><span>Nếu host huỷ, bạn chọn nơi nhận.</span></li>
+              </ul>
+              <div class="r-note">
+                <b>Lựa chọn của bạn</b>
+                <div class="choice-summary" data-choice-summary></div>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <!-- EVENT DEMO · a screen inside the prototype, never an unannounced jump to production -->
+        <section class="ev-demo" data-event-demo data-testid="event-demo" role="dialog" aria-modal="true" aria-labelledby="ev-demo-title" tabindex="-1" hidden>
+          <header class="ev-demo-top">
+            <button type="button" class="back" data-demo-close data-testid="demo-close">‹ Quay lại onboarding</button>
+            <span class="ev-demo-step" data-demo-step>Bước 1/8 · Chào</span>
+          </header>
+          <div class="ev-demo-scroll">
+            <div class="ev-demo-inner">
+              <div class="ev-demo-context">
+                <p class="ev-demo-flag"><span aria-hidden="true">★</span> Demo trong prototype · không phải app thật</p>
+                <p class="ev-demo-note" data-demo-note>Bạn vẫn đang trong onboarding. Màn này chỉ để xem; chưa giữ ghế, chưa nhận vé.</p>
+              </div>
+              <figure class="ev-demo-hero"><img data-demo-photo src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt=""></figure>
+              <div class="ev-demo-body">
+                <p class="eyebrow" data-demo-kicker></p>
+                <h2 class="ev-demo-title" id="ev-demo-title" data-demo-title tabindex="-1"></h2>
+                <p class="ev-demo-meta" data-demo-meta></p>
+                <p class="ev-demo-price" data-demo-price></p>
+                <p class="ev-demo-copy" data-demo-copy></p>
+                <ul class="ev-demo-facts">
+                  <li><b>Giữ ghế 30 phút</b><span>Chỗ của bạn trong lúc bạn trả tiền.</span></li>
+                  <li><b>Vé điện tử + mã QR</b><span>Quét ở cửa, một vé cho mỗi người.</span></li>
+                  <li><b>Hoàn tiền nếu host huỷ</b><span>Bạn chọn nơi nhận.</span></li>
+                </ul>
+                <div class="ev-demo-actions">
+                  <button type="button" class="btn btn-primary" data-demo-close>Tiếp tục onboarding</button>
+                  <a class="btn btn-quiet" data-demo-real href="https://www.banbe.app/" target="_blank" rel="noreferrer">Mở trên app thật <span aria-hidden="true">↗</span></a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="bb-overview" data-overview hidden></div>
+</main>
+
+</body>
+</html>
