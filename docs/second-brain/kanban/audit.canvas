@@ -56,6 +56,15 @@
       "y": 176,
       "width": 300,
       "height": 88
+    },
+    {
+      "id": "task-audit-2026-11-25",
+      "type": "text",
+      "text": "AUDIT 2026-11-25 — P0=0 P1=0 · apply sent",
+      "x": 740,
+      "y": 280,
+      "width": 300,
+      "height": 88
     }
   ],
   "edges": []

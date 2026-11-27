@@ -3,34 +3,34 @@ tags: [code-graph]
 ---
 # ref_node_assert
 
-`code-graph` · area `391` · **130 symbols** across **28 files** · 0.7% of the graph.
+`code-graph` · area `391` · **109 symbols** across **26 files** · 0.6% of the graph.
 
-**Start with:** `src/screens/Notifications.jsx:109` — `Notifications()`
+**Start with:** `src/lib/keychainMotion.js:25` — `createKeychainController()`
 
-**Key symbols:** `Notifications()` · `CancelEventModal()` · `AnnouncementSheet()` · `catalogStartMs()` · `Row()` · `agoLabel()` · `avatarSourceFor()` · `buildCancellationDraft()` · `dockOrder()` · `filterAnnouncementTemplates()` · `dockHighlightFor()` · `dockSlots()` · `groupNotificationsByDay()` · `localizeSystemMessage()`
+**Key symbols:** `createKeychainController()` · `buildCancellationDraft()` · `createMapKitMap()` · `filterAnnouncementTemplates()` · `dockHighlightFor()` · `dockOrder()` · `ensureLoop()` · `reduceAction()` · `sensorImpulse()` · `step()` · `applyImpulse()` · `buildMailtoUrl()` · `dragTo()` · `finite()`
 
 ## Files
 
 | File | Symbols |
 | --- | ---: |
-| `src/data/events.js` | 23 |
-| `src/lib/dockLayout.js` | 13 |
-| `src/screens/Notifications.jsx` | 13 |
-| `src/lib/notifications.js` | 9 |
-| `tests/unit/designTokens.test.mjs` | 9 |
+| `src/lib/keychainPhysics.js` | 20 |
+| `src/lib/dockLayout.js` | 11 |
+| `src/lib/keychainMotion.js` | 10 |
 | `src/lib/eventAnnouncements.js` | 7 |
+| `src/lib/mapkitAdapter.js` | 7 |
 | `src/lib/systemMessageLocale.js` | 7 |
+| `src/lib/asyncAction.js` | 6 |
 | `src/lib/eventCancellationTemplates.js` | 6 |
-| _+20 more files_ | |
+| _+18 more files_ | |
 
 ## Connected areas
 
-- [[graph/web-app-shell-theme|Web App Shell & Theme]] — 104 edges
-- [[graph/home-jsx|Home.jsx]] — 12 edges
-- [[graph/banbecontext-jsx|BanBeContext.jsx]] — 11 edges
-- [[graph/mapexplore-jsx|MapExplore.jsx]] — 6 edges
-- [[graph/eventdetail-jsx|EventDetail.jsx]] — 5 edges
-- [[graph/ios-shared-ui-navigation|iOS Shared UI & Navigation]] — 3 edges
+- [[graph/web-app-shell-theme|Web App Shell & Theme]] — 47 edges
+- [[graph/banbecontext-jsx|BanBeContext.jsx]] — 6 edges
+- [[graph/eventdetail-jsx|EventDetail.jsx]] — 3 edges
+- [[graph/eventonboarding-jsx|EventOnboarding.jsx]] — 3 edges
+- [[graph/mapexplore-jsx|MapExplore.jsx]] — 3 edges
+- [[graph/publicprofile-jsx|PublicProfile.jsx]] — 3 edges
 
 ---
 [[graph/Code map|Code map]] · [[Home]]

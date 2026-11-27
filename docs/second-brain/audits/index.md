@@ -16,6 +16,7 @@ Last run: 2026-11-23 18:35 ICT · P0=0 P1=0 · Build exit 0 + unit 1072/1072; 21
 
 ## Runs
 
+- 2026-11-25 17:45 ICT · a2f15119 · P0=0 · P1=0 · backup fail 2 đêm + Playwright cap 60' (PR #10) + tap targets/golden/trial shell; build 0, unit 1072/1072 · docs/audits/2026-11-25/AUDIT.md
 - 2026-11-23 18:35 ICT · a6699b1d · P0=0 · P1=0 · 213/223/230/232 applied + backup fail; 5 findings · nguồn 7 chiều: 7/7 blocked (không capture); PR/health có log; A/B: GH Actions giữ, Orca daily disabled (5 automation) · docs/audits/2026-11-23/AUDIT.md
 - 2026-11-23 17:24 ICT · a6699b1d · P0=0 · P1=3 · Build exit 0 + unit 1072/1072; origin pinning applied; R2 reads live
 - 2026-11-22 05:05 ICT · a0ed5486 · P0=0 · P1=4 · Code map fresh + iOS not compiled + verify_payment 213 unapplied; build exit 0, unit 1072/1072, npm audit 0

@@ -3,34 +3,34 @@ tags: [code-graph]
 ---
 # flagOn
 
-`code-graph` · area `94` · **143 symbols** across **33 files** · 0.8% of the graph.
+`code-graph` · area `94` · **158 symbols** across **23 files** · 0.8% of the graph.
 
 **Start with:** `src/lib/featureFlags.js:41` — `flagOn()`
 
-**Key symbols:** `flagOn()` · `track()` · `ConfettiBurst()` · `Welcome()` · `HelpReader()` · `pathToRoute()` · `normalizeFlags()` · `PolicyView()` · `projectDemoAllowed()` · `ActivationChecklistCard()` · `contentOn()` · `filterHelpSections()` · `GuestPromptSheet()` · `HowBanbeWorksV2()`
+**Key symbols:** `flagOn()` · `track()` · `OnboardingTour()` · `AdminFeatures()` · `DemoScreen()` · `Welcome()` · `normalizeFlags()` · `PolicyView()` · `Step()` · `tourPlan()` · `useUrlSync()` · `contentOn()` · `filterHelpSections()` · `HowBanbeWorksV2()`
 
 ## Files
 
 | File | Symbols |
 | --- | ---: |
+| `src/components/HowBanbeWorks.jsx` | 36 |
 | `src/lib/analytics.js` | 13 |
-| `src/lib/projectDemo.js` | 10 |
-| `src/lib/routes.js` | 9 |
+| `src/components/tour/OnboardingTour.jsx` | 12 |
+| `tests/unit/contentFlags.test.mjs` | 11 |
+| `src/data/onboardingTour.js` | 10 |
 | `src/screens/Policy.jsx` | 9 |
 | `src/lib/featureFlags.js` | 8 |
-| `src/lib/activationChecklist.js` | 7 |
-| `src/lib/guestAccess.js` | 7 |
-| `src/screens/AdminFeatures.jsx` | 7 |
-| _+25 more files_ | |
+| `src/screens/AdminFeatures.jsx` | 8 |
+| _+15 more files_ | |
 
 ## Connected areas
 
-- [[graph/web-app-shell-theme|Web App Shell & Theme]] — 119 edges
-- [[graph/banbecontext-jsx|BanBeContext.jsx]] — 43 edges
-- [[graph/home-jsx|Home.jsx]] — 20 edges
-- [[graph/ios-shared-ui-navigation|iOS Shared UI & Navigation]] — 11 edges
-- [[graph/islandsettings-jsx|IslandSettings.jsx]] — 11 edges
-- [[graph/eventdetail-jsx|EventDetail.jsx]] — 9 edges
+- [[graph/web-app-shell-theme|Web App Shell & Theme]] — 91 edges
+- [[graph/eventonboarding-jsx|EventOnboarding.jsx]] — 34 edges
+- [[graph/banbecontext-jsx|BanBeContext.jsx]] — 28 edges
+- [[graph/eventplanactions-jsx|EventPlanActions.jsx]] — 16 edges
+- [[graph/eventdetail-jsx|EventDetail.jsx]] — 15 edges
+- [[graph/mapexplore-jsx|MapExplore.jsx]] — 15 edges
 
 ---
 [[graph/Code map|Code map]] · [[Home]]

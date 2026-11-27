@@ -3,34 +3,34 @@ tags: [code-graph]
 ---
 # SupabaseService
 
-`code-graph` · area `9` · **189 symbols** across **12 files** · 1.0% of the graph.
+`code-graph` · area `13` · **273 symbols** across **27 files** · 1.5% of the graph.
 
-**Start with:** `apps/ios/BanbeApp/Lib/DisputeExport.swift:370` — `Data`
+**Start with:** `apps/ios/BanbeApp/Services/SupabaseService.swift:18` — `SupabaseService`
 
-**Key symbols:** `Data` · `RefundClaim` · `.openNotification()` · `VerificationsView` · `AttendanceView` · `RefundDisputeEntry` · `.card()` · `RefundAccountsView` · `.refundCenterRow()` · `.loadPaymentBookings()` · `.loadRefundQueue()` · `RefundCenterClaim` · `.loadDisputeChats()` · `.loadRefundDisputeChat()`
+**Key symbols:** `SupabaseService` · `CodingKeys` · `.openNotification()` · `.applySession()` · `.submitCreateEvent()` · `.row()` · `.loadHomeStories()` · `.loadMyEvents()` · `.openChat()` · `.applyOrganizerMode()` · `.openBookingConfirmed()` · `.openCoreLoopNotification()` · `.submitReserve()` · `.loadAttendanceGuests()`
 
 ## Files
 
 | File | Symbols |
 | --- | ---: |
-| `apps/ios/BanbeApp/State/AppState+Payments.swift` | 121 |
-| `apps/ios/BanbeApp/Views/AttendanceView.swift` | 19 |
-| `apps/ios/BanbeApp/Views/RefundDisputeEntry.swift` | 13 |
-| `apps/ios/BanbeApp/Views/VerificationsView.swift` | 12 |
-| `apps/ios/BanbeApp/Views/RefundAccountsView.swift` | 11 |
-| `apps/ios/BanbeApp/State/AppState+DisputeExport.swift` | 3 |
-| `docs/second-brain/graph/supabaseservice.md` | 3 |
-| `apps/ios/BanbeApp/State/AppState.swift` | 2 |
-| _+4 more files_ | |
+| `apps/ios/BanbeApp/State/AppState+Data.swift` | 215 |
+| `apps/ios/BanbeApp/State/AppState+Team.swift` | 6 |
+| `apps/ios/BanbeApp/State/AppState+EventPrefs.swift` | 5 |
+| `apps/ios/BanbeApp/Views/MessagingViews.swift` | 5 |
+| `apps/ios/BanbeApp/State/AppState.swift` | 4 |
+| `apps/ios/BanbeApp/State/AppState+Payments.swift` | 4 |
+| `apps/ios/BanbeApp/State/AppState+Rewards.swift` | 4 |
+| `apps/ios/BanbeApp/State/AppState+Discovery.swift` | 3 |
+| _+19 more files_ | |
 
 ## Connected areas
 
-- [[graph/appstate|AppState]] — 173 edges
-- [[graph/screen|Screen]] — 25 edges
-- [[graph/pressablebuttonstyle|PressableButtonStyle]] — 13 edges
-- [[graph/homeview|HomeView]] — 5 edges
-- [[graph/eventdetailview|EventDetailView]] — 2 edges
-- [[graph/createeventview|CreateEventView]] — 1 edges
+- [[graph/appstate|AppState]] — 195 edges
+- [[graph/screen|Screen]] — 33 edges
+- [[graph/appnotification|AppNotification]] — 23 edges
+- [[graph/eventrecipe|EventRecipe]] — 14 edges
+- [[graph/rewardspayload|RewardsPayload]] — 6 edges
+- [[graph/homeherosection|HomeHeroSection]] — 3 edges
 
 ---
 [[graph/Code map|Code map]] · [[Home]]

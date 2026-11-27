@@ -3,34 +3,34 @@ tags: [code-graph]
 ---
 # AppState
 
-`code-graph` · area `0` · **476 symbols** across **78 files** · 2.6% of the graph.
+`code-graph` · area `0` · **310 symbols** across **63 files** · 1.7% of the graph.
 
 **Start with:** `apps/ios/BanbeApp/State/AppState.swift:275` — `AppState`
 
-**Key symbols:** `AppState` · `SupabaseService` · `RealEventSummary` · `DashboardView` · `.applySession()` · `EventCatalog` · `.loadMyOrgEventSummaries()` · `.toggleFavorite()` · `UIApplication` · `.loadDiscoveryEvents()` · `.find()` · `.handleDeepLink()` · `.loadHomeStories()` · `.fromReal()`
+**Key symbols:** `AppState` · `.isOn()` · `UIApplication` · `.goCreate()` · `.resolvedEvent()` · `.addToBanbeSchedule()` · `.confirmGift()` · `.requireAuth()` · `PublicEntryTests` · `.matchesArea()` · `.withLive()` · `.claimGiftTicket()` · `.resetHomeScrollToTop()` · `.createFormatter()`
 
 ## Files
 
 | File | Symbols |
 | --- | ---: |
-| `apps/ios/BanbeApp/State/AppState.swift` | 96 |
-| `apps/ios/BanbeApp/State/AppState+Data.swift` | 69 |
-| `apps/ios/BanbeApp/Views/DashboardView.swift` | 32 |
-| `apps/ios/BanbeApp/State/AppState+PaymentQR.swift` | 15 |
-| `apps/ios/BanbeApp/State/AppState+Push.swift` | 15 |
-| `apps/ios/BanbeApp/State/AppState+AdminTeam.swift` | 13 |
-| `apps/ios/BanbeApp/State/AppState+Payments.swift` | 13 |
-| `apps/ios/BanbeApp/State/AppState+Schedule.swift` | 10 |
-| _+70 more files_ | |
+| `apps/ios/BanbeApp/State/AppState.swift` | 77 |
+| `apps/ios/BanbeApp/State/AppState+Data.swift` | 22 |
+| `apps/ios/BanbeApp/State/AppState+EventPrefs.swift` | 17 |
+| `apps/ios/BanbeApp/State/AppState+Schedule.swift` | 16 |
+| `apps/ios/BanbeApp/State/AppState+CoreLoops.swift` | 11 |
+| `apps/ios/BanbeApp/State/AppState+Push.swift` | 11 |
+| `apps/ios/BanbeApp/State/AppState+FeatureFlags.swift` | 10 |
+| `apps/ios/BanbeApp/State/AppState+Discovery.swift` | 8 |
+| _+55 more files_ | |
 
 ## Connected areas
 
-- [[graph/pressablebuttonstyle|PressableButtonStyle]] — 191 edges
-- [[graph/supabaseservice|SupabaseService]] — 173 edges
-- [[graph/screen|Screen]] — 76 edges
-- [[graph/createeventview|CreateEventView]] — 66 edges
-- [[graph/eventdetailview|EventDetailView]] — 48 edges
-- [[graph/homeview|HomeView]] — 40 edges
+- [[graph/supabaseservice|SupabaseService]] — 195 edges
+- [[graph/screen|Screen]] — 78 edges
+- [[graph/createeventview|CreateEventView]] — 53 edges
+- [[graph/appnotification|AppNotification]] — 28 edges
+- [[graph/mapexploreview|MapExploreView]] — 28 edges
+- [[graph/homeherosection|HomeHeroSection]] — 27 edges
 
 ---
 [[graph/Code map|Code map]] · [[Home]]
