@@ -81,7 +81,7 @@ try {
         card: Math.round(wrap.getBoundingClientRect().width),
         labels: rows.map((row) => row.querySelector('.chip-copy').innerText.replace(/\s+/g, ' ').trim()),
         actions: rows.map((row) => {
-          const rect = row.querySelector('a').getBoundingClientRect();
+          const rect = row.querySelector('a, button').getBoundingClientRect();
           return { left: Math.round(rect.left), height: Math.round(rect.height) };
         }),
       };

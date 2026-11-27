@@ -2,7 +2,7 @@
 
 ## onboarding — 2026-11-27
 
-**32 frame bước = 8 bước × 4 khung** (1 Chào, 2 Sở thích, 3 Thời gian, 4 Ngân sách, 5 Dành cho bạn, 6 Bản tin, 7 Tổ chức, 8 Đăng nhập) + **1 overview 8×4**. Tổng **33 PNG**, chụp/dựng ngày **2026-11-27**. Ảnh bước chụp 1:1 bằng `?embed=1&capture=1`; riêng bốn frame bước 5 chụp ở **trạng thái đã trả lời** bằng `capture-step5.mjs` (seed `bb:onboarding:state`); overview dựng từ chính 32 ảnh đó.
+**32 frame bước = 8 bước × 4 khung** (1 Chào, 2 Sở thích, 3 Thời gian, 4 Ngân sách, 5 Dành cho bạn, 6 Bản tin, 7 Tổ chức, 8 Đăng nhập) + **1 overview 8×4**. Tổng **33 PNG**, chụp/dựng ngày **2026-11-27**. Ảnh bước chụp 1:1 bằng `?embed=1&capture=1`; riêng bốn frame bước 5 chụp ở **trạng thái đã trả lời** bằng `capture-step5.mjs` (seed `bb:onboarding:state`); overview dựng từ chính 32 ảnh đó. Các nút “Chọn/Sửa” ở bước 5 và hai dòng tóm tắt ở bước 8 mở **sheet sửa tại chỗ**, giữ nguyên bước; 32 frame chụp trạng thái đóng của sheet.
 
 | File | Bước | Khung | Nguồn | Ngày |
 | --- | --- | --- | --- | --- |

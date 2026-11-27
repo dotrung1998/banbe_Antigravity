@@ -80,6 +80,9 @@
   let demoOpen = false;
   let demoTrigger = null;
   let demoScrollTop = 0;
+  let sheetOpen = false;
+  let sheetKey = null;
+  let sheetTrigger = null;
 
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -185,6 +188,258 @@
 
   function dateLine(ev) {
     return `${ev.dayName}, ${ev.day}.${ev.monthNum}`;
+  }
+
+  /* ── edit sheet · stay on the current step ─────────────────────── */
+  const SHEET_META = {
+    interests: {
+      title: 'Sở thích',
+      sub: 'Chọn loại bạn thích. Chọn nhiều được; bỏ chọn để xem lại tất cả.',
+      clear: 'Bỏ chọn tất cả',
+    },
+    availability: {
+      title: 'Thời gian rảnh',
+      sub: 'Chọn những lúc bạn thường rảnh. Chọn nhiều được; bỏ chọn để xem lại cả tuần.',
+      clear: 'Bỏ chọn tất cả',
+    },
+    budget: {
+      title: 'Ngân sách',
+      sub: 'Chọn một mức giá thoải mái. Bỏ chọn nếu không muốn giới hạn.',
+      clear: 'Bỏ giới hạn',
+    },
+    digest: {
+      title: 'Bản tin thứ Năm',
+      sub: 'Một email mỗi tuần, chỉ khi tuần đó có sự kiện. Tắt lại bất cứ lúc nào.',
+      toggleLabel: 'Nhận bản tin thứ Năm',
+      onHint: 'Đang bật · một email mỗi tuần',
+      offHint: 'Đang tắt · không gửi email',
+    },
+    hosting: {
+      title: 'Chế độ tổ chức',
+      sub: 'Bật Hosting trên Home và thêm Host trong Tài khoản. Không tạo sự kiện nào cho tới khi bạn bấm tạo.',
+      toggleLabel: 'Bật chế độ tổ chức',
+      onHint: 'Đang bật · Hosting trên Home',
+      offHint: 'Đang tắt · chỉ xem với tư cách khách',
+    },
+  };
+
+  function sheetOptionRow(group, value, label, count, pressed) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'sheet-option';
+    btn.dataset.sheetOption = group;
+    btn.dataset.value = value;
+    btn.setAttribute('aria-pressed', String(pressed));
+    const copy = document.createElement('span');
+    copy.className = 'sheet-option-copy';
+    const name = document.createElement('b');
+    name.textContent = label;
+    const meta = document.createElement('small');
+    meta.textContent = count;
+    copy.append(name, meta);
+    const check = document.createElement('span');
+    check.className = 'sheet-check';
+    check.setAttribute('aria-hidden', 'true');
+    check.textContent = '✓';
+    btn.append(copy, check);
+    return btn;
+  }
+
+  function sheetOptions(key) {
+    if (key === 'interests') {
+      return TYPES.map(([value, label]) => sheetOptionRow(
+        'interests', value, label, `${TYPE_COUNTS[value] || 0} buổi`, state.interests.includes(value),
+      ));
+    }
+    if (key === 'availability') {
+      return AVAILABILITY.map(([value, label]) => sheetOptionRow(
+        'availability', value, label, `${EVENTS.filter((ev) => matchesAvailability(ev, value)).length} buổi`, state.availability.includes(value),
+      ));
+    }
+    if (key === 'budget') {
+      return BUDGET.map((tier) => sheetOptionRow(
+        'budget', tier.key, tier.label,
+        tier.cap === Infinity ? `${EVENTS.length} buổi` : `${EVENTS.filter((ev) => ev.price <= tier.cap).length} buổi`,
+        state.budget === tier.key,
+      ));
+    }
+    return [];
+  }
+
+  function sheetToggleRow(key, meta) {
+    const on = state[key] === true;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'sheet-toggle-row';
+    btn.dataset.sheetToggle = key;
+    btn.setAttribute('role', 'switch');
+    btn.setAttribute('aria-checked', String(on));
+    const copy = document.createElement('span');
+    copy.className = 'sheet-option-copy';
+    const name = document.createElement('b');
+    name.textContent = meta.toggleLabel;
+    const hint = document.createElement('small');
+    hint.setAttribute('data-sheet-toggle-label', '');
+    hint.textContent = on ? meta.onHint : meta.offHint;
+    copy.append(name, hint);
+    const track = document.createElement('span');
+    track.className = 'switch-track';
+    track.setAttribute('aria-hidden', 'true');
+    const knob = document.createElement('span');
+    knob.className = 'switch-knob';
+    track.append(knob);
+    btn.append(copy, track);
+    return btn;
+  }
+
+  function syncSheetState() {
+    $$('[data-sheet-option]').forEach((btn) => {
+      const group = btn.dataset.sheetOption;
+      const on = group === 'budget'
+        ? state.budget === btn.dataset.value
+        : (state[group] || []).includes(btn.dataset.value);
+      btn.setAttribute('aria-pressed', String(on));
+    });
+    $$('[data-sheet-toggle]').forEach((btn) => {
+      const key = btn.dataset.sheetToggle;
+      const meta = SHEET_META[key];
+      const on = state[key] === true;
+      btn.setAttribute('aria-checked', String(on));
+      const label = $('[data-sheet-toggle-label]', btn);
+      if (label && meta) label.textContent = on ? meta.onHint : meta.offHint;
+    });
+    const meta = sheetKey ? SHEET_META[sheetKey] : null;
+    const clear = $('[data-sheet-clear]');
+    if (clear && meta?.clear) {
+      const has = sheetKey === 'budget'
+        ? !!state.budget
+        : (state[sheetKey] || []).length > 0;
+      clear.hidden = !has;
+    }
+  }
+
+  function openSheet(key, trigger) {
+    const meta = SHEET_META[key];
+    if (!meta) return;
+    if (demoOpen) closeDemo({ restoreFocus: false });
+    if (sheetOpen) closeSheet({ restoreFocus: false, refresh: false });
+    const layer = $('[data-sheet-layer]');
+    const panel = $('[data-sheet]');
+    const body = $('[data-sheet-body]');
+    if (!layer || !panel || !body) return;
+    sheetKey = key;
+    sheetTrigger = trigger || null;
+    setText('[data-sheet-kicker]', `Vẫn ở bước ${current}/${STEPS.length} · chỉnh nhanh`);
+    setText('[data-sheet-title]', meta.title);
+    setText('[data-sheet-sub]', meta.sub);
+    body.replaceChildren();
+    body.scrollTop = 0;
+    if (key === 'digest' || key === 'hosting') {
+      body.append(sheetToggleRow(key, meta));
+    } else {
+      const list = document.createElement('div');
+      list.className = 'sheet-options';
+      list.append(...sheetOptions(key));
+      body.append(list);
+    }
+    const clear = $('[data-sheet-clear]');
+    if (clear) {
+      clear.textContent = meta.clear || 'Bỏ chọn';
+      clear.hidden = !meta.clear;
+    }
+    layer.hidden = false;
+    sheetOpen = true;
+    const screen = $('.bb-screen');
+    const bar = $('.bb-bar');
+    if (screen) screen.inert = true;
+    if (bar) bar.inert = true;
+    syncSheetState();
+    panel.focus({ preventScroll: true });
+  }
+
+  function closeSheet({ restoreFocus = true, refresh = true } = {}) {
+    if (!sheetOpen) return;
+    const key = sheetKey;
+    const trigger = sheetTrigger;
+    sheetOpen = false;
+    sheetKey = null;
+    sheetTrigger = null;
+    const layer = $('[data-sheet-layer]');
+    if (layer) layer.hidden = true;
+    const screen = $('.bb-screen');
+    const bar = $('.bb-bar');
+    if (screen) screen.inert = false;
+    if (bar) bar.inert = false;
+    if (refresh) refreshSheetHost();
+    if (restoreFocus) {
+      const next = key ? $(`[data-edit="${key}"]`) : null;
+      (next || trigger)?.focus({ preventScroll: true });
+    }
+  }
+
+  function refreshSheetHost() {
+    if (current === 5) renderReveal();
+    if (current === 8) renderChoiceSummary();
+  }
+
+  function applySheetChoice(group, value) {
+    if (group === 'budget') {
+      state.budget = state.budget === value ? null : value;
+    } else {
+      const list = state[group];
+      if (!Array.isArray(list)) return;
+      const at = list.indexOf(value);
+      if (at >= 0) list.splice(at, 1);
+      else list.push(value);
+    }
+    save();
+    syncPressed();
+    syncSheetState();
+    refreshSheetHost();
+  }
+
+  function clearSheetChoice() {
+    if (!sheetKey) return;
+    if (sheetKey === 'budget') state.budget = null;
+    else if (sheetKey === 'interests' || sheetKey === 'availability') state[sheetKey] = [];
+    else return;
+    save();
+    syncPressed();
+    syncSheetState();
+    refreshSheetHost();
+  }
+
+  function toggleSheetConsent(key) {
+    if (key !== 'digest' && key !== 'hosting') return;
+    state[key] = !state[key];
+    save();
+    syncToggles();
+    syncSheetState();
+    refreshSheetHost();
+  }
+
+  function sheetFocusables() {
+    const panel = $('[data-sheet]');
+    if (!panel) return [];
+    return $$('button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])', panel)
+      .filter((node) => !node.hidden && node.offsetParent !== null);
+  }
+
+  function trapSheetFocus(event) {
+    const panel = $('[data-sheet]');
+    const items = sheetFocusables();
+    if (!panel || !items.length) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+    if (event.shiftKey) {
+      if (document.activeElement === first || !panel.contains(document.activeElement)) {
+        event.preventDefault();
+        last.focus();
+      }
+    } else if (document.activeElement === last || !panel.contains(document.activeElement)) {
+      event.preventDefault();
+      first.focus();
+    }
   }
 
   function welcomeRow(ev) {
@@ -346,15 +601,15 @@
     setText('[data-reveal-sub]', sub);
 
     const chips = [
-      { go: 2, label: 'Sở thích', value: state.interests.map((k) => TYPE_LABEL[k]).join(', ') },
-      { go: 3, label: 'Thời gian', value: state.availability.map((k) => AVAILABILITY_LABEL[k]).join(', ') },
-      { go: 4, label: 'Ngân sách', value: (BUDGET.find((b) => b.key === state.budget) || {}).short || '' },
+      { key: 'interests', label: 'Sở thích', value: state.interests.map((k) => TYPE_LABEL[k]).join(', ') },
+      { key: 'availability', label: 'Thời gian', value: state.availability.map((k) => AVAILABILITY_LABEL[k]).join(', ') },
+      { key: 'budget', label: 'Ngân sách', value: (BUDGET.find((b) => b.key === state.budget) || {}).short || '' },
     ];
     const answers = $('[data-reveal-answers]');
     if (answers) {
       answers.innerHTML = chips.map((c) => {
         const action = c.value ? 'Sửa' : 'Chọn';
-        return `<span class="chip"><span class="chip-copy"><span>${c.label}:</span><b>${c.value || 'Chưa chọn'}</b></span><a href="#b${c.go}" aria-label="${action} ${c.label}">${action}</a></span>`;
+        return `<span class="chip"><span class="chip-copy"><span>${c.label}:</span><b>${c.value || 'Chưa chọn'}</b></span><button type="button" data-edit="${c.key}" aria-haspopup="dialog" aria-label="${action} ${c.label}">${action}</button></span>`;
       }).join('');
     }
 
@@ -452,8 +707,8 @@
     const el = $('[data-choice-summary]');
     if (!el) return;
     el.innerHTML = `
-      <div><span>Bản tin thứ Năm</span><span>${state.digest ? 'Bật' : 'Tắt'} · <a href="#b6">Sửa</a></span></div>
-      <div><span>Chế độ tổ chức</span><span>${state.hosting ? 'Bật' : 'Tắt'} · <a href="#b7">Sửa</a></span></div>`;
+      <div><span>Bản tin thứ Năm</span><span>${state.digest ? 'Bật' : 'Tắt'} · <button type="button" data-edit="digest" aria-haspopup="dialog" aria-label="Sửa Bản tin thứ Năm">Sửa</button></span></div>
+      <div><span>Chế độ tổ chức</span><span>${state.hosting ? 'Bật' : 'Tắt'} · <button type="button" data-edit="hosting" aria-haspopup="dialog" aria-label="Sửa Chế độ tổ chức">Sửa</button></span></div>`;
   }
 
   /* ── state → controls ──────────────────────────────────────────── */
@@ -496,6 +751,7 @@
 
   /* ── render ────────────────────────────────────────────────────── */
   function render(step) {
+    if (sheetOpen) closeSheet({ restoreFocus: false, refresh: false });
     if (demoOpen) closeDemo({ restoreFocus: false });
     const sections = $$('[data-step]');
     current = Math.max(1, Math.min(sections.length, Number(step) || 1));
@@ -532,6 +788,7 @@
   }
 
   function reset() {
+    if (sheetOpen) closeSheet({ restoreFocus: false, refresh: false });
     state = blank();
     try { sessionStorage.removeItem(STORE); } catch { /* ignore */ }
     const email = $('[data-login-email]');
@@ -546,7 +803,8 @@
     syncPressed();
     syncChoiceCounts();
     renderChoiceSummary();
-    // Step 8 is hidden now, but its DOM must be clean before the next visit.
+    // Steps 5 and 8 are hidden now, but their DOM must be clean before the next visit.
+    renderReveal();
     renderLogin();
   }
 
@@ -581,6 +839,36 @@
 
   /* ── events ────────────────────────────────────────────────────── */
   document.addEventListener('click', (event) => {
+    if (event.target.closest('[data-sheet-close]')) {
+      event.preventDefault();
+      closeSheet();
+      return;
+    }
+
+    const edit = event.target.closest('[data-edit]');
+    if (edit) {
+      event.preventDefault();
+      openSheet(edit.dataset.edit, edit);
+      return;
+    }
+
+    const sheetOption = event.target.closest('[data-sheet-option]');
+    if (sheetOption) {
+      applySheetChoice(sheetOption.dataset.sheetOption, sheetOption.dataset.value);
+      return;
+    }
+
+    if (event.target.closest('[data-sheet-clear]')) {
+      clearSheetChoice();
+      return;
+    }
+
+    const sheetToggle = event.target.closest('[data-sheet-toggle]');
+    if (sheetToggle) {
+      toggleSheetConsent(sheetToggle.dataset.sheetToggle);
+      return;
+    }
+
     const eventLink = event.target.closest('[data-event-id]');
     if (eventLink) {
       const ev = EVENTS.find((item) => item.id === eventLink.dataset.eventId);
@@ -701,6 +989,18 @@
   });
 
   document.addEventListener('keydown', (event) => {
+    if (sheetOpen) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeSheet();
+        return;
+      }
+      if (event.key === 'Tab') {
+        trapSheetFocus(event);
+        return;
+      }
+    }
+
     if (demoOpen && event.key === 'Escape') {
       event.preventDefault();
       closeDemo();
@@ -719,5 +1019,5 @@
 
   buildShell();
 
-  window.bbScreen = { steps: STEPS.length, render, reset, closeDemo };
+  window.bbScreen = { steps: STEPS.length, render, reset, closeDemo, closeSheet };
 })();

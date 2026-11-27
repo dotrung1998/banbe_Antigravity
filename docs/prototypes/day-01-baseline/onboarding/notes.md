@@ -24,6 +24,7 @@ python3 -m http.server 4173 --bind 127.0.0.1 --directory docs/prototypes
 - **Consent và đăng nhập sau giá trị**: reveal đứng trước; bản tin và chế độ tổ chức mặc định **tắt**, có “Để sau”; đăng nhập là bước cuối, có nút khách.
 - **Bỏ qua vẫn xem được**: “Bỏ qua cả 3 câu” đưa thẳng tới reveal; từ Chào, reveal và Đăng nhập đều có link thật tới Home/Map/Sự kiện trên `www.banbe.app`, không cần tài khoản.
 - **Bốn khung là bốn bố cục thật**, không phải một cột điện thoại được kéo giãn: 390 một cột; 834 hai cột (bước + bằng chứng); 1194 ba vùng (rail · bước · bằng chứng); 1440 cùng ba vùng trong cột đọc 1280. Tất cả bằng `@container screen`; chỉ có một `@media` cho `prefers-reduced-motion`.
+- **Sửa tại chỗ, không lùi bước**: ba dòng “Sở thích / Thời gian / Ngân sách” ở bước 5 và hai dòng tóm tắt “Bản tin / Chế độ tổ chức” ở bước 8 mở một **sheet từ đáy** ngay trên bước hiện tại. Chọn xong bấm **Xong**, chạm nền hoặc **Esc** là đóng; focus trả về đúng nút; không có `href="#bN"`, không phải bấm Tiếp lại. “Chọn” khi Sở thích trống cũng mở sheet.
 - **Dữ liệu thật thay cho màn hình bịa**: 7 sự kiện production, ảnh cover thật, giờ/giá/khu vực thật. Card sự kiện mở một **màn demo trong prototype**, ghi rõ đang ở bước onboarding nào; chỉ link “Mở trên app thật” mới rời sang production. Bản tin là một **ví dụ dựng từ dữ liệu thật**, không phải ảnh chụp email.
 
 ## Vì sao
@@ -52,6 +53,8 @@ Cụm này là cửa vào. Nếu 834/1194/1440 chỉ là một cột 390 đặt 
 | 1194×834 | 3 | rail 178 px · bước · bằng chứng 356 px; rail/main/evidence cuộn riêng; reveal để foot tĩnh để thấy danh sách thay vì bị foot che |
 | 1440×900 | 3 | Cùng ba vùng trong `width: 1280px`, rail 200 + bước + evidence 400, lề giấy 80 px hai bên |
 
+**Sheet sửa tại chỗ** dùng cùng `@container screen`: rộng 390 ở 390, 560 từ 834, 600 từ 1194/1440; dính đáy thiết bị, cao tối đa 86%, option ≥52, nút đóng 44, Xong 52; scrim phủ riêng khung.
+
 ## Dữ liệu thật
 
 7 sự kiện đang mở trên production, nhóm F của đợt test data v2.3 (28.11–03.12.2026). Tên/ngày/giờ đã đối chiếu trên production ngày **2026-11-27** qua `https://www.banbe.app/api/photo-share?eid=<id>` (`og:description`); giá/loại/khu vực/cover lấy từ `supabase/drafts/v23-testdata/group-f-events.json`; cả 7 trang `/event/<id>` trả 200 ngày 2026-11-27.
@@ -73,6 +76,7 @@ Cụm này là cửa vào. Nếu 834/1194/1440 chỉ là một cột 390 đặt 
 - Mặc định: `interests: []`, `availability: []`, `budget: null`, `digest: false`, `hosting: false`, `method: 'code'`, email/password rỗng, chưa gửi.
 - Chọn tile loại/giờ: bật/tắt nhiều lựa chọn; số buổi và 3 card bên cạnh đổi ngay. Chọn ngân sách: một mức, bấm lại để bỏ; thước giá tô tới mức và làm mờ chấm vượt mức.
 - Reveal: buổi khớp lên trước và có nhãn “Khớp”; nếu không có buổi nào khớp cả ba lựa chọn, vẫn hiện đủ 7 buổi gần nhất kèm câu giải thích. Không bao giờ rỗng. Ba câu trả lời là **một card 3 dòng** cùng bề rộng; “Chọn/Sửa” nằm trong cột phải, căn giữa dòng, không còn là các chip rời co theo nội dung.
+- **Sửa tại chỗ**: ba action recap ở bước 5 và hai action tóm tắt ở bước 8 mở sheet từ đáy, giữ nguyên bước; option/switch cập nhật state và recap ngay; “Bỏ chọn tất cả”/“Bỏ giới hạn” xoá lựa chọn; Xong/scrim/Esc/X đóng, Tab bị giữ trong sheet, focus trả về nút đã mở.
 - **Sự kiện mở màn demo tại chỗ**: mọi card (welcome, ba câu, reveal) mở một màn demo trong khung, không đẩy người xem sang production. Màn demo ghi rõ “Demo trong prototype · không phải app thật” và “Bước N/8 · tên bước”, giữ ảnh/ngày/giờ/khu vực/giá thật, có “Quay lại onboarding” (và Esc) cùng một link rời có chủ đích “Mở trên app thật”. Đóng trả focus về card đã bấm.
 - Consent: hai switch thật (`role="switch"`, `aria-checked`), mặc định tắt, có “Để sau”; tóm tắt lựa chọn hiện ở bước Đăng nhập.
 - Đăng nhập: chọn mã qua email hoặc mật khẩu; email phải đúng định dạng; nút bị khoá tới khi hợp lệ; Enter ở cả email và mật khẩu; Esc trong input chỉ blur. Submit chỉ hiện ghi chú “bản xem trước”, **không gửi email, không tạo phiên**; Google cũng chỉ hiện ghi chú.
@@ -130,7 +134,9 @@ Cụm này là cửa vào. Nếu 834/1194/1440 chỉ là một cột 390 đặt 
 | Luồng | Music + weekends + low → reveal 7 buổi (1 khớp), card 3 dòng câu trả lời; bật digest/hosting; login mật khẩu; submit | Pass; note prototype hiện đúng |
 | Bàn phím + chạm | Cả 8 bước ở 390 1:1: 0 control hiện < 44 px; rail/card câu trả lời/method đặt min-height 44; Tab tới “Chọn” có outline 2 px clay; Enter ở email/mật khẩu; Esc | Pass (chưa test screen reader) |
 | Card câu trả lời | 390/834/1194/1440, cả trạng thái mặc định và đã chọn; đo bề rộng card, chiều cao action, `scrollWidth` | **Pass 8/8**: 3 dòng cùng bề rộng, action 44 px thẳng cột và giữa dòng; 1194/1440 không co (đã thêm `flex: none`) |
-| Nhãn control + cột action | 32 tổ hợp bước × khung, state đã trả lời; quét mọi `button`/`a[href]`/`[role="switch"]` hiện, đo tâm nhãn so với tâm control và top gap; đo left/right của action; riêng bước 8 thêm state trộn `digest: true`, `hosting: false` | **Pass 32/32**: 0 nhãn dính mép trên, 0 cột action lệch; summary 4/4 right spread 0, action 44 px; không tràn ngang |
+| Nhãn control + cột action (audit trước khi đổi action) | 32 tổ hợp bước × khung, state đã trả lời; quét mọi `button`/`a[href]`/`[role="switch"]` hiện, đo tâm nhãn so với tâm control và top gap; đo left/right của action; riêng bước 8 thêm state trộn `digest: true`, `hosting: false` | **Pass 32/32**: 0 nhãn dính mép trên, 0 cột action lệch; summary 4/4 right spread 0, action 44 px; không tràn ngang |
+| Cột action sau khi đổi sang button | 4 khung × 3 recap + 2 summary, state trộn; đo chiều cao, tâm nhãn, right spread và tràn ngang | **Pass**: recap 4/4 (3 button/khung) + summary 4/4 (2 button/khung); 44 px, tâm lệch 0, right spread 0; không tràn |
+| Sheet chỉnh nhanh | 4 khung × 5 nguồn (interests, availability, budget, digest, hosting): đo rộng/đáy/top, option ≥44, Xong/scrim/Esc/X, Tab/Shift+Tab, focus trả về, step không đổi; 390 đổi từng nhóm, “Bỏ giới hạn”, scroll giữ nguyên, reset | **Pass 20/20 mở**; 390 thao tác pass; focus trap; 0 lỗi console/page; không tràn ngang; stage thật 834/1440 cũng bám đáy thiết bị |
 | Reduced motion | Chụp với `prefers-reduced-motion: reduce`; không animation vào | Pass, bản tĩnh vẫn đọc được |
 | Frame 6/7 mới | 8 ảnh consent ở 390/834/1194/1440: `scrollWidth`, ảnh vỡ, section, control <44 ở 390 1:1 | **Pass 8/8**; consent 390 có 0 control <44 |
 | Frame 3/4 mới | 8 ảnh bước 3/4 ở 390/834/1194/1440: `scrollWidth`, ảnh vỡ, section, control <44 ở 390 1:1 | **Pass 8/8**; nhóm 3 câu hỏi đủ 2/3/4 ×4; toàn bộ 32/32 |
@@ -157,6 +163,7 @@ node docs/prototypes/day-01-baseline/onboarding/check-frames.mjs \
 
 ## Chưa kiểm
 
+- **Sheet sửa tại chỗ không nằm trong 32 frame**: đã kiểm hình học/tương tác ở 4 khung và xem nhanh ảnh 390/834; bộ nộp vẫn chỉ có trạng thái đóng, chưa chụp sheet thành frame chính thức.
 - **Chưa chạy trên iPhone/iPad/Safari thật**; mới là Chromium headless ở 4 viewport. Chưa kiểm touch, safe-area, scroll momentum, font fallback trên iOS.
 - **Chưa test screen reader/VoiceOver**, tương phản từng cặp màu, hay thứ tự đọc đầy đủ. Đã kiểm Tab/Enter/Esc và outline; chưa kiểm ARIA live bằng AT.
 - **Đăng nhập chưa nối backend**: không gửi mã, không OAuth, không tạo phiên; chỉ là ghi chú prototype. Google/mã/mật khẩu không gọi mạng.
@@ -171,9 +178,9 @@ node docs/prototypes/day-01-baseline/onboarding/check-frames.mjs \
 
 ```text
 docs/prototypes/day-01-baseline/onboarding/
-  index.html          # stage + 8 section + nav/rail/foot
-  screen.css          # 390 / 834 / 1194 / 1440 bằng @container
-  screen.js           # data 7 sự kiện, state, render, reset, màn demo sự kiện
+  index.html          # stage + 8 section + nav/rail/foot + sheet layer
+  screen.css          # 390 / 834 / 1194 / 1440 bằng @container + sheet
+  screen.js           # data 7 sự kiện, state, render, reset, demo, sheet
   overview.mjs        # dựng contact sheet 8×4 từ 32 frame
   check-frames.mjs    # audit 32 frame live + 33 PNG
   capture-step5.mjs   # chụp riêng bước 5 ở trạng thái đã trả lời

@@ -428,6 +428,27 @@
         </section>
 
       </div>
+
+      <!-- EDIT SHEET · bottom sheet, stays on the current step -->
+      <div class="ob-sheet-layer" data-sheet-layer hidden>
+        <div class="ob-sheet-scrim" data-sheet-close aria-hidden="true"></div>
+        <section class="ob-sheet" data-sheet role="dialog" aria-modal="true" aria-labelledby="ob-sheet-title" aria-describedby="ob-sheet-sub" tabindex="-1">
+          <span class="ob-sheet-grab" aria-hidden="true"></span>
+          <header class="ob-sheet-head">
+            <div>
+              <p class="eyebrow" data-sheet-kicker>Chỉnh nhanh</p>
+              <h2 class="ob-sheet-title" id="ob-sheet-title" data-sheet-title></h2>
+              <p class="ob-sheet-sub" id="ob-sheet-sub" data-sheet-sub></p>
+            </div>
+            <button type="button" class="ob-sheet-close" data-sheet-close aria-label="Đóng">×</button>
+          </header>
+          <div class="ob-sheet-body" data-sheet-body></div>
+          <footer class="ob-sheet-foot">
+            <button type="button" class="ob-sheet-clear" data-sheet-clear hidden>Bỏ chọn</button>
+            <button type="button" class="btn btn-primary ob-sheet-done" data-sheet-close>Xong</button>
+          </footer>
+        </section>
+      </div>
     </div>
   </div>
 
