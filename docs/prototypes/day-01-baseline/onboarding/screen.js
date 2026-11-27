@@ -352,7 +352,10 @@
     ];
     const answers = $('[data-reveal-answers]');
     if (answers) {
-      answers.innerHTML = chips.map((c) => `<span class="chip"><span>${c.label}:</span><b>${c.value || 'Chưa chọn'}</b><a href="#b${c.go}">${c.value ? 'Sửa' : 'Chọn'}</a></span>`).join('');
+      answers.innerHTML = chips.map((c) => {
+        const action = c.value ? 'Sửa' : 'Chọn';
+        return `<span class="chip"><span class="chip-copy"><span>${c.label}:</span><b>${c.value || 'Chưa chọn'}</b></span><a href="#b${c.go}" aria-label="${action} ${c.label}">${action}</a></span>`;
+      }).join('');
     }
 
     const lead = ordered[0];

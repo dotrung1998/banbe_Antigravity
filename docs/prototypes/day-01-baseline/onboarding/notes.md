@@ -38,7 +38,7 @@ Cụm này là cửa vào. Nếu 834/1194/1440 chỉ là một cột 390 đặt 
 | 2 | 3 câu · 1 | Bạn thấy gì vui? 5 loại, chọn nhiều | 5 tile emoji + số buổi thật + 3 card sự kiện phản ứng ngay |
 | 3 | 3 câu · 2 | Bạn thường rảnh khi nào? 4 lựa chọn | 4 tile + dải 6 ngày có số buổi; ngày khớp sáng lên |
 | 4 | 3 câu · 3 | Giá vé bao nhiêu thì thoải mái? 4 mức | Cây thước giá với 7 chấm thật; dải “đến mức bạn chọn” tô tới đúng chỗ |
-| 5 | Dành cho bạn | Reveal không bao giờ rỗng; 7 buổi thật | Masthead báo giấy + lead card lớn + 6 dòng còn lại + chip câu trả lời + dải tuần |
+| 5 | Dành cho bạn | Reveal không bao giờ rỗng; 7 buổi thật | Masthead báo giấy + lead card lớn + 6 dòng còn lại + card 3 dòng câu trả lời + dải tuần |
 | 6 | Consent · bản tin | Một email thứ Năm, mặc định tắt, “Để sau” | Một tờ email giấy dựng từ 3 sự kiện thật, không phải screenshot |
 | 7 | Consent · tổ chức | Chế độ tổ chức, mặc định tắt, “Để sau” | 3 việc host làm được, đánh số 01–03, không tạo gì sẵn |
 | 8 | Đăng nhập | Google / mã qua email / mật khẩu; khách vẫn xem tiếp | Cửa sổ vé + danh sách “Bạn giữ lại gì” + tóm tắt lựa chọn bên phải |
@@ -72,7 +72,7 @@ Cụm này là cửa vào. Nếu 834/1194/1440 chỉ là một cột 390 đặt 
 
 - Mặc định: `interests: []`, `availability: []`, `budget: null`, `digest: false`, `hosting: false`, `method: 'code'`, email/password rỗng, chưa gửi.
 - Chọn tile loại/giờ: bật/tắt nhiều lựa chọn; số buổi và 3 card bên cạnh đổi ngay. Chọn ngân sách: một mức, bấm lại để bỏ; thước giá tô tới mức và làm mờ chấm vượt mức.
-- Reveal: buổi khớp lên trước và có nhãn “Khớp”; nếu không có buổi nào khớp cả ba lựa chọn, vẫn hiện đủ 7 buổi gần nhất kèm câu giải thích. Không bao giờ rỗng.
+- Reveal: buổi khớp lên trước và có nhãn “Khớp”; nếu không có buổi nào khớp cả ba lựa chọn, vẫn hiện đủ 7 buổi gần nhất kèm câu giải thích. Không bao giờ rỗng. Ba câu trả lời là **một card 3 dòng** cùng bề rộng; “Chọn/Sửa” nằm trong cột phải, căn giữa dòng, không còn là các chip rời co theo nội dung.
 - **Sự kiện mở màn demo tại chỗ**: mọi card (welcome, ba câu, reveal) mở một màn demo trong khung, không đẩy người xem sang production. Màn demo ghi rõ “Demo trong prototype · không phải app thật” và “Bước N/8 · tên bước”, giữ ảnh/ngày/giờ/khu vực/giá thật, có “Quay lại onboarding” (và Esc) cùng một link rời có chủ đích “Mở trên app thật”. Đóng trả focus về card đã bấm.
 - Consent: hai switch thật (`role="switch"`, `aria-checked`), mặc định tắt, có “Để sau”; tóm tắt lựa chọn hiện ở bước Đăng nhập.
 - Đăng nhập: chọn mã qua email hoặc mật khẩu; email phải đúng định dạng; nút bị khoá tới khi hợp lệ; Enter ở cả email và mật khẩu; Esc trong input chỉ blur. Submit chỉ hiện ghi chú “bản xem trước”, **không gửi email, không tạo phiên**; Google cũng chỉ hiện ghi chú.
@@ -123,17 +123,18 @@ Cụm này là cửa vào. Nếu 834/1194/1440 chỉ là một cột 390 đặt 
 | Hạng mục | Cách kiểm | Kết quả |
 | --- | --- | --- |
 | 4 khung × 8 bước | Chromium/Playwright, viewport đúng 390×844, 834×1194, 1194×834, 1440×900; `?embed=1&capture=1`; mỗi bước đo `scrollWidth === clientWidth` | **Pass** cả 32 tổ hợp; không ảnh vỡ; đúng 1 section hiện |
-| Làm lại từ 6, 7, 8 | Mỗi lần: chọn 2 loại + cuối tuần + medium; bật cả 2 consent; chọn mật khẩu và điền email/password; về đúng bước 6/7/8 rồi bấm `[data-reset]` | **Cả 3 pass**: `#b1`, key null, 0 preference `aria-pressed`, 0 switch on, email/password rỗng, method về mã, password field ẩn, submit disabled, note/error ẩn; reveal trở lại 3 chip “Chưa chọn” |
+| Làm lại từ 6, 7, 8 | Mỗi lần: chọn 2 loại + cuối tuần + medium; bật cả 2 consent; chọn mật khẩu và điền email/password; về đúng bước 6/7/8 rồi bấm `[data-reset]` | **Cả 3 pass**: `#b1`, key null, 0 preference `aria-pressed`, 0 switch on, email/password rỗng, method về mã, password field ẩn, submit disabled, note/error ẩn; reveal trở lại 3 dòng “Chưa chọn” |
 | Deep link + Back + Esc | `#b2` mở bước 2; Tiếp → 3; `goBack()` → 2; Esc → 1 | Pass |
 | Link cụm | 5 nav: 1 local + 4 app thật có nhãn; `curl` 3 URL unique của nav (Home, Schedule, Projects) + 7 trang sự kiện | Pass: 4/4 link nav 200, vượt mức 3; tất cả 200 ngày 2026-11-27 |
 | Console | Bắt `console.error` + `pageerror` ở cả 4 khung × 8 bước và 3 lần reset từ 6/7/8 | **0 lỗi** (sau khi viết tay fallback nav, không còn HEAD 404) |
-| Luồng | Music + weekends + low → reveal 7 buổi (1 khớp), 3 chip câu trả lời; bật digest/hosting; login mật khẩu; submit | Pass; note prototype hiện đúng |
-| Bàn phím + chạm | Cả 8 bước ở 390 1:1: 0 control hiện < 44 px; rail/chip/method đặt min-height 44; Tab tới “Chọn” có outline 2 px clay; Enter ở email/mật khẩu; Esc | Pass (chưa test screen reader) |
+| Luồng | Music + weekends + low → reveal 7 buổi (1 khớp), card 3 dòng câu trả lời; bật digest/hosting; login mật khẩu; submit | Pass; note prototype hiện đúng |
+| Bàn phím + chạm | Cả 8 bước ở 390 1:1: 0 control hiện < 44 px; rail/card câu trả lời/method đặt min-height 44; Tab tới “Chọn” có outline 2 px clay; Enter ở email/mật khẩu; Esc | Pass (chưa test screen reader) |
+| Card câu trả lời | 390/834/1194/1440, cả trạng thái mặc định và đã chọn; đo bề rộng card, chiều cao action, `scrollWidth` | **Pass 8/8**: 3 dòng cùng bề rộng, action 44 px thẳng cột và giữa dòng; 1194/1440 không co (đã thêm `flex: none`) |
 | Reduced motion | Chụp với `prefers-reduced-motion: reduce`; không animation vào | Pass, bản tĩnh vẫn đọc được |
 | Frame 6/7 mới | 8 ảnh consent ở 390/834/1194/1440: `scrollWidth`, ảnh vỡ, section, control <44 ở 390 1:1 | **Pass 8/8**; consent 390 có 0 control <44 |
 | Frame 3/4 mới | 8 ảnh bước 3/4 ở 390/834/1194/1440: `scrollWidth`, ảnh vỡ, section, control <44 ở 390 1:1 | **Pass 8/8**; nhóm 3 câu hỏi đủ 2/3/4 ×4; toàn bộ 32/32 |
 | Demo sự kiện | Mở card đầu tiên ở 5 bước có sự kiện × 4 khung (20 lần); đo `scrollWidth`, control <44, nhãn bước, Esc, đóng và focus | **Pass 20/20**; không tràn ngang, 0 control <44, nhãn đúng bước, Esc đóng, focus về card |
-| Ảnh | 32 ảnh bước (8 bước × 4 khung) + 1 overview contact sheet 8×4 = **33 PNG**; 8 bước 1–8 | Đã xem contact sheet + 3/4/consent; không soi từng pixel từng file |
+| Ảnh | 32 ảnh bước (8 bước × 4 khung) + 1 overview contact sheet 8×4 = **33 PNG**; 8 bước 1–8; bước 5 chụp lại sau khi sửa card | Đã xem contact sheet + 3/4/consent + bước 5 mới; không soi từng pixel từng file |
 
 Lệnh capture cuối (preview đang ở cổng 4174):
 
@@ -156,7 +157,7 @@ node docs/prototypes/day-01-baseline/onboarding/check-frames.mjs \
 - **Đăng nhập chưa nối backend**: không gửi mã, không OAuth, không tạo phiên; chỉ là ghi chú prototype. Google/mã/mật khẩu không gọi mạng.
 - **Chưa có scaffold cục bộ cho bốn cụm khác**: nav đang trỏ app thật bằng fallback viết tay (đã kiểm 200); chưa có điều hướng local sang Khám phá/Sự kiện/Của tôi/Host.
 - **Dữ liệu là ảnh chụp 2026-11-27**: nếu production đổi/xoá 7 sự kiện test, card và link có thể khác; chưa kiểm lại sau ngày đó.
-- **Chưa kiểm trạng thái đã chọn trong ảnh**: frame reveal dùng trạng thái bỏ qua (7 buổi, “Chưa chọn”); trạng thái có 1 buổi khớp mới chỉ kiểm bằng script, không chụp.
+- **Chưa kiểm trạng thái đã chọn trong ảnh**: frame reveal dùng trạng thái bỏ qua (7 buổi, 3 dòng “Chưa chọn”); trạng thái có 1 buổi khớp mới chỉ kiểm bằng script, không chụp.
 - **Màn demo sự kiện không có trong 32 frame**: đây là trạng thái mở từ card, đã kiểm bằng script ở cả 4 khung nhưng chưa chụp thành ảnh.
 - **834 là iPad dọc 1194 cao**: khoảng trống dưới form login (form trên, lối khách dưới) là chủ ý; consent 6/7 cũng đặt form trên, bằng chứng dưới nên còn thoáng. Chưa xem trên iPad thật để quyết định có giữ hay không.
 - **Ảnh sự kiện**: là cover thật từ `public/photos/`, nhưng chưa xác nhận quyền/credit với host; chỉ ghi nguồn tệp.
