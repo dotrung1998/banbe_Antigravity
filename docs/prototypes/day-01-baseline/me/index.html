@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>banbe prototype · Ngày 1 · Của tôi</title>
+<link rel="stylesheet" href="../../shared/stage.css">
+<link rel="stylesheet" href="screen.css">
+<script src="../../shared/stage.js" defer></script>
+<script src="screen.js" defer></script>
+</head>
+<body class="bb-stage-body">
+
+<header class="bb-bar">
+  <div class="bb-bar-lead">
+    <span class="bb-dot" aria-hidden="true"></span>
+    <span class="bb-kicker">banbe · prototype</span>
+    <span class="bb-crumb">Ngày 1/8 · Cụm 4/5 · Của tôi</span>
+  </div>
+  <nav class="bb-clusters" aria-label="Chuyển cụm">
+    <a href="../onboarding/index.html" data-cluster="onboarding" data-app="https://www.banbe.app/welcome">Onboarding</a>
+    <a href="../discover/index.html" data-cluster="discover" data-app="https://www.banbe.app/">Khám phá</a>
+    <a href="../event/index.html" data-cluster="event" data-app="https://www.banbe.app/">Sự kiện</a>
+    <a href="../me/index.html" data-cluster="me" data-app="https://www.banbe.app/schedule" aria-current="page">Của tôi</a>
+    <a href="../host/index.html" data-cluster="host" data-app="https://www.banbe.app/projects">Host</a>
+  </nav>
+  <div class="bb-controls">
+    <div class="bb-sizes" role="group" aria-label="Khung xem">
+      <button type="button" data-size="390" aria-pressed="true" title="iPhone 390×844">390</button>
+      <button type="button" data-size="834" aria-pressed="false" title="iPad dọc 834×1194">834</button>
+      <button type="button" data-size="1194" aria-pressed="false" title="iPad ngang 1194×834">1194</button>
+      <button type="button" data-size="1440" aria-pressed="false" title="Browser 1440×900">1440</button>
+      <button type="button" data-size="all" aria-pressed="false" title="Xem cả 4 cạnh nhau">Cả 4</button>
+    </div>
+    <button type="button" class="bb-reset" data-reset>Làm lại</button>
+  </div>
+</header>
+
+<main class="bb-stage-main" data-stage data-cluster="me" data-steps="4">
+  <div class="bb-stage-caption">
+    <span class="bb-size-label" data-size-label>iPhone · 390×844</span>
+    <span class="bb-hint">Làm lại = về bước 1 · #b1 mở thẳng · ?embed=1 xem 1:1</span>
+    <span class="bb-hint">Dữ liệu thật 27.11.2026: 2 sự kiện đã lưu · 2 hội thoại · 1 tài khoản (nguồn trong notes.md)</span>
+  </div>
+
+  <div class="bb-fit" data-fit>
+    <div class="bb-device" data-device="390">
+      <div class="bb-screen" id="bb-screen" data-screen-label="Của tôi"></div>
+    </div>
+  </div>
+
+  <div class="bb-overview" data-overview hidden></div>
+</main>
+
+</body>
+</html>

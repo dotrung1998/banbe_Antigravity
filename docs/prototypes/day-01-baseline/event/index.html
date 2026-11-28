@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>banbe prototype · Sự kiện · Ngày 1/8</title>
+<link rel="stylesheet" href="../../shared/stage.css">
+<link rel="stylesheet" href="screen.css">
+<script src="../../shared/stage.js" defer></script>
+<script src="screen.js" defer></script>
+</head>
+<body class="bb-stage-body">
+
+<header class="bb-bar">
+  <div class="bb-bar-lead">
+    <span class="bb-dot" aria-hidden="true"></span>
+    <span class="bb-kicker">banbe · prototype</span>
+    <span class="bb-crumb">Ngày 1/8 · Cụm 3/5</span>
+  </div>
+  <nav class="bb-clusters" aria-label="Chuyển cụm">
+    <a href="../onboarding/index.html" data-cluster="onboarding" data-app="https://www.banbe.app/welcome">Onboarding</a>
+    <a href="../discover/index.html" data-cluster="discover" data-app="https://www.banbe.app/">Khám phá</a>
+    <a href="../event/index.html" data-cluster="event" data-app="https://www.banbe.app/" aria-current="page">Sự kiện</a>
+    <a href="../me/index.html" data-cluster="me" data-app="https://www.banbe.app/schedule">Của tôi</a>
+    <a href="../host/index.html" data-cluster="host" data-app="https://www.banbe.app/projects">Host</a>
+  </nav>
+  <div class="bb-controls">
+    <div class="bb-sizes" role="group" aria-label="Khung xem">
+      <button type="button" data-size="390" aria-pressed="true" title="iPhone 390×844">390</button>
+      <button type="button" data-size="834" aria-pressed="false" title="iPad dọc 834×1194">834</button>
+      <button type="button" data-size="1194" aria-pressed="false" title="iPad ngang 1194×834">1194</button>
+      <button type="button" data-size="1440" aria-pressed="false" title="Browser 1440×900">1440</button>
+      <button type="button" data-size="all" aria-pressed="false" title="Xem cả 4 cạnh nhau">Cả 4</button>
+    </div>
+    <button type="button" class="bb-reset" data-reset>Làm lại</button>
+  </div>
+</header>
+
+<main class="bb-stage-main" data-stage data-cluster="event" data-steps="4">
+  <div class="bb-stage-caption">
+    <span class="bb-size-label" data-size-label>iPhone · 390×844</span>
+    <span class="bb-hint">Làm lại = về bước 1 · #b1 mở thẳng · ?embed=1 xem 1:1</span>
+  </div>
+
+  <div class="bb-fit" data-fit>
+    <div class="bb-device" data-device="390">
+      <div class="bb-screen ev-screen" id="bb-screen">
+        <section class="ev-step detail" data-step="1">
+          <div class="detail-scroll" data-detail-scroll>
+            <div class="hero">
+              <div class="hero-media">
+                <img class="hero-img" src="photos/cover.jpg" alt="Bữa Chay Sân Gạch" loading="eager">
+                <div class="hero-scrim" aria-hidden="true"></div>
+                <div class="hero-top">
+                  <span class="hero-brand">banbe</span>
+                  <div class="hero-actions">
+                    <button type="button" class="round" data-save aria-pressed="false" aria-label="Lưu sự kiện">
+                      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20.4S3.6 15 3.6 9.2A4.7 4.7 0 0 1 12 6.6a4.7 4.7 0 0 1 8.4 2.6c0 5.8-8.4 11.2-8.4 11.2Z"/></svg>
+                    </button>
+                    <a class="round" href="https://www.banbe.app/event/bunchay" target="_blank" rel="noreferrer" aria-label="Mở trên banbe">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>
+                    </a>
+                  </div>
+                </div>
+                <div class="hero-copy">
+                  <p class="hero-kicker">Supper club · Quận 10</p>
+                  <h1>Bữa Chay<br class="br-mobile"> Sân Gạch</h1>
+                  <p class="hero-meta">Thứ Bảy, 28 tháng 11 · 18:30 – 21:00</p>
+                </div>
+              </div>
+              <div class="hero-seal" aria-hidden="true">
+                <span class="seal-top">Tháng 11</span>
+                <b>28</b>
+                <span class="seal-bot">Thứ Bảy</span>
+              </div>
+            </div>
+
+            <div class="pricelead">
+              <div class="pricelead-main"><span class="price">380.000₫</span><span class="per">mỗi vé</span></div>
+              <div class="pricelead-seats"><b data-seats>10 chỗ</b><span>còn lại</span></div>
+            </div>
+
+            <div class="detail-body">
+              <aside class="rail" aria-label="Mục lục sự kiện">
+                <div class="rail-date">
+                  <span>Tháng 11</span>
+                  <b>28</b>
+                  <span>Thứ Bảy · 18:30</span>
+                </div>
+                <nav class="rail-nav">
+                  <button type="button" data-jump="i-when" class="on"><i>01</i> Ngày và giờ</button>
+                  <button type="button" data-jump="i-about"><i>02</i> Về buổi này</button>
+                  <button type="button" data-jump="i-included"><i>03</i> Bao gồm</button>
+                  <button type="button" data-jump="i-host"><i>04</i> Chủ nhà</button>
+                </nav>
+                <div class="rail-host">
+                  <span class="monogram">NC</span>
+                  <div><b>Nhà Chung</b><span>Chủ nhà</span></div>
+                </div>
+                <p class="rail-meta">Sự kiện thật · <b>bunchay</b><br>Dữ liệu đọc 27.11.2026</p>
+              </aside>
+
+              <main class="content">
+                <section class="tiles" id="i-when" data-spy aria-label="Ngày, giờ, địa điểm">
+                  <div class="tile">
+                    <svg class="tile-ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.3"/><path d="M3.5 9.7h17M8 3v4M16 3v4"/></svg>
+                    <span class="tile-value"><span class="tile-short">T7, 28.11</span><span class="tile-long">Thứ Bảy, 28.11</span></span>
+                    <span class="tile-label">Ngày</span>
+                  </div>
+                  <div class="tile">
+                    <svg class="tile-ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+                    <span class="tile-value"><span class="tile-short">18:30</span><span class="tile-long">18:30 – 21:00</span></span>
+                    <span class="tile-label">Giờ<span class="tile-long"> Việt Nam</span></span>
+                  </div>
+                  <div class="tile">
+                    <svg class="tile-ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s6.5-5.6 6.5-11a6.5 6.5 0 0 0-13 0C5.5 15.4 12 21 12 21Z"/><circle cx="12" cy="10" r="2.3"/></svg>
+                    <span class="tile-value"><span class="tile-short">Quận&nbsp;10</span><span class="tile-long">Quận&nbsp;10 · Khu&nbsp;phố&nbsp;4</span></span>
+                    <span class="tile-label">Địa điểm</span>
+                  </div>
+                </section>
+
+                <section class="pull">
+                  <p>Một bữa tối thuần chay, <em>không món giả thịt.</em></p>
+                  <p class="pull-sub">Rau chợ sáng, đậu hũ tự làm, trên một sân gạch cũ.</p>
+                </section>
+
+                <section class="about" id="i-about" data-spy>
+                  <header class="sec-head">
+                    <p class="eyebrow">Về buổi này</p>
+                    <h2>Trên sân gạch cũ</h2>
+                  </header>
+                  <p>Bữa tối thuần chay trên sân gạch của một căn nhà cũ ở Quận 10. Năm món nấu từ rau chợ sáng, đậu hũ tự làm và nấm rơm, không có món giả thịt. Nước rau má hoặc sâm bí đao, tráng miệng là chè đậu theo mùa. Phù hợp cả với người chưa từng ăn chay cả bữa. Ăn xong ai muốn thì ở lại rửa chén cùng.</p>
+                  <p class="note-line">Toàn bộ thực đơn thuần chay.</p>
+                </section>
+                <section class="included" id="i-included" data-spy>
+                  <header class="sec-head row">
+                    <div>
+                      <p class="eyebrow">Bao gồm</p>
+                      <h2>Năm món, nấu từ chợ sáng</h2>
+                    </div>
+                    <span class="sec-count">3 mục</span>
+                  </header>
+                  <ol class="menu">
+                    <li><span class="num">01</span><div><b>5 món chay</b><span>theo rau chợ sáng</span></div></li>
+                    <li><span class="num">02</span><div><b>nước mát</b><span>rau má hoặc sâm bí đao</span></div></li>
+                    <li><span class="num">03</span><div><b>tráng miệng</b><span>chè đậu theo mùa</span></div></li>
+                  </ol>
+                  <ul class="facts" aria-label="Thông tin cần biết">
+                    <li>Thuần chay</li>
+                    <li>Từ 16 tuổi</li>
+                    <li>Không cồn</li>
+                    <li>Mặc thoải mái</li>
+                  </ul>
+                </section>
+
+                <section class="hostcard" id="i-host" data-spy>
+                  <span class="monogram big">NC</span>
+                  <div class="hostcopy">
+                    <p class="eyebrow">Chủ nhà</p>
+                    <h2>Nhà Chung</h2>
+                    <p class="hostq">“Chào bạn! Bữa này thuần chay. Có câu hỏi gì cứ nhắn mình.”</p>
+                  </div>
+                  <a class="linkbtn" href="../me/index.html" data-app="https://www.banbe.app/">Nhắn Nhà Chung <span aria-hidden="true">→</span></a>
+                </section>
+
+                <section class="gallery">
+                  <header class="sec-head row">
+                    <div><p class="eyebrow">Ảnh</p><h2>Ảnh của Nhà Chung</h2></div>
+                    <span class="sec-count">2 ảnh</span>
+                  </header>
+                  <div class="shots">
+                    <img src="photos/gallery-1.jpg" alt="Bữa Chay Sân Gạch, ảnh 2" loading="eager">
+                    <img src="photos/gallery-2.jpg" alt="Bữa Chay Sân Gạch, ảnh 3" loading="eager">
+                  </div>
+                </section>
+
+                <section class="protect">
+                  <header class="sec-head">
+                    <p class="eyebrow">Cách banbe giữ chỗ</p>
+                    <h2>Ba bước, không mơ hồ</h2>
+                  </header>
+                  <ol class="steps">
+                    <li><span>01</span><b>Giữ chỗ 30 phút</b><p>Ghế được giữ riêng cho bạn trong 30 phút. Hết 30 phút, ghế được nhả.</p></li>
+                    <li><span>02</span><b>Chuyển khoản trực tiếp</b><p>banbe không thu tiền. Bạn chuyển cho Nhà Chung theo hướng dẫn của chủ nhà.</p></li>
+                    <li><span>03</span><b>Chủ nhà xác nhận</b><p>Khi Nhà Chung xác nhận đã nhận tiền, vé và QR mở ra. Thường trong 1 giờ.</p></li>
+                  </ol>
+                </section>
+
+                <section class="cross">
+                  <a class="crosscard" href="../discover/index.html" data-app="https://www.banbe.app/">
+                    <span class="eyebrow">Khám phá</span><b>Buổi khác quanh đây</b><span class="arrow" aria-hidden="true">→</span>
+                  </a>
+                  <a class="crosscard" href="../me/index.html" data-app="https://www.banbe.app/schedule">
+                    <span class="eyebrow">Của tôi</span><b>Lịch và vé của bạn</b><span class="arrow" aria-hidden="true">→</span>
+                  </a>
+                </section>
+              </main>
+              <aside class="reserve" aria-label="Giữ chỗ">
+                <div class="reserve-card">
+                  <div class="reserve-head"><span>Giữ chỗ</span><span class="chip">30 phút</span></div>
+                  <div class="reserve-price"><b>380.000₫</b><span>mỗi vé · VND</span></div>
+                  <div class="ledger" data-ledger aria-hidden="true"></div>
+                  <p class="reserve-seats"><b data-seats>10 chỗ</b> còn lại <span>· tối đa 6 vé mỗi người</span></p>
+                  <div class="reserve-when">
+                    <span>T7 28.11 · 18:30 – 21:00</span>
+                    <span>Quận 10 · Khu phố 4</span>
+                  </div>
+                  <button type="button" class="cta" data-go="2">Giữ chỗ · 380.000₫</button>
+                  <p class="fine">Giữ 30 phút. Chuyển khoản trực tiếp cho Nhà Chung. banbe không thu phí.</p>
+                  <div class="reserve-host"><span class="monogram small">NC</span><div><b>Nhà Chung</b><span>Chủ nhà</span></div></div>
+                </div>
+                <p class="reserve-note">Vé 1 đến 6 cho mỗi người. Giá đã là giá cuối, không phí.</p>
+              </aside>
+            </div>
+            <footer class="detail-foot">Sự kiện thật · <b>bunchay</b> · dữ liệu đọc ngày 27.11.2026</footer>
+          </div>
+          <div class="bottombar">
+            <div class="bb-price"><b>380.000₫</b><span><span data-seats>10 chỗ</span> · giữ 30 phút</span></div>
+            <button type="button" class="cta" data-go="2">Giữ chỗ</button>
+          </div>
+        </section>
+        <section class="ev-step flow" data-step="2" hidden>
+          <header class="flowtop">
+            <button type="button" class="backbtn" data-go="1"><span aria-hidden="true">←</span> Sự kiện</button>
+            <span class="flowbrand">banbe</span>
+            <ol class="journey" aria-label="Tiến độ đặt chỗ">
+              <li class="done">Sự kiện</li>
+              <li class="now">Giữ chỗ</li>
+              <li>Vé</li>
+            </ol>
+            <span class="flowcount">Bước 2/3</span>
+          </header>
+          <div class="flow-scroll">
+            <div class="reserve-grid">
+              <main class="rform">
+                <div class="rhead">
+                  <p class="rkicker">Bữa Chay Sân Gạch · T7 28.11</p>
+                  <h1>Gần xong rồi.</h1>
+                  <p class="rlede">Chỗ được giữ 30 phút để bạn chuyển khoản trực tiếp cho Nhà Chung.</p>
+                </div>
+                <div class="existing" data-existing hidden>
+                  <span data-existing-text>Bạn đang giữ 2 chỗ cho buổi này.</span>
+                  <button type="button" class="linkbtn" data-existing-link data-go="3">Xem vé <span aria-hidden="true">→</span></button>
+                </div>
+                <div class="minievent">
+                  <img src="photos/cover.jpg" alt="" loading="eager">
+                  <div><b>Bữa Chay Sân Gạch</b><span>T7 28.11 · 18:30 – 21:00 · Quận 10</span></div>
+                  <span class="minievent-price">380.000₫</span>
+                </div>
+                <div class="fgroup account">
+                  <div class="row2">
+                    <div class="field"><span>Tên</span><b class="readonly">Minh Anh</b></div>
+                    <div class="field"><span>Email</span><b class="readonly">minhanh@example.com</b></div>
+                  </div>
+                  <a class="fieldlink" href="../me/index.html" data-app="https://www.banbe.app/">Tài khoản của bạn · Đổi trong Tài khoản</a>
+                </div>
+                <section class="fgroup">
+                  <div class="fg-head"><h2>Số vé</h2><span class="hint">Tối đa 6 vé mỗi người</span></div>
+                  <div class="qtybox">
+                    <div><b data-qty-label>2 vé</b><span data-qty-total>760.000₫</span></div>
+                    <div class="stepper">
+                      <button type="button" data-qty="-1" aria-label="Bớt một vé">−</button>
+                      <output data-qty-out aria-live="polite">2</output>
+                      <button type="button" data-qty="1" aria-label="Thêm một vé">+</button>
+                    </div>
+                  </div>
+                  <p class="hint"><span data-seats>10 chỗ</span> còn lại · giữ chỗ 30 phút</p>
+                </section>
+                <section class="fgroup">
+                  <div class="fg-head"><h2>Người tham dự</h2><span class="hint">Mỗi vé cần tên và ngày sinh</span></div>
+                  <div class="attendees" data-attendees></div>
+                </section>
+                <p class="policy">banbe không thu tiền. Chỗ được giữ 30 phút để bạn chuyển khoản trực tiếp cho Nhà Chung, rồi chờ chủ nhà xác nhận.</p>
+                <p class="holdreason" data-hold-reason hidden></p>
+              </main>
+              <aside class="order">
+                <div class="ordercard">
+                  <div class="orderhead"><span>Tóm tắt giữ chỗ</span><span class="chip">30 phút</span></div>
+                  <div class="orderline"><span data-order-line>2 vé × 380.000₫</span><b data-order-total>760.000₫</b></div>
+                  <div class="orderline"><span>Phí banbe</span><b>0₫</b></div>
+                  <div class="ordertotal"><span>Tổng</span><b data-order-total>760.000₫</b></div>
+                  <div class="holdstrip"><span class="dial">30:00</span><p>Đồng hồ bắt đầu khi bạn bấm giữ chỗ. Chỗ được nhả nếu quá 30 phút.</p></div>
+                  <button type="button" class="cta" data-hold data-hold-label>Giữ 2 chỗ · 30 phút</button>
+                  <p class="fine">Chưa trả tiền ở bước này. banbe không giữ tiền của bạn.</p>
+                </div>
+                <p class="orderfoot">Sau khi giữ chỗ, Nhà Chung xác nhận thường trong 1 giờ.</p>
+              </aside>
+            </div>
+          </div>
+          <div class="bottombar">
+            <div class="bb-price"><b data-order-total>760.000₫</b><span><span data-qty-label>2 vé</span> · giữ 30 phút</span></div>
+            <button type="button" class="cta" data-hold data-hold-label-short>Giữ 2 chỗ</button>
+          </div>
+        </section>
+        <section class="ev-step ticketflow" data-step="3" hidden>
+          <header class="flowtop">
+            <button type="button" class="backbtn" data-go="1"><span aria-hidden="true">←</span> Sự kiện</button>
+            <span class="flowbrand">banbe</span>
+            <ol class="journey" aria-label="Tiến độ đặt chỗ">
+              <li class="done">Sự kiện</li>
+              <li class="done">Giữ chỗ</li>
+              <li class="now" data-journey-ticket>Vé</li>
+            </ol>
+            <span class="flowcount">Bước 3/3</span>
+          </header>
+          <div class="ticket-scroll">
+            <div class="statuswrap">
+              <div class="statusstrip is-holding" data-status>
+                <span class="statusdot" aria-hidden="true"></span>
+                <div class="statuscopy"><b data-status-title>Đang giữ 2 chỗ</b><span data-status-sub>Chuyển khoản cho Nhà Chung trước khi hết giờ</span></div>
+                <span class="statustime" data-countdown role="timer" aria-label="Thời gian giữ chỗ còn lại">30:00</span>
+              </div>
+            </div>
+            <div class="ticket-grid">
+              <aside class="trail">
+                <img class="trail-img" src="photos/cover.jpg" alt="Bữa Chay Sân Gạch" loading="eager">
+                <p class="eyebrow">Sự kiện</p>
+                <b class="trail-name">Bữa Chay Sân Gạch</b>
+                <span>T7 28.11 · 18:30 – 21:00</span>
+                <span>Quận 10 · Khu phố 4</span>
+                <div class="trail-note"><b>Vì sao chờ?</b><p>banbe không thu tiền. Nhà Chung xác nhận đã nhận chuyển khoản thì QR mới mở.</p></div>
+                <p class="rail-meta">Sự kiện thật · <b>bunchay</b><br>Dữ liệu đọc 27.11.2026</p>
+              </aside>
+              <div class="ticket-main">
+                <div class="tickettoolbar">
+                  <div><p class="eyebrow">Vé của bạn</p><b data-page-label>Vé 1/2 · Minh Anh</b></div>
+                  <div class="pager">
+                    <button type="button" data-page="-1" aria-label="Vé trước">‹</button>
+                    <span data-page-count>1 / 2</span>
+                    <button type="button" data-page="1" aria-label="Vé sau">›</button>
+                  </div>
+                </div>
+                <article class="paper" aria-label="Vé mẫu">
+                  <div class="paper-top">
+                    <div class="paper-brand"><span class="pb-word">banbe</span><span class="pb-kind">Vé vào cửa</span></div>
+                    <span class="stamp is-holding" data-stamp>ĐANG GIỮ</span>
+                  </div>
+                  <div class="paper-main">
+                    <div class="paper-date"><span>Tháng 11</span><b>28</b><span>Thứ Bảy</span><span class="paper-time">18:30</span></div>
+                    <div class="paper-event">
+                      <span class="paper-kicker">Supper club · Quận 10</span>
+                      <h2>Bữa Chay Sân Gạch</h2>
+                      <span class="paper-when">18:30 – 21:00 · Khu phố 4</span>
+                    </div>
+                  </div>
+                  <div class="paper-holder">
+                    <div><span>Người tham dự</span><b data-holder>Minh Anh</b></div>
+                    <div class="ph-right"><span data-page-tag>Vé 1/2</span><b>380.000₫</b></div>
+                  </div>
+                  <div class="perf" aria-hidden="true"><i></i><i></i></div>
+                  <div class="paper-stub">
+                    <div class="qrbox">
+                      <div class="qr-live" data-qr hidden>
+                        <div class="qr-sample"><div class="qr-art" data-qr-art></div><span class="qr-mark" aria-hidden="true">MẪU</span></div>
+                        <span class="qr-note">QR mẫu · không dùng để vào cửa</span>
+                      </div>
+                      <div class="qr-locked" data-qr-locked>
+                        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+                        <span>QR mở khi<br>Nhà Chung xác nhận</span>
+                      </div>
+                    </div>
+                    <div class="stubinfo">
+                      <span class="label">Mã vé (mẫu)</span><b class="code" data-ticket-code>•••• ••••</b>
+                      <span class="label">Chủ nhà</span><b>Nhà Chung</b>
+                      <span class="label" data-stamp-label>Giữ đến</span><b data-stamp-time>21:12</b>
+                    </div>
+                  </div>
+                  <p class="paper-foot">banbe không thu tiền · vé mẫu cho bản thiết kế</p>
+                </article>
+                <div class="whatsnext">
+                  <span class="wn-mark" aria-hidden="true"></span>
+                  <p data-whatsnext>Chuyển khoản cho Nhà Chung, rồi chờ xác nhận. Vé và QR mở sau khi chủ nhà xác nhận.</p>
+                  <a class="wn-link" href="../me/index.html" data-app="https://www.banbe.app/"><span data-wn-text>Nhắn Nhà Chung</span> <span aria-hidden="true">→</span></a>
+                </div>
+                <div class="ticket-actions">
+                  <button type="button" class="cta" data-confirm data-when="holding">Mô phỏng: Nhà Chung xác nhận</button>
+                  <button type="button" class="ghost" data-go="1" data-when="holding">Về sự kiện</button>
+                  <a class="cta aslink" href="../me/index.html" data-app="https://www.banbe.app/schedule" data-when="confirmed">Xem lịch của bạn</a>
+                  <button type="button" class="ghost" data-go="1" data-when="confirmed">Xem sự kiện</button>
+                </div>
+                <p class="demo-note" data-demo-note>Nút xác nhận chỉ để đi tiếp trong prototype. App thật chờ chủ nhà xác nhận.</p>
+              </div>
+              <aside class="tside">
+                <div class="sidecard" data-side-holding>
+                  <p class="eyebrow">Bước tiếp theo</p>
+                  <h3>Chuyển khoản cho Nhà Chung</h3>
+                  <div class="sidemoney"><b data-order-total>760.000₫</b><span data-order-line>2 vé × 380.000₫</span></div>
+                  <div class="sideref"><span>Nội dung (mẫu)</span><b data-ref-code>BCH-7K4Q</b></div>
+                  <p class="fine">Số tiền và nội dung chỉ là mẫu trong bản thiết kế. banbe không giữ tiền.</p>
+                  <a class="btn" href="../me/index.html" data-app="https://www.banbe.app/">Nhắn Nhà Chung</a>
+                  <button type="button" class="ghost" data-confirm>Mô phỏng chủ nhà xác nhận</button>
+                </div>
+                <div class="sidecard" data-side-confirmed hidden>
+                  <p class="eyebrow">Vé của bạn</p>
+                  <h3><span data-order-qty>2</span> vé · <span data-order-total>760.000₫</span></h3>
+                  <dl>
+                    <div><dt>Ngày</dt><dd>T7 28.11 · 18:30 – 21:00</dd></div>
+                    <div><dt>Khu vực</dt><dd>Quận 10 · Khu phố 4</dd></div>
+                    <div><dt>Chủ nhà</dt><dd>Nhà Chung</dd></div>
+                    <div><dt>Xác nhận</dt><dd data-confirmed-at>27.11 · 20:41</dd></div>
+                  </dl>
+                  <a class="btn" href="../me/index.html" data-app="https://www.banbe.app/schedule">Xem lịch của bạn</a>
+                  <button type="button" class="ghost" data-go="1">Xem sự kiện</button>
+                </div>
+                <p class="sidefoot">QR trong bản này là mẫu. Vé thật chỉ mở sau khi chủ nhà xác nhận.</p>
+              </aside>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div class="bb-overview" data-overview hidden></div>
+</main>
+
+</body>
+</html>

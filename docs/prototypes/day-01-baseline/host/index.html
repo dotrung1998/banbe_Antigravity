@@ -1,0 +1,1614 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>banbe prototype · host · Create + Project Hub + Admin</title>
+<link rel="stylesheet" href="../../shared/stage.css">
+<link rel="stylesheet" href="screen.css">
+<script src="../../shared/stage.js" defer></script>
+<script src="screen.js" defer></script>
+</head>
+<body class="bb-stage-body">
+
+<header class="bb-bar">
+  <div class="bb-bar-lead">
+    <span class="bb-dot" aria-hidden="true"></span>
+    <span class="bb-kicker">banbe · prototype</span>
+    <span class="bb-crumb">Ngày 1/8 · Cụm 5/5</span>
+  </div>
+  <nav class="bb-clusters" aria-label="Chuyển cụm">
+    <a href="../onboarding/index.html" data-cluster="onboarding" data-app="https://www.banbe.app/welcome">Onboarding</a>
+    <a href="../discover/index.html" data-cluster="discover" data-app="https://www.banbe.app/">Khám phá</a>
+    <a href="../event/index.html" data-cluster="event" data-app="https://www.banbe.app/">Sự kiện</a>
+    <a href="../me/index.html" data-cluster="me" data-app="https://www.banbe.app/schedule">Của tôi</a>
+    <a href="../host/index.html" data-cluster="host" data-app="https://www.banbe.app/projects" aria-current="page">Host</a>
+  </nav>
+  <div class="bb-controls">
+    <div class="bb-sizes" role="group" aria-label="Khung xem">
+      <button type="button" data-size="390" aria-pressed="true" title="iPhone 390×844">390</button>
+      <button type="button" data-size="834" aria-pressed="false" title="iPad dọc 834×1194">834</button>
+      <button type="button" data-size="1194" aria-pressed="false" title="iPad ngang 1194×834">1194</button>
+      <button type="button" data-size="1440" aria-pressed="false" title="Browser 1440×900">1440</button>
+      <button type="button" data-size="all" aria-pressed="false" title="Xem cả 4 cạnh nhau">Cả 4</button>
+    </div>
+    <button type="button" class="bb-reset" data-reset>Làm lại</button>
+  </div>
+</header>
+
+<main class="bb-stage-main" data-stage data-cluster="host" data-steps="10">
+  <div class="bb-stage-caption">
+    <span class="bb-size-label" data-size-label>iPhone · 390×844</span>
+    <span class="bb-hint">10 bước · #b3 thời gian &amp; nơi · #b9 tiền &amp; cổng · #b10 quản lý sự kiện · Làm lại = về bước 1</span>
+  </div>
+
+  <div class="bb-fit" data-fit>
+    <div class="bb-device" data-device="390">
+      <div class="bb-screen" id="bb-screen">
+        <p class="hx-sr" role="status" aria-live="polite" data-live>Bước 1/10, Tạo sự kiện, người tổ chức</p>
+
+        <!-- ══════════ CREATE 1/5 · HOST ══════════ -->
+        <section class="hx hx-create" data-step="1" aria-labelledby="hx-h1-1">
+          <header class="hx-bar">
+            <a class="hx-icon" href="https://www.banbe.app/projects" target="_blank" rel="noreferrer" aria-label="Về Hosting trên app thật">‹</a>
+            <div class="hx-bar-mid">
+              <p class="hx-kicker">Tạo sự kiện · bước 1/5</p>
+              <h1 class="hx-bar-title" id="hx-h1-1" tabindex="-1" data-focus>Người tổ chức</h1>
+            </div>
+            <span class="hx-draftchip" data-draftchip>Nháp đã lưu</span>
+            <button type="button" class="hx-icon" data-sheet-open="draftMenu" aria-label="Bản nháp và lối ra" aria-haspopup="dialog">⋯</button>
+          </header>
+
+          <div class="hx-progress" role="group" aria-label="Năm bước tạo sự kiện">
+            <button type="button" class="hx-seg is-on is-done" data-go="1" aria-current="step"><span class="hx-seg-n">1</span><span class="hx-seg-l">Host</span></button>
+            <button type="button" class="hx-seg" data-go="2"><span class="hx-seg-n">2</span><span class="hx-seg-l">Cơ bản</span></button>
+            <button type="button" class="hx-seg" data-go="3"><span class="hx-seg-n">3</span><span class="hx-seg-l">Giờ &amp; nơi</span></button>
+            <button type="button" class="hx-seg" data-go="4"><span class="hx-seg-n">4</span><span class="hx-seg-l">Vé</span></button>
+            <button type="button" class="hx-seg" data-go="5"><span class="hx-seg-n">5</span><span class="hx-seg-l">Ảnh</span></button>
+          </div>
+
+          <div class="hx-body">
+            <div class="hx-grid">
+              <aside class="hx-rail" aria-label="Các bước">
+                <p class="hx-rail-k">Năm bước</p>
+                <button type="button" class="hx-rail-i is-on" data-go="1"><span class="hx-rail-n">1</span><span><b>Host</b><small>Đang ở đây</small></span></button>
+                <button type="button" class="hx-rail-i" data-go="2"><span class="hx-rail-n">2</span><span><b>Cơ bản</b><small>Tên, loại, mô tả</small></span></button>
+                <button type="button" class="hx-rail-i" data-go="3"><span class="hx-rail-n">3</span><span><b>Giờ &amp; nơi</b><small>Ngày, giờ, khu vực</small></span></button>
+                <button type="button" class="hx-rail-i" data-go="4"><span class="hx-rail-n">4</span><span><b>Vé</b><small>Giá, chỗ, ai được đặt</small></span></button>
+                <button type="button" class="hx-rail-i" data-go="5"><span class="hx-rail-n">5</span><span><b>Ảnh &amp; gửi</b><small>Ảnh bìa, gửi duyệt</small></span></button>
+                <p class="hx-rail-note">Nhảy tới bước nào cũng được. Bản nháp lưu trên máy này.</p>
+              </aside>
+
+              <div class="hx-main">
+                <div class="hx-stub-inline" data-stub-inline>
+                  <span class="hx-stub-chip">Xem trước</span>
+                  <b data-stub-name>Canh Chua Chủ Nhật</b>
+                  <span data-stub-when>T7 05.12 · 19:00</span>
+                  <span class="hx-stub-inline-price" data-stub-price>450.000₫</span>
+                </div>
+
+                <header class="hx-head">
+                  <p class="hx-eyebrow">Bước 1</p>
+                  <h2 class="hx-h1">Bạn tổ chức<br>với tên nào?</h2>
+                  <p class="hx-lede">Tên này hiện cạnh mọi sự kiện bạn tạo, trên trang sự kiện và trong tin nhắn gửi khách.</p>
+                </header>
+
+                <div class="hx-hostcard">
+                  <span class="hx-avatar" aria-hidden="true">NC</span>
+                  <div class="hx-hostcard-b">
+                    <b>Nhà Chung</b>
+                    <span>Hồ sơ tổ chức · dùng cho sự kiện này</span>
+                  </div>
+                  <span class="hx-tag">Đang dùng</span>
+                </div>
+
+                <div class="hx-fields">
+                  <label class="hx-field">
+                    <span class="hx-fl">Tên hiện trên trang sự kiện</span>
+                    <input class="hx-input" type="text" value="Nhà Chung" data-draft="hostName" autocomplete="organization">
+                  </label>
+                  <p class="hx-hint">Ảnh đại diện lấy từ hồ sơ. Đổi ảnh trong Tài khoản → Hồ sơ, cả hai sự kiện đang mở đổi theo.</p>
+
+                  <div class="hx-altname">
+                    <button type="button" class="hx-textbtn" data-toggle="altName" aria-expanded="false" aria-controls="hx-altname-field">Tổ chức dưới tên khác cho riêng sự kiện này</button>
+                    <div id="hx-altname-field" data-panel="altName" hidden>
+                      <label class="hx-field">
+                        <span class="hx-fl">Tên khác</span>
+                        <input class="hx-input" type="text" placeholder="Ví dụ: Bếp Nhỏ" data-draft="altName">
+                      </label>
+                      <p class="hx-hint">Chỉ dùng cho sự kiện này. Hồ sơ Nhà Chung không đổi.</p>
+                    </div>
+                  </div>
+
+                  <div class="hx-fromlast">
+                    <p class="hx-fromlast-k">Bắt đầu từ sự kiện trước</p>
+                    <p class="hx-fromlast-b"><b>Canh Chua Chủ Nhật</b> · 25.11.2026 · 450.000₫. Ngày, giờ, giá và hạng mục đã được điền sẵn theo lần trước. Số chỗ thì bạn luôn tự đặt.</p>
+                    <button type="button" class="hx-textbtn hx-textbtn-danger" data-sheet-open="blankStart">Xoá và bắt đầu trống</button>
+                  </div>
+                </div>
+              </div>
+
+              <aside class="hx-panel" aria-label="Xem trước và kiểm tra">
+                <p class="hx-panel-k">Bản xem trước</p>
+                <div class="hx-stub" data-panel-stub>
+                  <div class="hx-stub-top">
+                    <span class="hx-stub-chip">Bản nháp</span>
+                    <span class="hx-stub-date" data-stub-date>T7 · 05.12</span>
+                  </div>
+                  <h3 class="hx-stub-name" data-stub-name2>Canh Chua Chủ Nhật</h3>
+                  <p class="hx-stub-meta" data-stub-meta>19:00 – 21:30 · Phú Nhuận</p>
+                  <div class="hx-perf" aria-hidden="true"><span></span><span></span></div>
+                  <div class="hx-stub-price"><b data-stub-price2>450.000₫</b><span data-stub-seats>14 chỗ</span></div>
+                  <p class="hx-stub-host">Nhà Chung · <span data-stub-type>Supper club</span></p>
+                </div>
+
+                <div class="hx-check">
+                  <p class="hx-panel-k">Còn thiếu</p>
+                  <ul class="hx-checklist" data-preflight>
+                    <li data-check="host" class="is-ok"><span aria-hidden="true">✓</span> Người tổ chức</li>
+                    <li data-check="name" class="is-ok"><span aria-hidden="true">✓</span> Tên sự kiện</li>
+                    <li data-check="date"><span aria-hidden="true">!</span> Ngày và giờ</li>
+                    <li data-check="price"><span aria-hidden="true">!</span> Giá vé</li>
+                    <li data-check="seats"><span aria-hidden="true">!</span> Số chỗ</li>
+                  </ul>
+                  <p class="hx-note">Mọi mục bắt buộc đã có, vì bản nháp điền sẵn từ sự kiện trước. Bản tiếng Anh của lời nhắn là tuỳ chọn.</p>
+                </div>
+
+                <a class="hx-link" href="https://www.banbe.app/projects" target="_blank" rel="noreferrer">Hosting trên app thật <span aria-hidden="true">↗</span></a>
+              </aside>
+            </div>
+          </div>
+
+          <footer class="hx-foot">
+            <button type="button" class="hx-btn hx-btn-ghost" data-sheet-open="exitDraft">Lưu và thoát</button>
+            <span class="hx-foot-note">Bản nháp tự lưu</span>
+            <button type="button" class="hx-btn" data-go="2">Tiếp · Cơ bản <span aria-hidden="true">→</span></button>
+          </footer>
+        </section>
+
+        <!-- ══════════ CREATE 2/5 · BASICS ══════════ -->
+        <section class="hx hx-create" data-step="2" aria-labelledby="hx-h1-2" hidden>
+          <header class="hx-bar">
+            <button type="button" class="hx-icon" data-go="1" aria-label="Về bước 1">‹</button>
+            <div class="hx-bar-mid">
+              <p class="hx-kicker">Tạo sự kiện · bước 2/5</p>
+              <h1 class="hx-bar-title" id="hx-h1-2" tabindex="-1" data-focus>Cơ bản</h1>
+            </div>
+            <span class="hx-draftchip" data-draftchip>Nháp đã lưu</span>
+            <button type="button" class="hx-icon" data-sheet-open="draftMenu" aria-label="Bản nháp và lối ra" aria-haspopup="dialog">⋯</button>
+          </header>
+
+          <div class="hx-progress" role="group" aria-label="Năm bước tạo sự kiện">
+            <button type="button" class="hx-seg is-done" data-go="1"><span class="hx-seg-n">1</span><span class="hx-seg-l">Host</span></button>
+            <button type="button" class="hx-seg is-on" data-go="2" aria-current="step"><span class="hx-seg-n">2</span><span class="hx-seg-l">Cơ bản</span></button>
+            <button type="button" class="hx-seg" data-go="3"><span class="hx-seg-n">3</span><span class="hx-seg-l">Giờ &amp; nơi</span></button>
+            <button type="button" class="hx-seg" data-go="4"><span class="hx-seg-n">4</span><span class="hx-seg-l">Vé</span></button>
+            <button type="button" class="hx-seg" data-go="5"><span class="hx-seg-n">5</span><span class="hx-seg-l">Ảnh</span></button>
+          </div>
+
+          <div class="hx-body">
+            <div class="hx-grid">
+              <aside class="hx-rail" aria-label="Các bước">
+                <p class="hx-rail-k">Năm bước</p>
+                <button type="button" class="hx-rail-i is-done" data-go="1"><span class="hx-rail-n">1</span><span><b>Host</b><small>Xong</small></span></button>
+                <button type="button" class="hx-rail-i is-on" data-go="2"><span class="hx-rail-n">2</span><span><b>Cơ bản</b><small>Đang ở đây</small></span></button>
+                <button type="button" class="hx-rail-i" data-go="3"><span class="hx-rail-n">3</span><span><b>Giờ &amp; nơi</b><small>Ngày, giờ, khu vực</small></span></button>
+                <button type="button" class="hx-rail-i" data-go="4"><span class="hx-rail-n">4</span><span><b>Vé</b><small>Giá, chỗ, ai được đặt</small></span></button>
+                <button type="button" class="hx-rail-i" data-go="5"><span class="hx-rail-n">5</span><span><b>Ảnh &amp; gửi</b><small>Ảnh bìa, gửi duyệt</small></span></button>
+                <p class="hx-rail-note">Năm phần con của bước này (tên, mô tả, lời chào, hạng mục, chi tiết) giờ nằm trên một màn.</p>
+              </aside>
+
+              <div class="hx-main">
+                <div class="hx-stub-inline" data-stub-inline>
+                  <span class="hx-stub-chip">Xem trước</span>
+                  <b data-stub-name>Canh Chua Chủ Nhật</b>
+                  <span data-stub-when>T7 05.12 · 19:00</span>
+                  <span class="hx-stub-inline-price" data-stub-price>450.000₫</span>
+                </div>
+
+                <header class="hx-head">
+                  <p class="hx-eyebrow">Bước 2</p>
+                  <h2 class="hx-h1">Kể chuyện<br>trước đã.</h2>
+                  <p class="hx-lede">Tên, loại và ba dòng đầu là thứ khách đọc trước khi bấm giữ chỗ.</p>
+                </header>
+
+                <div class="hx-fields">
+                  <label class="hx-field hx-field-lg">
+                    <span class="hx-fl">Tên sự kiện <em>cần</em></span>
+                    <input class="hx-input hx-input-title" type="text" value="Canh Chua Chủ Nhật" data-draft="name" maxlength="90">
+                  </label>
+
+                  <fieldset class="hx-group">
+                    <legend class="hx-fl">Loại sự kiện <em>cần</em></legend>
+                    <div class="hx-chips" data-chips="type" role="group" aria-label="Loại sự kiện">
+                      <button type="button" class="hx-chip" data-value="supper" aria-pressed="true">🍽️ Supper club</button>
+                      <button type="button" class="hx-chip" data-value="music" aria-pressed="false">🎷 Nhạc</button>
+                      <button type="button" class="hx-chip" data-value="gallery" aria-pressed="false">🖼️ Phòng tranh</button>
+                      <button type="button" class="hx-chip" data-value="fashion" aria-pressed="false">🧵 Thời trang</button>
+                      <button type="button" class="hx-chip" data-value="popup" aria-pressed="false">🛍️ Pop-up</button>
+                    </div>
+                    <p class="hx-hint" data-type-hint>Supper club hỏi thêm thực đơn, ăn kiêng và tuổi tối thiểu.</p>
+                  </fieldset>
+
+                  <label class="hx-field">
+                    <span class="hx-fl">Giới thiệu ngắn</span>
+                    <textarea class="hx-input hx-input-area" rows="2" data-draft="intro" maxlength="4000">Bữa cơm miền Tây quanh một nồi canh chua.
+
+Bàn tròn, ăn chung, cá kho tộ và rau luộc chấm kho quẹt.</textarea>
+                  </label>
+
+                  <label class="hx-field">
+                    <span class="hx-fl">Mô tả</span>
+                    <textarea class="hx-input hx-input-area hx-input-long" rows="4" data-draft="description" maxlength="4000">Một bữa cơm miền Tây trong căn nhà phố ở Phú Nhuận. Nồi canh chua cá lóc nấu với bạc hà, đậu bắp và me chua, ăn cùng cá kho tộ và rau luộc chấm kho quẹt. Bàn tròn, ăn chung, xới cơm cho nhau. Chủ nhà kể chuyện quê ở Cần Thơ trong lúc mọi người ăn. Cơm thêm thoải mái.</textarea>
+                  </label>
+
+                  <div class="hx-group">
+                    <p class="hx-fl">Bao gồm</p>
+                    <ol class="hx-included">
+                      <li><b>Canh chua cá</b><span>nấu trong nồi đất, ăn chung</span></li>
+                      <li><b>3 món mặn</b><span>cá kho, rau luộc, trứng chiên</span></li>
+                      <li><b>trà đá</b><span>rót thêm thoải mái</span></li>
+                    </ol>
+                    <button type="button" class="hx-textbtn" data-add-included>＋ Thêm một mục</button>
+                  </div>
+
+                  <div class="hx-group">
+                    <p class="hx-fl">Chi tiết bắt buộc</p>
+                    <div class="hx-facts">
+                      <div class="hx-fact"><span>Rượu</span><b>Không có</b></div>
+                      <div class="hx-fact"><span>Tuổi tối thiểu</span><b>16</b></div>
+                      <div class="hx-fact"><span>Ăn kiêng</span><b>Pescatarian · có món chay</b></div>
+                      <div class="hx-fact"><span>Trang phục</span><b>Thoải mái</b></div>
+                    </div>
+                    <p class="hx-hint">Bốn mục này hiện thành chip trên trang sự kiện. Thiếu một mục thì chưa gửi duyệt được.</p>
+                  </div>
+
+                  <label class="hx-field">
+                    <span class="hx-fl">Lời nhắn mở đầu cho khách</span>
+                    <textarea class="hx-input hx-input-area" rows="2" data-draft="greeting" maxlength="500">Chào bạn! Có món nào bạn không ăn được thì nhắn mình trước nhé.</textarea>
+                    <span class="hx-hint">Tin nhắn này tự gửi khi khách mở cuộc trò chuyện với bạn.</span>
+                  </label>
+                </div>
+              </div>
+
+              <aside class="hx-panel" aria-label="Xem trước và kiểm tra">
+                <p class="hx-panel-k">Bản xem trước</p>
+                <div class="hx-stub" data-panel-stub>
+                  <div class="hx-stub-top">
+                    <span class="hx-stub-chip">Bản nháp</span>
+                    <span class="hx-stub-date" data-stub-date>T7 · 05.12</span>
+                  </div>
+                  <h3 class="hx-stub-name" data-stub-name2>Canh Chua Chủ Nhật</h3>
+                  <p class="hx-stub-meta" data-stub-meta>19:00 – 21:30 · Phú Nhuận</p>
+                  <p class="hx-stub-intro" data-stub-intro>Bữa cơm miền Tây quanh một nồi canh chua.</p>
+                  <div class="hx-perf" aria-hidden="true"><span></span><span></span></div>
+                  <div class="hx-stub-price"><b data-stub-price2>450.000₫</b><span data-stub-seats>14 chỗ</span></div>
+                  <p class="hx-stub-host">Nhà Chung · <span data-stub-type>Supper club</span></p>
+                </div>
+
+                <div class="hx-check">
+                  <p class="hx-panel-k">Còn thiếu</p>
+                  <ul class="hx-checklist" data-preflight>
+                    <li data-check="host" class="is-ok"><span aria-hidden="true">✓</span> Người tổ chức</li>
+                    <li data-check="name" class="is-ok"><span aria-hidden="true">✓</span> Tên sự kiện</li>
+                    <li data-check="date"><span aria-hidden="true">!</span> Ngày và giờ</li>
+                    <li data-check="price"><span aria-hidden="true">!</span> Giá vé</li>
+                    <li data-check="seats"><span aria-hidden="true">!</span> Số chỗ</li>
+                  </ul>
+                </div>
+
+                <div class="hx-sidecard">
+                  <p class="hx-panel-k">Vì sao hỏi sớm</p>
+                  <p class="hx-sidecard-b">Ba dòng đầu quyết định khách có đọc tiếp. Giá và chỗ để sau, vì lúc đó bạn đã biết mình nấu cho bao nhiêu người.</p>
+                </div>
+              </aside>
+            </div>
+          </div>
+
+          <footer class="hx-foot">
+            <button type="button" class="hx-btn hx-btn-ghost" data-go="1">‹ Quay lại</button>
+            <span class="hx-foot-note">Bản nháp tự lưu</span>
+            <button type="button" class="hx-btn" data-go="3">Tiếp · Giờ &amp; nơi <span aria-hidden="true">→</span></button>
+          </footer>
+        </section>
+
+        <!-- ══════════ CREATE 3/5 · WHEN & WHERE ══════════ -->
+        <section class="hx hx-create" data-step="3" aria-labelledby="hx-h1-3" hidden>
+          <header class="hx-bar">
+            <button type="button" class="hx-icon" data-go="2" aria-label="Về bước 2">‹</button>
+            <div class="hx-bar-mid">
+              <p class="hx-kicker">Tạo sự kiện · bước 3/5</p>
+              <h1 class="hx-bar-title" id="hx-h1-3" tabindex="-1" data-focus>Giờ &amp; nơi</h1>
+            </div>
+            <span class="hx-draftchip" data-draftchip>Nháp đã lưu</span>
+            <button type="button" class="hx-icon" data-sheet-open="draftMenu" aria-label="Bản nháp và lối ra" aria-haspopup="dialog">⋯</button>
+          </header>
+
+          <div class="hx-progress" role="group" aria-label="Năm bước tạo sự kiện">
+            <button type="button" class="hx-seg is-done" data-go="1"><span class="hx-seg-n">1</span><span class="hx-seg-l">Host</span></button>
+            <button type="button" class="hx-seg is-done" data-go="2"><span class="hx-seg-n">2</span><span class="hx-seg-l">Cơ bản</span></button>
+            <button type="button" class="hx-seg is-on" data-go="3" aria-current="step"><span class="hx-seg-n">3</span><span class="hx-seg-l">Giờ &amp; nơi</span></button>
+            <button type="button" class="hx-seg" data-go="4"><span class="hx-seg-n">4</span><span class="hx-seg-l">Vé</span></button>
+            <button type="button" class="hx-seg" data-go="5"><span class="hx-seg-n">5</span><span class="hx-seg-l">Ảnh</span></button>
+          </div>
+
+          <div class="hx-body">
+            <div class="hx-grid">
+              <aside class="hx-rail" aria-label="Các bước">
+                <p class="hx-rail-k">Năm bước</p>
+                <button type="button" class="hx-rail-i is-done" data-go="1"><span class="hx-rail-n">1</span><span><b>Host</b><small>Xong</small></span></button>
+                <button type="button" class="hx-rail-i is-done" data-go="2"><span class="hx-rail-n">2</span><span><b>Cơ bản</b><small>Xong</small></span></button>
+                <button type="button" class="hx-rail-i is-on" data-go="3"><span class="hx-rail-n">3</span><span><b>Giờ &amp; nơi</b><small>Đang ở đây</small></span></button>
+                <button type="button" class="hx-rail-i" data-go="4"><span class="hx-rail-n">4</span><span><b>Vé</b><small>Giá, chỗ, ai được đặt</small></span></button>
+                <button type="button" class="hx-rail-i" data-go="5"><span class="hx-rail-n">5</span><span><b>Ảnh &amp; gửi</b><small>Ảnh bìa, gửi duyệt</small></span></button>
+                <p class="hx-rail-note">Giờ luôn là giờ tại nơi tổ chức, không phải giờ máy người xem.</p>
+              </aside>
+
+              <div class="hx-main">
+                <div class="hx-stub-inline" data-stub-inline>
+                  <span class="hx-stub-chip">Xem trước</span>
+                  <b data-stub-name>Canh Chua Chủ Nhật</b>
+                  <span data-stub-when>T7 05.12 · 19:00</span>
+                  <span class="hx-stub-inline-price" data-stub-price>450.000₫</span>
+                </div>
+
+                <header class="hx-head">
+                  <p class="hx-eyebrow">Bước 3</p>
+                  <h2 class="hx-h1">Một buổi tối<br>đã có giờ.</h2>
+                  <p class="hx-lede">Khách thấy giờ theo múi giờ nơi bạn tổ chức. Ngày trong tuần và giờ kết thúc tự tính.</p>
+                </header>
+
+                <div class="hx-fields">
+                  <div class="hx-group">
+                    <p class="hx-fl">Ngày <em>cần</em></p>
+                    <div class="hx-weekstrip" data-weekstrip role="group" aria-label="Chọn ngày trong tuần">
+                      <button type="button" class="hx-day" data-date="2026-12-03"><span>T5</span><b>03</b></button>
+                      <button type="button" class="hx-day" data-date="2026-12-04"><span>T6</span><b>04</b></button>
+                      <button type="button" class="hx-day is-on" data-date="2026-12-05" aria-pressed="true"><span>T7</span><b>05</b></button>
+                      <button type="button" class="hx-day" data-date="2026-12-06"><span>CN</span><b>06</b></button>
+                      <button type="button" class="hx-day" data-date="2026-12-07"><span>T2</span><b>07</b></button>
+                      <button type="button" class="hx-day" data-date="2026-12-08"><span>T3</span><b>08</b></button>
+                      <button type="button" class="hx-day" data-date="2026-12-09"><span>T4</span><b>09</b></button>
+                    </div>
+                    <p class="hx-hint" data-date-sentence>Thứ Bảy, 05 tháng 12 năm 2026.</p>
+                  </div>
+
+                  <div class="hx-row2">
+                    <label class="hx-field">
+                      <span class="hx-fl">Bắt đầu <em>cần</em></span>
+                      <input class="hx-input hx-input-time" type="time" value="19:00" data-draft="time">
+                    </label>
+                    <label class="hx-field">
+                      <span class="hx-fl">Kết thúc</span>
+                      <input class="hx-input hx-input-time" type="time" value="21:30" data-draft="end">
+                    </label>
+                  </div>
+                  <label class="hx-switchrow">
+                    <input type="checkbox" data-draft="endOpen">
+                    <span class="hx-switch" aria-hidden="true"><span></span></span>
+                    <span class="hx-switchrow-b"><b>Không đặt giờ kết thúc</b><small>Trang sự kiện ghi “kết thúc mở”. Khách tự liệu giờ về.</small></span>
+                  </label>
+                  <p class="hx-hint">Kết thúc trước giờ bắt đầu nghĩa là hôm sau. Ví dụ 22:00 – 00:30 hiện thành “22:00 – 00:30 (hôm sau)”.</p>
+
+                  <label class="hx-field">
+                    <span class="hx-fl">Múi giờ</span>
+                    <select class="hx-input hx-input-select" data-draft="tz">
+                      <option value="Asia/Ho_Chi_Minh" selected>Giờ Việt Nam (GMT+7)</option>
+                      <option value="America/Los_Angeles">Giờ Los Angeles (PT)</option>
+                    </select>
+                    <span class="hx-hint">Đổi khi tổ chức ở nơi khác. Mọi giờ trong sự kiện này đọc theo lựa chọn đó.</span>
+                  </label>
+
+                  <div class="hx-group">
+                    <p class="hx-fl">Nơi tổ chức <em>cần</em></p>
+                    <div class="hx-areas">
+                      <button type="button" class="hx-area is-on" data-area="Phú Nhuận" aria-pressed="true">Phú Nhuận</button>
+                      <button type="button" class="hx-area" data-area="Quận 1" aria-pressed="false">Quận 1</button>
+                      <button type="button" class="hx-area" data-area="Quận 10" aria-pressed="false">Quận 10</button>
+                      <button type="button" class="hx-area" data-area="Bình Thạnh" aria-pressed="false">Bình Thạnh</button>
+                    </div>
+                    <label class="hx-field">
+                      <span class="hx-fl">Khu phố</span>
+                      <input class="hx-input" type="text" value="Khu phố 7" data-draft="neighborhood">
+                    </label>
+                    <p class="hx-hint">Khách thấy khu vực và khu phố trên bản đồ. Địa chỉ chi tiết bạn gửi trong tin nhắn cho khách đã có vé.</p>
+                  </div>
+                </div>
+              </div>
+
+              <aside class="hx-panel" aria-label="Xem trước và kiểm tra">
+                <p class="hx-panel-k">Bản xem trước</p>
+                <div class="hx-stub" data-panel-stub>
+                  <div class="hx-stub-top">
+                    <span class="hx-stub-chip">Bản nháp</span>
+                    <span class="hx-stub-date" data-stub-date>T7 · 05.12</span>
+                  </div>
+                  <h3 class="hx-stub-name" data-stub-name2>Canh Chua Chủ Nhật</h3>
+                  <p class="hx-stub-meta" data-stub-meta>19:00 – 21:30 · Phú Nhuận</p>
+                  <div class="hx-perf" aria-hidden="true"><span></span><span></span></div>
+                  <div class="hx-stub-price"><b data-stub-price2>450.000₫</b><span data-stub-seats>14 chỗ</span></div>
+                  <p class="hx-stub-count" data-stub-count>Còn 8 ngày</p>
+                </div>
+
+                <div class="hx-check">
+                  <p class="hx-panel-k">Còn thiếu</p>
+                  <ul class="hx-checklist" data-preflight>
+                    <li data-check="host" class="is-ok"><span aria-hidden="true">✓</span> Người tổ chức</li>
+                    <li data-check="name" class="is-ok"><span aria-hidden="true">✓</span> Tên sự kiện</li>
+                    <li data-check="date" class="is-ok"><span aria-hidden="true">✓</span> Ngày và giờ</li>
+                    <li data-check="price"><span aria-hidden="true">!</span> Giá vé</li>
+                    <li data-check="seats"><span aria-hidden="true">!</span> Số chỗ</li>
+                  </ul>
+                  <button type="button" class="hx-textbtn" data-go="4">Tới ô giá vé <span aria-hidden="true">→</span></button>
+                </div>
+
+                <div class="hx-sidecard">
+                  <p class="hx-panel-k">Vì sao giờ quan trọng</p>
+                  <p class="hx-sidecard-b">Đây là sự kiện bữa tối. Ngày sai giờ khiến khách tới sớm một tiếng, và host là người phải xin lỗi.</p>
+                </div>
+              </aside>
+            </div>
+          </div>
+
+          <footer class="hx-foot">
+            <button type="button" class="hx-btn hx-btn-ghost" data-go="2">‹ Quay lại</button>
+            <span class="hx-foot-note">Còn 2 bước</span>
+            <button type="button" class="hx-btn" data-go="4">Tiếp · Vé <span aria-hidden="true">→</span></button>
+          </footer>
+        </section>
+
+        <!-- ══════════ CREATE 4/5 · TICKETS ══════════ -->
+        <section class="hx hx-create" data-step="4" aria-labelledby="hx-h1-4" hidden>
+          <header class="hx-bar">
+            <button type="button" class="hx-icon" data-go="3" aria-label="Về bước 3">‹</button>
+            <div class="hx-bar-mid">
+              <p class="hx-kicker">Tạo sự kiện · bước 4/5</p>
+              <h1 class="hx-bar-title" id="hx-h1-4" tabindex="-1" data-focus>Vé</h1>
+            </div>
+            <span class="hx-draftchip" data-draftchip>Nháp đã lưu</span>
+            <button type="button" class="hx-icon" data-sheet-open="draftMenu" aria-label="Bản nháp và lối ra" aria-haspopup="dialog">⋯</button>
+          </header>
+
+          <div class="hx-progress" role="group" aria-label="Năm bước tạo sự kiện">
+            <button type="button" class="hx-seg is-done" data-go="1"><span class="hx-seg-n">1</span><span class="hx-seg-l">Host</span></button>
+            <button type="button" class="hx-seg is-done" data-go="2"><span class="hx-seg-n">2</span><span class="hx-seg-l">Cơ bản</span></button>
+            <button type="button" class="hx-seg is-done" data-go="3"><span class="hx-seg-n">3</span><span class="hx-seg-l">Giờ &amp; nơi</span></button>
+            <button type="button" class="hx-seg is-on" data-go="4" aria-current="step"><span class="hx-seg-n">4</span><span class="hx-seg-l">Vé</span></button>
+            <button type="button" class="hx-seg" data-go="5"><span class="hx-seg-n">5</span><span class="hx-seg-l">Ảnh</span></button>
+          </div>
+
+          <div class="hx-body">
+            <div class="hx-grid">
+              <aside class="hx-rail" aria-label="Các bước">
+                <p class="hx-rail-k">Năm bước</p>
+                <button type="button" class="hx-rail-i is-done" data-go="1"><span class="hx-rail-n">1</span><span><b>Host</b><small>Xong</small></span></button>
+                <button type="button" class="hx-rail-i is-done" data-go="2"><span class="hx-rail-n">2</span><span><b>Cơ bản</b><small>Xong</small></span></button>
+                <button type="button" class="hx-rail-i is-done" data-go="3"><span class="hx-rail-n">3</span><span><b>Giờ &amp; nơi</b><small>Xong</small></span></button>
+                <button type="button" class="hx-rail-i is-on" data-go="4"><span class="hx-rail-n">4</span><span><b>Vé</b><small>Đang ở đây</small></span></button>
+                <button type="button" class="hx-rail-i" data-go="5"><span class="hx-rail-n">5</span><span><b>Ảnh &amp; gửi</b><small>Ảnh bìa, gửi duyệt</small></span></button>
+                <p class="hx-rail-note">Giá lưu bằng đơn vị nhỏ nhất của tiền tệ, không làm tròn.</p>
+              </aside>
+
+              <div class="hx-main">
+                <div class="hx-stub-inline" data-stub-inline>
+                  <span class="hx-stub-chip">Xem trước</span>
+                  <b data-stub-name>Canh Chua Chủ Nhật</b>
+                  <span data-stub-when>T7 05.12 · 19:00</span>
+                  <span class="hx-stub-inline-price" data-stub-price>450.000₫</span>
+                </div>
+
+                <header class="hx-head">
+                  <p class="hx-eyebrow">Bước 4</p>
+                  <h2 class="hx-h1">Bao nhiêu<br>một chỗ?</h2>
+                  <p class="hx-lede">Một vé là một người. Giá bạn nhập là giá khách trả, không có phí ẩn.</p>
+                </header>
+
+                <div class="hx-fields">
+                  <div class="hx-group">
+                    <p class="hx-fl">Giá vé <em>cần</em></p>
+                    <div class="hx-pricechips" role="group" aria-label="Giá gợi ý">
+                      <button type="button" class="hx-chip" data-price="0">Miễn phí</button>
+                      <button type="button" class="hx-chip" data-price="200000">200.000₫</button>
+                      <button type="button" class="hx-chip" data-price="380000">380.000₫</button>
+                      <button type="button" class="hx-chip is-on" data-price="450000" aria-pressed="true">450.000₫</button>
+                    </div>
+                    <div class="hx-pricerow">
+                      <label class="hx-priceinput">
+                        <span class="hx-sr">Giá vé</span>
+                        <input class="hx-input hx-input-num" type="text" inputmode="numeric" value="450000" data-draft="price">
+                        <span class="hx-priceunit" data-price-unit>₫</span>
+                      </label>
+                      <div class="hx-currency" role="group" aria-label="Tiền tệ">
+                        <button type="button" class="hx-cur is-on" data-currency="VND" aria-pressed="true">VND</button>
+                        <button type="button" class="hx-cur" data-currency="USD" aria-pressed="false">USD</button>
+                      </div>
+                    </div>
+                    <p class="hx-moneyline" data-money-echo>Lưu 450000 (đồng). Khách thấy <b>450.000₫</b>.</p>
+                    <p class="hx-hint" data-usd-note hidden>Đổi sang USD: giá lưu bằng cent. $12.50 lưu là 1250. Thanh toán USD đang tắt trên production, giá vẫn lưu đúng đơn vị.</p>
+                  </div>
+
+                  <div class="hx-group">
+                    <p class="hx-fl">Số chỗ <em>cần</em></p>
+                    <div class="hx-stepper">
+                      <button type="button" class="hx-step-btn" data-seats="-1" aria-label="Bớt một chỗ">−</button>
+                      <output class="hx-step-out" data-seats-out aria-live="polite">14</output>
+                      <button type="button" class="hx-step-btn" data-seats="1" aria-label="Thêm một chỗ">+</button>
+                      <span class="hx-step-note">chỗ · <span data-seats-free>14 còn trống</span></span>
+                    </div>
+                    <p class="hx-hint">Số chỗ không tự điền, vì bạn là người biết sân nhà chứa được bao nhiêu.</p>
+                  </div>
+
+                  <div class="hx-group">
+                    <p class="hx-fl">Ai được đặt</p>
+                    <div class="hx-chips" data-chips="access" role="group" aria-label="Ai được đặt">
+                      <button type="button" class="hx-chip is-on" data-value="open" aria-pressed="true">Mọi người</button>
+                      <button type="button" class="hx-chip" data-value="invite" aria-pressed="false">Chỉ người được mời</button>
+                    </div>
+                    <p class="hx-hint" data-access-hint>Ai có tài khoản cũng giữ chỗ được. Bạn vẫn xác nhận từng khoản thanh toán.</p>
+                  </div>
+
+                  <div class="hx-group">
+                    <p class="hx-fl">Hiển thị</p>
+                    <div class="hx-chips" data-chips="visibility" role="group" aria-label="Hiển thị">
+                      <button type="button" class="hx-chip is-on" data-value="public" aria-pressed="true">Công khai</button>
+                      <button type="button" class="hx-chip" data-value="unlisted" aria-pressed="false">Không niêm yết</button>
+                    </div>
+                  </div>
+
+                  <div class="hx-total">
+                    <p class="hx-total-k">Nếu kín chỗ</p>
+                    <p class="hx-total-v" data-total>6.300.000₫</p>
+                    <p class="hx-total-b">14 chỗ × 450.000₫. Con số này không phải cam kết, chỉ là phép nhân.</p>
+                  </div>
+
+                  <div class="hx-dangerline">
+                    <div>
+                      <p class="hx-fl">Bản nháp</p>
+                      <p class="hx-hint">Xoá nháp là xoá trên máy này. Không có gì được gửi cho banbe.</p>
+                    </div>
+                    <button type="button" class="hx-btn hx-btn-danger-ghost" data-sheet-open="deleteDraft">Xoá bản nháp</button>
+                  </div>
+                </div>
+              </div>
+
+              <aside class="hx-panel" aria-label="Xem trước và kiểm tra">
+                <p class="hx-panel-k">Bản xem trước</p>
+                <div class="hx-stub" data-panel-stub>
+                  <div class="hx-stub-top">
+                    <span class="hx-stub-chip">Bản nháp</span>
+                    <span class="hx-stub-date" data-stub-date>T7 · 05.12</span>
+                  </div>
+                  <h3 class="hx-stub-name" data-stub-name2>Canh Chua Chủ Nhật</h3>
+                  <p class="hx-stub-meta" data-stub-meta>19:00 – 21:30 · Phú Nhuận</p>
+                  <div class="hx-perf" aria-hidden="true"><span></span><span></span></div>
+                  <div class="hx-stub-price"><b data-stub-price2>450.000₫</b><span data-stub-seats>14 chỗ</span></div>
+                  <p class="hx-stub-host">Nhà Chung · <span data-stub-type>Supper club</span></p>
+                </div>
+
+                <div class="hx-check">
+                  <p class="hx-panel-k">Còn thiếu</p>
+                  <ul class="hx-checklist" data-preflight>
+                    <li data-check="host" class="is-ok"><span aria-hidden="true">✓</span> Người tổ chức</li>
+                    <li data-check="name" class="is-ok"><span aria-hidden="true">✓</span> Tên sự kiện</li>
+                    <li data-check="date" class="is-ok"><span aria-hidden="true">✓</span> Ngày và giờ</li>
+                    <li data-check="price" class="is-ok"><span aria-hidden="true">✓</span> Giá vé</li>
+                    <li data-check="seats" class="is-ok"><span aria-hidden="true">✓</span> Số chỗ</li>
+                  </ul>
+                  <p class="hx-note">Bước 5 là ảnh bìa và gửi duyệt. Ba ảnh từ sự kiện trước đã có sẵn.</p>
+                  <button type="button" class="hx-textbtn" data-go="5">Tới ảnh &amp; gửi <span aria-hidden="true">→</span></button>
+                </div>
+
+                <div class="hx-sidecard">
+                  <p class="hx-panel-k">Đơn vị tiền</p>
+                  <p class="hx-sidecard-b">banbe lưu <code>price_vnd</code> là số nguyên, đơn vị nhỏ nhất: đồng với VND, cent với USD. Không bao giờ lưu số thực, nên không có chuyện 450.000 thành 449.999,99.</p>
+                  <p class="hx-sidecard-note">450000 → 450.000₫ · 1250 → $12.50</p>
+                </div>
+              </aside>
+            </div>
+          </div>
+
+          <footer class="hx-foot">
+            <button type="button" class="hx-btn hx-btn-ghost" data-go="3">‹ Quay lại</button>
+            <span class="hx-foot-note">Còn 1 bước</span>
+            <button type="button" class="hx-btn" data-go="5">Tiếp · Ảnh <span aria-hidden="true">→</span></button>
+          </footer>
+        </section>
+
+        <!-- ══════════ CREATE 5/5 · PHOTOS & SUBMIT ══════════ -->
+        <section class="hx hx-create" data-step="5" aria-labelledby="hx-h1-5" hidden>
+          <header class="hx-bar">
+            <button type="button" class="hx-icon" data-go="4" aria-label="Về bước 4">‹</button>
+            <div class="hx-bar-mid">
+              <p class="hx-kicker">Tạo sự kiện · bước 5/5</p>
+              <h1 class="hx-bar-title" id="hx-h1-5" tabindex="-1" data-focus>Ảnh &amp; gửi</h1>
+            </div>
+            <span class="hx-draftchip" data-draftchip>Nháp đã lưu</span>
+            <button type="button" class="hx-icon" data-sheet-open="draftMenu" aria-label="Bản nháp và lối ra" aria-haspopup="dialog">⋯</button>
+          </header>
+
+          <div class="hx-progress" role="group" aria-label="Năm bước tạo sự kiện">
+            <button type="button" class="hx-seg is-done" data-go="1"><span class="hx-seg-n">1</span><span class="hx-seg-l">Host</span></button>
+            <button type="button" class="hx-seg is-done" data-go="2"><span class="hx-seg-n">2</span><span class="hx-seg-l">Cơ bản</span></button>
+            <button type="button" class="hx-seg is-done" data-go="3"><span class="hx-seg-n">3</span><span class="hx-seg-l">Giờ &amp; nơi</span></button>
+            <button type="button" class="hx-seg is-done" data-go="4"><span class="hx-seg-n">4</span><span class="hx-seg-l">Vé</span></button>
+            <button type="button" class="hx-seg is-on" data-go="5" aria-current="step"><span class="hx-seg-n">5</span><span class="hx-seg-l">Ảnh</span></button>
+          </div>
+
+          <div class="hx-body">
+            <div class="hx-grid">
+              <aside class="hx-rail" aria-label="Các bước">
+                <p class="hx-rail-k">Năm bước</p>
+                <button type="button" class="hx-rail-i is-done" data-go="1"><span class="hx-rail-n">1</span><span><b>Host</b><small>Xong</small></span></button>
+                <button type="button" class="hx-rail-i is-done" data-go="2"><span class="hx-rail-n">2</span><span><b>Cơ bản</b><small>Xong</small></span></button>
+                <button type="button" class="hx-rail-i is-done" data-go="3"><span class="hx-rail-n">3</span><span><b>Giờ &amp; nơi</b><small>Xong</small></span></button>
+                <button type="button" class="hx-rail-i is-done" data-go="4"><span class="hx-rail-n">4</span><span><b>Vé</b><small>Xong</small></span></button>
+                <button type="button" class="hx-rail-i is-on" data-go="5"><span class="hx-rail-n">5</span><span><b>Ảnh &amp; gửi</b><small>Đang ở đây</small></span></button>
+                <p class="hx-rail-note">Gửi duyệt xong là sự kiện chờ banbe xem, chưa lên sóng.</p>
+              </aside>
+
+              <div class="hx-main">
+                <header class="hx-head">
+                  <p class="hx-eyebrow">Bước 5</p>
+                  <h2 class="hx-h1">Ba tấm ảnh,<br>một tấm bìa.</h2>
+                  <p class="hx-lede">Ảnh bìa là thứ duy nhất khách thấy trên Home. Ảnh còn lại nằm trong trang sự kiện.</p>
+                </header>
+
+                <div class="hx-photos">
+                  <figure class="hx-photo is-cover">
+                    <img src="photos/DSCF6107.jpg" alt="Mâm cơm chay trên sân gạch, ảnh thật từ sự kiện của Nhà Chung">
+                    <figcaption><span class="hx-tag hx-tag-ink">Ảnh bìa</span></figcaption>
+                  </figure>
+                  <figure class="hx-photo">
+                    <img src="photos/DSCF4212.jpg" alt="Bàn ăn tối với đèn ấm, ảnh thật trong bộ ảnh sự kiện">
+                    <figcaption><button type="button" class="hx-textbtn" data-set-cover>Làm bìa</button></figcaption>
+                  </figure>
+                  <figure class="hx-photo">
+                    <img src="photos/DSCF2539.jpg" alt="Chi tiết bát đĩa trên bàn, ảnh thật trong bộ ảnh sự kiện">
+                    <figcaption><button type="button" class="hx-textbtn" data-set-cover>Làm bìa</button></figcaption>
+                  </figure>
+                  <button type="button" class="hx-photo hx-photo-add" data-add-photo>
+                    <span aria-hidden="true">＋</span>
+                    <span>Thêm ảnh</span>
+                  </button>
+                </div>
+                <p class="hx-hint">Ảnh được nén trước khi tải lên. Ảnh trong prototype là ảnh thật trong bộ ảnh sự kiện của banbe, đã nén.</p>
+
+                <div class="hx-ready" data-ready>
+                  <div class="hx-ready-head">
+                    <p class="hx-fl">Kiểm tra trước khi gửi</p>
+                    <span class="hx-ready-score" data-ready-score>10/10</span>
+                  </div>
+                  <ul class="hx-checklist hx-checklist-wide" data-preflight>
+                    <li data-check="host" class="is-ok"><span aria-hidden="true">✓</span> Người tổ chức</li>
+                    <li data-check="name" class="is-ok"><span aria-hidden="true">✓</span> Tên sự kiện</li>
+                    <li data-check="type" class="is-ok"><span aria-hidden="true">✓</span> Loại sự kiện</li>
+                    <li data-check="story" class="is-ok"><span aria-hidden="true">✓</span> Mô tả và bao gồm</li>
+                    <li data-check="date" class="is-ok"><span aria-hidden="true">✓</span> Ngày và giờ</li>
+                    <li data-check="place" class="is-ok"><span aria-hidden="true">✓</span> Khu vực</li>
+                    <li data-check="price" class="is-ok"><span aria-hidden="true">✓</span> Giá vé</li>
+                    <li data-check="seats" class="is-ok"><span aria-hidden="true">✓</span> Số chỗ</li>
+                    <li data-check="photos" class="is-ok"><span aria-hidden="true">✓</span> Ảnh bìa</li>
+                    <li data-check="greeting"><span aria-hidden="true">!</span> Lời nhắn bản tiếng Anh</li>
+                  </ul>
+                  <p class="hx-note">Thiếu bản tiếng Anh không chặn gửi. Khách nói tiếng Anh sẽ thấy bản tiếng Việt cho tới khi bạn thêm.</p>
+                </div>
+
+                <!-- The panel carries this from 834; on a phone the panel is display:none,
+                     so the way into the Hub has to live in the column. -->
+                <div class="hx-submitted hx-submitted-inline" data-submitted hidden>
+                  <p class="hx-submitted-k">Đã gửi</p>
+                  <h4>Đang chờ banbe duyệt</h4>
+                  <ol class="hx-submitted-steps">
+                    <li><span aria-hidden="true">✈️</span> Đã gửi cho banbe</li>
+                    <li><span aria-hidden="true">🔎</span> banbe xem sự kiện</li>
+                    <li><span aria-hidden="true">🔔</span> Lên sóng, bạn nhận thông báo</li>
+                  </ol>
+                  <button type="button" class="hx-btn hx-btn-wide" data-go="6">Mở Hub của sự kiện <span aria-hidden="true">→</span></button>
+                  <p class="hx-note">Bản prototype không gửi gì. Đây là trạng thái sau khi gửi thành công.</p>
+                </div>
+              </div>
+
+              <aside class="hx-panel" aria-label="Xem trước và gửi">
+                <p class="hx-panel-k">Bản xem trước</p>
+                <div class="hx-stub" data-panel-stub>
+                  <div class="hx-cover"><img id="hx-cover" src="photos/DSCF6107.jpg" alt=""></div>
+                  <div class="hx-stub-top">
+                    <span class="hx-stub-chip">Bản nháp</span>
+                    <span class="hx-stub-date" data-stub-date>T7 · 05.12</span>
+                  </div>
+                  <h3 class="hx-stub-name" data-stub-name2>Canh Chua Chủ Nhật</h3>
+                  <p class="hx-stub-meta" data-stub-meta>19:00 – 21:30 · Phú Nhuận</p>
+                  <div class="hx-perf" aria-hidden="true"><span></span><span></span></div>
+                  <div class="hx-stub-price"><b data-stub-price2>450.000₫</b><span data-stub-seats>14 chỗ</span></div>
+                  <p class="hx-stub-host">Nhà Chung · <span data-stub-type>Supper club</span></p>
+                </div>
+
+                <div class="hx-submitbox" data-submitbox>
+                  <p class="hx-panel-k">Gửi duyệt</p>
+                  <p class="hx-sidecard-b">banbe xem trong vòng một ngày. Sự kiện chưa lên sóng cho tới lúc được duyệt, và bạn nhận thông báo khi có kết quả.</p>
+                  <button type="button" class="hx-btn hx-btn-wide" data-submit>Gửi duyệt sự kiện</button>
+                  <button type="button" class="hx-textbtn" data-sheet-open="exitDraft">Lưu nháp và thoát</button>
+                </div>
+
+                <div class="hx-submitted" data-submitted hidden>
+                  <p class="hx-submitted-k">Đã gửi</p>
+                  <h4>Đang chờ banbe duyệt</h4>
+                  <ol class="hx-submitted-steps">
+                    <li><span aria-hidden="true">✈️</span> Đã gửi cho banbe</li>
+                    <li><span aria-hidden="true">🔎</span> banbe xem sự kiện</li>
+                    <li><span aria-hidden="true">🔔</span> Lên sóng, bạn nhận thông báo</li>
+                  </ol>
+                  <button type="button" class="hx-btn hx-btn-wide" data-go="6">Mở Hub của sự kiện <span aria-hidden="true">→</span></button>
+                  <p class="hx-note">Bản prototype không gửi gì. Đây là trạng thái sau khi gửi thành công.</p>
+                </div>
+              </aside>
+            </div>
+          </div>
+
+          <footer class="hx-foot">
+            <button type="button" class="hx-btn hx-btn-ghost" data-go="4">‹ Quay lại</button>
+            <span class="hx-foot-note" data-foot-ready>Sẵn sàng gửi</span>
+            <button type="button" class="hx-btn" data-submit>Gửi duyệt <span aria-hidden="true">→</span></button>
+            <!-- After sending, the footer must lead somewhere: the Hub. -->
+            <button type="button" class="hx-btn" data-go="6" data-foot-hub hidden>Mở Hub của sự kiện <span aria-hidden="true">→</span></button>
+          </footer>
+        </section>
+
+        <!-- ══════════ HUB · OVERVIEW ══════════ -->
+        <section class="hx hx-hub" data-step="6" aria-labelledby="hx-h1-6" hidden>
+          <header class="hx-bar">
+            <a class="hx-icon" href="https://www.banbe.app/projects" target="_blank" rel="noreferrer" aria-label="Về Hosting trên app thật">‹</a>
+            <div class="hx-bar-mid">
+              <p class="hx-kicker">Bữa Chay Sân Gạch · <span class="hx-live">Đang mở</span></p>
+              <h1 class="hx-bar-title" id="hx-h1-6" tabindex="-1" data-focus>Hub sự kiện</h1>
+            </div>
+            <button type="button" class="hx-icon" data-sheet-open="moreMenu" aria-label="Thêm" aria-haspopup="dialog">⋯</button>
+          </header>
+
+          <nav class="hx-tabs" aria-label="Các phần của Hub">
+            <button type="button" class="hx-tab is-on" data-go="6" aria-current="page"><span aria-hidden="true">⌂</span>Tổng quan</button>
+            <button type="button" class="hx-tab" data-go="7"><span aria-hidden="true">✓</span>Việc<i class="hx-dot" aria-hidden="true"></i></button>
+            <button type="button" class="hx-tab" data-go="8"><span aria-hidden="true">👥</span>Đội</button>
+            <button type="button" class="hx-tab" data-go="9"><span aria-hidden="true">₫</span>Tiền &amp; cổng<i class="hx-dot" aria-hidden="true"></i></button>
+            <button type="button" class="hx-tab" disabled aria-disabled="true" title="Mở vào ngày diễn ra"><span aria-hidden="true">🗓</span>Ngày G</button>
+          </nav>
+
+          <div class="hx-body">
+            <div class="hx-demo">Dữ liệu mẫu: đơn, khách và việc là ví dụ. Tên sự kiện, ngày, giá, số chỗ và host là thật.</div>
+            <div class="hx-grid hx-grid-hub">
+              <aside class="hx-rail hx-rail-hub" aria-label="Các phần của Hub">
+                <p class="hx-rail-k">Hub</p>
+                <button type="button" class="hx-rail-i is-on" data-go="6"><span class="hx-rail-n">⌂</span><span><b>Tổng quan</b><small>Đang ở đây</small></span></button>
+                <button type="button" class="hx-rail-i" data-go="7"><span class="hx-rail-n">✓</span><span><b>Việc</b><small>6/10 xong</small></span></button>
+                <button type="button" class="hx-rail-i" data-go="8"><span class="hx-rail-n">👥</span><span><b>Đội</b><small>5 người</small></span></button>
+                <button type="button" class="hx-rail-i" data-go="9"><span class="hx-rail-n">₫</span><span><b>Tiền &amp; cổng</b><small>1 chờ · 1 hoàn</small></span></button>
+                <button type="button" class="hx-rail-i" disabled aria-disabled="true"><span class="hx-rail-n">🗓</span><span><b>Ngày G</b><small>Mở ngày diễn ra</small></span></button>
+                <a class="hx-rail-link" href="../event/index.html" data-app="https://www.banbe.app/event/bunchay">Trang sự kiện <span aria-hidden="true">↗</span></a>
+              </aside>
+
+              <div class="hx-main">
+                <header class="hx-hero">
+                  <p class="hx-eyebrow">Thứ Bảy 28.11.2026 · 18:30 – 21:00 · Quận 10</p>
+                  <h2 class="hx-days">Còn 1 ngày</h2>
+                  <p class="hx-lede">Bữa Chay Sân Gạch · 10 chỗ · 380.000₫ một vé · host Nhà Chung.</p>
+                  <div class="hx-hero-strip">
+                    <div><b>7/10</b><span>chỗ đã giữ</span></div>
+                    <div><b data-hero-ready>6/10</b><span>việc xong</span></div>
+                    <div><b>5</b><span>người trong đội</span></div>
+                  </div>
+                </header>
+
+                <section class="hx-section" aria-labelledby="hx-wait">
+                  <div class="hx-section-head">
+                    <h3 id="hx-wait">Đang chờ bạn</h3>
+                    <span class="hx-section-n">3</span>
+                  </div>
+                  <ul class="hx-ledger-list">
+                    <li>
+                      <button type="button" class="hx-wait" data-go="7">
+                        <span class="hx-wait-ic" aria-hidden="true">▦</span>
+                        <span class="hx-wait-b"><b>Linh đề xuất thêm hạng mục Truyền thông</b><small>“Cần người lo ảnh và bài đăng trước ngày diễn ra.”</small></span>
+                        <span class="hx-wait-go" aria-hidden="true">→</span>
+                      </button>
+                    </li>
+                    <li>
+                      <button type="button" class="hx-wait is-hot" data-go="9">
+                        <span class="hx-wait-ic" aria-hidden="true">₫</span>
+                        <span class="hx-wait-b"><b>2 khoản chờ bạn xác nhận · 760.000₫</b><small>Khách báo đã chuyển. Bạn xác nhận tay, không tự động.</small></span>
+                        <span class="hx-wait-go" aria-hidden="true">→</span>
+                      </button>
+                    </li>
+                    <li>
+                      <button type="button" class="hx-wait is-alert" data-go="9">
+                        <span class="hx-wait-ic" aria-hidden="true">↺</span>
+                        <span class="hx-wait-b"><b>1 yêu cầu hoàn tiền quá hạn</b><small>380.000₫ · khách hỏi từ 26.11, hạn trả lời 27.11.</small></span>
+                        <span class="hx-wait-go" aria-hidden="true">→</span>
+                      </button>
+                    </li>
+                  </ul>
+                </section>
+
+                <section class="hx-section" aria-labelledby="hx-sorted">
+                  <div class="hx-section-head">
+                    <h3 id="hx-sorted">Việc gần nhất</h3>
+                    <button type="button" class="hx-textbtn" data-go="7">Tất cả việc <span aria-hidden="true">→</span></button>
+                  </div>
+                  <ul class="hx-tasklist" data-tasklist="home"></ul>
+                </section>
+
+                <section class="hx-section" aria-labelledby="hx-squad">
+                  <div class="hx-section-head">
+                    <h3 id="hx-squad">Đội</h3>
+                    <button type="button" class="hx-textbtn" data-go="8">Quản lý đội <span aria-hidden="true">→</span></button>
+                  </div>
+                  <div class="hx-squad">
+                    <span class="hx-avatar hx-avatar-sm">NC</span>
+                    <span class="hx-avatar hx-avatar-sm">L</span>
+                    <span class="hx-avatar hx-avatar-sm">M</span>
+                    <span class="hx-avatar hx-avatar-sm">K</span>
+                    <span class="hx-avatar hx-avatar-sm">T</span>
+                    <p class="hx-squad-b">Bạn, Linh, Mai, Khoa, Trang. Hai người có quyền tiền và cửa.</p>
+                  </div>
+                </section>
+              </div>
+
+              <aside class="hx-panel" aria-label="Số của sự kiện và vùng nguy hiểm">
+                <p class="hx-panel-k">Số của sự kiện</p>
+                <dl class="hx-numbers">
+                  <div><dt>Đã xác nhận</dt><dd>1.900.000₫</dd></div>
+                  <div><dt>Chờ xác nhận</dt><dd>1 · 760.000₫</dd></div>
+                  <div><dt>Xin hoàn</dt><dd class="is-alert">1 · 380.000₫</dd></div>
+                  <div><dt>Còn trống</dt><dd>3 chỗ</dd></div>
+                </dl>
+                <p class="hx-note">Số tiền theo VND, lưu bằng đồng. Ví dụ 380.000₫ lưu là 380000.</p>
+
+                <div class="hx-links">
+                  <a class="hx-link" href="../event/index.html" data-app="https://www.banbe.app/event/bunchay">Xem trang sự kiện <span aria-hidden="true">↗</span></a>
+                  <a class="hx-link" href="../me/index.html" data-app="https://www.banbe.app/schedule">Lịch của bạn <span aria-hidden="true">↗</span></a>
+                </div>
+
+                <div class="hx-danger">
+                  <p class="hx-danger-k">Vùng nguy hiểm</p>
+                  <p class="hx-danger-b">Huỷ sự kiện sẽ báo 7 khách đang giữ chỗ, mở hoàn tiền cho họ và không hoàn tác được. Chỉ bạn làm được, không ai trong đội.</p>
+                  <button type="button" class="hx-btn hx-btn-danger" data-sheet-open="cancelEvent">Huỷ sự kiện</button>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </section>
+
+        <!-- ══════════ HUB · TASKS ══════════ -->
+        <section class="hx hx-hub" data-step="7" aria-labelledby="hx-h1-7" hidden>
+          <header class="hx-bar">
+            <a class="hx-icon" href="https://www.banbe.app/projects" target="_blank" rel="noreferrer" aria-label="Về Hosting trên app thật">‹</a>
+            <div class="hx-bar-mid">
+              <p class="hx-kicker">Bữa Chay Sân Gạch · <span class="hx-live">Đang mở</span></p>
+              <h1 class="hx-bar-title" id="hx-h1-7" tabindex="-1" data-focus>Việc</h1>
+            </div>
+            <button type="button" class="hx-icon" data-sheet-open="moreMenu" aria-label="Thêm" aria-haspopup="dialog">⋯</button>
+          </header>
+
+          <nav class="hx-tabs" aria-label="Các phần của Hub">
+            <button type="button" class="hx-tab" data-go="6"><span aria-hidden="true">⌂</span>Tổng quan</button>
+            <button type="button" class="hx-tab is-on" data-go="7" aria-current="page"><span aria-hidden="true">✓</span>Việc<i class="hx-dot" aria-hidden="true"></i></button>
+            <button type="button" class="hx-tab" data-go="8"><span aria-hidden="true">👥</span>Đội</button>
+            <button type="button" class="hx-tab" data-go="9"><span aria-hidden="true">₫</span>Tiền &amp; cổng<i class="hx-dot" aria-hidden="true"></i></button>
+            <button type="button" class="hx-tab" disabled aria-disabled="true" title="Mở vào ngày diễn ra"><span aria-hidden="true">🗓</span>Ngày G</button>
+          </nav>
+
+          <div class="hx-body">
+            <div class="hx-demo">Dữ liệu mẫu: việc và người được giao là ví dụ. Bạn thêm việc ngay trên dòng, không rời trang.</div>
+            <div class="hx-grid hx-grid-hub">
+              <aside class="hx-rail hx-rail-hub" aria-label="Các phần của Hub">
+                <p class="hx-rail-k">Hub</p>
+                <button type="button" class="hx-rail-i" data-go="6"><span class="hx-rail-n">⌂</span><span><b>Tổng quan</b><small>Còn 1 ngày</small></span></button>
+                <button type="button" class="hx-rail-i is-on" data-go="7"><span class="hx-rail-n">✓</span><span><b>Việc</b><small>Đang ở đây</small></span></button>
+                <button type="button" class="hx-rail-i" data-go="8"><span class="hx-rail-n">👥</span><span><b>Đội</b><small>5 người</small></span></button>
+                <button type="button" class="hx-rail-i" data-go="9"><span class="hx-rail-n">₫</span><span><b>Tiền &amp; cổng</b><small>1 chờ · 1 hoàn</small></span></button>
+                <a class="hx-rail-link" href="../event/index.html" data-app="https://www.banbe.app/event/bunchay">Trang sự kiện <span aria-hidden="true">↗</span></a>
+              </aside>
+
+              <div class="hx-main">
+                <header class="hx-head hx-head-tight">
+                  <h2 class="hx-h1">Sáu hạng mục,<br>mười việc.</h2>
+                  <p class="hx-lede">Mỗi hạng mục một người phụ trách. Việc quá hạn đứng đầu, việc bị chặn đứng trước cả việc quá hạn.</p>
+                </header>
+
+                <div class="hx-lanenav" role="group" aria-label="Nhảy tới hạng mục">
+                  <button type="button" class="hx-lanechip" data-lane="place">Địa điểm <b>2</b></button>
+                  <button type="button" class="hx-lanechip" data-lane="kitchen">Bếp <b>3</b></button>
+                  <button type="button" class="hx-lanechip" data-lane="service">Dịch vụ <b>1</b></button>
+                  <button type="button" class="hx-lanechip" data-lane="guests">Khách <b>2</b></button>
+                  <button type="button" class="hx-lanechip" data-lane="comms">Truyền thông <b>1</b></button>
+                  <button type="button" class="hx-lanechip" data-lane="dayof">Ngày G <b>1</b></button>
+                </div>
+
+                <div class="hx-addrow">
+                  <button type="button" class="hx-addrow-btn" data-task-compose aria-expanded="false">＋ Thêm việc</button>
+                  <form class="hx-composer" data-composer hidden>
+                    <label class="hx-sr" for="hx-task-title">Việc mới</label>
+                    <input id="hx-task-title" class="hx-input" type="text" placeholder="Việc cần làm, ví dụ: mua 5kg gạo" data-task-title>
+                    <div class="hx-composer-row">
+                      <select class="hx-input hx-input-select" data-task-lane aria-label="Hạng mục">
+                        <option value="kitchen">Bếp</option>
+                        <option value="place">Địa điểm</option>
+                        <option value="service">Dịch vụ</option>
+                        <option value="guests">Khách</option>
+                        <option value="comms">Truyền thông</option>
+                        <option value="dayof">Ngày G</option>
+                      </select>
+                      <select class="hx-input hx-input-select" data-task-who aria-label="Giao cho">
+                        <option value="me">Bạn</option>
+                        <option value="linh">Linh</option>
+                        <option value="mai">Mai</option>
+                        <option value="khoa">Khoa</option>
+                        <option value="trang">Trang</option>
+                      </select>
+                      <button type="submit" class="hx-btn">Thêm</button>
+                    </div>
+                    <p class="hx-note">Prototype chỉ thêm trên màn này, không ghi vào banbe.</p>
+                  </form>
+                </div>
+
+                <div class="hx-lanes" data-lanes>
+                  <section class="hx-lane" data-lane-group="place">
+                    <h3 class="hx-lane-h">Địa điểm <span>Khoa · 1/2</span></h3>
+                    <ul class="hx-tasklist" data-tasklist="place"></ul>
+                  </section>
+                  <section class="hx-lane" data-lane-group="kitchen">
+                    <h3 class="hx-lane-h">Bếp <span>Mai · 1/3</span></h3>
+                    <ul class="hx-tasklist" data-tasklist="kitchen"></ul>
+                  </section>
+                  <section class="hx-lane" data-lane-group="service">
+                    <h3 class="hx-lane-h">Dịch vụ <span>Trang · 0/1</span></h3>
+                    <ul class="hx-tasklist" data-tasklist="service"></ul>
+                  </section>
+                  <section class="hx-lane" data-lane-group="guests">
+                    <h3 class="hx-lane-h">Khách <span>Linh · 1/2</span></h3>
+                    <ul class="hx-tasklist" data-tasklist="guests"></ul>
+                  </section>
+                  <section class="hx-lane" data-lane-group="comms">
+                    <h3 class="hx-lane-h">Truyền thông <span>Linh · 0/1</span></h3>
+                    <ul class="hx-tasklist" data-tasklist="comms"></ul>
+                  </section>
+                  <section class="hx-lane" data-lane-group="dayof">
+                    <h3 class="hx-lane-h">Ngày G <span>Bạn · 1/1</span></h3>
+                    <ul class="hx-tasklist" data-tasklist="dayof"></ul>
+                  </section>
+                </div>
+              </div>
+
+              <aside class="hx-panel" aria-label="Tiến độ và chờ duyệt">
+                <p class="hx-panel-k">Sẵn sàng</p>
+                <div class="hx-ready-big"><b data-ready-big>6/10</b><span>việc xong</span></div>
+                <ul class="hx-bars" data-lanebars></ul>
+
+                <div class="hx-sidecard">
+                  <p class="hx-panel-k">Chờ bạn duyệt</p>
+                  <p class="hx-sidecard-b"><b>Thêm hạng mục Truyền thông</b><br>Linh đề xuất. Có người nhận việc ảnh và bài đăng.</p>
+                  <div class="hx-approve">
+                    <button type="button" class="hx-btn hx-btn-sm" data-approve>Duyệt</button>
+                    <button type="button" class="hx-btn hx-btn-sm hx-btn-ghost" data-reject>Từ chối</button>
+                  </div>
+                  <p class="hx-note" data-approve-note></p>
+                </div>
+
+                <div class="hx-sidecard">
+                  <p class="hx-panel-k">Giới hạn</p>
+                  <p class="hx-sidecard-b">6/12 hạng mục · mỗi hạng mục tối đa 20 việc. Đầy thì nút thêm nói rõ vì sao, không im lặng.</p>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </section>
+
+        <!-- ══════════ HUB · TEAM ══════════ -->
+        <section class="hx hx-hub" data-step="8" aria-labelledby="hx-h1-8" hidden>
+          <header class="hx-bar">
+            <a class="hx-icon" href="https://www.banbe.app/projects" target="_blank" rel="noreferrer" aria-label="Về Hosting trên app thật">‹</a>
+            <div class="hx-bar-mid">
+              <p class="hx-kicker">Bữa Chay Sân Gạch · <span class="hx-live">Đang mở</span></p>
+              <h1 class="hx-bar-title" id="hx-h1-8" tabindex="-1" data-focus>Đội</h1>
+            </div>
+            <button type="button" class="hx-icon" data-sheet-open="moreMenu" aria-label="Thêm" aria-haspopup="dialog">⋯</button>
+          </header>
+
+          <nav class="hx-tabs" aria-label="Các phần của Hub">
+            <button type="button" class="hx-tab" data-go="6"><span aria-hidden="true">⌂</span>Tổng quan</button>
+            <button type="button" class="hx-tab" data-go="7"><span aria-hidden="true">✓</span>Việc<i class="hx-dot" aria-hidden="true"></i></button>
+            <button type="button" class="hx-tab is-on" data-go="8" aria-current="page"><span aria-hidden="true">👥</span>Đội</button>
+            <button type="button" class="hx-tab" data-go="9"><span aria-hidden="true">₫</span>Tiền &amp; cổng<i class="hx-dot" aria-hidden="true"></i></button>
+            <button type="button" class="hx-tab" disabled aria-disabled="true" title="Mở vào ngày diễn ra"><span aria-hidden="true">🗓</span>Ngày G</button>
+          </nav>
+
+          <div class="hx-body">
+            <div class="hx-grid hx-grid-hub">
+              <aside class="hx-rail hx-rail-hub" aria-label="Các phần của Hub">
+                <p class="hx-rail-k">Hub</p>
+                <button type="button" class="hx-rail-i" data-go="6"><span class="hx-rail-n">⌂</span><span><b>Tổng quan</b><small>Còn 1 ngày</small></span></button>
+                <button type="button" class="hx-rail-i" data-go="7"><span class="hx-rail-n">✓</span><span><b>Việc</b><small>6/10 xong</small></span></button>
+                <button type="button" class="hx-rail-i is-on" data-go="8"><span class="hx-rail-n">👥</span><span><b>Đội</b><small>Đang ở đây</small></span></button>
+                <button type="button" class="hx-rail-i" data-go="9"><span class="hx-rail-n">₫</span><span><b>Tiền &amp; cổng</b><small>1 chờ · 1 hoàn</small></span></button>
+                <a class="hx-rail-link" href="../me/index.html" data-app="https://www.banbe.app/schedule">Lịch của bạn <span aria-hidden="true">↗</span></a>
+              </aside>
+
+              <div class="hx-main">
+                <header class="hx-head hx-head-tight">
+                  <h2 class="hx-h1">Năm người,<br>hai chìa khoá.</h2>
+                  <p class="hx-lede">Ai làm gì thì ghi ở đây. Tiền và cửa chỉ mở cho người bạn cấp, và bạn đổi được bất cứ lúc nào.</p>
+                </header>
+
+                <div class="hx-invite">
+                  <div>
+                    <p class="hx-fl">Mời vào đội</p>
+                    <p class="hx-invite-link">banbe.app/join/<b>BEP-13</b></p>
+                    <p class="hx-note">Mã mẫu, sinh trong prototype, không dùng được trên production.</p>
+                  </div>
+                  <div class="hx-invite-actions">
+                    <button type="button" class="hx-btn hx-btn-ghost hx-btn-sm" data-copy-invite>Sao chép liên kết</button>
+                    <button type="button" class="hx-btn hx-btn-sm" data-new-code>Tạo mã mới</button>
+                  </div>
+                </div>
+
+                <div class="hx-table hx-table-team" role="table" aria-label="Đội của sự kiện">
+                  <div class="hx-thead" role="row">
+                    <span role="columnheader">Người</span>
+                    <span role="columnheader">Vai</span>
+                    <span role="columnheader">Hạng mục</span>
+                    <span role="columnheader">Tiền</span>
+                    <span role="columnheader">Cửa</span>
+                    <span role="columnheader"><span class="hx-sr">Thao tác</span></span>
+                  </div>
+
+                  <div class="hx-trow" role="row">
+                    <span class="hx-person"><span class="hx-avatar hx-avatar-sm">NC</span><span><b>Nhà Chung</b><small>Bạn · chủ sự kiện</small></span></span>
+                    <span class="hx-cell" data-label="Vai"><span class="hx-role is-host">Host</span></span>
+                    <span class="hx-cell" data-label="Hạng mục">Tất cả</span>
+                    <span class="hx-cell" data-label="Tiền">✓ luôn có</span>
+                    <span class="hx-cell" data-label="Cửa">✓ luôn có</span>
+                    <span class="hx-cell"></span>
+                  </div>
+
+                  <div class="hx-trow" role="row">
+                    <span class="hx-person"><span class="hx-avatar hx-avatar-sm">L</span><span><b>Linh</b><small>vào 28.10</small></span></span>
+                    <span class="hx-cell" data-label="Vai"><span class="hx-role">Manager</span></span>
+                    <span class="hx-cell" data-label="Hạng mục">Khách · Truyền thông</span>
+                    <span class="hx-cell" data-label="Tiền">—</span>
+                    <span class="hx-cell" data-label="Cửa">—</span>
+                    <span class="hx-cell"><button type="button" class="hx-icon hx-icon-sm" data-sheet-open="memberLinh" aria-label="Thao tác với Linh">⋯</button></span>
+                  </div>
+
+                  <div class="hx-trow" role="row">
+                    <span class="hx-person"><span class="hx-avatar hx-avatar-sm">M</span><span><b>Mai</b><small>vào 30.10</small></span></span>
+                    <span class="hx-cell" data-label="Vai"><span class="hx-role">Finance</span></span>
+                    <span class="hx-cell" data-label="Hạng mục">Bếp</span>
+                    <span class="hx-cell" data-label="Tiền"><span class="hx-key">💳 có</span></span>
+                    <span class="hx-cell" data-label="Cửa">—</span>
+                    <span class="hx-cell"><button type="button" class="hx-icon hx-icon-sm" data-sheet-open="memberMai" aria-label="Thao tác với Mai">⋯</button></span>
+                  </div>
+
+                  <div class="hx-trow" role="row">
+                    <span class="hx-person"><span class="hx-avatar hx-avatar-sm">K</span><span><b>Khoa</b><small>vào 02.11</small></span></span>
+                    <span class="hx-cell" data-label="Vai"><span class="hx-role">Lane lead</span></span>
+                    <span class="hx-cell" data-label="Hạng mục">Địa điểm</span>
+                    <span class="hx-cell" data-label="Tiền">—</span>
+                    <span class="hx-cell" data-label="Cửa"><span class="hx-key">▦ có</span></span>
+                    <span class="hx-cell"><button type="button" class="hx-icon hx-icon-sm" data-sheet-open="memberKhoa" aria-label="Thao tác với Khoa">⋯</button></span>
+                  </div>
+
+                  <div class="hx-trow" role="row">
+                    <span class="hx-person"><span class="hx-avatar hx-avatar-sm">T</span><span><b>Trang</b><small>vào 05.11</small></span></span>
+                    <span class="hx-cell" data-label="Vai"><span class="hx-role">Helper</span></span>
+                    <span class="hx-cell" data-label="Hạng mục">Dịch vụ</span>
+                    <span class="hx-cell" data-label="Tiền">—</span>
+                    <span class="hx-cell" data-label="Cửa">—</span>
+                    <span class="hx-cell"><button type="button" class="hx-icon hx-icon-sm" data-sheet-open="memberTrang" aria-label="Thao tác với Trang">⋯</button></span>
+                  </div>
+                </div>
+
+                <div class="hx-rules">
+                  <p class="hx-panel-k">Luật không đổi</p>
+                  <ul>
+                    <li><b>Tài khoản nhận tiền và huỷ sự kiện luôn do bạn.</b> Không giao cho đội, kể cả Finance.</li>
+                    <li><b>Quyền tiền nghĩa là xem được đơn và xác nhận thanh toán.</b> Không rút tiền, không đổi giá.</li>
+                    <li><b>Quyền cửa chỉ thấy tên khách.</b> Không thấy số tiền, không thấy tin nhắn.</li>
+                    <li><b>Mỗi lần cấp hoặc gỡ quyền đều được ghi lại</b> và bạn xem lại được trong lịch sử dự án.</li>
+                  </ul>
+                </div>
+              </div>
+
+              <aside class="hx-panel" aria-label="Lời mời và quyền">
+                <p class="hx-panel-k">Đang chờ</p>
+                <p class="hx-sidecard-b">0 lời mời chưa nhận. Lời mời hết hạn sau 7 ngày, và bạn thấy ai đã mở link.</p>
+
+                <div class="hx-sidecard">
+                  <p class="hx-panel-k">Cần thêm người?</p>
+                  <p class="hx-sidecard-b">Ngày diễn ra còn 1 ngày. Một người lo cửa và một người lo ảnh là đủ cho 10 khách.</p>
+                  <button type="button" class="hx-btn hx-btn-sm hx-btn-ghost" data-copy-invite>Sao chép liên kết mời</button>
+                </div>
+
+                <a class="hx-link" href="../me/index.html" data-app="https://www.banbe.app/">Nhắn khách đang giữ chỗ <span aria-hidden="true">↗</span></a>
+              </aside>
+            </div>
+          </div>
+        </section>
+
+        <!-- ══════════ HUB · MONEY & DOOR ══════════ -->
+        <section class="hx hx-hub" data-step="9" aria-labelledby="hx-h1-9" hidden>
+          <header class="hx-bar">
+            <a class="hx-icon" href="https://www.banbe.app/projects" target="_blank" rel="noreferrer" aria-label="Về Hosting trên app thật">‹</a>
+            <div class="hx-bar-mid">
+              <p class="hx-kicker">Bữa Chay Sân Gạch · <span class="hx-live">Đang mở</span></p>
+              <h1 class="hx-bar-title" id="hx-h1-9" tabindex="-1" data-focus>Tiền &amp; cổng</h1>
+            </div>
+            <button type="button" class="hx-icon" data-sheet-open="moreMenu" aria-label="Thêm" aria-haspopup="dialog">⋯</button>
+          </header>
+
+          <nav class="hx-tabs" aria-label="Các phần của Hub">
+            <button type="button" class="hx-tab" data-go="6"><span aria-hidden="true">⌂</span>Tổng quan</button>
+            <button type="button" class="hx-tab" data-go="7"><span aria-hidden="true">✓</span>Việc<i class="hx-dot" aria-hidden="true"></i></button>
+            <button type="button" class="hx-tab" data-go="8"><span aria-hidden="true">👥</span>Đội</button>
+            <button type="button" class="hx-tab is-on" data-go="9" aria-current="page"><span aria-hidden="true">₫</span>Tiền &amp; cổng<i class="hx-dot" aria-hidden="true"></i></button>
+            <button type="button" class="hx-tab" disabled aria-disabled="true" title="Mở vào ngày diễn ra"><span aria-hidden="true">🗓</span>Ngày G</button>
+          </nav>
+
+          <div class="hx-body">
+            <div class="hx-demo">Dữ liệu mẫu: khách và đơn là ví dụ. Giá 380.000₫, 10 chỗ, ngày 28.11 và host là thật.</div>
+            <div class="hx-grid hx-grid-hub">
+              <aside class="hx-rail hx-rail-hub" aria-label="Các phần của Hub">
+                <p class="hx-rail-k">Hub</p>
+                <button type="button" class="hx-rail-i" data-go="6"><span class="hx-rail-n">⌂</span><span><b>Tổng quan</b><small>Còn 1 ngày</small></span></button>
+                <button type="button" class="hx-rail-i" data-go="7"><span class="hx-rail-n">✓</span><span><b>Việc</b><small>6/10 xong</small></span></button>
+                <button type="button" class="hx-rail-i" data-go="8"><span class="hx-rail-n">👥</span><span><b>Đội</b><small>5 người</small></span></button>
+                <button type="button" class="hx-rail-i is-on" data-go="9"><span class="hx-rail-n">₫</span><span><b>Tiền &amp; cổng</b><small>Đang ở đây</small></span></button>
+                <a class="hx-rail-link" href="../event/index.html" data-app="https://www.banbe.app/event/bunchay">Trang sự kiện <span aria-hidden="true">↗</span></a>
+              </aside>
+
+              <div class="hx-main">
+                <header class="hx-head hx-head-tight">
+                  <p class="hx-eyebrow">28.11.2026 · 10 chỗ · 380.000₫</p>
+                  <h2 class="hx-h1">Tiền vào,<br>người vào.</h2>
+                </header>
+
+                <div class="hx-stats">
+                  <div class="hx-stat"><b data-money-confirmed>1.900.000₫</b><span>Đã xác nhận</span><small data-stat="seats">5 chỗ</small></div>
+                  <div class="hx-stat"><b data-stat="pending">1</b><span>Chờ xác nhận</span><small data-stat="pendingAmount">760.000₫</small></div>
+                  <div class="hx-stat is-alert"><b data-stat="refund">1</b><span>Xin hoàn</span><small data-stat="refundNote">quá hạn 1 ngày</small></div>
+                  <div class="hx-stat"><b data-stat="held">7/10</b><span>Chỗ đã giữ</span><small data-stat="free">3 còn trống</small></div>
+                </div>
+
+                <section class="hx-section" aria-labelledby="hx-ledger-h">
+                  <div class="hx-section-head">
+                    <h3 id="hx-ledger-h">Sổ tiền</h3>
+                    <span class="hx-section-n" data-money-count>5 đơn</span>
+                  </div>
+                  <div class="hx-table hx-table-money" role="table" aria-label="Sổ tiền của Bữa Chay Sân Gạch">
+                    <div class="hx-thead" role="row">
+                      <span role="columnheader">Khách</span>
+                      <span role="columnheader">Vé</span>
+                      <span role="columnheader" class="hx-num">Số tiền</span>
+                      <span role="columnheader">Trạng thái</span>
+                      <span role="columnheader">Cửa</span>
+                      <span role="columnheader"><span class="hx-sr">Thao tác</span></span>
+                    </div>
+                    <div class="hx-body-rows" data-money-rows></div>
+                    <div class="hx-totals" role="row">
+                      <span>5 chỗ xác nhận · 380.000₫ một vé</span>
+                      <span class="hx-num" data-money-total>1.900.000₫</span>
+                    </div>
+                  </div>
+                  <p class="hx-note">Đơn vị: VND, lưu bằng đồng, không thập phân. Với sự kiện USD, <code>price_vnd</code> lưu bằng cent: 1250 là $12.50. Thanh toán USD đang tắt nên chưa có sự kiện USD nào.</p>
+                </section>
+
+                <section class="hx-section" aria-labelledby="hx-door-h">
+                  <div class="hx-section-head">
+                    <h3 id="hx-door-h">Cửa</h3>
+                    <span class="hx-section-n">mở ngày diễn ra</span>
+                  </div>
+                  <div class="hx-door">
+                    <div class="hx-door-head">
+                      <p><b>0/5</b> người đã vào</p>
+                      <p class="hx-note">Quét mã ở cửa, hoặc tìm tên. Mỗi lần check-in đều ghi lại ai làm.</p>
+                    </div>
+                    <ul class="hx-doorlist">
+                      <li><span>Khách A · 2 người</span><span class="hx-stamp is-wait">Chưa mở</span></li>
+                      <li><span>Khách B · 2 người</span><span class="hx-stamp is-wait">Chưa mở</span></li>
+                      <li><span>Khách C · 1 người</span><span class="hx-stamp is-wait">Chưa mở</span></li>
+                    </ul>
+                    <p class="hx-note">Tên trong danh sách cửa lấy từ tên người đi cùng khi đặt vé. Đơn chưa xác nhận không vào danh sách.</p>
+                  </div>
+                </section>
+
+                <div class="hx-dangerline hx-dangerline-quiet">
+                  <div>
+                    <p class="hx-fl">Huỷ sự kiện</p>
+                    <p class="hx-hint">Mở ở Tổng quan, nơi có đủ số khách sẽ bị báo và số tiền phải hoàn.</p>
+                  </div>
+                  <button type="button" class="hx-btn hx-btn-danger-ghost" data-go="6">Tới vùng nguy hiểm</button>
+                </div>
+              </div>
+
+              <aside class="hx-panel" aria-label="Việc cần làm với tiền">
+                <p class="hx-panel-k">Làm ngay</p>
+                <ul class="hx-actions">
+                  <li>
+                    <button type="button" class="hx-action is-hot" data-money-focus="pending">
+                      <span aria-hidden="true">₫</span>
+                      <span><b>Xác nhận 1 khoản</b><small>760.000₫ · khách báo đã chuyển</small></span>
+                    </button>
+                  </li>
+                  <li>
+                    <button type="button" class="hx-action is-alert" data-money-focus="refund">
+                      <span aria-hidden="true">↺</span>
+                      <span><b>Trả lời yêu cầu hoàn</b><small>380.000₫ · quá hạn 1 ngày</small></span>
+                    </button>
+                  </li>
+                  <li>
+                    <button type="button" class="hx-action" data-money-focus="door">
+                      <span aria-hidden="true">▦</span>
+                      <span><b>Xem danh sách cửa</b><small>5 người, mở ngày diễn ra</small></span>
+                    </button>
+                  </li>
+                </ul>
+
+                <div class="hx-sidecard">
+                  <p class="hx-panel-k">Ai làm được gì</p>
+                  <p class="hx-sidecard-b">Bạn xác nhận mọi khoản. Mai có quyền tiền nên xác nhận được thay bạn, mỗi lần đều ghi tên. Khoa lo cửa. Không ai rút tiền.</p>
+                </div>
+
+                <div class="hx-sidecard">
+                  <p class="hx-panel-k">Hoàn tiền</p>
+                  <p class="hx-sidecard-b">Host huỷ thì khách chọn nơi nhận. Quá hạn 72 giờ, yêu cầu chuyển cho banbe xử lý và bạn vẫn thấy từng bước.</p>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </section>
+
+        <!-- ══════════ ADMIN · MANAGE EVENTS ══════════ -->
+        <section class="hx hx-admin" data-step="10" aria-labelledby="hx-h1-10" hidden>
+          <header class="hx-bar">
+            <button type="button" class="hx-icon" data-go="6" aria-label="Quay lại Hub sự kiện">‹</button>
+            <div class="hx-bar-mid">
+              <p class="hx-kicker">Duyệt &amp; Kiểm duyệt</p>
+              <h1 class="hx-bar-title" id="hx-h1-10" tabindex="-1" data-focus>Quản lý sự kiện</h1>
+            </div>
+            <span class="hx-draftchip" data-admin-count>7 sự kiện</span>
+          </header>
+
+          <div class="hx-body">
+            <div class="hx-grid hx-grid-admin">
+              <div class="hx-main">
+                <header class="hx-head hx-head-tight">
+                  <p class="hx-lede hx-lede-wide">Gỡ một hay nhiều sự kiện khỏi ứng dụng. Đặt chỗ, thanh toán, hoàn tiền và lịch sử luôn được giữ lại.</p>
+                </header>
+
+                <div class="hx-adminbar">
+                  <label class="hx-search">
+                    <span class="hx-sr">Tìm sự kiện</span>
+                    <input class="hx-input" type="search" placeholder="Tìm theo tên sự kiện" data-admin-search>
+                  </label>
+                  <div class="hx-filters" role="group" aria-label="Lọc theo trạng thái">
+                    <button type="button" class="hx-chip is-on" data-status="" aria-pressed="true">Tất cả</button>
+                    <button type="button" class="hx-chip" data-status="live" aria-pressed="false">Đang mở</button>
+                    <button type="button" class="hx-chip" data-status="review" aria-pressed="false">Chờ duyệt</button>
+                    <button type="button" class="hx-chip" data-status="ended" aria-pressed="false">Đã kết thúc</button>
+                    <button type="button" class="hx-chip" data-status="removed" aria-pressed="false">Đã gỡ</button>
+                    <button type="button" class="hx-chip" data-status="orphan" aria-pressed="false">Host đã xoá</button>
+                  </div>
+                </div>
+
+                <div class="hx-adminmeta">
+                  <span data-admin-shown>7 sự kiện</span>
+                  <span class="hx-adminmeta-r">
+                    <button type="button" class="hx-textbtn" data-admin-expand>Tất cả chi tiết</button>
+                    <button type="button" class="hx-textbtn" data-admin-all>Chọn tất cả</button>
+                  </span>
+                </div>
+
+                <div class="hx-table hx-table-admin" role="table" aria-label="Danh sách sự kiện">
+                  <div class="hx-thead" role="row">
+                    <span role="columnheader"><span class="hx-sr">Chọn</span></span>
+                    <span role="columnheader">Sự kiện</span>
+                    <span role="columnheader">Ngày</span>
+                    <span role="columnheader">Giá</span>
+                    <span role="columnheader">Trạng thái</span>
+                    <span role="columnheader">Trong sự kiện</span>
+                    <span role="columnheader"><span class="hx-sr">Thao tác</span></span>
+                  </div>
+                  <div data-admin-rows></div>
+                </div>
+
+                <p class="hx-note">Hai dòng gắn nhãn “ví dụ” cho thấy trạng thái chờ duyệt và đã gỡ, hai trạng thái chưa có trong dữ liệu thật hôm nay. Mọi dòng khác là sự kiện thật trên production ngày 27.11.2026.</p>
+              </div>
+
+              <aside class="hx-panel hx-panel-admin" aria-label="Vì sao chưa gỡ được">
+                <p class="hx-panel-k">Luật gỡ</p>
+                <p class="hx-sidecard-b">Gỡ không phải xoá. Sự kiện biến mất khỏi Trang chủ, Bản đồ, Tìm kiếm và trang host. Đơn, thanh toán, hoàn tiền và lịch sử ở lại.</p>
+                <ul class="hx-rules hx-rules-tight">
+                  <li>Còn đặt chỗ đang hiệu lực thì người tổ chức phải huỷ trước.</li>
+                  <li>Còn khoản hoàn tiền chưa xong thì chưa gỡ được.</li>
+                  <li>Còn tranh chấp mở thì xử lý ở Tranh Chấp Thanh Toán.</li>
+                  <li>Xoá vĩnh viễn chỉ dành cho sự kiện đã gỡ và chưa từng có đặt chỗ.</li>
+                </ul>
+                <div class="hx-sidecard">
+                  <p class="hx-panel-k">Bị chặn hôm nay</p>
+                  <p class="hx-sidecard-b"><b>Bữa Chay Sân Gạch</b> còn 7 đặt chỗ đang hiệu lực. Người tổ chức phải huỷ và hoàn tiền trước.</p>
+                  <a class="hx-link" href="../event/index.html" data-app="https://www.banbe.app/event/bunchay">Xem trang sự kiện <span aria-hidden="true">↗</span></a>
+                </div>
+              </aside>
+            </div>
+          </div>
+
+          <footer class="hx-adminsel" data-admin-sel hidden>
+            <div class="hx-adminsel-in">
+              <p class="hx-adminsel-k"><b data-admin-selected>0</b> đã chọn <span data-admin-blocked></span></p>
+              <div class="hx-adminsel-actions">
+                <button type="button" class="hx-btn hx-btn-ghost hx-btn-sm" data-admin-clear>Bỏ chọn</button>
+                <button type="button" class="hx-btn hx-btn-sm" data-admin-restore hidden>Khôi phục</button>
+                <button type="button" class="hx-btn hx-btn-danger hx-btn-sm" data-admin-remove>Gỡ sự kiện</button>
+              </div>
+            </div>
+          </footer>
+        </section>
+
+        <div class="hx-toast" data-toast role="status" aria-live="polite" hidden></div>
+
+        <!-- ── sheets ─────────────────────────────────────────────── -->
+        <div class="hx-sheet-layer" data-sheet-layer hidden>
+          <div class="hx-scrim" data-sheet-close aria-hidden="true"></div>
+
+          <section class="hx-sheet" data-sheet="draftMenu" role="dialog" aria-modal="true" aria-labelledby="hx-sh-draft" hidden tabindex="-1">
+            <header class="hx-sheet-head">
+              <div><p class="hx-kicker">Bản nháp</p><h2 id="hx-sh-draft">Lưu ở đâu, xoá thế nào</h2></div>
+              <button type="button" class="hx-icon" data-sheet-close aria-label="Đóng">×</button>
+            </header>
+            <p class="hx-sidecard-b">Bản nháp lưu trên máy này, không gửi lên banbe. Mở lại trên máy khác sẽ không thấy.</p>
+            <ul class="hx-sheet-list">
+              <li><b>Đã lưu 22:41</b><span>4 thay đổi kể từ lần lưu trước</span></li>
+              <li><b>Gửi duyệt</b><span>Chỉ gửi khi bạn ở bước 5 và bấm gửi</span></li>
+            </ul>
+            <div class="hx-sheet-actions">
+              <button type="button" class="hx-btn hx-btn-block" data-sheet-close>Tiếp tục điền</button>
+              <a class="hx-btn hx-btn-ghost hx-btn-block" href="https://www.banbe.app/projects" target="_blank" rel="noreferrer">Về Hosting, giữ nháp</a>
+              <button type="button" class="hx-textbtn hx-textbtn-danger" data-sheet-open="deleteDraft">Xoá bản nháp</button>
+            </div>
+          </section>
+
+          <section class="hx-sheet" data-sheet="exitDraft" role="dialog" aria-modal="true" aria-labelledby="hx-sh-exit" hidden tabindex="-1">
+            <header class="hx-sheet-head">
+              <div><p class="hx-kicker">Rời màn tạo</p><h2 id="hx-sh-exit">Lưu nháp rồi đi?</h2></div>
+              <button type="button" class="hx-icon" data-sheet-close aria-label="Đóng">×</button>
+            </header>
+            <p class="hx-sidecard-b">Nháp giữ nguyên tên, mô tả, ngày, giá và ảnh. Sự kiện chưa được gửi cho banbe.</p>
+            <div class="hx-sheet-actions">
+              <a class="hx-btn hx-btn-block" href="https://www.banbe.app/projects" target="_blank" rel="noreferrer">Lưu nháp và về Hosting</a>
+              <button type="button" class="hx-btn hx-btn-ghost hx-btn-block" data-sheet-close>Ở lại</button>
+            </div>
+          </section>
+
+          <section class="hx-sheet hx-sheet-danger" data-sheet="deleteDraft" role="dialog" aria-modal="true" aria-labelledby="hx-sh-del" hidden tabindex="-1">
+            <header class="hx-sheet-head">
+              <div><p class="hx-kicker hx-kicker-danger">Xoá bản nháp</p><h2 id="hx-sh-del">Xoá “Canh Chua Chủ Nhật”?</h2></div>
+              <button type="button" class="hx-icon" data-sheet-close aria-label="Đóng">×</button>
+            </header>
+            <p class="hx-sidecard-b">Bản nháp trên máy này mất luôn. Không có gì trên banbe bị xoá, vì sự kiện chưa từng được gửi.</p>
+            <div class="hx-sheet-actions">
+              <button type="button" class="hx-btn hx-btn-danger hx-btn-block" data-confirm-delete>Xoá bản nháp</button>
+              <button type="button" class="hx-btn hx-btn-ghost hx-btn-block" data-sheet-close>Giữ lại</button>
+            </div>
+          </section>
+
+          <section class="hx-sheet hx-sheet-danger" data-sheet="cancelEvent" role="dialog" aria-modal="true" aria-labelledby="hx-sh-cancel" hidden tabindex="-1">
+            <header class="hx-sheet-head">
+              <div><p class="hx-kicker hx-kicker-danger">Không hoàn tác</p><h2 id="hx-sh-cancel">Huỷ Bữa Chay Sân Gạch</h2></div>
+              <button type="button" class="hx-icon" data-sheet-close aria-label="Đóng">×</button>
+            </header>
+            <ul class="hx-sheet-list hx-sheet-list-danger">
+              <li><b>7 khách được báo ngay</b><span>5 đã trả, 2 đang giữ chỗ</span></li>
+              <li><b>1.900.000₫ phải hoàn</b><span>Khách chọn nơi nhận, bạn đánh dấu từng khoản</span></li>
+              <li><b>Sự kiện biến mất khỏi Home, Map, Tìm kiếm</b><span>Trang sự kiện còn nhưng ghi đã huỷ</span></li>
+            </ul>
+            <label class="hx-field">
+              <span class="hx-fl">Gõ HUỶ để xác nhận</span>
+              <input class="hx-input" type="text" placeholder="HUỶ" data-cancel-word autocomplete="off">
+            </label>
+            <div class="hx-sheet-actions">
+              <button type="button" class="hx-btn hx-btn-danger hx-btn-block" data-cancel-confirm disabled>Huỷ sự kiện và mở hoàn tiền</button>
+              <button type="button" class="hx-btn hx-btn-ghost hx-btn-block" data-sheet-close>Giữ sự kiện</button>
+            </div>
+          </section>
+
+          <section class="hx-sheet" data-sheet="moreMenu" role="dialog" aria-modal="true" aria-labelledby="hx-sh-more" hidden tabindex="-1">
+            <header class="hx-sheet-head">
+              <div><p class="hx-kicker">Hub</p><h2 id="hx-sh-more">Việc khác</h2></div>
+              <button type="button" class="hx-icon" data-sheet-close aria-label="Đóng">×</button>
+            </header>
+            <div class="hx-sheet-actions">
+              <a class="hx-btn hx-btn-ghost hx-btn-block" href="../event/index.html" data-app="https://www.banbe.app/event/bunchay">Xem trang sự kiện</a>
+              <button type="button" class="hx-btn hx-btn-ghost hx-btn-block" data-go="10">Quản trị · Quản lý sự kiện</button>
+              <button type="button" class="hx-btn hx-btn-ghost hx-btn-block" data-toast="Đã tải lại dự án (prototype)">Tải lại dự án</button>
+              <button type="button" class="hx-textbtn hx-textbtn-danger" data-sheet-open="leaveProject">Rời dự án</button>
+            </div>
+          </section>
+
+          <section class="hx-sheet hx-sheet-danger" data-sheet="leaveProject" role="dialog" aria-modal="true" aria-labelledby="hx-sh-leave" hidden tabindex="-1">
+            <header class="hx-sheet-head">
+              <div><p class="hx-kicker hx-kicker-danger">Rời dự án</p><h2 id="hx-sh-leave">Rời khỏi đội của sự kiện này?</h2></div>
+              <button type="button" class="hx-icon" data-sheet-close aria-label="Đóng">×</button>
+            </header>
+            <p class="hx-sidecard-b">Bạn mất quyền xem việc, chủ đề và kênh của đội. Chủ sự kiện nhận thông báo. Sự kiện không bị ảnh hưởng.</p>
+            <div class="hx-sheet-actions">
+              <button type="button" class="hx-btn hx-btn-danger hx-btn-block" data-toast="Prototype: chưa rời dự án">Rời dự án</button>
+              <button type="button" class="hx-btn hx-btn-ghost hx-btn-block" data-sheet-close>Ở lại</button>
+            </div>
+          </section>
+
+          <section class="hx-sheet" data-sheet="blankStart" role="dialog" aria-modal="true" aria-labelledby="hx-sh-blank" hidden tabindex="-1">
+            <header class="hx-sheet-head">
+              <div><p class="hx-kicker">Bắt đầu trống</p><h2 id="hx-sh-blank">Xoá phần điền sẵn?</h2></div>
+              <button type="button" class="hx-icon" data-sheet-close aria-label="Đóng">×</button>
+            </header>
+            <p class="hx-sidecard-b">Ngày, giờ, giá và hạng mục sẽ trống. Tên sự kiện, mô tả và ảnh vẫn giữ, vì đó là phần bạn đã viết.</p>
+            <div class="hx-sheet-actions">
+              <button type="button" class="hx-btn hx-btn-block" data-blank-confirm>Xoá phần điền sẵn</button>
+              <button type="button" class="hx-btn hx-btn-ghost hx-btn-block" data-sheet-close>Giữ nguyên</button>
+            </div>
+          </section>
+
+          <section class="hx-sheet" data-sheet="memberLinh" role="dialog" aria-modal="true" aria-labelledby="hx-sh-l" hidden tabindex="-1">
+            <header class="hx-sheet-head">
+              <div><p class="hx-kicker">Linh · Manager</p><h2 id="hx-sh-l">Quyền của Linh</h2></div>
+              <button type="button" class="hx-icon" data-sheet-close aria-label="Đóng">×</button>
+            </header>
+            <ul class="hx-sheet-list">
+              <li><b>Việc và chủ đề</b><span>Thêm, giao, duyệt đề xuất của người khác</span></li>
+              <li><b>Khách</b><span>Xem danh sách, nhắn khách đang giữ chỗ</span></li>
+              <li><b>Tiền và cửa</b><span>Chưa có. Cấp ở đây nếu cần</span></li>
+            </ul>
+            <div class="hx-sheet-actions">
+              <button type="button" class="hx-btn hx-btn-block" data-toast="Prototype: chưa cấp quyền tiền">Cấp quyền tiền</button>
+              <button type="button" class="hx-btn hx-btn-ghost hx-btn-block" data-toast="Prototype: chưa cấp quyền cửa">Cấp quyền cửa</button>
+              <button type="button" class="hx-textbtn hx-textbtn-danger" data-sheet-open="removeLinh">Gỡ Linh khỏi dự án</button>
+            </div>
+          </section>
+
+          <section class="hx-sheet hx-sheet-danger" data-sheet="removeLinh" role="dialog" aria-modal="true" aria-labelledby="hx-sh-rl" hidden tabindex="-1">
+            <header class="hx-sheet-head">
+              <div><p class="hx-kicker hx-kicker-danger">Gỡ khỏi dự án</p><h2 id="hx-sh-rl">Gỡ Linh?</h2></div>
+              <button type="button" class="hx-icon" data-sheet-close aria-label="Đóng">×</button>
+            </header>
+            <p class="hx-sidecard-b">Linh mất quyền xem việc, chủ đề và kênh của đội ngay lập tức. Hai việc đang giao cho Linh chuyển về cho bạn. Một thông báo được gửi đi.</p>
+            <div class="hx-sheet-actions">
+              <button type="button" class="hx-btn hx-btn-danger hx-btn-block" data-toast="Prototype: chưa gỡ ai">Gỡ Linh khỏi dự án</button>
+              <button type="button" class="hx-btn hx-btn-ghost hx-btn-block" data-sheet-close>Giữ lại</button>
+            </div>
+          </section>
+
+          <section class="hx-sheet" data-sheet="memberMai" role="dialog" aria-modal="true" aria-labelledby="hx-sh-m" hidden tabindex="-1">
+            <header class="hx-sheet-head">
+              <div><p class="hx-kicker">Mai · Finance</p><h2 id="hx-sh-m">Quyền của Mai</h2></div>
+              <button type="button" class="hx-icon" data-sheet-close aria-label="Đóng">×</button>
+            </header>
+            <ul class="hx-sheet-list">
+              <li><b>Tiền</b><span>Xem đơn, xác nhận thanh toán thay bạn</span></li>
+              <li><b>Không rút tiền, không đổi giá</b><span>Tài khoản nhận tiền luôn là của bạn</span></li>
+              <li><b>Cửa</b><span>Chưa có</span></li>
+            </ul>
+            <div class="hx-sheet-actions">
+              <button type="button" class="hx-btn hx-btn-ghost hx-btn-block" data-toast="Prototype: chưa đổi quyền">Gỡ quyền tiền</button>
+              <button type="button" class="hx-textbtn hx-textbtn-danger" data-toast="Prototype: chưa gỡ ai">Gỡ Mai khỏi dự án</button>
+            </div>
+          </section>
+
+          <section class="hx-sheet" data-sheet="memberKhoa" role="dialog" aria-modal="true" aria-labelledby="hx-sh-k" hidden tabindex="-1">
+            <header class="hx-sheet-head">
+              <div><p class="hx-kicker">Khoa · Lane lead</p><h2 id="hx-sh-k">Quyền của Khoa</h2></div>
+              <button type="button" class="hx-icon" data-sheet-close aria-label="Đóng">×</button>
+            </header>
+            <ul class="hx-sheet-list">
+              <li><b>Hạng mục Địa điểm</b><span>Thêm việc, giao việc trong hạng mục này</span></li>
+              <li><b>Cửa</b><span>Thấy tên khách và check-in. Không thấy số tiền</span></li>
+              <li><b>Tiền</b><span>Chưa có</span></li>
+            </ul>
+            <div class="hx-sheet-actions">
+              <button type="button" class="hx-btn hx-btn-ghost hx-btn-block" data-toast="Prototype: chưa đổi quyền">Gỡ quyền cửa</button>
+              <button type="button" class="hx-textbtn hx-textbtn-danger" data-toast="Prototype: chưa gỡ ai">Gỡ Khoa khỏi dự án</button>
+            </div>
+          </section>
+
+          <section class="hx-sheet" data-sheet="memberTrang" role="dialog" aria-modal="true" aria-labelledby="hx-sh-t" hidden tabindex="-1">
+            <header class="hx-sheet-head">
+              <div><p class="hx-kicker">Trang · Helper</p><h2 id="hx-sh-t">Quyền của Trang</h2></div>
+              <button type="button" class="hx-icon" data-sheet-close aria-label="Đóng">×</button>
+            </header>
+            <ul class="hx-sheet-list">
+              <li><b>Việc trong hạng mục Dịch vụ</b><span>Nhận việc, đánh dấu xong</span></li>
+              <li><b>Tiền và cửa</b><span>Chưa có</span></li>
+            </ul>
+            <div class="hx-sheet-actions">
+              <button type="button" class="hx-textbtn hx-textbtn-danger" data-toast="Prototype: chưa gỡ ai">Gỡ Trang khỏi dự án</button>
+            </div>
+          </section>
+
+          <section class="hx-sheet" data-sheet="confirmPay" role="dialog" aria-modal="true" aria-labelledby="hx-sh-pay" hidden tabindex="-1">
+            <header class="hx-sheet-head">
+              <div><p class="hx-kicker">Xác nhận thanh toán</p><h2 id="hx-sh-pay">Nhận 760.000₫?</h2></div>
+              <button type="button" class="hx-icon" data-sheet-close aria-label="Đóng">×</button>
+            </header>
+            <ul class="hx-sheet-list">
+              <li><b>Khách D · 2 vé</b><span>380.000₫ × 2 = 760.000₫</span></li>
+              <li><b>Khách báo đã chuyển 26.11</b><span>Chuyển khoản, không có mã đối chiếu tự động</span></li>
+            </ul>
+            <p class="hx-sidecard-b">Xác nhận xong là hai chỗ thành vé thật và khách nhận mã QR. Không tự huỷ được, chỉ hoàn tiền được.</p>
+            <div class="hx-sheet-actions">
+              <button type="button" class="hx-btn hx-btn-block" data-pay-confirm>Xác nhận đã nhận 760.000₫</button>
+              <button type="button" class="hx-btn hx-btn-ghost hx-btn-block" data-sheet-close>Chưa nhận được</button>
+            </div>
+          </section>
+
+          <section class="hx-sheet" data-sheet="refundAsk" role="dialog" aria-modal="true" aria-labelledby="hx-sh-ref" hidden tabindex="-1">
+            <header class="hx-sheet-head">
+              <div><p class="hx-kicker hx-kicker-danger">Quá hạn 1 ngày</p><h2 id="hx-sh-ref">Hoàn 380.000₫ cho Khách E</h2></div>
+              <button type="button" class="hx-icon" data-sheet-close aria-label="Đóng">×</button>
+            </header>
+            <ul class="hx-sheet-list">
+              <li><b>Khách xin từ 26.11</b><span>Lý do: bận việc gia đình</span></li>
+              <li><b>Nơi nhận</b><span>Tài khoản ngân hàng đã lưu, che 6 số giữa</span></li>
+              <li><b>Sau khi đánh dấu đã gửi</b><span>Khách nhận thông báo, yêu cầu đóng</span></li>
+            </ul>
+            <div class="hx-sheet-actions">
+              <button type="button" class="hx-btn hx-btn-block" data-refund-confirm>Đã chuyển, đánh dấu đã hoàn</button>
+              <button type="button" class="hx-btn hx-btn-ghost hx-btn-block" data-sheet-close>Để sau</button>
+            </div>
+          </section>
+
+          <section class="hx-sheet hx-sheet-danger" data-sheet="adminRemove" role="dialog" aria-modal="true" aria-labelledby="hx-sh-rm" hidden tabindex="-1">
+            <header class="hx-sheet-head">
+              <div><p class="hx-kicker hx-kicker-danger">Gỡ sự kiện</p><h2 id="hx-sh-rm" data-remove-title>Gỡ 1 sự kiện</h2></div>
+              <button type="button" class="hx-icon" data-sheet-close aria-label="Đóng">×</button>
+            </header>
+            <p class="hx-sidecard-b">Sự kiện biến mất khỏi Trang chủ, Bản đồ, Tìm kiếm và trang host. Mọi đặt chỗ, thanh toán và lịch sử được giữ. Người tổ chức nhận lý do bên dưới.</p>
+            <div class="hx-quickreasons" role="group" aria-label="Lý do nhanh">
+              <button type="button" class="hx-chip" data-reason="Spam">Spam</button>
+              <button type="button" class="hx-chip" data-reason="Trùng lặp">Trùng lặp</button>
+              <button type="button" class="hx-chip" data-reason="Vi phạm quy định cộng đồng">Vi phạm quy định cộng đồng</button>
+              <button type="button" class="hx-chip" data-reason="Sự kiện thử nghiệm">Sự kiện thử nghiệm</button>
+            </div>
+            <label class="hx-field">
+              <span class="hx-fl">Lý do (bắt buộc)</span>
+              <textarea class="hx-input hx-input-area" rows="3" maxlength="500" placeholder="Lý do (bắt buộc)" data-remove-reason></textarea>
+            </label>
+            <p class="hx-warn" data-remove-warn></p>
+            <div class="hx-sheet-actions">
+              <button type="button" class="hx-btn hx-btn-danger hx-btn-block" data-remove-confirm disabled>Gỡ sự kiện</button>
+              <button type="button" class="hx-btn hx-btn-ghost hx-btn-block" data-sheet-close>Huỷ</button>
+            </div>
+          </section>
+
+          <section class="hx-sheet hx-sheet-danger" data-sheet="adminPurge" role="dialog" aria-modal="true" aria-labelledby="hx-sh-pg" hidden tabindex="-1">
+            <header class="hx-sheet-head">
+              <div><p class="hx-kicker hx-kicker-danger">Không hoàn tác</p><h2 id="hx-sh-pg">Xoá vĩnh viễn sự kiện</h2></div>
+              <button type="button" class="hx-icon" data-sheet-close aria-label="Đóng">×</button>
+            </header>
+            <p class="hx-sidecard-b">Chỉ áp dụng cho sự kiện đã gỡ và chưa từng có đặt chỗ. Hành động được ghi lại, người tổ chức không khôi phục được.</p>
+            <label class="hx-checkrow">
+              <input type="checkbox" data-purge-ack>
+              <span>Tôi hiểu sự kiện này không thể khôi phục.</span>
+            </label>
+            <div class="hx-sheet-actions">
+              <button type="button" class="hx-btn hx-btn-danger hx-btn-block" data-purge-confirm disabled>Xoá vĩnh viễn</button>
+              <button type="button" class="hx-btn hx-btn-ghost hx-btn-block" data-sheet-close>Giữ lại</button>
+            </div>
+          </section>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="bb-overview" data-overview hidden></div>
+</main>
+
+</body>
+</html>
